@@ -6,6 +6,29 @@ import { Input } from '@/components/ui/input'
 import { ChevronRight, Package, Layers, DollarSign, Search, RefreshCw } from 'lucide-react'
 import type { BOMItem, BOMComponent } from '@/lib/google-sheets'
 
+type BOMTab = 'final' | 'sub' | 'individual'
+
+const TAB_CONFIG: Record<
+  BOMTab,
+  { label: string; endpoint: string; emptyMessage: string }
+> = {
+  final: {
+    label: 'Final Assembly',
+    endpoint: '/api/bom',
+    emptyMessage: 'No final assembly BOM data available. Check the Google Sheets BOM tabs.',
+  },
+  sub: {
+    label: 'Sub Assembly',
+    endpoint: '/api/bom-sub',
+    emptyMessage: 'No sub-assembly BOM data available. Check the Google Sheets BOM tabs.',
+  },
+  individual: {
+    label: 'Individual Items',
+    endpoint: '/api/bom-individual',
+    emptyMessage: 'No individual item BOM data available. Check the Google Sheets BOM tabs.',
+  },
+}
+
 function getCategoryColor(category: BOMComponent['category']) {
   switch (category) {
     case 'raw':
@@ -34,19 +57,20 @@ function getCategoryLabel(category: BOMComponent['category']) {
 
 export default function BOMExplorerPage() {
   const [bomData, setBomData] = useState<BOMItem[]>([])
+  const [activeTab, setActiveTab] = useState<BOMTab>('final')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPart, setSelectedPart] = useState<BOMItem | null>(null)
 
-  const fetchData = useCallback(async (isRefresh = false) => {
+  const fetchData = useCallback(async (tab: BOMTab, isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     setError(null)
 
     try {
-      const res = await fetch('/api/bom')
+      const res = await fetch(TAB_CONFIG[tab].endpoint)
       if (!res.ok) throw new Error('Failed to fetch BOM data')
       const data: BOMItem[] = await res.json()
       setBomData(data)
@@ -59,8 +83,16 @@ export default function BOMExplorerPage() {
   }, [])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    setSearchTerm('')
+    setSelectedPart(null)
+    fetchData(activeTab)
+  }, [activeTab, fetchData])
+
+  useEffect(() => {
+    if (!selectedPart) return
+    const matchedPart = bomData.find((item) => item.partNumber === selectedPart.partNumber) || null
+    setSelectedPart(matchedPart)
+  }, [bomData, selectedPart])
 
   const filteredParts = bomData.filter((item) => {
     if (!searchTerm) return true
@@ -76,7 +108,7 @@ export default function BOMExplorerPage() {
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold">📋 BOM Explorer</h1>
         <button
-          onClick={() => fetchData(true)}
+          onClick={() => fetchData(activeTab, true)}
           disabled={refreshing}
           className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
           aria-label="Refresh"
@@ -87,6 +119,25 @@ export default function BOMExplorerPage() {
       <p className="text-muted-foreground text-sm mb-4">
         Bill of Materials breakdown by product
       </p>
+
+      <div className="mb-4 border-b">
+        <div className="flex gap-1">
+          {(Object.keys(TAB_CONFIG) as BOMTab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+              aria-current={activeTab === tab ? 'page' : undefined}
+            >
+              {TAB_CONFIG[tab].label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {loading && (
         <div className="flex items-center justify-center py-20">
@@ -101,7 +152,7 @@ export default function BOMExplorerPage() {
           <CardContent className="flex flex-col items-center justify-center py-20 text-center">
             <Layers className="size-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-              No BOM data available. Check the Google Sheets BOM tabs.
+              {TAB_CONFIG[activeTab].emptyMessage}
             </p>
           </CardContent>
         </Card>

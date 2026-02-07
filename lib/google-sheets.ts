@@ -525,9 +525,8 @@ export interface BOMItem {
   totalCost: number
 }
 
-export async function fetchBOM(): Promise<BOMItem[]> {
-  // Try to fetch from BOM Final sheet
-  const { cols, rows } = await fetchSheetData(GIDS.bomFinal)
+export async function fetchBOM(gid: string = GIDS.bomFinal): Promise<BOMItem[]> {
+  const { cols, rows } = await fetchSheetData(gid)
   
   // Group by parent part number
   const bomMap = new Map<string, BOMItem>()
