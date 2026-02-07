@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
+import { OrderDetail } from '@/components/OrderDetail'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
@@ -126,6 +127,7 @@ export default function OrdersPage() {
   const [activeStatuses, setActiveStatuses] = useState<Set<StatusKey>>(
     new Set(['pending', 'wip', 'staged'])
   )
+  const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/sheets')
@@ -148,6 +150,13 @@ export default function OrdersPage() {
       }
       return next
     })
+  }
+
+  const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
+
+  const toggleExpanded = (order: Order) => {
+    const key = getOrderKey(order)
+    setExpandedOrderKey((prev) => (prev === key ? null : key))
   }
 
   const filtered = filterByStatus(filterByCategory(orders, categoryFilter), activeStatuses) as OrderRow[]
@@ -245,11 +254,31 @@ export default function OrdersPage() {
           data={filtered}
           noun="order"
           exportFilename="orders.csv"
+          getRowKey={(row) => getOrderKey(row as unknown as Order)}
+          expandedRowKey={expandedOrderKey}
+          onRowClick={(row) => toggleExpanded(row as unknown as Order)}
+          renderExpandedContent={(row) => {
+            const order = row as unknown as Order
+            return (
+              <OrderDetail
+                ifNumber={order.ifNumber}
+                line={order.line}
+                isShipped={getOrderStatus(order) === 'shipped'}
+                shippedDate={order.shippedDate}
+                onClose={() => setExpandedOrderKey(null)}
+              />
+            )
+          }}
           cardClassName={(row) => `border-l-4 ${borderColor(row as unknown as Order)}`}
           renderCard={(row, i) => {
             const order = row as unknown as Order
+            const isExpanded = expandedOrderKey === getOrderKey(order)
             return (
-              <Card key={`${order.ifNumber}-${i}`} className={`border-l-4 ${borderColor(order)}`}>
+              <Card
+                key={`${order.ifNumber}-${i}`}
+                className={`border-l-4 transition-colors cursor-pointer ${borderColor(order)} ${isExpanded ? 'bg-muted/20' : ''}`}
+                onClick={() => toggleExpanded(order)}
+              >
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <div>
@@ -281,6 +310,21 @@ export default function OrdersPage() {
                     <div>
                       <span className="text-muted-foreground">IF#</span>
                       <p className="font-semibold text-xs">{order.ifNumber || '-'}</p>
+                    </div>
+                  </div>
+                  <div
+                    className={`grid transition-all duration-300 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
+                  >
+                    <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                      {isExpanded ? (
+                        <OrderDetail
+                          ifNumber={order.ifNumber}
+                          line={order.line}
+                          isShipped={getOrderStatus(order) === 'shipped'}
+                          shippedDate={order.shippedDate}
+                          onClose={() => setExpandedOrderKey(null)}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </CardContent>

@@ -1,6 +1,7 @@
 'use client'
 
 import { ArrowUp, ArrowDown, ArrowUpDown, Search, X } from 'lucide-react'
+import { Fragment } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,6 +23,14 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   exportFilename?: string
   /** Noun for the count display, e.g. "order" -> "5 orders" */
   noun?: string
+  /** Optional stable key for row/cell expansion state */
+  getRowKey?: (row: T, index: number) => string
+  /** Current expanded row key */
+  expandedRowKey?: string | null
+  /** Called when a desktop table row is clicked */
+  onRowClick?: (row: T, index: number) => void
+  /** Render expandable content for desktop table/mobile cards */
+  renderExpandedContent?: (row: T, index: number) => React.ReactNode
 }
 
 function SortIcon({ columnKey, sortKey, sortDir }: {
@@ -44,6 +53,10 @@ export function DataTable<T extends Record<string, unknown>>({
   cardClassName,
   exportFilename,
   noun = 'row',
+  getRowKey,
+  expandedRowKey,
+  onRowClick,
+  renderExpandedContent,
 }: DataTableProps<T>) {
   const {
     visibleColumns,
@@ -149,17 +162,52 @@ export function DataTable<T extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody>
-            {processedData.map((row, i) => (
-              <tr key={i} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                {visibleColumns.map((col) => (
-                  <td key={col.key} className="px-3 py-2">
-                    {col.render
-                      ? col.render(row[col.key], row)
-                      : formatCellValue(row[col.key])}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {processedData.map((row, i) => {
+              const rowKey = getRowKey?.(row, i) ?? String(i)
+              const isExpanded = expandedRowKey === rowKey
+              const isClickable = !!onRowClick
+
+              return (
+                <Fragment key={rowKey}>
+                  <tr
+                    className={cn(
+                      'border-b transition-colors',
+                      !isExpanded && 'hover:bg-muted/30',
+                      isClickable && 'cursor-pointer'
+                    )}
+                    onClick={isClickable ? () => onRowClick(row, i) : undefined}
+                  >
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className="px-3 py-2">
+                        {col.render
+                          ? col.render(row[col.key], row)
+                          : formatCellValue(row[col.key])}
+                      </td>
+                    ))}
+                  </tr>
+                  {renderExpandedContent && (
+                    <tr className={cn(isExpanded && 'border-b')}>
+                      <td colSpan={visibleColumns.length} className="p-0">
+                        <div
+                          className={cn(
+                            'grid transition-all duration-300 ease-out',
+                            isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                          )}
+                        >
+                          <div className="overflow-hidden">
+                            {isExpanded ? (
+                              <div className="bg-muted/25 px-3 py-3">
+                                {renderExpandedContent(row, i)}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
             {processedData.length === 0 && (
               <tr>
                 <td
