@@ -1,6 +1,6 @@
 # Entech Dashboard V2 - Progress Tracker
 
-**Last Updated:** 2026-02-07 14:20 EST
+**Last Updated:** 2026-02-07
 **Current Phase:** 1 (Foundation)
 **Context Reset Safe:** ✅ Yes
 
@@ -8,13 +8,18 @@
 
 ## ✅ Completed
 
-### Milestone 1.2: Google Sheets Connection - Orders (DONE)
+### Milestone 1.2: Google Sheets Connection (DONE)
 - [x] Created lib/google-sheets.ts with data fetching
 - [x] Created /api/sheets endpoint
 - [x] Orders page fetches real data from Google Sheets
 - [x] Filter chips working (All/Urgent/Due/RollTech/Molding/SnapPad)
 - [x] Loading spinner while fetching
 - [x] Status-based color coding
+- [x] Staged page connected — filters orders with status "Staged"
+- [x] Staged page has search + filter chips (All/Roll Tech/Molding/Snap Pad)
+- [x] Created /api/inventory endpoint (merges Fusion Export + Production Data Totals)
+- [x] Inventory page connected — shows part numbers, stock, minimums, % progress bars
+- [x] Inventory page has search + filter chips (All/Low Stock/Needs Production)
 - [x] Deployed and live at https://entech-dashboard-v2.vercel.app/orders
 
 ### Milestone 1.1: Project Scaffold (DONE)
@@ -32,13 +37,10 @@
 
 ## 🔄 In Progress
 
-### Milestone 1.2: Google Sheets Connection (PARTIAL)
-- [x] Create API route `/api/sheets/route.ts`
-- [x] Implement Google Sheets fetching (Main Data tab)
-- [x] Add loading states
-- [x] Connect Orders page to live data
-- [ ] Connect Staged page to live data
-- [ ] Connect Inventory page to live data
+### Milestone 1.3: Next steps
+- [ ] Add pull-to-refresh or auto-refresh
+- [ ] Add detail views for orders/inventory items
+- [ ] Chat/AI assistant integration
 
 **Google Sheet ID:** `1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw`
 
@@ -60,7 +62,8 @@
 │   │   ├── inventory/page.tsx ✅
 │   │   └── layout.tsx ✅
 │   ├── api/
-│   │   ├── sheets/ (TODO)
+│   │   ├── sheets/route.ts ✅
+│   │   ├── inventory/route.ts ✅
 │   │   ├── chat/ (TODO)
 │   │   └── auth/ (TODO)
 │   ├── layout.tsx ✅

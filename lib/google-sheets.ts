@@ -109,3 +109,74 @@ export async function fetchOrders(): Promise<Order[]> {
   const { rows } = await fetchSheetData(GIDS.orders)
   return rows.map(parseOrder).filter((o) => o.line && o.customer)
 }
+
+// --- Inventory ---
+
+export interface InventoryItem {
+  partNumber: string
+  product: string
+  inStock: number
+  minimum: number
+  target: number
+  moldType: string
+  lastUpdate: string
+}
+
+// Fusion Export columns (GID 1805754553) — row 0 is header
+// A=partNumber, B=qty
+const FUSION_COLS = { partNumber: 0, qty: 1 }
+
+// Production Data Totals columns (GID 148810546)
+// A=Product, B=Part Number, C=Quantity Needed, D=Minimums, E=Manual target, F=Mold type
+const PROD_COLS = {
+  product: 0,
+  partNumber: 1,
+  quantityNeeded: 2,
+  minimums: 3,
+  manualTarget: 4,
+  moldType: 5,
+}
+
+export async function fetchInventory(): Promise<InventoryItem[]> {
+  const [fusion, production] = await Promise.all([
+    fetchSheetData(GIDS.inventory),
+    fetchSheetData(GIDS.productionTotals),
+  ])
+
+  // Build Fusion Export map: partNumber -> qty
+  const fusionMap = new Map<string, number>()
+  for (let i = 1; i < fusion.rows.length; i++) {
+    const row = fusion.rows[i]
+    const part = cellValue(row, FUSION_COLS.partNumber).trim()
+    const qty = cellNumber(row, FUSION_COLS.qty)
+    if (part) fusionMap.set(part.toUpperCase(), qty)
+  }
+
+  // Parse Production Data Totals and look up stock from Fusion Export
+  const items: InventoryItem[] = []
+  for (const row of production.rows) {
+    const partNumber = cellValue(row, PROD_COLS.partNumber).trim()
+    if (!partNumber) continue
+
+    const product = cellValue(row, PROD_COLS.product).trim()
+    const minimum = cellNumber(row, PROD_COLS.quantityNeeded) || cellNumber(row, PROD_COLS.minimums)
+    const target = cellNumber(row, PROD_COLS.manualTarget)
+    const moldType = cellValue(row, PROD_COLS.moldType)
+
+    // Look up stock from Fusion: exact match, then startsWith
+    const key = partNumber.toUpperCase()
+    let inStock = fusionMap.get(key)
+    if (inStock === undefined) {
+      for (const [fusionKey, qty] of fusionMap) {
+        if (fusionKey.startsWith(key)) {
+          inStock = qty
+          break
+        }
+      }
+    }
+
+    items.push({ partNumber, product, inStock: inStock ?? 0, minimum, target, moldType, lastUpdate: '' })
+  }
+
+  return items
+}
