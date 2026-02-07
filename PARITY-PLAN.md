@@ -42,12 +42,12 @@
 ### Phase 1: Core Feature Parity (HIGH PRIORITY)
 **Goal:** Fix the most visible/used features first
 
-#### 1.1 BOM Tabs
-- [ ] Add tab component to BOM page
-- [ ] Create 3 tabs: Final Assembly, Sub Assembly, Individual Items
-- [ ] Connect each tab to correct Google Sheet GID
-- [ ] Test: All 3 tabs load data correctly
-- **Estimated:** 30 min
+#### 1.1 BOM Tabs ✅ DONE
+- [x] Add tab component to BOM page
+- [x] Create 3 tabs: Final Assembly, Sub Assembly, Individual Items
+- [x] Connect each tab to correct Google Sheet GID
+- [ ] Test: All 3 tabs load data correctly (pending live test)
+- **Completed:** 2026-02-07 18:45 EST (Codex)
 
 #### 1.2 Real Inventory History
 - [ ] Create /api/inventory-history endpoint
@@ -183,7 +183,12 @@ For each page, verify:
 - Created phased approach
 - Defined testing criteria
 
-**Next:** Start Phase 1.1 (BOM Tabs)
+**18:30** - Phase 1.1 BOM Tabs
+- Claude Code: Hung with zero output (killed after ~60s)
+- Codex: SUCCESS! Created tabs + API endpoints
+- Build passes, deployed to Vercel
+
+**Next:** Phase 1.2 (Real Inventory History)
 
 ---
 
@@ -205,12 +210,12 @@ codex exec --full-auto "task"
 
 | Phase | Items | Done | % |
 |-------|-------|------|---|
-| Phase 1 | 2 | 0 | 0% |
+| Phase 1 | 2 | 1 | 50% |
 | Phase 2 | 2 | 0 | 0% |
 | Phase 3 | 5 | 0 | 0% |
 | Phase 4 | 4 | 0 | 0% |
 | Phase 5 | 2 | 0 | 0% |
-| **Total** | **15** | **0** | **0%** |
+| **Total** | **15** | **1** | **7%** |
 
 ---
 
