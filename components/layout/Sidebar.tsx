@@ -21,8 +21,8 @@ import {
   PanelLeftClose,
   Sun,
   Moon,
-  Languages,
 } from "lucide-react"
+import { LanguageToggle } from "./LanguageToggle"
 
 type NavItem = {
   label: string
@@ -98,13 +98,8 @@ export function Sidebar({
 
         {/* Toggle controls */}
         <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3">
-          {/* Language toggle (placeholder) */}
-          <div className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs">
-            <Languages className="size-3.5" />
-            <span className="font-medium">EN</span>
-            <span className="text-white/50">/</span>
-            <span className="cursor-pointer text-white/50 hover:text-white">ES</span>
-          </div>
+          {/* Language toggle */}
+          <LanguageToggle />
 
           {/* Theme toggle */}
           {mounted && (
