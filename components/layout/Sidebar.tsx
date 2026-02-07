@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   Sun,
   Moon,
+  Layers,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 
@@ -43,6 +44,7 @@ const productionItems: NavItem[] = [
   { label: "Pallet Records", href: "/pallet-records", icon: <Camera className="size-4" /> },
   { label: "Shipping Records", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { label: "Staged Records", href: "/staged-records", icon: <FileText className="size-4" /> },
+  { label: "BOM Explorer", href: "/bom", icon: <Layers className="size-4" /> },
 ]
 
 export function Sidebar({
