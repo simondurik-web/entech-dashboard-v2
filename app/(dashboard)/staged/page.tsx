@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Order } from '@/lib/google-sheets'
+import { normalizeStatus } from '@/lib/google-sheets'
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -54,7 +55,7 @@ export default function StagedPage() {
       })
       .then((data: Order[]) => {
         const staged = data.filter(
-          (o) => o.internalStatus.toLowerCase() === 'staged'
+          (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'staged'
         )
         setOrders(staged)
       })

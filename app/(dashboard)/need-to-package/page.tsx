@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order, InventoryItem } from '@/lib/google-sheets'
+import { normalizeStatus } from '@/lib/google-sheets'
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -96,11 +97,11 @@ export default function NeedToPackagePage() {
           stockMap.set(item.partNumber.toUpperCase(), item.inStock)
         })
 
-        // Filter to orders that are in production but not staged/shipped
+        // Filter to orders that are in production (pending/wip) but not staged/shipped
         const needToPackage = ordersData
           .filter((o) => {
-            const status = o.internalStatus.toLowerCase()
-            return (status === 'released' || status === 'in production') && !o.shippedDate
+            const status = normalizeStatus(o.internalStatus, o.ifStatus)
+            return (status === 'pending' || status === 'wip') && !o.shippedDate
           })
           .map((o): PackageOrder => {
             const stock = stockMap.get(o.partNumber.toUpperCase()) ?? 0

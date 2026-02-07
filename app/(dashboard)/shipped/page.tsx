@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order } from '@/lib/google-sheets'
+import { normalizeStatus } from '@/lib/google-sheets'
 
 const DATE_FILTERS = [
   { key: 'all', label: 'All Time' },
@@ -83,7 +84,7 @@ export default function ShippedPage() {
       .then((data: Order[]) => {
         // Filter to shipped orders, sort by ship date descending
         const shipped = data
-          .filter((o) => o.internalStatus.toLowerCase() === 'shipped' || o.shippedDate)
+          .filter((o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'shipped' || o.shippedDate)
           .sort((a, b) => {
             const dateA = parseDate(a.shippedDate)
             const dateB = parseDate(b.shippedDate)

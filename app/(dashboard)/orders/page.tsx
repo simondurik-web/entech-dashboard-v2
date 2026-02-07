@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order } from '@/lib/google-sheets'
+import { normalizeStatus } from '@/lib/google-sheets'
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'All' },
@@ -83,11 +84,12 @@ function borderColor(order: Order): string {
 }
 
 function getOrderStatus(order: Order): StatusKey | null {
-  const status = order.internalStatus.toLowerCase()
+  const status = normalizeStatus(order.internalStatus, order.ifStatus)
   if (status === 'shipped' || order.shippedDate) return 'shipped'
   if (status === 'staged') return 'staged'
-  if (status === 'in production') return 'wip'
-  if (status === 'released') return 'pending'
+  if (status === 'wip') return 'wip'
+  if (status === 'pending') return 'pending'
+  if (status === 'cancelled') return null // Filter out cancelled
   return 'pending'
 }
 

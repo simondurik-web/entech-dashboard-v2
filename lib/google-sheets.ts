@@ -74,7 +74,28 @@ function cellNumber(row: { c: Array<{ v: unknown } | null> }, col: number): numb
   return Number(cell.v) || 0
 }
 
+// Normalize internal status to standard categories
+export function normalizeStatus(status: string, ifStatus: string): string {
+  const s = (status || ifStatus || '').toLowerCase()
+  
+  // Canceled/cancelled orders - explicit check
+  if (s.includes('cancel')) return 'cancelled'
+  if (s.includes('closed') || s.includes('void')) return 'cancelled'
+  
+  // Standard statuses
+  if (s.includes('shipped') || s.includes('invoiced') || s.includes('to bill')) return 'shipped'
+  if (s.includes('staged')) return 'staged'
+  if (s.includes('work in progress') || s.includes('wip') || s.includes('in production')) return 'wip'
+  if (s.includes('pending') || s.includes('approved') || s.includes('released')) return 'pending'
+  
+  // If no match, return the original (lowercased) or 'unknown'
+  return s || 'unknown'
+}
+
 export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
+  const internalStatus = cellValue(row, COLS.internalStatus)
+  const ifStatus = cellValue(row, COLS.ifStatus)
+  
   return {
     line: cellValue(row, COLS.line),
     category: cellValue(row, COLS.category),
@@ -82,8 +103,8 @@ export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
     priorityLevel: cellNumber(row, COLS.priorityLevel),
     urgentOverride: cellValue(row, COLS.urgentOverride).toLowerCase() === 'true',
     ifNumber: cellValue(row, COLS.ifNumber),
-    ifStatus: cellValue(row, COLS.ifStatus),
-    internalStatus: cellValue(row, COLS.internalStatus),
+    ifStatus: ifStatus,
+    internalStatus: internalStatus,
     poNumber: cellValue(row, COLS.poNumber),
     customer: cellValue(row, COLS.customer),
     partNumber: cellValue(row, COLS.partNumber),
@@ -113,7 +134,14 @@ export async function fetchSheetData(gid: string): Promise<{ cols: string[]; row
 
 export async function fetchOrders(): Promise<Order[]> {
   const { rows } = await fetchSheetData(GIDS.orders)
-  return rows.map(parseOrder).filter((o) => o.line && o.customer)
+  return rows
+    .map(parseOrder)
+    .filter((o) => o.line && o.customer)
+    // Filter out cancelled orders by default
+    .filter((o) => {
+      const status = normalizeStatus(o.internalStatus, o.ifStatus)
+      return status !== 'cancelled'
+    })
 }
 
 // --- Inventory ---
