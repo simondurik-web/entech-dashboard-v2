@@ -40,8 +40,8 @@
 ### Phase 2: Feature Parity (Started 2026-02-07)
 
 **Wave 1 — Claude Code (Infrastructure)**
-- [ ] DataTable component system (sorting, filtering, visibility)
-- [ ] Sidebar navigation
+- [x] DataTable component system (sorting, filtering, visibility) ✅ DONE 2026-02-07
+- [ ] Sidebar navigation (NEXT)
 
 **Wave 2 — Codex 5.3 (Parallel Pages)**
 - [ ] Need to Make page
@@ -70,7 +70,7 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 ~/clawd/projects/entech-dashboard-v2/
 ├── app/
 │   ├── (dashboard)/
-│   │   ├── orders/page.tsx ✅
+│   │   ├── orders/page.tsx ✅ (uses DataTable)
 │   │   ├── staged/page.tsx ✅
 │   │   ├── inventory/page.tsx ✅
 │   │   └── layout.tsx ✅
@@ -82,9 +82,20 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 │   ├── layout.tsx ✅
 │   └── page.tsx ✅
 ├── components/
-│   ├── ui/ ✅ (button, card, input)
+│   ├── data-table/ ✅ NEW (2026-02-07)
+│   │   ├── DataTable.tsx (main component)
+│   │   ├── ColumnFilter.tsx (multi-select filter)
+│   │   ├── ColumnToggle.tsx (show/hide columns)
+│   │   ├── ExportCSV.tsx (CSV export button)
+│   │   └── index.ts (barrel export)
+│   ├── ui/ ✅ (button, card, input, popover, checkbox)
 │   └── layout/ ✅ (bottom-nav, theme-provider, theme-toggle)
+├── lib/
+│   ├── use-data-table.ts ✅ NEW (sort, filter, search hook)
+│   ├── export-csv.ts ✅ NEW (CSV utility)
+│   └── google-sheets.ts ✅
 ├── GSD-PROJECT.md ✅
+├── PHASE-2-WORKFLOW.md ✅ NEW (full feature parity plan)
 └── PROGRESS.md ✅ (this file)
 ```
 
@@ -103,11 +114,21 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 
 ## 📝 Notes for Next Session
 
-If Marco's context is reset, read this file first, then:
-1. Check GSD-PROJECT.md for full roadmap
-2. Continue with Milestone 1.2 (Google Sheets connection)
-3. Use Claude Code for heavy coding work
-4. Commit frequently, update this PROGRESS.md
+**RESUME HERE (2026-02-07 16:00 EST):**
+
+1. **Read:** `PHASE-2-WORKFLOW.md` for full feature parity plan
+2. **Next task:** Wave 1 Part 2 — Sidebar Navigation (Claude Code)
+   - Create `components/layout/Sidebar.tsx` matching v1 dashboard
+   - Collapsible, with nav sections and icons
+   - Update `app/(dashboard)/layout.tsx` to use it
+3. **After sidebar:** Wave 2 — Run Codex 5.3 in parallel for pages:
+   - Need to Make, Need to Package, Shipped
+4. **Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
+
+**Agent config:**
+- Claude Code: `env -u ANTHROPIC_API_KEY claude -p "task" --print --max-turns 25 --permission-mode bypassPermissions`
+- Codex 5.3: `codex exec --full-auto "task"` (already configured in ~/.codex/config.toml)
+- Always use `pty: true` when calling from Clawdbot
 
 ---
 
