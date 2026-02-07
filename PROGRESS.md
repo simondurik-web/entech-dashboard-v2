@@ -168,8 +168,8 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 **Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
 
 **Agent config:**
-- Claude Code: `env -u ANTHROPIC_API_KEY claude -p "task" --print --max-turns 25 --permission-mode bypassPermissions`
-- Codex 5.3: `codex exec --full-auto "task"` (already configured in ~/.codex/config.toml)
+- Codex 5.3 (DEFAULT): `codex exec --full-auto "task"` (already configured in ~/.codex/config.toml)
+- Claude Code (backup): `env -u ANTHROPIC_API_KEY claude -p "task" --print --max-turns 25 --permission-mode bypassPermissions`
 - Always use `pty: true` when calling from Clawdbot
 
 ---
