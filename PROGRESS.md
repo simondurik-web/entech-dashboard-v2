@@ -153,11 +153,17 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 - Smooth 300ms expand/collapse animation
 - Works on both desktop table and mobile cards
 
+**✅ Expandable Rows + Refresh + BOM API (2026-02-07 18:20 EST):**
+- Staged page: expandable order rows with pallet details (same pattern as Orders)
+- Shipped page: expandable rows with full OrderDetail + shipping info
+- All main pages: refresh button with spinning icon (Orders, Staged, Shipped, Inventory, BOM)
+- BOM Explorer: connected to Google Sheets API (/api/bom → fetches from bomFinal sheet)
+- Pull-to-refresh pattern: fetchData() callback with refreshing state across pages
+- Drawings already connected from previous session
+
 **Remaining polish (optional):**
-- Connect real drawing URLs from Google Sheets
-- Connect real BOM data from Google Sheets
 - Add photo gallery integration to records pages
-- Pull-to-refresh / auto-refresh
+- Auto-refresh on interval
 
 **Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
 
