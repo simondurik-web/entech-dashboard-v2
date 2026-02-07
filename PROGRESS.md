@@ -60,12 +60,12 @@
 - [x] Shipping Records page (Codex) ✅ DONE 2026-02-07
 - [x] Staged Records page (Codex) ✅ DONE 2026-02-07
 
-**Wave 4 — Advanced (Remaining)**
+**Wave 4 — Advanced**
 - [x] BOM Explorer page ✅ DONE 2026-02-07 (tabs for Individual/Sub/Final)
 - [x] Drawings page ✅ DONE 2026-02-07 (stub - needs GID integration)
-- [ ] FP Reference page
-- [ ] Customer Reference page  
-- [ ] Quotes Registry page
+- [x] FP Reference page ✅ DONE 2026-02-07 (GID 944406361) **REAL DATA**
+- [x] Customer Reference page ✅ DONE 2026-02-07 (GID 336333220) **REAL DATA**
+- [x] Quotes Registry page ✅ DONE 2026-02-07 (GID 1279128282) **REAL DATA**
 - [ ] All Data (raw) page
 
 See `PHASE-2-WORKFLOW.md` for full plan.
