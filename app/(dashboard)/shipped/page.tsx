@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
+import { OrderDetail } from '@/components/OrderDetail'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
@@ -71,33 +73,51 @@ function filterByCategory(orders: Order[], filter: CategoryKey): Order[] {
 export default function ShippedPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateKey>('30')
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
+  const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+
+  const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
+
+  const toggleExpanded = (order: Order) => {
+    const key = getOrderKey(order)
+    setExpandedOrderKey((prev) => (prev === key ? null : key))
+  }
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/sheets')
+      if (!res.ok) throw new Error('Failed to fetch orders')
+      const data: Order[] = await res.json()
+      // Filter to shipped orders, sort by ship date descending
+      const shipped = data
+        .filter((o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'shipped' || o.shippedDate)
+        .sort((a, b) => {
+          const dateA = parseDate(a.shippedDate)
+          const dateB = parseDate(b.shippedDate)
+          if (!dateA && !dateB) return 0
+          if (!dateA) return 1
+          if (!dateB) return -1
+          return dateB.getTime() - dateA.getTime()
+        })
+      setOrders(shipped)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetch('/api/sheets')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch orders')
-        return res.json()
-      })
-      .then((data: Order[]) => {
-        // Filter to shipped orders, sort by ship date descending
-        const shipped = data
-          .filter((o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'shipped' || o.shippedDate)
-          .sort((a, b) => {
-            const dateA = parseDate(a.shippedDate)
-            const dateB = parseDate(b.shippedDate)
-            if (!dateA && !dateB) return 0
-            if (!dateA) return 1
-            if (!dateB) return -1
-            return dateB.getTime() - dateA.getTime()
-          })
-        setOrders(shipped)
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    fetchData()
+  }, [fetchData])
 
   const filtered = filterByCategory(filterByDate(orders, dateFilter), categoryFilter) as OrderRow[]
 
@@ -113,7 +133,17 @@ export default function ShippedPage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">🚚 Shipped</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">🚚 Shipped</h1>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
+          aria-label="Refresh"
+        >
+          <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
       <p className="text-muted-foreground text-sm mb-4">Completed shipments</p>
 
       {/* Stats row */}
@@ -181,11 +211,31 @@ export default function ShippedPage() {
           data={filtered}
           noun="shipment"
           exportFilename="shipped.csv"
+          getRowKey={(row) => getOrderKey(row as unknown as Order)}
+          expandedRowKey={expandedOrderKey}
+          onRowClick={(row) => toggleExpanded(row as unknown as Order)}
+          renderExpandedContent={(row) => {
+            const order = row as unknown as Order
+            return (
+              <OrderDetail
+                ifNumber={order.ifNumber}
+                line={order.line}
+                isShipped={true}
+                shippedDate={order.shippedDate}
+                onClose={() => setExpandedOrderKey(null)}
+              />
+            )
+          }}
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const order = row as unknown as Order
+            const isExpanded = expandedOrderKey === getOrderKey(order)
             return (
-              <Card key={`${order.ifNumber}-${i}`} className="border-l-4 border-l-green-500">
+              <Card 
+                key={`${order.ifNumber}-${i}`} 
+                className={`border-l-4 border-l-green-500 cursor-pointer transition-colors ${isExpanded ? 'bg-muted/20' : ''}`}
+                onClick={() => toggleExpanded(order)}
+              >
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <div>
@@ -212,6 +262,22 @@ export default function ShippedPage() {
                     <div>
                       <span className="text-muted-foreground">IF#</span>
                       <p className="font-semibold text-xs">{order.ifNumber || '-'}</p>
+                    </div>
+                  </div>
+                  {/* Expandable content */}
+                  <div
+                    className={`grid transition-all duration-300 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
+                  >
+                    <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                      {isExpanded && (
+                        <OrderDetail
+                          ifNumber={order.ifNumber}
+                          line={order.line}
+                          isShipped={true}
+                          shippedDate={order.shippedDate}
+                          onClose={() => setExpandedOrderKey(null)}
+                        />
+                      )}
                     </div>
                   </div>
                 </CardContent>

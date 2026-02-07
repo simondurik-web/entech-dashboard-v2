@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
@@ -122,6 +123,7 @@ function filterByStatus(orders: Order[], activeStatuses: Set<StatusKey>): Order[
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
   const [activeStatuses, setActiveStatuses] = useState<Set<StatusKey>>(
@@ -129,16 +131,27 @@ export default function OrdersPage() {
   )
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetch('/api/sheets')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch orders')
-        return res.json()
-      })
-      .then((data) => setOrders(data))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/sheets')
+      if (!res.ok) throw new Error('Failed to fetch orders')
+      const data = await res.json()
+      setOrders(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const toggleStatus = (status: StatusKey) => {
     setActiveStatuses((prev) => {
@@ -176,7 +189,17 @@ export default function OrdersPage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">📋 Orders Data</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">📋 Orders Data</h1>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
+          aria-label="Refresh"
+        >
+          <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
       <p className="text-muted-foreground text-sm mb-4">Complete order database with all statuses</p>
 
       {/* Stats row */}

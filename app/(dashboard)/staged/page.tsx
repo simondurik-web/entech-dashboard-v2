@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { OrderDetail } from '@/components/OrderDetail'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -43,31 +45,59 @@ function filterOrders(orders: Order[], filter: FilterKey, search: string): Order
 export default function StagedPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [search, setSearch] = useState('')
+  const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+
+  const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
+
+  const toggleExpanded = (order: Order) => {
+    const key = getOrderKey(order)
+    setExpandedOrderKey((prev) => (prev === key ? null : key))
+  }
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+    setError(null)
+    
+    try {
+      const res = await fetch('/api/sheets')
+      if (!res.ok) throw new Error('Failed to fetch orders')
+      const data: Order[] = await res.json()
+      const staged = data.filter(
+        (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'staged'
+      )
+      setOrders(staged)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetch('/api/sheets')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch orders')
-        return res.json()
-      })
-      .then((data: Order[]) => {
-        const staged = data.filter(
-          (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'staged'
-        )
-        setOrders(staged)
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    fetchData()
+  }, [fetchData])
 
   const filtered = filterOrders(orders, filter, search)
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-4">Staged Orders</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Staged Orders</h1>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
+          aria-label="Refresh"
+        >
+          <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
 
       {/* Search */}
       <input
@@ -114,35 +144,57 @@ export default function StagedPage() {
             {filtered.length} staged order{filtered.length !== 1 ? 's' : ''}
           </p>
           <div className="space-y-3">
-            {filtered.map((order, i) => (
-              <Card key={`${order.ifNumber}-${i}`} className="border-l-4 border-l-emerald-500">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{order.customer}</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        Line {order.line} &middot; {order.partNumber}
-                      </p>
+            {filtered.map((order, i) => {
+              const isExpanded = expandedOrderKey === getOrderKey(order)
+              return (
+                <Card 
+                  key={`${order.ifNumber}-${i}`} 
+                  className={`border-l-4 border-l-emerald-500 cursor-pointer transition-colors ${isExpanded ? 'bg-muted/20' : ''}`}
+                  onClick={() => toggleExpanded(order)}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{order.customer}</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          Line {order.line} &middot; {order.partNumber}
+                        </p>
+                      </div>
+                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-600 text-xs rounded">
+                        STAGED
+                      </span>
                     </div>
-                    <span className="px-2 py-1 bg-emerald-500/20 text-emerald-600 text-xs rounded">
-                      STAGED
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Qty</span>
-                      <p className="font-semibold">{order.orderQty.toLocaleString()}</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Qty</span>
+                        <p className="font-semibold">{order.orderQty.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">IF #</span>
+                        <p className="font-semibold text-xs">{order.ifNumber || '-'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">IF #</span>
-                      <p className="font-semibold text-xs">{order.ifNumber || '-'}</p>
+                    {/* Expandable content */}
+                    <div
+                      className={`grid transition-all duration-300 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
+                    >
+                      <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        {isExpanded && (
+                          <OrderDetail
+                            ifNumber={order.ifNumber}
+                            line={order.line}
+                            isShipped={false}
+                            onClose={() => setExpandedOrderKey(null)}
+                          />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
             {filtered.length === 0 && (
               <p className="text-center text-muted-foreground py-10">
                 No staged orders found

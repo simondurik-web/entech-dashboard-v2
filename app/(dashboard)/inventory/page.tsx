@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { InventoryItem } from '@/lib/google-sheets'
 
@@ -55,20 +56,32 @@ function statusStyle(status: 'ok' | 'low' | 'critical') {
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    fetch('/api/inventory')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch inventory')
-        return res.json()
-      })
-      .then((data) => setItems(data))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/inventory')
+      if (!res.ok) throw new Error('Failed to fetch inventory')
+      const data = await res.json()
+      setItems(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const filtered = filterItems(items, filter, search)
 
@@ -80,7 +93,17 @@ export default function InventoryPage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">📦 Inventory</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">📦 Inventory</h1>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
+          aria-label="Refresh"
+        >
+          <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
       <p className="text-muted-foreground text-sm mb-4">Inventory levels vs minimums</p>
 
       {/* Stats row */}

@@ -505,3 +505,91 @@ export async function fetchDrawings(): Promise<Drawing[]> {
   
   return drawings.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
 }
+
+// --- BOM (Bill of Materials) ---
+
+export interface BOMComponent {
+  partNumber: string
+  description: string
+  quantity: number
+  unit: string
+  costPerUnit: number
+  category: 'raw' | 'component' | 'assembly'
+}
+
+export interface BOMItem {
+  partNumber: string
+  product: string
+  category: string
+  components: BOMComponent[]
+  totalCost: number
+}
+
+export async function fetchBOM(): Promise<BOMItem[]> {
+  // Try to fetch from BOM Final sheet
+  const { cols, rows } = await fetchSheetData(GIDS.bomFinal)
+  
+  // Group by parent part number
+  const bomMap = new Map<string, BOMItem>()
+  
+  for (const row of rows) {
+    const parentPart = findColumnValue(row, cols, ['parent part', 'parent', 'finished good', 'product part'])
+    const parentProduct = findColumnValue(row, cols, ['product', 'product name', 'description'])
+    const parentCategory = findColumnValue(row, cols, ['category', 'type'])
+    
+    const componentPart = findColumnValue(row, cols, ['component', 'component part', 'child part', 'part number', 'material'])
+    const componentDesc = findColumnValue(row, cols, ['component description', 'component name', 'material description', 'description'])
+    const qty = parseFloat(findColumnValue(row, cols, ['quantity', 'qty', 'amount'])) || 0
+    const unit = findColumnValue(row, cols, ['unit', 'uom', 'unit of measure']) || 'ea'
+    const cost = parseFloat(findColumnValue(row, cols, ['cost', 'unit cost', 'price', 'cost per unit'])) || 0
+    const compCategory = findColumnValue(row, cols, ['component type', 'material type', 'category']).toLowerCase()
+    
+    if (!parentPart && !componentPart) continue
+    
+    // Determine component category
+    let category: BOMComponent['category'] = 'component'
+    if (compCategory.includes('raw') || compCategory.includes('material')) {
+      category = 'raw'
+    } else if (compCategory.includes('assembly') || compCategory.includes('sub')) {
+      category = 'assembly'
+    }
+    
+    const component: BOMComponent = {
+      partNumber: componentPart || parentPart,
+      description: componentDesc,
+      quantity: qty,
+      unit,
+      costPerUnit: cost,
+      category,
+    }
+    
+    // Use parent part as key, or component if no parent
+    const key = parentPart || componentPart
+    if (!bomMap.has(key)) {
+      bomMap.set(key, {
+        partNumber: key,
+        product: parentProduct || componentDesc,
+        category: parentCategory || 'Other',
+        components: [],
+        totalCost: 0,
+      })
+    }
+    
+    if (componentPart && parentPart) {
+      // This is a parent->component relationship
+      bomMap.get(key)!.components.push(component)
+    }
+  }
+  
+  // Calculate total costs
+  for (const item of bomMap.values()) {
+    item.totalCost = item.components.reduce(
+      (sum, c) => sum + c.quantity * c.costPerUnit,
+      0
+    )
+  }
+  
+  return Array.from(bomMap.values())
+    .filter(item => item.components.length > 0)
+    .sort((a, b) => a.partNumber.localeCompare(b.partNumber))
+}
