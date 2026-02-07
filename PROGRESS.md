@@ -145,6 +145,14 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 - Cancelled/closed/void orders now filtered out from all views
 - Status detection matches original dashboard logic
 
+**✅ Expandable Order Rows (2026-02-07 17:45 EST):**
+- New `components/OrderDetail.tsx` - shows pallet details + photos + shipping info
+- DataTable now supports expandable rows (getRowKey, expandedRowKey, onRowClick, renderExpandedContent)
+- Orders page: click any row/card to expand and see pallet weight, dimensions, photos
+- Shipped orders also show carrier, BOL, pallet count
+- Smooth 300ms expand/collapse animation
+- Works on both desktop table and mobile cards
+
 **Remaining polish (optional):**
 - Connect real drawing URLs from Google Sheets
 - Connect real BOM data from Google Sheets
