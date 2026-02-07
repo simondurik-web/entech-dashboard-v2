@@ -1,116 +1,156 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import Image from 'next/image'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { useEffect, useState } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
+import { ImageModal } from '@/components/ImageModal'
+import type { Drawing } from '@/lib/google-sheets'
 
-type Category = 'Roll Tech' | 'Molding' | 'Snap Pad'
+const TYPE_FILTERS = [
+  { key: 'all', label: 'All Types' },
+  { key: 'Tire', label: 'Tires' },
+  { key: 'Hub', label: 'Hubs' },
+  { key: 'Other', label: 'Other' },
+] as const
 
-type Drawing = {
-  partNumber: string
-  drawingUrl: string
-  category: Category
-}
-
-const DRAWINGS: Drawing[] = [
-  { partNumber: 'RT-1001', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'RT-1002', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'RT-1003', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'RT-1004', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'RT-1005', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'RT-1006', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'MD-2001', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-  { partNumber: 'MD-2002', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-  { partNumber: 'MD-2003', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-  { partNumber: 'MD-2004', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-  { partNumber: 'MD-2005', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-  { partNumber: 'MD-2006', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-  { partNumber: 'SP-3001', drawingUrl: '/placeholder-drawing.svg', category: 'Snap Pad' },
-  { partNumber: 'SP-3002', drawingUrl: '/placeholder-drawing.svg', category: 'Snap Pad' },
-  { partNumber: 'SP-3003', drawingUrl: '/placeholder-drawing.svg', category: 'Snap Pad' },
-  { partNumber: 'SP-3004', drawingUrl: '/placeholder-drawing.svg', category: 'Snap Pad' },
-  { partNumber: 'SP-3005', drawingUrl: '/placeholder-drawing.svg', category: 'Snap Pad' },
-  { partNumber: 'SP-3006', drawingUrl: '/placeholder-drawing.svg', category: 'Snap Pad' },
-  { partNumber: 'RT-1010', drawingUrl: '/placeholder-drawing.svg', category: 'Roll Tech' },
-  { partNumber: 'MD-2010', drawingUrl: '/placeholder-drawing.svg', category: 'Molding' },
-]
-
-const FILTERS: Array<'All' | Category> = ['All', 'Roll Tech', 'Molding', 'Snap Pad']
+type TypeKey = (typeof TYPE_FILTERS)[number]['key']
 
 export default function DrawingsPage() {
+  const [drawings, setDrawings] = useState<Drawing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<'All' | Category>('All')
+  const [typeFilter, setTypeFilter] = useState<TypeKey>('all')
+  const [modalImage, setModalImage] = useState<string | null>(null)
 
-  const filteredDrawings = useMemo(() => {
-    return DRAWINGS.filter((drawing) => {
-      const matchesSearch = drawing.partNumber.toLowerCase().includes(search.toLowerCase().trim())
-      const matchesCategory = category === 'All' || drawing.category === category
-      return matchesSearch && matchesCategory
-    })
-  }, [search, category])
+  useEffect(() => {
+    fetch('/api/drawings')
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch drawings')
+        return res.json()
+      })
+      .then((data: Drawing[]) => setDrawings(data))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = drawings.filter((d) => {
+    // Type filter
+    if (typeFilter !== 'all' && d.productType !== typeFilter) return false
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      if (!d.partNumber.toLowerCase().includes(q) && !d.product.toLowerCase().includes(q)) {
+        return false
+      }
+    }
+    return true
+  })
 
   return (
-    <div className="p-4 pb-20 space-y-4">
-      <h1 className="text-2xl font-bold">📐 Drawings Library</h1>
+    <div className="p-4 pb-20">
+      <h1 className="text-2xl font-bold mb-2">📐 Drawings Library</h1>
+      <p className="text-muted-foreground text-sm mb-4">
+        {filtered.length} drawing{filtered.length !== 1 ? 's' : ''} available
+      </p>
 
-      <div className="text-sm text-muted-foreground">
-        Total drawings: <span className="font-semibold text-foreground">{DRAWINGS.length}</span>
-      </div>
-
-      <Input
+      {/* Search */}
+      <input
         type="text"
         placeholder="Search by part number..."
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full p-3 mb-4 rounded-lg bg-muted border border-border"
       />
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        {FILTERS.map((filter) => (
+      {/* Type filters */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {TYPE_FILTERS.map((f) => (
           <button
-            key={filter}
-            type="button"
-            onClick={() => setCategory(filter)}
+            key={f.key}
+            onClick={() => setTypeFilter(f.key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              category === filter ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
+              typeFilter === f.key
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted hover:bg-muted/80'
             }`}
           >
-            {filter}
+            {f.label}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {filteredDrawings.map((drawing) => (
-          <Card
-            key={drawing.partNumber}
-            className="py-0 cursor-pointer hover:border-primary/40 transition-colors"
-            onClick={() => console.log('Open full-size drawing:', drawing.partNumber)}
-          >
-            <CardHeader className="px-4 pt-4 pb-2">
-              <CardTitle className="text-base">{drawing.partNumber}</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <Image
-                src={drawing.drawingUrl}
-                alt={`${drawing.partNumber} drawing`}
-                width={600}
-                height={450}
-                className="w-full aspect-[4/3] rounded-md border border-border bg-muted object-cover mb-3"
-              />
-              <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                {drawing.category}
-              </span>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {filteredDrawings.length === 0 && (
-        <p className="text-center text-sm text-muted-foreground py-10">
-          No drawings found for your current filters.
-        </p>
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
       )}
+
+      {error && <p className="text-center text-destructive py-10">{error}</p>}
+
+      {!loading && !error && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filtered.map((drawing, i) => (
+            <Card key={`${drawing.partNumber}-${i}`} className="overflow-hidden">
+              <div
+                className="aspect-square bg-muted flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity relative"
+                onClick={() => drawing.drawing1Url && setModalImage(drawing.drawing1Url)}
+              >
+                {drawing.drawing1Url ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={drawing.drawing1Url}
+                      alt={`Drawing for ${drawing.partNumber}`}
+                      className="w-full h-full object-contain p-2"
+                      onError={(e) => {
+                        // Fallback to placeholder on error
+                        e.currentTarget.src = '/placeholder-drawing.svg'
+                      }}
+                    />
+                    {drawing.drawing2Url && (
+                      <span className="absolute top-2 right-2 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded">
+                        +1
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-muted-foreground text-sm text-center p-4">
+                    No drawing available
+                  </div>
+                )}
+              </div>
+              <CardContent className="p-3">
+                <p className="font-semibold text-sm truncate">{drawing.partNumber}</p>
+                <p className="text-xs text-muted-foreground truncate">{drawing.product}</p>
+                <span
+                  className={`inline-block mt-1 px-2 py-0.5 text-xs rounded ${
+                    drawing.productType === 'Tire'
+                      ? 'bg-orange-500/20 text-orange-600'
+                      : drawing.productType === 'Hub'
+                      ? 'bg-teal-500/20 text-teal-600'
+                      : 'bg-gray-500/20 text-gray-600'
+                  }`}
+                >
+                  {drawing.productType}
+                </span>
+              </CardContent>
+            </Card>
+          ))}
+          {filtered.length === 0 && (
+            <div className="col-span-full text-center text-muted-foreground py-10">
+              No drawings found
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Image Modal */}
+      <ImageModal
+        src={modalImage || ''}
+        isOpen={!!modalImage}
+        onClose={() => setModalImage(null)}
+        alt="Drawing"
+      />
     </div>
   )
 }

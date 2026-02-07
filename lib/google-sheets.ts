@@ -7,6 +7,9 @@ export const GIDS = {
   palletPictures: '1879462508',
   stagedRecords: '1519623398',
   shippingRecords: '1752263458',
+  bomFinal: '74377031',
+  bomSub: '206288913',
+  bomIndividual: '751106736',
 } as const
 
 export interface Order {
@@ -130,7 +133,7 @@ export interface InventoryItem {
 const FUSION_COLS = { partNumber: 0, qty: 1 }
 
 // Production Data Totals columns (GID 148810546)
-// A=Product, B=Part Number, C=Quantity Needed, D=Minimums, E=Manual target, F=Mold type
+// A=Product, B=Part Number, C=Quantity Needed, D=Minimums, E=Manual target, F=Mold type, ...Drawing URLs
 const PROD_COLS = {
   product: 0,
   partNumber: 1,
@@ -138,6 +141,8 @@ const PROD_COLS = {
   minimums: 3,
   manualTarget: 4,
   moldType: 5,
+  drawing1Url: 6,  // Column G - Drawing 1 URL
+  drawing2Url: 7,  // Column H - Drawing 2 URL
 }
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -427,4 +432,48 @@ export async function fetchStagedRecords(): Promise<StagedRecord[]> {
     const dateB = new Date(b.timestamp).getTime() || 0
     return dateB - dateA
   })
+}
+
+// --- Drawings ---
+
+export interface Drawing {
+  partNumber: string
+  product: string
+  productType: 'Tire' | 'Hub' | 'Other'
+  drawing1Url: string
+  drawing2Url: string
+}
+
+export async function fetchDrawings(): Promise<Drawing[]> {
+  const { rows } = await fetchSheetData(GIDS.productionTotals)
+  
+  const drawings: Drawing[] = []
+  
+  for (const row of rows) {
+    const partNumber = cellValue(row, PROD_COLS.partNumber).trim()
+    if (!partNumber) continue
+    
+    const drawing1Url = cellValue(row, PROD_COLS.drawing1Url).trim()
+    const drawing2Url = cellValue(row, PROD_COLS.drawing2Url).trim()
+    
+    // Only include parts that have at least one drawing URL
+    if (!drawing1Url && !drawing2Url) continue
+    
+    const product = cellValue(row, PROD_COLS.product).trim()
+    const productLower = product.toLowerCase()
+    
+    let productType: Drawing['productType'] = 'Other'
+    if (productLower.includes('tire')) productType = 'Tire'
+    else if (productLower.includes('hub')) productType = 'Hub'
+    
+    drawings.push({
+      partNumber,
+      product,
+      productType,
+      drawing1Url,
+      drawing2Url,
+    })
+  }
+  
+  return drawings.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
 }
