@@ -1,49 +1,42 @@
-import { ThemeToggle } from "@/components/layout/theme-toggle"
+"use client"
+
+import { Sidebar } from "@/components/layout/Sidebar"
 import { BottomNav } from "@/components/layout/bottom-nav"
-import Link from "next/link"
+import { PanelLeft } from "lucide-react"
+import { useState } from "react"
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Top header */}
-      <header className="sticky top-0 z-40 border-b bg-background">
-        <div className="flex h-14 items-center justify-between px-4">
-          <Link href="/orders" className="text-lg font-semibold">
-            Entech Dashboard
-          </Link>
-          <div className="flex items-center gap-2">
-            {/* Desktop nav links */}
-            <nav className="hidden items-center gap-4 md:flex">
-              <Link
-                href="/orders"
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Orders
-              </Link>
-              <Link
-                href="/staged"
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Staged
-              </Link>
-              <Link
-                href="/inventory"
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Inventory
-              </Link>
-            </nav>
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main content - pad bottom on mobile for nav bar */}
-      <main className="pb-20 md:pb-0">{children}</main>
+      {/* Main content area - offset on desktop for sidebar */}
+      <div className="lg:pl-64">
+        {/* Top header - mobile/tablet only on large screens sidebar replaces it */}
+        <header className="sticky top-0 z-30 border-b bg-background">
+          <div className="flex h-14 items-center gap-3 px-4">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
+              aria-label="Open sidebar"
+            >
+              <PanelLeft className="size-5" />
+            </button>
+            <span className="text-lg font-semibold lg:hidden">
+              Entech Dashboard
+            </span>
+          </div>
+        </header>
+
+        {/* Main content - pad bottom on mobile for nav bar */}
+        <main className="pb-20 md:pb-0">{children}</main>
+      </div>
 
       {/* Mobile bottom nav */}
       <BottomNav />

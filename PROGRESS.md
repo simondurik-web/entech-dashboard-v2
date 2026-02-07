@@ -41,12 +41,12 @@
 
 **Wave 1 — Claude Code (Infrastructure)**
 - [x] DataTable component system (sorting, filtering, visibility) ✅ DONE 2026-02-07
-- [ ] Sidebar navigation (NEXT)
+- [x] Sidebar navigation ✅ DONE 2026-02-07
 
-**Wave 2 — Codex 5.3 (Parallel Pages)**
-- [ ] Need to Make page
-- [ ] Need to Package page  
-- [ ] Shipped page
+**Wave 2 — Pages**
+- [x] Need to Make page ✅ DONE 2026-02-07
+- [x] Need to Package page ✅ DONE 2026-02-07
+- [x] Shipped page ✅ DONE 2026-02-07
 
 See `PHASE-2-WORKFLOW.md` for full plan.
 
@@ -114,16 +114,22 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 
 ## 📝 Notes for Next Session
 
-**RESUME HERE (2026-02-07 16:00 EST):**
+**RESUME HERE (2026-02-07 16:30 EST):**
 
-1. **Read:** `PHASE-2-WORKFLOW.md` for full feature parity plan
-2. **Next task:** Wave 1 Part 2 — Sidebar Navigation (Claude Code)
-   - Create `components/layout/Sidebar.tsx` matching v1 dashboard
-   - Collapsible, with nav sections and icons
-   - Update `app/(dashboard)/layout.tsx` to use it
-3. **After sidebar:** Wave 2 — Run Codex 5.3 in parallel for pages:
-   - Need to Make, Need to Package, Shipped
-4. **Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
+✅ **Completed today:**
+- Sidebar navigation (Wave 1)
+- Need to Make page (Wave 2)
+- Need to Package page (Wave 2)
+- Shipped page (Wave 2)
+
+**Next tasks (Wave 3+):**
+1. Inventory History page (charts with recharts)
+2. Language system (i18n EN/ES toggle)
+3. Pallet Records, Shipping Records, Staged Records pages
+4. Image Modal + Drawings Library
+5. BOM Explorer
+
+**Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
 
 **Agent config:**
 - Claude Code: `env -u ANTHROPIC_API_KEY claude -p "task" --print --max-turns 25 --permission-mode bypassPermissions`
