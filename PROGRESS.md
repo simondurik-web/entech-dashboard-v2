@@ -140,6 +140,11 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 
 **All 18 pages building successfully!**
 
+**✅ Bug fix (2026-02-07 17:30 EST):**
+- Added `normalizeStatus()` function for consistent status handling
+- Cancelled/closed/void orders now filtered out from all views
+- Status detection matches original dashboard logic
+
 **Remaining polish (optional):**
 - Connect real drawing URLs from Google Sheets
 - Connect real BOM data from Google Sheets
