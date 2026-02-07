@@ -4,6 +4,9 @@ export const GIDS = {
   orders: '290032634',
   inventory: '1805754553',
   productionTotals: '148810546',
+  palletPictures: '1879462508',
+  stagedRecords: '1519623398',
+  shippingRecords: '1752263458',
 } as const
 
 export interface Order {
@@ -179,4 +182,249 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
   }
 
   return items
+}
+
+// --- Production Make (parts to manufacture) ---
+
+export interface ProductionMakeItem {
+  partNumber: string
+  product: string
+  moldType: string
+  fusionInventory: number
+  minimums: number
+  partsToBeMade: number
+  drawingUrl: string
+}
+
+export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
+  const [fusion, production] = await Promise.all([
+    fetchSheetData(GIDS.inventory),
+    fetchSheetData(GIDS.productionTotals),
+  ])
+
+  // Build Fusion Export map: partNumber -> qty
+  const fusionMap = new Map<string, number>()
+  for (let i = 1; i < fusion.rows.length; i++) {
+    const row = fusion.rows[i]
+    const part = cellValue(row, FUSION_COLS.partNumber).trim()
+    const qty = cellNumber(row, FUSION_COLS.qty)
+    if (part) fusionMap.set(part.toUpperCase(), qty)
+  }
+
+  // Parse Production Data Totals
+  const items: ProductionMakeItem[] = []
+  for (const row of production.rows) {
+    const partNumber = cellValue(row, PROD_COLS.partNumber).trim()
+    if (!partNumber) continue
+
+    const product = cellValue(row, PROD_COLS.product).trim()
+    const minimums = cellNumber(row, PROD_COLS.minimums) || cellNumber(row, PROD_COLS.quantityNeeded)
+    const moldType = cellValue(row, PROD_COLS.moldType)
+
+    // Look up stock from Fusion
+    const key = partNumber.toUpperCase()
+    let fusionInventory = fusionMap.get(key)
+    if (fusionInventory === undefined) {
+      for (const [fusionKey, qty] of fusionMap) {
+        if (fusionKey.startsWith(key)) {
+          fusionInventory = qty
+          break
+        }
+      }
+    }
+    fusionInventory = fusionInventory ?? 0
+
+    // Calculate parts to be made
+    const partsToBeMade = Math.max(0, minimums - fusionInventory)
+
+    // Only include items that need to be made
+    if (partsToBeMade > 0 || minimums > 0) {
+      items.push({
+        partNumber,
+        product,
+        moldType,
+        fusionInventory,
+        minimums,
+        partsToBeMade,
+        drawingUrl: '', // Will come from Drawings tab when connected
+      })
+    }
+  }
+
+  // Sort by parts to be made (descending)
+  return items.sort((a, b) => b.partsToBeMade - a.partsToBeMade)
+}
+
+// --- Pallet Records ---
+
+export interface PalletRecord {
+  timestamp: string
+  orderNumber: string
+  palletNumber: string
+  customer: string
+  ifNumber: string
+  category: string
+  weight: string
+  dimensions: string
+  partsPerPallet: string
+  photos: string[]
+}
+
+function findColumnValue(
+  row: { c: Array<{ v: unknown } | null> },
+  cols: string[],
+  columnLabels: string[]
+): string {
+  // Find column index by matching label
+  for (let i = 0; i < cols.length; i++) {
+    const label = cols[i].toLowerCase()
+    for (const target of columnLabels) {
+      if (label.includes(target.toLowerCase())) {
+        return cellValue(row, i)
+      }
+    }
+  }
+  return ''
+}
+
+export async function fetchPalletRecords(): Promise<PalletRecord[]> {
+  const { cols, rows } = await fetchSheetData(GIDS.palletPictures)
+  
+  const records: PalletRecord[] = []
+  
+  for (const row of rows) {
+    const timestamp = findColumnValue(row, cols, ['timestamp', 'marca de tiempo'])
+    const orderNumber = findColumnValue(row, cols, ['order number', 'numero de orden'])
+    const ifNumber = findColumnValue(row, cols, ['if number', 'numero if'])
+    
+    // Skip empty rows
+    if (!timestamp && !orderNumber && !ifNumber) continue
+    
+    const photos: string[] = []
+    for (let i = 1; i <= 5; i++) {
+      const photoUrl = findColumnValue(row, cols, [`pallet picture${i === 1 ? '' : ' ' + i}`, `fotos de paletas${i === 1 ? '' : ' ' + i}`])
+      if (photoUrl) photos.push(photoUrl)
+    }
+    
+    records.push({
+      timestamp,
+      orderNumber,
+      palletNumber: findColumnValue(row, cols, ['pallet number', 'numero de paleta']),
+      customer: findColumnValue(row, cols, ['customer', 'cliente']),
+      ifNumber,
+      category: findColumnValue(row, cols, ['category', 'categoria']),
+      weight: findColumnValue(row, cols, ['pallet weight', 'peso de la paleta']),
+      dimensions: findColumnValue(row, cols, ['pallet dimensions', 'dimensiones de la paleta']),
+      partsPerPallet: findColumnValue(row, cols, ['parts/boxes per pallet', 'partes o cajas por paleta']),
+      photos,
+    })
+  }
+  
+  // Sort by timestamp descending
+  return records.sort((a, b) => {
+    const dateA = new Date(a.timestamp).getTime() || 0
+    const dateB = new Date(b.timestamp).getTime() || 0
+    return dateB - dateA
+  })
+}
+
+// --- Shipping Records ---
+
+export interface ShippingRecord {
+  timestamp: string
+  shipDate: string
+  customer: string
+  ifNumber: string
+  category: string
+  carrier: string
+  bol: string
+  palletCount: number
+  photos: string[]
+}
+
+export async function fetchShippingRecords(): Promise<ShippingRecord[]> {
+  const { cols, rows } = await fetchSheetData(GIDS.shippingRecords)
+  
+  const records: ShippingRecord[] = []
+  
+  for (const row of rows) {
+    const timestamp = findColumnValue(row, cols, ['timestamp', 'marca de tiempo'])
+    const shipDate = findColumnValue(row, cols, ['ship date', 'fecha de envio'])
+    const ifNumber = findColumnValue(row, cols, ['if number', 'numero if'])
+    
+    if (!timestamp && !shipDate && !ifNumber) continue
+    
+    const photos: string[] = []
+    for (let i = 1; i <= 5; i++) {
+      const photoUrl = findColumnValue(row, cols, [`photo${i === 1 ? '' : ' ' + i}`, `foto${i === 1 ? '' : ' ' + i}`])
+      if (photoUrl) photos.push(photoUrl)
+    }
+    
+    records.push({
+      timestamp,
+      shipDate,
+      customer: findColumnValue(row, cols, ['customer', 'cliente']),
+      ifNumber,
+      category: findColumnValue(row, cols, ['category', 'categoria']),
+      carrier: findColumnValue(row, cols, ['carrier', 'transportista']),
+      bol: findColumnValue(row, cols, ['bol', 'bill of lading']),
+      palletCount: parseInt(findColumnValue(row, cols, ['pallet count', 'cantidad de paletas'])) || 0,
+      photos,
+    })
+  }
+  
+  return records.sort((a, b) => {
+    const dateA = new Date(a.timestamp || a.shipDate).getTime() || 0
+    const dateB = new Date(b.timestamp || b.shipDate).getTime() || 0
+    return dateB - dateA
+  })
+}
+
+// --- Staged Records ---
+
+export interface StagedRecord {
+  timestamp: string
+  ifNumber: string
+  customer: string
+  partNumber: string
+  category: string
+  quantity: number
+  location: string
+  photos: string[]
+}
+
+export async function fetchStagedRecords(): Promise<StagedRecord[]> {
+  const { cols, rows } = await fetchSheetData(GIDS.stagedRecords)
+  
+  const records: StagedRecord[] = []
+  
+  for (const row of rows) {
+    const timestamp = findColumnValue(row, cols, ['timestamp', 'marca de tiempo'])
+    const ifNumber = findColumnValue(row, cols, ['if number', 'numero if'])
+    
+    if (!timestamp && !ifNumber) continue
+    
+    const photos: string[] = []
+    for (let i = 1; i <= 3; i++) {
+      const photoUrl = findColumnValue(row, cols, [`photo${i === 1 ? '' : ' ' + i}`, `foto${i === 1 ? '' : ' ' + i}`])
+      if (photoUrl) photos.push(photoUrl)
+    }
+    
+    records.push({
+      timestamp,
+      ifNumber,
+      customer: findColumnValue(row, cols, ['customer', 'cliente']),
+      partNumber: findColumnValue(row, cols, ['part number', 'numero de parte']),
+      category: findColumnValue(row, cols, ['category', 'categoria']),
+      quantity: parseInt(findColumnValue(row, cols, ['quantity', 'cantidad'])) || 0,
+      location: findColumnValue(row, cols, ['location', 'ubicacion']),
+      photos,
+    })
+  }
+  
+  return records.sort((a, b) => {
+    const dateA = new Date(a.timestamp).getTime() || 0
+    const dateB = new Date(b.timestamp).getTime() || 0
+    return dateB - dateA
+  })
 }
