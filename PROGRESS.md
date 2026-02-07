@@ -48,6 +48,12 @@
 - [x] Need to Package page ✅ DONE 2026-02-07
 - [x] Shipped page ✅ DONE 2026-02-07
 
+**Wave 3 — Charts & Records**
+- [x] Inventory History page (recharts) ✅ DONE 2026-02-07
+- [x] Pallet Records page (Codex) ✅ DONE 2026-02-07
+- [x] Shipping Records page (Codex) ✅ DONE 2026-02-07
+- [x] Staged Records page (Codex) ✅ DONE 2026-02-07
+
 See `PHASE-2-WORKFLOW.md` for full plan.
 
 ### Milestone 1.3: Next steps (deferred)
@@ -114,20 +120,23 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 
 ## 📝 Notes for Next Session
 
-**RESUME HERE (2026-02-07 16:30 EST):**
+**RESUME HERE (2026-02-07 16:20 EST):**
 
 ✅ **Completed today:**
 - Sidebar navigation (Wave 1)
 - Need to Make page (Wave 2)
 - Need to Package page (Wave 2)
 - Shipped page (Wave 2)
+- Inventory History page with charts (Wave 3)
+- Pallet Records page (Codex)
+- Shipping Records page (Codex)
+- Staged Records page (Codex)
 
-**Next tasks (Wave 3+):**
-1. Inventory History page (charts with recharts)
-2. Language system (i18n EN/ES toggle)
-3. Pallet Records, Shipping Records, Staged Records pages
-4. Image Modal + Drawings Library
-5. BOM Explorer
+**Next tasks:**
+1. Language system (i18n EN/ES toggle)
+2. Drawings Library page
+3. Image Modal component
+4. BOM Explorer
 
 **Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
 

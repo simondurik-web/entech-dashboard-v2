@@ -16,7 +16,6 @@ import {
   Ruler,
   Camera,
   FileText,
-  ClipboardCopy,
   Lock,
   Bot,
   PanelLeftClose,
@@ -58,7 +57,8 @@ export function Sidebar({
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
+    // Hydration sync - safe to set mounted state once on client
+    setMounted(true) // eslint-disable-line react/use-effect-no-sync-set-state
   }, [])
 
   return (
