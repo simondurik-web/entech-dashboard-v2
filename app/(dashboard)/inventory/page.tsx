@@ -72,9 +72,36 @@ export default function InventoryPage() {
 
   const filtered = filterItems(items, filter, search)
 
+  // Calculate stats from all items (not filtered)
+  const totalItems = items.length
+  const lowStock = items.filter((item) => stockStatus(item) === 'low').length
+  const needsProduction = items.filter((item) => stockStatus(item) === 'critical').length
+  const adequateStock = items.filter((item) => stockStatus(item) === 'ok' && item.minimum > 0).length
+
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-4">Inventory</h1>
+      <h1 className="text-2xl font-bold mb-2">📦 Inventory</h1>
+      <p className="text-muted-foreground text-sm mb-4">Inventory levels vs minimums</p>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="bg-muted rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">Total Items</p>
+          <p className="text-xl font-bold">{totalItems}</p>
+        </div>
+        <div className="bg-red-500/10 rounded-lg p-3">
+          <p className="text-xs text-red-500">Needs Production</p>
+          <p className="text-xl font-bold text-red-500">{needsProduction}</p>
+        </div>
+        <div className="bg-yellow-500/10 rounded-lg p-3">
+          <p className="text-xs text-yellow-600">Low Stock</p>
+          <p className="text-xl font-bold text-yellow-600">{lowStock}</p>
+        </div>
+        <div className="bg-green-500/10 rounded-lg p-3">
+          <p className="text-xs text-green-600">Adequate Stock</p>
+          <p className="text-xl font-bold text-green-600">{adequateStock}</p>
+        </div>
+      </div>
 
       {/* Search */}
       <input
