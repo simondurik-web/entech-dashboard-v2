@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DataTable } from '@/components/data-table'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order } from '@/lib/google-sheets'
 
 const FILTERS = [
@@ -14,6 +16,43 @@ const FILTERS = [
 ] as const
 
 type FilterKey = (typeof FILTERS)[number]['key']
+
+// Cast Order to work with Record<string, unknown> constraint
+type OrderRow = Order & Record<string, unknown>
+
+const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
+  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+  { key: 'line', label: 'Line', sortable: true },
+  { key: 'partNumber', label: 'Part Number', sortable: true, filterable: true },
+  { key: 'category', label: 'Category', sortable: true, filterable: true },
+  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
+  {
+    key: 'daysUntilDue',
+    label: 'Due',
+    sortable: true,
+    render: (v) => (v !== null ? `${v}d` : '-'),
+  },
+  { key: 'ifNumber', label: 'IF#', sortable: true },
+  {
+    key: 'internalStatus',
+    label: 'Status',
+    sortable: true,
+    filterable: true,
+    render: (v) => {
+      const status = String(v || '')
+      return (
+        <span className={`px-2 py-0.5 text-xs rounded ${statusColor(status)}`}>
+          {status || 'N/A'}
+        </span>
+      )
+    },
+  },
+  { key: 'priorityLevel', label: 'Priority', sortable: true },
+  { key: 'poNumber', label: 'PO#' },
+  { key: 'assignedTo', label: 'Assigned To', filterable: true },
+  { key: 'requestedDate', label: 'Requested', sortable: true },
+  { key: 'shippedDate', label: 'Shipped' },
+]
 
 function statusColor(status: string): string {
   const s = status.toLowerCase()
@@ -31,7 +70,7 @@ function borderColor(order: Order): string {
   return 'border-l-blue-500'
 }
 
-function filterOrders(orders: Order[], filter: FilterKey): Order[] {
+function preFilter(orders: Order[], filter: FilterKey): Order[] {
   switch (filter) {
     case 'urgent':
       return orders.filter((o) => o.urgentOverride || o.priorityLevel >= 3)
@@ -65,13 +104,19 @@ export default function OrdersPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = filterOrders(orders, filter)
+  const filtered = preFilter(orders, filter) as OrderRow[]
+
+  const table = useDataTable({
+    data: filtered,
+    columns: ORDER_COLUMNS,
+    storageKey: 'orders',
+  })
 
   return (
     <div className="p-4 pb-20">
       <h1 className="text-2xl font-bold mb-4">Orders</h1>
 
-      {/* Filter chips */}
+      {/* Category filter chips */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
         {FILTERS.map((f) => (
           <button
@@ -100,14 +145,17 @@ export default function OrdersPage() {
         <p className="text-center text-destructive py-10">{error}</p>
       )}
 
-      {/* Orders list */}
+      {/* Data table */}
       {!loading && !error && (
-        <>
-          <p className="text-sm text-muted-foreground mb-3">
-            {filtered.length} order{filtered.length !== 1 ? 's' : ''}
-          </p>
-          <div className="space-y-3">
-            {filtered.map((order, i) => (
+        <DataTable
+          table={table}
+          data={filtered}
+          noun="order"
+          exportFilename="orders.csv"
+          cardClassName={(row) => `border-l-4 ${borderColor(row as unknown as Order)}`}
+          renderCard={(row, i) => {
+            const order = row as unknown as Order
+            return (
               <Card key={`${order.ifNumber}-${i}`} className={`border-l-4 ${borderColor(order)}`}>
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
@@ -141,9 +189,9 @@ export default function OrdersPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        </>
+            )
+          }}
+        />
       )}
     </div>
   )

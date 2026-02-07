@@ -37,7 +37,20 @@
 
 ## 🔄 In Progress
 
-### Milestone 1.3: Next steps
+### Phase 2: Feature Parity (Started 2026-02-07)
+
+**Wave 1 — Claude Code (Infrastructure)**
+- [ ] DataTable component system (sorting, filtering, visibility)
+- [ ] Sidebar navigation
+
+**Wave 2 — Codex 5.3 (Parallel Pages)**
+- [ ] Need to Make page
+- [ ] Need to Package page  
+- [ ] Shipped page
+
+See `PHASE-2-WORKFLOW.md` for full plan.
+
+### Milestone 1.3: Next steps (deferred)
 - [ ] Add pull-to-refresh or auto-refresh
 - [ ] Add detail views for orders/inventory items
 - [ ] Chat/AI assistant integration
