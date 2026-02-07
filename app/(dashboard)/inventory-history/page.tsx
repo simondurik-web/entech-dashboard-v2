@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { InventoryItem } from '@/lib/google-sheets'
 import {
   LineChart,
   Line,
@@ -16,82 +15,145 @@ import {
   Bar,
 } from 'recharts'
 
-// Generate mock historical data for demo
-function generateMockHistory(items: InventoryItem[]) {
-  const days = 30
-  const now = new Date()
-  const history: Array<{ date: string; [key: string]: string | number }> = []
+interface InventoryHistoryPart {
+  partNumber: string
+  dataByDate: Record<string, number>
+}
 
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    const dateStr = `${date.getMonth() + 1}/${date.getDate()}`
-    const entry: { date: string; [key: string]: string | number } = { date: dateStr }
-
-    // Add stock levels for top items with some random variation
-    items.slice(0, 5).forEach((item) => {
-      const baseStock = item.inStock
-      const variation = Math.floor(Math.random() * 50) - 25
-      entry[item.partNumber] = Math.max(0, baseStock + variation + (days - i) * 2)
-    })
-
-    history.push(entry)
-  }
-
-  return history
+interface InventoryHistoryResponse {
+  dates: string[]
+  parts: InventoryHistoryPart[]
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
+function parseUsDate(date: string): Date | null {
+  const match = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!match) return null
+  const month = Number(match[1])
+  const day = Number(match[2])
+  const year = Number(match[3])
+  return new Date(year, month - 1, day)
+}
+
+function toDateInputValue(date: string): string {
+  const parsed = parseUsDate(date)
+  if (!parsed) return ''
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function InventoryHistoryPage() {
-  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [history, setHistory] = useState<InventoryHistoryResponse>({ dates: [], parts: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedParts, setSelectedParts] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   useEffect(() => {
-    fetch('/api/inventory')
+    fetch('/api/inventory-history')
       .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch inventory')
+        if (!res.ok) throw new Error('Failed to fetch inventory history')
         return res.json()
       })
-      .then((data: InventoryItem[]) => {
-        // Sort by stock level descending
-        const sorted = data.sort((a, b) => b.inStock - a.inStock)
-        setInventory(sorted)
-        // Auto-select top 3 parts
-        setSelectedParts(sorted.slice(0, 3).map((i) => i.partNumber))
+      .then((data: InventoryHistoryResponse) => {
+        const sortedDates = [...data.dates].sort((a, b) => {
+          const da = parseUsDate(a)?.getTime() ?? 0
+          const db = parseUsDate(b)?.getTime() ?? 0
+          return da - db
+        })
+
+        const latestDate = sortedDates[sortedDates.length - 1]
+        const sortedParts = [...data.parts].sort(
+          (a, b) => (b.dataByDate[latestDate] ?? 0) - (a.dataByDate[latestDate] ?? 0)
+        )
+
+        setHistory({ dates: sortedDates, parts: sortedParts })
+        setSelectedParts(sortedParts.slice(0, 3).map((p) => p.partNumber))
+
+        if (sortedDates.length > 0) {
+          setStartDate(toDateInputValue(sortedDates[0]))
+          setEndDate(toDateInputValue(sortedDates[sortedDates.length - 1]))
+        }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
 
-  const filteredParts = inventory.filter((item) =>
-    item.partNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.product.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredParts = useMemo(
+    () =>
+      history.parts.filter((item) =>
+        item.partNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [history.parts, searchTerm]
   )
+
+  const selectedItems = useMemo(
+    () => history.parts.filter((p) => selectedParts.includes(p.partNumber)),
+    [history.parts, selectedParts]
+  )
+
+  const rangeDates = useMemo(() => {
+    const startMs = startDate ? new Date(`${startDate}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
+    const endMs = endDate ? new Date(`${endDate}T23:59:59`).getTime() : Number.POSITIVE_INFINITY
+
+    return history.dates.filter((date) => {
+      const ms = parseUsDate(date)?.getTime()
+      if (ms === undefined) return false
+      return ms >= startMs && ms <= endMs
+    })
+  }, [history.dates, startDate, endDate])
+
+  const chartData = useMemo(() => {
+    return rangeDates.map((date) => {
+      const row: Record<string, string | number> = { date }
+      for (const item of selectedItems) {
+        row[item.partNumber] = item.dataByDate[date] ?? 0
+      }
+      return row
+    })
+  }, [rangeDates, selectedItems])
+
+  const statsByPart = useMemo(() => {
+    return selectedItems.map((item) => {
+      const values = rangeDates.map((date) => item.dataByDate[date] ?? 0)
+      const current = values.length ? values[values.length - 1] : 0
+      const min = values.length ? Math.min(...values) : 0
+      const max = values.length ? Math.max(...values) : 0
+      const avg = values.length
+        ? values.reduce((sum, v) => sum + v, 0) / values.length
+        : 0
+
+      return {
+        partNumber: item.partNumber,
+        current,
+        min,
+        max,
+        avg,
+      }
+    })
+  }, [selectedItems, rangeDates])
+
+  const comparisonData = statsByPart.map((item) => ({
+    name: item.partNumber.length > 15 ? `${item.partNumber.slice(0, 15)}...` : item.partNumber,
+    current: item.current,
+    min: item.min,
+    max: item.max,
+  }))
 
   const togglePart = (partNumber: string) => {
     setSelectedParts((prev) =>
       prev.includes(partNumber)
         ? prev.filter((p) => p !== partNumber)
         : prev.length < 5
-        ? [...prev, partNumber]
-        : prev
+          ? [...prev, partNumber]
+          : prev
     )
   }
-
-  // Generate chart data for selected parts
-  const selectedItems = inventory.filter((i) => selectedParts.includes(i.partNumber))
-  const historyData = generateMockHistory(selectedItems)
-
-  // Current stock comparison chart data
-  const comparisonData = selectedItems.map((item) => ({
-    name: item.partNumber.length > 15 ? item.partNumber.slice(0, 15) + '...' : item.partNumber,
-    stock: item.inStock,
-    minimum: item.minimum,
-    target: item.target || item.minimum * 1.5,
-  }))
 
   if (loading) {
     return (
@@ -111,7 +173,6 @@ export default function InventoryHistoryPage() {
       <p className="text-muted-foreground text-sm mb-4">Track stock levels over time</p>
 
       <div className="grid lg:grid-cols-4 gap-4">
-        {/* Part selector panel */}
         <Card className="lg:col-span-1">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Select Parts (max 5)</CardTitle>
@@ -128,6 +189,10 @@ export default function InventoryHistoryPage() {
               {filteredParts.slice(0, 50).map((item) => {
                 const isSelected = selectedParts.includes(item.partNumber)
                 const colorIdx = selectedParts.indexOf(item.partNumber)
+                const latestQty = history.dates.length
+                  ? item.dataByDate[history.dates[history.dates.length - 1]] ?? 0
+                  : 0
+
                 return (
                   <button
                     key={item.partNumber}
@@ -145,9 +210,7 @@ export default function InventoryHistoryPage() {
                       />
                     )}
                     <span className="truncate">{item.partNumber}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {item.inStock}
-                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">{latestQty}</span>
                   </button>
                 )
               })}
@@ -155,15 +218,50 @@ export default function InventoryHistoryPage() {
           </CardContent>
         </Card>
 
-        {/* Charts area */}
         <div className="lg:col-span-3 space-y-4">
-          {/* Line chart - Historical trend */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">30-Day Stock Trend</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Demo data — will connect to actual history when available
-              </p>
+              <CardTitle className="text-sm">Date Range</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="block mb-1 text-muted-foreground">Start date</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    min={history.dates[0] ? toDateInputValue(history.dates[0]) : undefined}
+                    max={endDate || (history.dates.length ? toDateInputValue(history.dates[history.dates.length - 1]) : undefined)}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setStartDate(next)
+                      if (endDate && next > endDate) setEndDate(next)
+                    }}
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="block mb-1 text-muted-foreground">End date</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={startDate || (history.dates[0] ? toDateInputValue(history.dates[0]) : undefined)}
+                    max={history.dates.length ? toDateInputValue(history.dates[history.dates.length - 1]) : undefined}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setEndDate(next)
+                      if (startDate && next < startDate) setStartDate(next)
+                    }}
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
+                  />
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Inventory Trend</CardTitle>
             </CardHeader>
             <CardContent>
               {selectedParts.length === 0 ? (
@@ -173,7 +271,7 @@ export default function InventoryHistoryPage() {
               ) : (
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={historyData}>
+                    <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="date" className="text-xs" />
                       <YAxis className="text-xs" />
@@ -202,10 +300,9 @@ export default function InventoryHistoryPage() {
             </CardContent>
           </Card>
 
-          {/* Bar chart - Current stock vs minimum/target */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Stock vs Minimum/Target</CardTitle>
+              <CardTitle className="text-sm">Current vs Min/Max</CardTitle>
             </CardHeader>
             <CardContent>
               {selectedParts.length === 0 ? (
@@ -227,9 +324,9 @@ export default function InventoryHistoryPage() {
                         }}
                       />
                       <Legend />
-                      <Bar dataKey="stock" name="Current Stock" fill="#3b82f6" />
-                      <Bar dataKey="minimum" name="Minimum" fill="#ef4444" />
-                      <Bar dataKey="target" name="Target" fill="#10b981" />
+                      <Bar dataKey="current" name="Current" fill="#3b82f6" />
+                      <Bar dataKey="min" name="Min" fill="#ef4444" />
+                      <Bar dataKey="max" name="Max" fill="#10b981" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -237,10 +334,9 @@ export default function InventoryHistoryPage() {
             </CardContent>
           </Card>
 
-          {/* Quick stats for selected parts */}
-          {selectedParts.length > 0 && (
+          {statsByPart.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {selectedItems.map((item, idx) => (
+              {statsByPart.map((item, idx) => (
                 <Card
                   key={item.partNumber}
                   className="border-l-4"
@@ -248,10 +344,10 @@ export default function InventoryHistoryPage() {
                 >
                   <CardContent className="pt-4">
                     <p className="text-xs text-muted-foreground truncate">{item.partNumber}</p>
-                    <p className="text-2xl font-bold">{item.inStock.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Min: {item.minimum} | Target: {item.target || '-'}
-                    </p>
+                    <p className="text-lg font-semibold">Current: {item.current.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Min: {item.min.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Max: {item.max.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Avg: {item.avg.toFixed(1)}</p>
                   </CardContent>
                 </Card>
               ))}

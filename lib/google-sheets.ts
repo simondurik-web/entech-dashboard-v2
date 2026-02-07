@@ -3,6 +3,7 @@ const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 export const GIDS = {
   orders: '290032634',
   inventory: '1805754553',
+  inventoryHistory: '171540940',
   productionTotals: '148810546',
   palletPictures: '1879462508',
   stagedRecords: '1519623398',
@@ -10,6 +11,9 @@ export const GIDS = {
   bomFinal: '74377031',
   bomSub: '206288913',
   bomIndividual: '751106736',
+  fpReference: '944406361',
+  customerReference: '336333220',
+  quotesRegistry: '1279128282',
 } as const
 
 export interface Order {
@@ -142,6 +146,111 @@ export async function fetchOrders(): Promise<Order[]> {
       const status = normalizeStatus(o.internalStatus, o.ifStatus)
       return status !== 'cancelled'
     })
+}
+
+export interface InventoryHistoryPart {
+  partNumber: string
+  dataByDate: Record<string, number>
+}
+
+export interface InventoryHistoryData {
+  dates: string[]
+  parts: InventoryHistoryPart[]
+}
+
+function parseSheetNumber(value: string): number {
+  if (!value || value === '') return 0
+  let clean = value.replace(/[$,%\s]/g, '')
+  if (clean.startsWith('(') && clean.endsWith(')')) {
+    clean = `-${clean.slice(1, -1)}`
+  }
+  return Number.parseFloat(clean) || 0
+}
+
+function parseCSVRows(csv: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let inQuotes = false
+
+  for (let i = 0; i < csv.length; i++) {
+    const char = csv[i]
+    const next = csv[i + 1]
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+      continue
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(cell)
+      cell = ''
+      continue
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++
+      row.push(cell)
+      rows.push(row)
+      row = []
+      cell = ''
+      continue
+    }
+
+    cell += char
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell)
+    rows.push(row)
+  }
+
+  return rows
+}
+
+export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GIDS.inventoryHistory}`
+  const res = await fetch(url, { next: { revalidate: 60 } })
+  const csvText = await res.text()
+
+  const rows = parseCSVRows(csvText).filter((row) =>
+    row.some((cell) => cell.trim() !== '')
+  )
+  if (rows.length === 0) return { dates: [], parts: [] }
+
+  const header = rows[0]
+  const dateColumns: Array<{ index: number; date: string }> = []
+
+  for (let i = 1; i < header.length; i++) {
+    const date = (header[i] || '').trim()
+    if (date && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
+      dateColumns.push({ index: i, date })
+    }
+  }
+
+  const parts: InventoryHistoryPart[] = []
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    const partNumber = (row[0] || '').trim()
+    if (!partNumber) continue
+
+    const dataByDate: Record<string, number> = {}
+    for (const dateColumn of dateColumns) {
+      dataByDate[dateColumn.date] = parseSheetNumber(row[dateColumn.index] || '')
+    }
+
+    parts.push({ partNumber, dataByDate })
+  }
+
+  return {
+    dates: dateColumns.map((d) => d.date),
+    parts,
+  }
 }
 
 // --- Inventory ---

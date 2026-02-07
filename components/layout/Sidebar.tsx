@@ -22,6 +22,9 @@ import {
   Sun,
   Moon,
   Layers,
+  ClipboardCheck,
+  Users,
+  DollarSign,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 
@@ -45,6 +48,9 @@ const productionItems: NavItem[] = [
   { label: "Shipping Records", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { label: "Staged Records", href: "/staged-records", icon: <FileText className="size-4" /> },
   { label: "BOM Explorer", href: "/bom", icon: <Layers className="size-4" /> },
+  { label: "FP Reference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
+  { label: "Customer Reference", href: "/customer-reference", icon: <Users className="size-4" /> },
+  { label: "Quotes Registry", href: "/quotes", icon: <DollarSign className="size-4" /> },
 ]
 
 export function Sidebar({

@@ -49,10 +49,24 @@
 - [x] Shipped page ✅ DONE 2026-02-07
 
 **Wave 3 — Charts & Records**
-- [x] Inventory History page (recharts) ✅ DONE 2026-02-07
+- [x] Inventory History page (recharts) ✅ DONE 2026-02-07 **REAL DATA CONNECTED**
+  - Fetches from Inventory History sheet (GID 171540940)
+  - Date range picker (filter by start/end date)
+  - Multi-part selection (up to 5 parts)
+  - Line chart for trends over time
+  - Bar chart for Current vs Min/Max
+  - Stats cards showing Current, Min, Max, Avg per selected part
 - [x] Pallet Records page (Codex) ✅ DONE 2026-02-07
 - [x] Shipping Records page (Codex) ✅ DONE 2026-02-07
 - [x] Staged Records page (Codex) ✅ DONE 2026-02-07
+
+**Wave 4 — Advanced (Remaining)**
+- [x] BOM Explorer page ✅ DONE 2026-02-07 (tabs for Individual/Sub/Final)
+- [x] Drawings page ✅ DONE 2026-02-07 (stub - needs GID integration)
+- [ ] FP Reference page
+- [ ] Customer Reference page  
+- [ ] Quotes Registry page
+- [ ] All Data (raw) page
 
 See `PHASE-2-WORKFLOW.md` for full plan.
 
