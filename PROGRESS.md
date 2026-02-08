@@ -175,9 +175,14 @@ See `PHASE-2-WORKFLOW.md` for full plan.
 - Pull-to-refresh pattern: fetchData() callback with refreshing state across pages
 - Drawings already connected from previous session
 
+**✅ Phase 3 Features (2026-02-07 19:30 EST):**
+- Auto-refresh every 5 minutes (toggleable with countdown timer)
+- Photo lightbox with full-screen view, keyboard navigation, thumbnails
+- Added to: Orders, Pallet Records, Shipping Records, Staged Records
+
 **Remaining polish (optional):**
-- Add photo gallery integration to records pages
-- Auto-refresh on interval
+- Phil Assistant AI chat
+- Reports dashboard / KPIs
 
 **Reference:** Old dashboard at `~/clawd/projects/molding/molding_dashboard_production.html`
 
