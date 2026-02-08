@@ -36,18 +36,34 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
   { key: 'category', label: 'Category', sortable: true, filterable: true },
   { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
   {
+    key: 'priorityLevel',
+    label: 'Priority',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const order = row as unknown as Order
+      const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
+      if (isUrgent) {
+        return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">URGENT</span>
+      }
+      const priority = v ? `P${v}` : 'P-'
+      return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
+    },
+  },
+  {
     key: 'daysUntilDue',
-    label: 'Due',
+    label: 'Days Until',
     sortable: true,
     render: (v) => {
       const days = v as number | null
       if (days === null) return '-'
-      if (days < 0) return <span className="text-red-500 font-bold">Overdue</span>
-      if (days <= 3) return <span className="text-orange-500 font-semibold">{days}d</span>
-      return `${days}d`
+      if (days < 0) return <span className="text-red-500 font-bold">{days}</span>
+      if (days <= 3) return <span className="text-orange-500 font-semibold">{days}</span>
+      return String(days)
     },
   },
-  { key: 'ifNumber', label: 'IF#', sortable: true },
+  { key: 'ifNumber', label: 'IF #', sortable: true },
+  { key: 'poNumber', label: 'PO #', sortable: true },
   {
     key: 'internalStatus',
     label: 'Status',
@@ -56,23 +72,37 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
     render: (v) => {
       const status = String(v || '')
       return (
-        <span className={`px-2 py-0.5 text-xs rounded ${statusColor(status)}`}>
+        <span className={`px-2 py-0.5 text-xs rounded font-medium ${statusColor(status)}`}>
           {status || 'N/A'}
         </span>
       )
     },
   },
+  { key: 'tire', label: 'Tire', sortable: true, filterable: true },
+  { key: 'hub', label: 'Hub', sortable: true, filterable: true },
+  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
   { key: 'assignedTo', label: 'Assigned', filterable: true },
-  { key: 'poNumber', label: 'PO#' },
-  { key: 'requestedDate', label: 'Requested', sortable: true },
 ]
+
+function priorityColor(priority: string): string {
+  if (priority === 'P1') return 'bg-red-500/20 text-red-600'
+  if (priority === 'P2') return 'bg-orange-500/20 text-orange-600'
+  if (priority === 'P3') return 'bg-yellow-500/20 text-yellow-600'
+  if (priority === 'P4') return 'bg-blue-500/20 text-blue-600'
+  return 'bg-muted text-muted-foreground'
+}
 
 function statusColor(status: string): string {
   const s = status.toLowerCase()
-  if (s === 'shipped') return 'bg-green-500/20 text-green-600'
-  if (s === 'staged') return 'bg-green-500/20 text-green-600'
-  if (s === 'invoiced') return 'bg-blue-500/20 text-blue-600'
-  if (s === 'in production' || s === 'released') return 'bg-yellow-500/20 text-yellow-600'
+  // Shipped/Invoiced - Blue
+  if (s === 'shipped' || s === 'invoiced' || s === 'to bill') return 'bg-blue-500/20 text-blue-600'
+  // Staged/Ready to Ship - Green
+  if (s === 'staged' || s === 'ready to ship') return 'bg-green-500/20 text-green-600'
+  // WIP/Making - Teal
+  if (s === 'wip' || s === 'work in progress' || s === 'making' || s === 'released' || s === 'in production') return 'bg-teal-500/20 text-teal-600'
+  // Pending/Need to Make - Yellow
+  if (s === 'pending' || s === 'need to make' || s === 'approved') return 'bg-yellow-500/20 text-yellow-600'
+  // Cancelled - Red
   if (s === 'cancelled') return 'bg-red-500/20 text-red-600'
   return 'bg-muted text-muted-foreground'
 }

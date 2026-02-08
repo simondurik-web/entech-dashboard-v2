@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUp, ArrowDown, ArrowUpDown, Search, X } from 'lucide-react'
+import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2 } from 'lucide-react'
 import { Fragment } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -101,8 +101,9 @@ export function DataTable<T extends Record<string, unknown>>({
 
         <div className="flex items-center gap-2">
           {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearAllFilters}>
-              Clear filters
+            <Button variant="destructive" size="sm" onClick={clearAllFilters}>
+              <Trash2 className="size-3.5 mr-1.5" />
+              Clear Filters
             </Button>
           )}
           <ColumnToggle
@@ -154,6 +155,7 @@ export function DataTable<T extends Record<string, unknown>>({
                         activeFilter={filters.get(col.key)}
                         onApply={setFilter}
                         onClear={clearFilter}
+                        onHide={toggleColumn}
                       />
                     )}
                   </div>

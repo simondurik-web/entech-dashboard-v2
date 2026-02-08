@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Filter } from 'lucide-react'
+import { Filter, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -13,6 +13,7 @@ interface ColumnFilterProps {
   activeFilter: Set<string> | undefined
   onApply: (key: string, values: Set<string>) => void
   onClear: (key: string) => void
+  onHide?: (key: string) => void
 }
 
 export function ColumnFilter({
@@ -21,6 +22,7 @@ export function ColumnFilter({
   activeFilter,
   onApply,
   onClear,
+  onHide,
 }: ColumnFilterProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -130,7 +132,21 @@ export function ColumnFilter({
             <Button size="sm" className="flex-1" onClick={handleApply}>
               Apply
             </Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={handleClear}>
+            {onHide && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onHide(columnKey)
+                  setOpen(false)
+                }}
+                title="Hide this column"
+              >
+                <EyeOff className="size-3.5 mr-1" />
+                Hide
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleClear}>
               Clear
             </Button>
           </div>
