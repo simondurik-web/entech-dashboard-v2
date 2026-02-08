@@ -27,7 +27,7 @@ Dev server runs on port 3051. Live at https://entech-dashboard-v2.vercel.app
 
 ## 📋 PROJECT STATUS
 
-**Phase 2 Feature Parity: ✅ COMPLETE (95%)**
+**Phase 2 Feature Parity: ✅ COMPLETE (100%)**
 
 ### What's Built & Working
 
@@ -60,8 +60,8 @@ Dev server runs on port 3051. Live at https://entech-dashboard-v2.vercel.app
 - **Generic sheet API** — `/api/generic-sheet?gid=...` fetches any sheet tab dynamically
 
 ### Remaining
-1. **All Data (raw) page** — show entire Main Data sheet unfiltered
-2. **Drawings** — needs actual GID if separate from FP Reference
+1. ~~**All Data (raw) page**~~ ✅ **DONE 2026-02-07**
+2. **Drawings** — needs actual GID if separate from FP Reference (currently using Production Data Totals)
 
 ---
 
