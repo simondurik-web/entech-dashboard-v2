@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   Users,
   DollarSign,
+  Database,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 
@@ -170,14 +171,27 @@ export function Sidebar({
             <span>Coming soon</span>
           </div>
 
-          {/* Raw Data (locked) */}
+          {/* Raw Data */}
           <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
             Raw Data
           </p>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/40">
-            <Lock className="size-3.5" />
-            <span>Coming soon</span>
-          </div>
+          <ul className="space-y-0.5">
+            <li>
+              <Link
+                href="/all-data"
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                  pathname === "/all-data"
+                    ? "bg-white/20 font-medium text-white shadow-sm"
+                    : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                )}
+              >
+                <Database className="size-4" />
+                <span>All Data</span>
+              </Link>
+            </li>
+          </ul>
         </nav>
 
         {/* Phil Assistant */}
