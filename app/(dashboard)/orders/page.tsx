@@ -325,6 +325,9 @@ export default function OrdersPage() {
                 line={order.line}
                 isShipped={getOrderStatus(order) === 'shipped'}
                 shippedDate={order.shippedDate}
+                partNumber={order.partNumber}
+                tirePartNum={order.tire}
+                hubPartNum={order.hub}
                 onClose={() => setExpandedOrderKey(null)}
               />
             )
@@ -382,6 +385,9 @@ export default function OrdersPage() {
                           line={order.line}
                           isShipped={getOrderStatus(order) === 'shipped'}
                           shippedDate={order.shippedDate}
+                          partNumber={order.partNumber}
+                          tirePartNum={order.tire}
+                          hubPartNum={order.hub}
                           onClose={() => setExpandedOrderKey(null)}
                         />
                       ) : null}

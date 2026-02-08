@@ -30,6 +30,9 @@ export interface Order {
   partNumber: string
   orderQty: number
   packaging: string
+  tire: string
+  hub: string
+  bearings: string
   requestedDate: string
   daysUntilDue: number | null
   assignedTo: string
@@ -51,6 +54,9 @@ const COLS = {
   partNumber: 11,
   orderQty: 15,
   packaging: 16,
+  tire: 17,        // Column R
+  hub: 18,         // Column S
+  bearings: 20,    // Column U
   requestedDate: 22,
   daysUntilDue: 23,
   shippedDate: 45,
@@ -114,6 +120,9 @@ export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
     partNumber: cellValue(row, COLS.partNumber),
     orderQty: cellNumber(row, COLS.orderQty),
     packaging: cellValue(row, COLS.packaging),
+    tire: cellValue(row, COLS.tire),
+    hub: cellValue(row, COLS.hub),
+    bearings: cellValue(row, COLS.bearings),
     requestedDate: cellDate(row, COLS.requestedDate),
     daysUntilDue: cellNumber(row, COLS.daysUntilDue) || null,
     shippedDate: cellDate(row, COLS.shippedDate),

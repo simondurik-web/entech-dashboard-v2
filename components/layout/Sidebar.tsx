@@ -16,7 +16,6 @@ import {
   Ruler,
   Camera,
   FileText,
-  Lock,
   Bot,
   PanelLeftClose,
   Sun,
@@ -26,6 +25,9 @@ import {
   Users,
   DollarSign,
   Database,
+  BarChart3,
+  CalendarDays,
+  Wrench,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 
@@ -52,6 +54,13 @@ const productionItems: NavItem[] = [
   { label: "FP Reference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
   { label: "Customer Reference", href: "/customer-reference", icon: <Users className="size-4" /> },
   { label: "Quotes Registry", href: "/quotes", icon: <DollarSign className="size-4" /> },
+]
+
+const salesItems: NavItem[] = [
+  { label: "P/L Overview", href: "/sales-overview", icon: <BarChart3 className="size-4" /> },
+  { label: "By Part Number", href: "/sales-parts", icon: <Wrench className="size-4" />, sub: true },
+  { label: "By Customer", href: "/sales-customers", icon: <Users className="size-4" />, sub: true },
+  { label: "By Date", href: "/sales-dates", icon: <CalendarDays className="size-4" />, sub: true },
 ]
 
 export function Sidebar({
@@ -162,14 +171,33 @@ export function Sidebar({
             })}
           </ul>
 
-          {/* Sales & Finance (locked) */}
+          {/* Sales & Finance */}
           <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
             Sales & Finance
           </p>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/40">
-            <Lock className="size-3.5" />
-            <span>Coming soon</span>
-          </div>
+          <ul className="space-y-0.5">
+            {salesItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={onClose}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                      item.sub && "ml-4 text-xs",
+                      isActive
+                        ? "bg-white/20 font-medium text-white shadow-sm"
+                        : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                    )}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
 
           {/* Raw Data */}
           <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">

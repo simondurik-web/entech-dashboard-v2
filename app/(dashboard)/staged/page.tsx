@@ -186,6 +186,9 @@ export default function StagedPage() {
                             ifNumber={order.ifNumber}
                             line={order.line}
                             isShipped={false}
+                            partNumber={order.partNumber}
+                            tirePartNum={order.tire}
+                            hubPartNum={order.hub}
                             onClose={() => setExpandedOrderKey(null)}
                           />
                         )}
