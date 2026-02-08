@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
+import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -153,6 +154,12 @@ export default function OrdersPage() {
     fetchData()
   }, [fetchData])
 
+  // Auto-refresh every 5 minutes
+  const autoRefresh = useAutoRefresh({
+    interval: 5 * 60 * 1000,
+    onRefresh: () => fetchData(true),
+  })
+
   const toggleStatus = (status: StatusKey) => {
     setActiveStatuses((prev) => {
       const next = new Set(prev)
@@ -191,14 +198,14 @@ export default function OrdersPage() {
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold">📋 Orders Data</h1>
-        <button
-          onClick={() => fetchData(true)}
-          disabled={refreshing}
-          className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
-        </button>
+        <AutoRefreshControl
+          isEnabled={autoRefresh.isAutoRefreshEnabled}
+          onToggle={autoRefresh.toggleAutoRefresh}
+          onRefreshNow={() => fetchData(true)}
+          isRefreshing={refreshing}
+          nextRefresh={autoRefresh.nextRefresh}
+          lastRefresh={autoRefresh.lastRefresh}
+        />
       </div>
       <p className="text-muted-foreground text-sm mb-4">Complete order database with all statuses</p>
 

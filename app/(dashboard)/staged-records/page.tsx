@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
-import { ImageModal } from '@/components/ImageModal'
+import { PhotoGrid } from '@/components/ui/PhotoGrid'
+import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
+import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import type { StagedRecord } from '@/lib/google-sheets'
 
 const CATEGORY_FILTERS = [
@@ -80,21 +82,37 @@ function filterByCategory(records: StagedRecord[], filter: CategoryKey): StagedR
 export default function StagedRecordsPage() {
   const [records, setRecords] = useState<StagedRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateKey>('30')
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
-  const [modalImage, setModalImage] = useState<string | null>(null)
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/staged-records')
+      if (!res.ok) throw new Error('Failed to fetch staged records')
+      const data = await res.json()
+      setRecords(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetch('/api/staged-records')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch staged records')
-        return res.json()
-      })
-      .then((data: StagedRecord[]) => setRecords(data))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    fetchData()
+  }, [fetchData])
+
+  const autoRefresh = useAutoRefresh({
+    interval: 5 * 60 * 1000,
+    onRefresh: () => fetchData(true),
+  })
 
   const filtered = filterByCategory(filterByDate(records, dateFilter), categoryFilter) as StagedRow[]
 
@@ -109,7 +127,17 @@ export default function StagedRecordsPage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">📦 Staged Records</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">📦 Staged Records</h1>
+        <AutoRefreshControl
+          isEnabled={autoRefresh.isAutoRefreshEnabled}
+          onToggle={autoRefresh.toggleAutoRefresh}
+          onRefreshNow={() => fetchData(true)}
+          isRefreshing={refreshing}
+          nextRefresh={autoRefresh.nextRefresh}
+          lastRefresh={autoRefresh.lastRefresh}
+        />
+      </div>
       <p className="text-muted-foreground text-sm mb-4">Items staged and ready for shipment</p>
 
       {/* Stats */}
@@ -205,39 +233,14 @@ export default function StagedRecordsPage() {
                       <p className="font-semibold text-xs">{record.location || '-'}</p>
                     </div>
                   </div>
-                  {/* Photo thumbnails */}
-                  {record.photos.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto">
-                      {record.photos.map((photo, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setModalImage(photo)}
-                          className="flex-shrink-0 w-16 h-16 rounded-md bg-muted overflow-hidden hover:opacity-80 transition-opacity"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={photo}
-                            alt={`Staged photo ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {/* Photo thumbnails with lightbox */}
+                  <PhotoGrid photos={record.photos} size="md" />
                 </CardContent>
               </Card>
             )
           }}
         />
       )}
-
-      {/* Image Modal */}
-      <ImageModal
-        src={modalImage || ''}
-        isOpen={!!modalImage}
-        onClose={() => setModalImage(null)}
-        alt="Staged photo"
-      />
     </div>
   )
 }
