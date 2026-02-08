@@ -40,6 +40,7 @@ export interface Order {
 }
 
 // Column indices: A=0..Z=25, AA=26..AV=47
+// Verified from Google Sheets Main Data columns (2026-02-07)
 const COLS = {
   line: 0,
   category: 1,
@@ -54,13 +55,14 @@ const COLS = {
   partNumber: 11,
   orderQty: 15,
   packaging: 16,
-  tire: 17,        // Column R
-  hub: 18,         // Column S
-  bearings: 20,    // Column U
   requestedDate: 22,
   daysUntilDue: 23,
-  shippedDate: 45,
-  assignedTo: 47,
+  tire: 26,        // Column AA: "Tire" (part number like "308")
+  hub: 30,         // Column AE: "Hub" (part number like "H19.170.22100B")
+  hubMold: 35,     // Column AJ: "Hub Mold"
+  bearings: 36,    // Column AK: "Bearings"
+  shippedDate: 45, // Column AT: "Shipped Date"
+  assignedTo: 47,  // Column AV: "Assigned to:"
 }
 
 function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): string {
