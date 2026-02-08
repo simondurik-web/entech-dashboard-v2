@@ -281,7 +281,7 @@ export interface InventoryItem {
 const FUSION_COLS = { partNumber: 0, qty: 1 }
 
 // Production Data Totals columns (GID 148810546)
-// A=Product, B=Part Number, C=Quantity Needed, D=Minimums, E=Manual target, F=Mold type, ...Drawing URLs
+// A=Product, B=Part Number, C=Qty Needed, D=Minimums, E=Manual target, F=Mold type, G=Fusion inv, H=Parts to make, I=Last update, J=Time, K=Active, L=Drawing1 URL, M=Drawing2 URL
 const PROD_COLS = {
   product: 0,
   partNumber: 1,
@@ -289,8 +289,13 @@ const PROD_COLS = {
   minimums: 3,
   manualTarget: 4,
   moldType: 5,
-  drawing1Url: 6,  // Column G - Drawing 1 URL
-  drawing2Url: 7,  // Column H - Drawing 2 URL
+  fusionInventory: 6,
+  partsToMake: 7,
+  lastUpdate: 8,
+  time: 9,
+  productActive: 10,
+  drawing1Url: 11,  // Column L - Drawing 1 URL
+  drawing2Url: 12,  // Column M - Drawing 2 URL
 }
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
