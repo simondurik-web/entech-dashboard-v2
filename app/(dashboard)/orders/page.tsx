@@ -32,10 +32,8 @@ type OrderRow = Order & Record<string, unknown>
 
 const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
   { key: 'line', label: 'Line', sortable: true },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
-  { key: 'category', label: 'Category', sortable: true, filterable: true },
-  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
+  { key: 'ifNumber', label: 'IF #', sortable: true },
+  { key: 'poNumber', label: 'PO #', sortable: true },
   {
     key: 'priorityLevel',
     label: 'Priority',
@@ -63,8 +61,12 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
       return String(days)
     },
   },
-  { key: 'ifNumber', label: 'IF #', sortable: true },
-  { key: 'poNumber', label: 'PO #', sortable: true },
+  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
+  { key: 'tire', label: 'Tire', sortable: true, filterable: true },
+  { key: 'hub', label: 'Hub', sortable: true, filterable: true },
+  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
   {
     key: 'internalStatus',
     label: 'Status',
@@ -79,9 +81,7 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
       )
     },
   },
-  { key: 'tire', label: 'Tire', sortable: true, filterable: true },
-  { key: 'hub', label: 'Hub', sortable: true, filterable: true },
-  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
+  { key: 'category', label: 'Category', sortable: true, filterable: true },
   { key: 'assignedTo', label: 'Assigned', filterable: true },
 ]
 

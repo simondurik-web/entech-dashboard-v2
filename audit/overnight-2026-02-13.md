@@ -181,3 +181,24 @@
 11. **Packing algorithm** — Greedy row-based placement matching V1 behavior
 
 ### Build: ✅ Passes
+
+---
+
+## Verification Fixes (Post-Audit)
+
+### 1. Staged page title: "Staged Orders" → "Ready to Ship"
+- Matches V1 and sidebar label
+
+### 2. Staged page: Added table view with DataTable
+- Integrated DataTable component with column toggle, CSV export, search
+- Card view preserved via renderCard prop (same as Orders page pattern)
+- Columns: Line, IF#, PO#, Priority, Days Until, Customer, Part#, Qty, Tire, Hub, Bearings
+
+### 3. Material Requirements search: ✅ Already present
+- Confirmed existing `<Input>` search box filters by material name
+
+### 4. Orders column reorder to match V1
+- New order: Line, IF#, PO#, Priority, Days Until, Customer, Part#, Qty, Tire, Hub, Bearings, Status, Category, Assigned
+- Category and Assigned moved to end (hidden by default via column toggle)
+
+### Build: ✅ Passes

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { OrderCard } from '@/components/cards/OrderCard'
+import { DataTable } from '@/components/data-table'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
@@ -15,6 +17,54 @@ const FILTERS = [
 ] as const
 
 type FilterKey = (typeof FILTERS)[number]['key']
+type OrderRow = Order & Record<string, unknown>
+
+function priorityColor(priority: string): string {
+  if (priority === 'P1') return 'bg-red-500/20 text-red-600'
+  if (priority === 'P2') return 'bg-orange-500/20 text-orange-600'
+  if (priority === 'P3') return 'bg-yellow-500/20 text-yellow-600'
+  if (priority === 'P4') return 'bg-blue-500/20 text-blue-600'
+  return 'bg-muted text-muted-foreground'
+}
+
+const STAGED_COLUMNS: ColumnDef<OrderRow>[] = [
+  { key: 'line', label: 'Line', sortable: true },
+  { key: 'ifNumber', label: 'IF #', sortable: true },
+  { key: 'poNumber', label: 'PO #', sortable: true },
+  {
+    key: 'priorityLevel',
+    label: 'Priority',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const order = row as unknown as Order
+      const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
+      if (isUrgent) {
+        return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">URGENT</span>
+      }
+      const priority = v ? `P${v}` : 'P-'
+      return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
+    },
+  },
+  {
+    key: 'daysUntilDue',
+    label: 'Days Until',
+    sortable: true,
+    render: (v) => {
+      const days = v as number | null
+      if (days === null) return '-'
+      if (days < 0) return <span className="text-red-500 font-bold">{days}</span>
+      if (days <= 3) return <span className="text-orange-500 font-semibold">{days}</span>
+      return String(days)
+    },
+  },
+  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
+  { key: 'tire', label: 'Tire', sortable: true, filterable: true },
+  { key: 'hub', label: 'Hub', sortable: true, filterable: true },
+  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
+]
 
 function filterOrders(orders: Order[], filter: FilterKey, search: string): Order[] {
   let result = orders
@@ -84,12 +134,18 @@ export default function StagedPage() {
     fetchData()
   }, [fetchData])
 
-  const filtered = filterOrders(orders, filter, search)
+  const filtered = filterOrders(orders, filter, search) as OrderRow[]
+
+  const table = useDataTable({
+    data: filtered,
+    columns: STAGED_COLUMNS,
+    storageKey: 'staged',
+  })
 
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Staged Orders</h1>
+        <h1 className="text-2xl font-bold">Ready to Ship</h1>
         <button
           onClick={() => fetchData(true)}
           disabled={refreshing}
@@ -138,29 +194,30 @@ export default function StagedPage() {
         <p className="text-center text-destructive py-10">{error}</p>
       )}
 
-      {/* Staged list */}
+      {/* Staged list with DataTable (table + card views) */}
       {!loading && !error && (
         <>
-          <p className="text-sm text-muted-foreground mb-3">
-            {filtered.length} staged order{filtered.length !== 1 ? 's' : ''}
-          </p>
-          <div className="space-y-3">
-            {filtered.map((order, i) => (
-              <OrderCard
-                key={`${order.ifNumber}-${i}`}
-                order={order}
-                index={i}
-                isExpanded={expandedOrderKey === getOrderKey(order)}
-                onToggle={() => toggleExpanded(order)}
-                statusOverride="Staged"
-              />
-            ))}
-            {filtered.length === 0 && (
-              <p className="text-center text-muted-foreground py-10">
-                No staged orders found
-              </p>
-            )}
-          </div>
+          <DataTable
+            table={table}
+            data={filtered}
+            noun="staged order"
+            exportFilename="staged-orders.csv"
+            getRowKey={(row) => getOrderKey(row as unknown as Order)}
+            expandedRowKey={expandedOrderKey}
+            onRowClick={(row) => toggleExpanded(row as unknown as Order)}
+            renderCard={(row, i) => {
+              const order = row as unknown as Order
+              return (
+                <OrderCard
+                  order={order}
+                  index={i}
+                  isExpanded={expandedOrderKey === getOrderKey(order)}
+                  onToggle={() => toggleExpanded(order)}
+                  statusOverride="Staged"
+                />
+              )
+            }}
+          />
         </>
       )}
       {/* Pallet Load Calculator */}
