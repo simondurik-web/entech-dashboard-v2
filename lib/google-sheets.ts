@@ -274,6 +274,13 @@ export interface InventoryItem {
   target: number
   moldType: string
   lastUpdate: string
+  itemType: string          // "Manufactured" | "Purchased" | "COM" | ""
+  isManufactured: boolean
+  projectionRate: number | null  // avg daily usage/production rate
+  usage7: number | null     // 7-day usage
+  usage30: number | null    // 30-day usage
+  daysToMin: number | null  // days until stock hits minimum
+  daysToZero: number | null // days until stock hits zero
 }
 
 // Fusion Export columns (GID 1805754553) — row 0 is header
@@ -296,6 +303,7 @@ const PROD_COLS = {
   productActive: 10,
   drawing1Url: 11,  // Column L - Drawing 1 URL
   drawing2Url: 12,  // Column M - Drawing 2 URL
+  makePurchasedCom: 13, // Column N - Make/Purchased/Com
 }
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -336,7 +344,32 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
       }
     }
 
-    items.push({ partNumber, product, inStock: inStock ?? 0, minimum, target, moldType, lastUpdate: '' })
+    // Parse Make/Purchased/Com
+    const makePurchasedRaw = cellValue(row, PROD_COLS.makePurchasedCom).toLowerCase().trim()
+    let itemType = ''
+    let isManufactured = false
+    if (makePurchasedRaw.includes('make') || makePurchasedRaw.includes('manufactured')) {
+      itemType = 'Manufactured'
+      isManufactured = true
+    } else if (makePurchasedRaw.includes('purchased')) {
+      itemType = 'Purchased'
+    } else if (makePurchasedRaw.includes('com')) {
+      itemType = 'COM'
+    }
+
+    const stock = inStock ?? 0
+    // Simple projection: estimate days to min/zero based on minimum as reference
+    const dailyUsage = minimum > 0 ? minimum / 30 : null // rough estimate
+    const daysToMin = dailyUsage && dailyUsage > 0 && stock > minimum ? Math.round((stock - minimum) / dailyUsage) : (stock <= minimum && minimum > 0 ? 0 : null)
+    const daysToZero = dailyUsage && dailyUsage > 0 ? Math.round(stock / dailyUsage) : null
+
+    items.push({
+      partNumber, product, inStock: stock, minimum, target, moldType, lastUpdate: '',
+      itemType, isManufactured,
+      projectionRate: dailyUsage,
+      usage7: null, usage30: null,
+      daysToMin, daysToZero,
+    })
   }
 
   return items

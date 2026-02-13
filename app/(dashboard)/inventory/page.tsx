@@ -5,17 +5,39 @@ import { RefreshCw } from 'lucide-react'
 import { InventoryCard } from '@/components/cards/InventoryCard'
 import type { InventoryItem } from '@/lib/google-sheets'
 
-const FILTERS = [
+const STOCK_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'low', label: 'Low Stock', emoji: '⚠️' },
   { key: 'production', label: 'Needs Production', emoji: '🔧' },
 ] as const
 
-type FilterKey = (typeof FILTERS)[number]['key']
+const TYPE_FILTERS = [
+  { key: 'manufactured', label: 'Manufactured', emoji: '🏭' },
+  { key: 'purchased', label: 'Purchased', emoji: '🛒' },
+  { key: 'com', label: 'COM', emoji: '📦' },
+] as const
 
-function filterItems(items: InventoryItem[], filter: FilterKey, search: string): InventoryItem[] {
+type StockFilterKey = (typeof STOCK_FILTERS)[number]['key']
+type TypeFilterKey = (typeof TYPE_FILTERS)[number]['key']
+
+function stockStatus(item: InventoryItem): 'ok' | 'low' | 'critical' {
+  if (item.minimum <= 0) return 'ok'
+  const pct = item.inStock / item.minimum
+  if (pct < 0.5) return 'critical'
+  if (pct < 1) return 'low'
+  return 'ok'
+}
+
+function filterItems(
+  items: InventoryItem[],
+  stockFilter: StockFilterKey,
+  typeFilters: Set<TypeFilterKey>,
+  search: string
+): InventoryItem[] {
   let result = items
-  switch (filter) {
+
+  // Stock filter
+  switch (stockFilter) {
     case 'low':
       result = result.filter((item) => item.minimum > 0 && item.inStock < item.minimum)
       break
@@ -23,6 +45,19 @@ function filterItems(items: InventoryItem[], filter: FilterKey, search: string):
       result = result.filter((item) => item.minimum > 0 && item.inStock < item.minimum * 0.5)
       break
   }
+
+  // Type filters (if any selected, only show those types)
+  if (typeFilters.size > 0) {
+    result = result.filter((item) => {
+      const t = (item.itemType || '').toLowerCase()
+      if (typeFilters.has('manufactured') && (t.includes('make') || t.includes('manufactured'))) return true
+      if (typeFilters.has('purchased') && t.includes('purchased')) return true
+      if (typeFilters.has('com') && t.includes('com')) return true
+      return false
+    })
+  }
+
+  // Search
   if (search.trim()) {
     const q = search.toLowerCase()
     result = result.filter(
@@ -34,21 +69,23 @@ function filterItems(items: InventoryItem[], filter: FilterKey, search: string):
   return result
 }
 
-function stockStatus(item: InventoryItem): 'ok' | 'low' | 'critical' {
-  if (item.minimum <= 0) return 'ok'
-  const pct = item.inStock / item.minimum
-  if (pct < 0.5) return 'critical'
-  if (pct < 1) return 'low'
-  return 'ok'
-}
-
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterKey>('all')
+  const [stockFilter, setStockFilter] = useState<StockFilterKey>('all')
+  const [typeFilters, setTypeFilters] = useState<Set<TypeFilterKey>>(new Set())
   const [search, setSearch] = useState('')
+
+  const toggleTypeFilter = (key: TypeFilterKey) => {
+    setTypeFilters((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -72,9 +109,8 @@ export default function InventoryPage() {
     fetchData()
   }, [fetchData])
 
-  const filtered = filterItems(items, filter, search)
+  const filtered = filterItems(items, stockFilter, typeFilters, search)
 
-  // Calculate stats from all items (not filtered)
   const totalItems = items.length
   const lowStock = items.filter((item) => stockStatus(item) === 'low').length
   const needsProduction = items.filter((item) => stockStatus(item) === 'critical').length
@@ -124,19 +160,36 @@ export default function InventoryPage() {
         className="w-full p-3 mb-4 rounded-lg bg-muted border border-border"
       />
 
-      {/* Filter chips */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {FILTERS.map((f) => (
+      {/* Stock filter chips */}
+      <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+        {STOCK_FILTERS.map((f) => (
           <button
             key={f.key}
-            onClick={() => setFilter(f.key)}
+            onClick={() => setStockFilter(f.key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              filter === f.key
+              stockFilter === f.key
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted hover:bg-muted/80'
             }`}
           >
             {'emoji' in f ? `${f.emoji} ` : ''}{f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Type filter chips (toggleable) */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {TYPE_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => toggleTypeFilter(f.key)}
+            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors border ${
+              typeFilters.has(f.key)
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted hover:bg-muted/80 border-transparent'
+            }`}
+          >
+            {f.emoji} {f.label}
           </button>
         ))}
       </div>
