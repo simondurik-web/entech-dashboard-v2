@@ -290,8 +290,8 @@ export default function AllDataPage() {
         </div>
       )}
 
-      {/* Mobile: show as cards */}
-      <div className="md:hidden mt-4">
+      {/* Mobile hint (iPhone only) */}
+      <div className="sm:hidden mt-4">
         <p className="text-xs text-muted-foreground text-center">
           💡 Scroll horizontally on the table above, or export CSV for full view
         </p>

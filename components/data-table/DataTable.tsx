@@ -125,8 +125,8 @@ export function DataTable<T extends Record<string, unknown>>({
         {hasActiveFilters && ` (filtered from ${data.length})`}
       </p>
 
-      {/* Desktop table (md+) */}
-      <div className="hidden md:block rounded-md border overflow-auto">
+      {/* Desktop table (sm+ = iPad & Desktop) */}
+      <div className="hidden sm:block rounded-md border overflow-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -224,8 +224,8 @@ export function DataTable<T extends Record<string, unknown>>({
         </table>
       </div>
 
-      {/* Mobile cards (<md) */}
-      <div className="md:hidden space-y-3">
+      {/* Mobile cards (iPhone only, <sm/640px) */}
+      <div className="sm:hidden space-y-3">
         {processedData.map((row, i) =>
           renderCard ? (
             renderCard(row, i)
