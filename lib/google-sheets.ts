@@ -138,9 +138,9 @@ export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
     fusionInventory: cellNumber(row, COLS.fusionInventory),
     hubMold: cellValue(row, COLS.hubMold),
     tire: cellValue(row, COLS.tire),
-    hasTire: cellValue(row, COLS.hasTire).toLowerCase() === 'true' || cellValue(row, COLS.hasTire) === '1',
+    hasTire: ['true', '1', 'yes'].includes(cellValue(row, COLS.hasTire).toLowerCase()),
     hub: cellValue(row, COLS.hub),
-    hasHub: cellValue(row, COLS.hasHub).toLowerCase() === 'true' || cellValue(row, COLS.hasHub) === '1',
+    hasHub: ['true', '1', 'yes'].includes(cellValue(row, COLS.hasHub).toLowerCase()),
     bearings: cellValue(row, COLS.bearings),
     requestedDate: cellDate(row, COLS.requestedDate),
     daysUntilDue: cellNumber(row, COLS.daysUntilDue) || null,
@@ -165,9 +165,71 @@ export async function fetchSheetData(gid: string): Promise<{ cols: string[]; row
 }
 
 export async function fetchOrders(): Promise<Order[]> {
-  const { rows } = await fetchSheetData(GIDS.orders)
-  return rows
-    .map(parseOrder)
+  // Use CSV export instead of gviz — gviz silently truncates columns beyond Z (26)
+  // CSV returns ALL columns reliably
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GIDS.orders}`
+  const res = await fetch(url, { next: { revalidate: 60 } })
+  const csvText = await res.text()
+  const rows = parseCSVRows(csvText)
+  
+  if (rows.length < 2) return []
+  
+  const headers = rows[0]
+  const dataRows = rows.slice(1)
+  
+  // Build header index map for reliable column lookup
+  const headerIndex = new Map<string, number>()
+  headers.forEach((h, i) => headerIndex.set(h.trim(), i))
+  
+  function col(row: string[], index: number): string {
+    return (index >= 0 && index < row.length) ? row[index].trim() : ''
+  }
+  
+  function colNum(row: string[], index: number): number {
+    const v = col(row, index)
+    return Number(v.replace(/[,$]/g, '')) || 0
+  }
+  
+  function colDate(row: string[], index: number): string {
+    return col(row, index)
+  }
+  
+  return dataRows
+    .map((row): Order => {
+      const internalStatus = col(row, COLS.internalStatus)
+      const ifStatus = col(row, COLS.ifStatus)
+      const haveTireVal = col(row, COLS.hasTire).toLowerCase()
+      const haveHubVal = col(row, COLS.hasHub).toLowerCase()
+      
+      return {
+        line: col(row, COLS.line),
+        category: col(row, COLS.category),
+        dateOfRequest: colDate(row, COLS.dateOfRequest),
+        priorityLevel: colNum(row, COLS.priorityLevel),
+        urgentOverride: col(row, COLS.urgentOverride).toLowerCase() === 'true',
+        ifNumber: col(row, COLS.ifNumber),
+        ifStatus,
+        internalStatus,
+        poNumber: col(row, COLS.poNumber),
+        customer: col(row, COLS.customer),
+        partNumber: col(row, COLS.partNumber),
+        orderQty: colNum(row, COLS.orderQty),
+        packaging: col(row, COLS.packaging),
+        partsPerPackage: colNum(row, COLS.partsPerPackage),
+        numPackages: colNum(row, COLS.numPackages),
+        fusionInventory: colNum(row, COLS.fusionInventory),
+        hubMold: col(row, COLS.hubMold),
+        tire: col(row, COLS.tire),
+        hasTire: ['true', '1', 'yes'].includes(haveTireVal),
+        hub: col(row, COLS.hub),
+        hasHub: ['true', '1', 'yes'].includes(haveHubVal),
+        bearings: col(row, COLS.bearings),
+        requestedDate: colDate(row, COLS.requestedDate),
+        daysUntilDue: colNum(row, COLS.daysUntilDue) || null,
+        shippedDate: colDate(row, COLS.shippedDate),
+        assignedTo: col(row, COLS.assignedTo),
+      }
+    })
     .filter((o) => o.line && o.customer)
     // Filter out cancelled orders by default
     .filter((o) => {
