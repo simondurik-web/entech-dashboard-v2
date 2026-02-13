@@ -156,3 +156,28 @@
 - `inventory/page.tsx` — Uses InventoryCard (replaces inline Card, removed unused `statusStyle`)
 
 ### Build: ✅ Passes
+
+---
+
+## Phase 3: Pallet Load Calculator
+
+### New Files
+- `components/PalletLoadCalculator.tsx` — Full pallet load calculator component (self-contained, ~400 lines)
+
+### Modified Files
+- `app/(dashboard)/staged/page.tsx` — Added collapsible PLC section below orders table
+
+### Features Implemented
+1. **Trailer selection** — 53' / 48' toggle buttons
+2. **Max payload weight** — Configurable (default 45,000 lbs)
+3. **Pallet types** — Add/remove with label, color, width/length/qty/weight, orientation (auto/widthwise/lengthwise), double-stack toggle
+4. **Color-coded pallets** — 8 colors with click-to-cycle color picker
+5. **Drag-to-reorder** — HTML drag and drop API for loading order
+6. **SVG trailer diagram** — Top-down view with scaled pallets, dimension arrows, DOOR/FRONT labels, overflow indicator
+7. **Stats panel** — Total pallets, total weight (with progress bar), space used %, load status (OK/OVERWEIGHT/WON'T FIT)
+8. **Weight progress bar** — Green/amber/red color coding
+9. **Link Orders feature** — Toggle per pallet type to link staged orders, searchable checkbox list, auto-fill from order data, cross-pallet conflict detection
+10. **Bilingual** — Full EN/ES translations
+11. **Packing algorithm** — Greedy row-based placement matching V1 behavior
+
+### Build: ✅ Passes

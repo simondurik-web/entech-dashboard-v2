@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { OrderCard } from '@/components/cards/OrderCard'
+import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -49,6 +50,7 @@ export default function StagedPage() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [search, setSearch] = useState('')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+  const [showPLC, setShowPLC] = useState(false)
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -160,6 +162,22 @@ export default function StagedPage() {
             )}
           </div>
         </>
+      )}
+      {/* Pallet Load Calculator */}
+      {!loading && !error && (
+        <div className="mt-6">
+          <button
+            onClick={() => setShowPLC((v) => !v)}
+            className="w-full py-3 rounded-lg bg-muted hover:bg-muted/80 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            📦 Pallet Load Calculator {showPLC ? '▲' : '▼'}
+          </button>
+          {showPLC && (
+            <div className="mt-3">
+              <PalletLoadCalculator stagedOrders={orders} />
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
