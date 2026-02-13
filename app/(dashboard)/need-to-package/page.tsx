@@ -19,34 +19,115 @@ type FilterKey = (typeof FILTERS)[number]['key']
 interface PackageOrder extends Order {
   availableStock: number
   canPackage: boolean
+  hasTire: boolean
+  hasHub: boolean
 }
 
 type PackageRow = PackageOrder & Record<string, unknown>
 
+function PriorityBadge({ level, urgent }: { level: number; urgent: boolean }) {
+  if (urgent) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-600 text-white">URGENT</span>
+  if (level >= 4) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-orange-500 text-white">P{level}</span>
+  if (level >= 2) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500 text-black">P{level}</span>
+  return <span className="px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">P{level}</span>
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toLowerCase()
+  if (s.includes('need') || s.includes('pending')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500 text-black">NEED TO MAKE</span>
+  if (s.includes('making') || s.includes('wip') || s.includes('progress')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500 text-white">MAKING</span>
+  if (s.includes('staged') || s.includes('ready')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-600 text-white">READY</span>
+  return <span className="px-2 py-0.5 rounded text-xs bg-muted">{status}</span>
+}
+
+function InventoryCell({ value }: { value: string }) {
+  if (!value || value === '-') return <span className="text-muted-foreground">-</span>
+  return <span className="text-green-500 font-semibold">{value}</span>
+}
+
 const COLUMNS: ColumnDef<PackageRow>[] = [
-  { key: 'line', label: 'Line', sortable: true },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part Number', sortable: true, filterable: true },
   { key: 'category', label: 'Category', sortable: true, filterable: true },
-  { key: 'orderQty', label: 'Qty Needed', sortable: true, render: (v) => (v as number).toLocaleString() },
   {
-    key: 'availableStock',
-    label: 'In Stock',
+    key: 'dateOfRequest',
+    label: 'Due Date',
     sortable: true,
     render: (v) => {
-      const stock = v as number
-      return <span className={stock > 0 ? 'text-green-600 font-semibold' : 'text-red-500'}>{stock.toLocaleString()}</span>
+      const s = String(v || '-')
+      return s
     },
   },
   {
-    key: 'canPackage',
-    label: 'Ready',
+    key: 'priorityLevel',
+    label: 'Priority',
     sortable: true,
-    render: (v) => (v ? <span className="text-green-600">✓ Yes</span> : <span className="text-red-500">✗ No</span>),
+    render: (v, row) => <PriorityBadge level={v as number} urgent={(row as unknown as PackageOrder).urgentOverride} />,
+  },
+  { key: 'line', label: 'Line', sortable: true },
+  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+  { key: 'ifNumber', label: 'IF #', sortable: true },
+  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  {
+    key: 'numPackages',
+    label: '# Packages',
+    sortable: true,
+    render: (v) => { const n = v as number; return n > 0 ? Math.ceil(n).toString() : '-' },
+  },
+  { key: 'packaging', label: 'Packaging', sortable: true, filterable: true },
+  {
+    key: 'partsPerPackage',
+    label: 'Part/Package',
+    sortable: true,
+    render: (v) => { const n = v as number; return n > 0 ? n.toLocaleString() : '-' },
+  },
+  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
+  {
+    key: 'fusionInventory',
+    label: 'Fusion Inventory',
+    sortable: true,
+    render: (v) => {
+      const n = v as number
+      return <span className={n > 0 ? 'text-green-500' : ''}>{n > 0 ? n.toLocaleString() : '0'}</span>
+    },
+  },
+  {
+    key: 'tire',
+    label: 'Tire',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const tire = String(v || '')
+      if (!tire) return <span className="text-muted-foreground">-</span>
+      const order = row as unknown as PackageOrder
+      const hasTire = order.hasTire
+      return <span className={hasTire ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{tire}</span>
+    },
+  },
+  {
+    key: 'hub',
+    label: 'Hub',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const hub = String(v || '')
+      if (!hub) return <span className="text-muted-foreground">-</span>
+      const order = row as unknown as PackageOrder
+      const hasHub = order.hasHub
+      return <span className={hasHub ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{hub}</span>
+    },
+  },
+  { key: 'hubMold', label: 'Hub Mold', sortable: true, filterable: true },
+  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
+  { key: 'assignedTo', label: 'Assigned To', sortable: true, filterable: true },
+  {
+    key: 'internalStatus',
+    label: 'Status',
+    sortable: true,
+    filterable: true,
+    render: (v) => <StatusBadge status={String(v || '')} />,
   },
   {
     key: 'daysUntilDue',
-    label: 'Due',
+    label: 'Days Until',
     sortable: true,
     render: (v) => {
       const days = v as number | null
@@ -56,7 +137,6 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
       return `${days}d`
     },
   },
-  { key: 'ifNumber', label: 'IF#', sortable: true },
 ]
 
 function filterByCategory(orders: PackageOrder[], filter: FilterKey): PackageOrder[] {

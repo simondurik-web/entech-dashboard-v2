@@ -30,8 +30,14 @@ export interface Order {
   partNumber: string
   orderQty: number
   packaging: string
+  partsPerPackage: number
+  numPackages: number
+  fusionInventory: number
+  hubMold: string
   tire: string
+  hasTire: boolean
   hub: string
+  hasHub: boolean
   bearings: string
   requestedDate: string
   daysUntilDue: number | null
@@ -53,12 +59,17 @@ const COLS = {
   poNumber: 8,
   customer: 9,
   partNumber: 11,
+  fusionInventory: 13, // Column N: "Fusion inventory"
   orderQty: 15,
   packaging: 16,
+  partsPerPackage: 17, // Column R: "Parts per package"
+  numPackages: 18,     // Column S: "Number of packages"
   requestedDate: 22,
   daysUntilDue: 23,
   tire: 26,        // Column AA: "Tire" (part number like "308")
+  hasTire: 27,     // Column AB: "Have Tire?" (boolean)
   hub: 30,         // Column AE: "Hub" (part number like "H19.170.22100B")
+  hasHub: 31,      // Column AF: "Have Hub?" (boolean)
   hubMold: 35,     // Column AJ: "Hub Mold"
   bearings: 36,    // Column AK: "Bearings"
   shippedDate: 45, // Column AT: "Shipped Date"
@@ -122,8 +133,14 @@ export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
     partNumber: cellValue(row, COLS.partNumber),
     orderQty: cellNumber(row, COLS.orderQty),
     packaging: cellValue(row, COLS.packaging),
+    partsPerPackage: cellNumber(row, COLS.partsPerPackage),
+    numPackages: cellNumber(row, COLS.numPackages),
+    fusionInventory: cellNumber(row, COLS.fusionInventory),
+    hubMold: cellValue(row, COLS.hubMold),
     tire: cellValue(row, COLS.tire),
+    hasTire: cellValue(row, COLS.hasTire).toLowerCase() === 'true' || cellValue(row, COLS.hasTire) === '1',
     hub: cellValue(row, COLS.hub),
+    hasHub: cellValue(row, COLS.hasHub).toLowerCase() === 'true' || cellValue(row, COLS.hasHub) === '1',
     bearings: cellValue(row, COLS.bearings),
     requestedDate: cellDate(row, COLS.requestedDate),
     daysUntilDue: cellNumber(row, COLS.daysUntilDue) || null,
