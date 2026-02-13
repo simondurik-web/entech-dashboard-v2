@@ -498,6 +498,9 @@ export interface ShippingRecord {
   bol: string
   palletCount: number
   photos: string[]
+  shipmentPhotos: string[]
+  paperworkPhotos: string[]
+  closeUpPhotos: string[]
 }
 
 export async function fetchShippingRecords(): Promise<ShippingRecord[]> {
@@ -517,6 +520,17 @@ export async function fetchShippingRecords(): Promise<ShippingRecord[]> {
       const photoUrl = findColumnValue(row, cols, [`photo${i === 1 ? '' : ' ' + i}`, `foto${i === 1 ? '' : ' ' + i}`])
       if (photoUrl) photos.push(photoUrl)
     }
+
+    // Parse category-specific photo columns (V1: Shipment Pictures, Paperwork Pictures, Close Up Pictures)
+    const shipmentPhotos: string[] = []
+    const paperworkPhotos: string[] = []
+    const closeUpPhotos: string[] = []
+    const shipmentRaw = findColumnValue(row, cols, ['shipment pictures', 'fotos de envio'])
+    if (shipmentRaw) shipmentPhotos.push(shipmentRaw)
+    const paperworkRaw = findColumnValue(row, cols, ['paperwork pictures', 'fotos de documentos'])
+    if (paperworkRaw) paperworkPhotos.push(paperworkRaw)
+    const closeUpRaw = findColumnValue(row, cols, ['close up pictures', 'fotos de cerca'])
+    if (closeUpRaw) closeUpPhotos.push(closeUpRaw)
     
     records.push({
       timestamp,
@@ -528,6 +542,9 @@ export async function fetchShippingRecords(): Promise<ShippingRecord[]> {
       bol: findColumnValue(row, cols, ['bol', 'bill of lading']),
       palletCount: parseInt(findColumnValue(row, cols, ['pallet count', 'cantidad de paletas'])) || 0,
       photos,
+      shipmentPhotos,
+      paperworkPhotos,
+      closeUpPhotos,
     })
   }
   
@@ -549,6 +566,7 @@ export interface StagedRecord {
   quantity: number
   location: string
   photos: string[]
+  fusionPhotos: string[]
 }
 
 export async function fetchStagedRecords(): Promise<StagedRecord[]> {
@@ -568,6 +586,11 @@ export async function fetchStagedRecords(): Promise<StagedRecord[]> {
       if (photoUrl) photos.push(photoUrl)
     }
     
+    // Parse fusion photos column (V1 compat: "Fusion Pictures")
+    const fusionPhotos: string[] = []
+    const fusionRaw = findColumnValue(row, cols, ['fusion pictures', 'fotos de fusion'])
+    if (fusionRaw) fusionPhotos.push(fusionRaw)
+
     records.push({
       timestamp,
       ifNumber,
@@ -577,6 +600,7 @@ export async function fetchStagedRecords(): Promise<StagedRecord[]> {
       quantity: parseInt(findColumnValue(row, cols, ['quantity', 'cantidad'])) || 0,
       location: findColumnValue(row, cols, ['location', 'ubicacion']),
       photos,
+      fusionPhotos,
     })
   }
   

@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
+import { OrderCard } from '@/components/cards/OrderCard'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order, InventoryItem } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
@@ -198,50 +198,24 @@ export default function NeedToPackagePage() {
           data={filtered}
           noun="order"
           exportFilename="need-to-package.csv"
-          cardClassName={(row) => `border-l-4 ${borderColor(row as unknown as PackageOrder)}`}
           renderCard={(row, i) => {
             const order = row as unknown as PackageOrder
             return (
-              <Card key={`${order.ifNumber}-${i}`} className={`border-l-4 ${borderColor(order)}`}>
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{order.customer}</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        Line {order.line} &middot; {order.partNumber}
-                      </p>
-                    </div>
-                    <span className={`px-2 py-1 text-xs rounded ${
-                      order.canPackage ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                    }`}>
-                      {order.canPackage ? '✓ Ready' : '✗ Missing'}
-                    </span>
+              <OrderCard
+                order={order}
+                index={i}
+                isExpanded={false}
+                onToggle={() => {}}
+                statusOverride={order.canPackage ? '✓ Ready' : '✗ Missing'}
+                extraFields={
+                  <div>
+                    <span className="text-muted-foreground">Stock</span>
+                    <p className={`font-semibold ${order.availableStock >= order.orderQty ? 'text-green-600' : 'text-red-500'}`}>
+                      {order.availableStock.toLocaleString()}
+                    </p>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Qty Needed</span>
-                      <p className="font-semibold">{order.orderQty.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">In Stock</span>
-                      <p className={`font-semibold ${order.availableStock >= order.orderQty ? 'text-green-600' : 'text-red-500'}`}>
-                        {order.availableStock.toLocaleString()}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Due</span>
-                      <p className={`font-semibold ${
-                        order.daysUntilDue !== null && order.daysUntilDue < 0 ? 'text-red-500' :
-                        order.daysUntilDue !== null && order.daysUntilDue <= 3 ? 'text-orange-500' : ''
-                      }`}>
-                        {order.daysUntilDue !== null ? `${order.daysUntilDue}d` : '-'}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                }
+              />
             )
           }}
         />

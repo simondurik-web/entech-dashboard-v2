@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { InventoryCard } from '@/components/cards/InventoryCard'
 import type { InventoryItem } from '@/lib/google-sheets'
 
 const FILTERS = [
@@ -40,17 +40,6 @@ function stockStatus(item: InventoryItem): 'ok' | 'low' | 'critical' {
   if (pct < 0.5) return 'critical'
   if (pct < 1) return 'low'
   return 'ok'
-}
-
-function statusStyle(status: 'ok' | 'low' | 'critical') {
-  switch (status) {
-    case 'critical':
-      return { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-600', label: 'CRITICAL', bar: 'bg-red-500', text: 'text-red-500' }
-    case 'low':
-      return { border: 'border-l-yellow-500', badge: 'bg-yellow-500/20 text-yellow-600', label: 'LOW', bar: 'bg-yellow-500', text: 'text-yellow-500' }
-    default:
-      return { border: 'border-l-green-500', badge: 'bg-green-500/20 text-green-600', label: 'OK', bar: 'bg-green-500', text: 'text-green-500' }
-  }
 }
 
 export default function InventoryPage() {
@@ -171,58 +160,9 @@ export default function InventoryPage() {
             {filtered.length} item{filtered.length !== 1 ? 's' : ''}
           </p>
           <div className="space-y-3">
-            {filtered.map((item, i) => {
-              const status = stockStatus(item)
-              const style = statusStyle(status)
-              const pct = item.minimum > 0 ? Math.round((item.inStock / item.minimum) * 100) : 100
-
-              return (
-                <Card key={`${item.partNumber}-${i}`} className={`border-l-4 ${style.border}`}>
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">{item.partNumber}</CardTitle>
-                        <p className="text-sm text-muted-foreground">{item.product}</p>
-                      </div>
-                      <span className={`px-2 py-1 text-xs rounded ${style.badge}`}>
-                        {style.label}
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">In Stock</span>
-                        <p className={`font-semibold ${style.text}`}>
-                          {item.inStock.toLocaleString()}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Minimum</span>
-                        <p className="font-semibold">{item.minimum.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Target</span>
-                        <p className="font-semibold">{item.target > 0 ? item.target.toLocaleString() : '-'}</p>
-                      </div>
-                    </div>
-                    {item.minimum > 0 && (
-                      <div className="mt-2">
-                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${style.bar}`}
-                            style={{ width: `${Math.min(pct, 100)}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {pct}% of minimum
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {filtered.map((item, i) => (
+              <InventoryCard key={`${item.partNumber}-${i}`} item={item} index={i} />
+            ))}
             {filtered.length === 0 && (
               <p className="text-center text-muted-foreground py-10">
                 No inventory items found

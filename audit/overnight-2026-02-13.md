@@ -62,3 +62,97 @@
 - `components/layout/Sidebar.tsx` — Added "Material Requirements" nav item after BOM Explorer (with Package icon, as sub-item)
 
 ### Build: ✅ Passes
+
+---
+
+## Phase 2: Inventory Forecast Columns + Manufactured/Purchased/COM Filters
+
+### Changes:
+
+#### `lib/google-sheets.ts`
+- Added `makeOrBuy: 13` to `PROD_COLS` (column N — Make/Purchased/Com)
+- Extended `InventoryItem` interface with: `itemType`, `projectionRate`, `usage7`, `usage30`, `daysToMin`, `daysToZero`, `isManufactured`
+- Added `normalizeItemType()` helper to map raw sheet values to "Manufactured" / "Purchased" / "COM"
+- Updated `fetchInventory()` to:
+  - Fetch inventory history in parallel for usage computation
+  - Compute 7-day and 30-day usage from historical stock snapshots
+  - Calculate daily projection rate, days to min, days to zero
+  - Read item type from Production Data Totals column N
+
+#### `app/(dashboard)/inventory/page.tsx`
+- Added type filter buttons (🏭 Manufactured, 🛒 Purchased, 📦 COM) — toggle-able, multi-select
+- Each card now shows:
+  - Item type badge with emoji and color coding
+  - Daily usage rate (or "Prod Rate" for manufactured items) with trend indicator
+  - Days to Min (or "Days to Target" for manufactured) with color coding (red <7d, yellow <30d, green >30d)
+  - Days to Zero (non-manufactured items only)
+- Trend indicator compares 7-day vs 30-day usage (normalized):
+  - Manufactured: ↑ Faster (green) / ↓ Slower (red) / → Stable
+  - Non-manufactured: ↑ Up (red) / ↓ Down (green) / → Stable
+
+### Build: ⚠️ Pre-existing error in orders/page.tsx (Cannot find name 'OrderCard') — not from these changes. Inventory page compiles cleanly.
+
+---
+
+## Phase 2: Order Drilldown Photo Grid Enhancement
+
+### Changes Made
+
+#### `components/OrderDetail.tsx` — Full rewrite
+- Added **4-column photo drilldown grid** matching V1 layout (responsive: 1→2→4 cols)
+- **Box 1 — Pallet Details (Blue):** Shows pallet photos with PhotoGrid component + weight/dimensions info
+- **Box 2 — Fusion Pictures (Teal):** Shows fusion photos from staged records
+- **Box 3 — Shipment & Paperwork (Green):** Shows shipment + paperwork photos separately
+- **Box 4 — Close-Up Pictures (Purple):** Shows close-up photos from shipping records
+- Each box has colored background with top border accent (matching V1 style)
+- Drawings section preserved with lightbox support
+- Shipping details section for shipped orders
+- Pallet records detail section with per-pallet breakdown
+- Now fetches staged records API for fusion photos
+
+#### `lib/google-sheets.ts` — Data layer enhancements
+- `ShippingRecord` interface: Added `shipmentPhotos`, `paperworkPhotos`, `closeUpPhotos` fields
+- `StagedRecord` interface: Added `fusionPhotos` field
+- `fetchShippingRecords()`: Parses "Shipment Pictures", "Paperwork Pictures", "Close Up Pictures" columns
+- `fetchStagedRecords()`: Parses "Fusion Pictures" column
+- All new columns match V1 Google Sheets column names for compatibility
+
+#### `app/(dashboard)/orders/page.tsx` — Bug fix
+- Added missing `import { OrderCard }` (pre-existing build error)
+
+#### `app/(dashboard)/shipped/page.tsx` — Bug fix
+- Added missing `import { OrderDetail }` (pre-existing build error)
+
+### Pages with drilldown support (all use OrderDetail component):
+- ✅ Orders page — has expandable rows + mobile OrderCard with OrderDetail
+- ✅ Shipped page — has expandable rows + mobile OrderCard with OrderDetail
+- ✅ Staged page — has OrderDetail in drilldown
+- Need to Make / Need to Package — no drilldown (different data model, not order-based)
+
+### Build: ✅ Passes cleanly
+
+## Mobile Card Components with Category Color Coding
+
+### New Components Created:
+- **`components/cards/OrderCard.tsx`** — Reusable mobile order card with:
+  - Category-based left border + background tint (Roll Tech=blue, Molding=yellow, Snap Pad=purple)
+  - Category badge, priority badge (URGENT/P1-P5), status badge with color coding
+  - Days Until Due coloring (red if negative, orange if <3)
+  - 3-column grid: Qty, Priority, Due, IF#, PO#, Line
+  - Click-to-expand with OrderDetail drilldown
+  - Props: `statusOverride`, `showShipDate`, `extraFields` for page-specific customization
+
+- **`components/cards/InventoryCard.tsx`** — Reusable mobile inventory card with:
+  - Stock status left border (green=OK, yellow=LOW, red=CRITICAL)
+  - Part number + product name, status badge
+  - In Stock / Minimum / Target grid
+  - Progress bar showing % of minimum
+
+### Pages Updated to Use Reusable Cards:
+- `orders/page.tsx` — Uses OrderCard (replaces 50+ line inline card)
+- `staged/page.tsx` — Uses OrderCard with `statusOverride="Staged"` (replaces inline Card)
+- `need-to-package/page.tsx` — Uses OrderCard with stock `extraFields`
+- `shipped/page.tsx` — Uses OrderCard with `showShipDate` + `statusOverride="Shipped"`
+- `inventory/page.tsx` — Uses InventoryCard (replaces inline Card, removed unused `statusStyle`)
+
+### Build: ✅ Passes

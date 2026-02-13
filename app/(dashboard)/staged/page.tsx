@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { OrderDetail } from '@/components/OrderDetail'
+import { OrderCard } from '@/components/cards/OrderCard'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -144,60 +143,16 @@ export default function StagedPage() {
             {filtered.length} staged order{filtered.length !== 1 ? 's' : ''}
           </p>
           <div className="space-y-3">
-            {filtered.map((order, i) => {
-              const isExpanded = expandedOrderKey === getOrderKey(order)
-              return (
-                <Card 
-                  key={`${order.ifNumber}-${i}`} 
-                  className={`border-l-4 border-l-emerald-500 cursor-pointer transition-colors ${isExpanded ? 'bg-muted/20' : ''}`}
-                  onClick={() => toggleExpanded(order)}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">{order.customer}</CardTitle>
-                        <p className="text-sm text-muted-foreground">
-                          Line {order.line} &middot; {order.partNumber}
-                        </p>
-                      </div>
-                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-600 text-xs rounded">
-                        STAGED
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Qty</span>
-                        <p className="font-semibold">{order.orderQty.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">IF #</span>
-                        <p className="font-semibold text-xs">{order.ifNumber || '-'}</p>
-                      </div>
-                    </div>
-                    {/* Expandable content */}
-                    <div
-                      className={`grid transition-all duration-300 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
-                    >
-                      <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                        {isExpanded && (
-                          <OrderDetail
-                            ifNumber={order.ifNumber}
-                            line={order.line}
-                            isShipped={false}
-                            partNumber={order.partNumber}
-                            tirePartNum={order.tire}
-                            hubPartNum={order.hub}
-                            onClose={() => setExpandedOrderKey(null)}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {filtered.map((order, i) => (
+              <OrderCard
+                key={`${order.ifNumber}-${i}`}
+                order={order}
+                index={i}
+                isExpanded={expandedOrderKey === getOrderKey(order)}
+                onToggle={() => toggleExpanded(order)}
+                statusOverride="Staged"
+              />
+            ))}
             {filtered.length === 0 && (
               <p className="text-center text-muted-foreground py-10">
                 No staged orders found
