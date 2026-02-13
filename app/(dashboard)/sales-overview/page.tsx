@@ -1,5 +1,7 @@
 'use client'
 
+import SalesPasswordGate from '@/components/SalesPasswordGate'
+
 import { useEffect, useState, useMemo } from 'react'
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, 
@@ -149,6 +151,7 @@ export default function SalesOverviewPage() {
   const { summary } = data
 
   return (
+    <SalesPasswordGate>
     <div className="p-4 md:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Sales & P/L Overview</h1>
@@ -251,5 +254,6 @@ export default function SalesOverviewPage() {
         </div>
       </div>
     </div>
+    </SalesPasswordGate>
   )
 }

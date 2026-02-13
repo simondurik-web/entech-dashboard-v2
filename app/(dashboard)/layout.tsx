@@ -3,7 +3,7 @@
 import { Sidebar } from "@/components/layout/Sidebar"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { PanelLeft } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 export default function DashboardLayout({
   children,
@@ -11,6 +11,21 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [zoomLevel, setZoomLevel] = useState(1)
+
+  useEffect(() => {
+    const stored = localStorage.getItem("dashboard-zoom")
+    if (stored) {
+      const val = parseFloat(stored)
+      if (!isNaN(val)) setZoomLevel(val)
+    }
+    const handler = (e: Event) => {
+      const zoom = (e as CustomEvent).detail?.zoom
+      if (typeof zoom === "number") setZoomLevel(zoom)
+    }
+    window.addEventListener("zoom-changed", handler)
+    return () => window.removeEventListener("zoom-changed", handler)
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -35,7 +50,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Main content - pad bottom on mobile for nav bar */}
-        <main className="pb-20 md:pb-0">{children}</main>
+        <main className="pb-20 md:pb-0" style={{ zoom: zoomLevel }}>{children}</main>
       </div>
 
       {/* Mobile bottom nav */}

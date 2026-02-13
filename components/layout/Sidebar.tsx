@@ -30,6 +30,7 @@ import {
   Wrench,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
+import { ZoomControls } from "./ZoomControls"
 
 type NavItem = {
   label: string
@@ -51,6 +52,7 @@ const productionItems: NavItem[] = [
   { label: "Shipping Records", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { label: "Staged Records", href: "/staged-records", icon: <FileText className="size-4" /> },
   { label: "BOM Explorer", href: "/bom", icon: <Layers className="size-4" /> },
+  { label: "Material Requirements", href: "/material-requirements", icon: <Package className="size-4" />, sub: true },
   { label: "FP Reference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
   { label: "Customer Reference", href: "/customer-reference", icon: <Users className="size-4" /> },
   { label: "Quotes Registry", href: "/quotes", icon: <DollarSign className="size-4" /> },
@@ -140,6 +142,9 @@ export function Sidebar({
             </button>
           )}
         </div>
+
+        {/* Zoom controls - desktop only */}
+        <ZoomControls />
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4">

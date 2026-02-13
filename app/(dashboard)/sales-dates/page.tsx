@@ -1,5 +1,7 @@
 'use client'
 
+import SalesPasswordGate from '@/components/SalesPasswordGate'
+
 import { useEffect, useState, useMemo } from 'react'
 import { ArrowUpDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
@@ -178,6 +180,7 @@ export default function SalesDatesPage() {
   }
 
   return (
+    <SalesPasswordGate>
     <div className="p-4 md:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Sales by Date</h1>
@@ -259,5 +262,6 @@ export default function SalesDatesPage() {
         </div>
       </div>
     </div>
+    </SalesPasswordGate>
   )
 }
