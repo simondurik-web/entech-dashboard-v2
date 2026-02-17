@@ -72,15 +72,28 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 - API routes proxy Google Sheets to avoid CORS
 - Auto-refresh at component level, not page level
 
-## Next Steps (Phase 4+)
+## Next Steps — ACTIVE (Supabase Migration)
 
-1. Add Supabase for persistent storage
-2. Implement Google OAuth authentication
-3. Add write capabilities (replace Google Forms)
-4. Performance optimization (caching, SSG where possible)
+**Full plan:** `SUPABASE-MIGRATION-PLAN.md` (read this first!)
+
+**Priority:**
+1. Install @supabase/supabase-js, create lib/supabase.ts + lib/supabase-data.ts
+2. Switch API routes from Google Sheets to Supabase (orders, inventory, production-make first)
+3. Add Supabase env vars to .env.local and Vercel
+4. Fix page issues section by section (Simon will review each)
+5. Add write features (urgent toggle, assign worker, status updates)
+
+**Supabase is already set up:**
+- Tables: dashboard_orders (2698 rows), inventory (999), production_totals (1077)
+- Syncing every 5 min from Google Sheets via cron
+- Sync script: ~/clawd/projects/molding/db-migration/sync_sheets_to_db.py
+- Anon key reads work, RLS public read policies set
+
+**Simon's directive:** Move fast. This becomes the primary dashboard. HTML dashboard frozen (no new features). All new features go here. Eventually add write-back to stop using spreadsheet for edits.
 
 ## Recent Activity
 
+2026-02-17: Supabase migration plan created. DB tables already syncing. Ready to start switching API routes.
 2026-02-08: Created CONTEXT.md (was missing)
 2026-02-07 20:51: Phase 3 complete — all 16 pages with auto-refresh + lightbox
 2026-02-07 19:55: Updated HANDOFF.md with resume prompt
@@ -88,4 +101,4 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 
 ---
 
-*Last updated: 2026-02-08*
+*Last updated: 2026-02-17*
