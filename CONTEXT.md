@@ -102,3 +102,11 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 ---
 
 *Last updated: 2026-02-17*
+
+## Recent Activity
+
+2026-02-17: Switched 6 API routes to Supabase with Sheets fallback (sheets, inventory, production-make, all-data, sales, drawings)
+2026-02-17: Created lib/supabase.ts + lib/supabase-data.ts (same TS types as Sheets layer)
+2026-02-17: Simon added Supabase env vars to Vercel — pending deployment verification
+2026-02-17: Remaining routes still on Sheets: pallet-records, staged-records, shipping-records, BOM×3, inventory-history, generic-sheet
+

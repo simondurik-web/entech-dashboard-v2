@@ -72,13 +72,28 @@ function getCategory(cat: string): string {
 
 // ─── Orders (dashboard_orders table) ───
 
-export async function fetchOrdersFromDB(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from('dashboard_orders')
-    .select('*')
+async function fetchAllRows(table: string): Promise<Record<string, unknown>[]> {
+  // PostgREST caps at 1000 rows by default — paginate to get all
+  const allRows: Record<string, unknown>[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(`Supabase ${table} error: ${error.message}`)
+    if (!data || data.length === 0) break
+    allRows.push(...data)
+    if (data.length < pageSize) break
+    offset += pageSize
+  }
+  return allRows
+}
 
-  if (error) throw new Error(`Supabase orders error: ${error.message}`)
-  if (!data) return []
+export async function fetchOrdersFromDB(): Promise<Order[]> {
+  const data = await fetchAllRows('dashboard_orders')
+  if (!data.length) return []
 
   return data
     .map((row): Order => ({
@@ -119,12 +134,8 @@ export async function fetchOrdersFromDB(): Promise<Order[]> {
 // ─── All Data (dashboard_orders, all columns as key-value) ───
 
 export async function fetchAllDataFromDB(): Promise<Record<string, string>[]> {
-  const { data, error } = await supabase
-    .from('dashboard_orders')
-    .select('*')
-
-  if (error) throw new Error(`Supabase all-data error: ${error.message}`)
-  if (!data) return []
+  const data = await fetchAllRows('dashboard_orders')
+  if (!data.length) return []
 
   // Convert snake_case DB columns → human-readable headers (matching Sheet headers)
   const colMap: Record<string, string> = {
@@ -323,12 +334,8 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
 // ─── Sales ───
 
 export async function fetchSalesFromDB(): Promise<SalesData> {
-  const { data, error } = await supabase
-    .from('dashboard_orders')
-    .select('*')
-
-  if (error) throw new Error(`Supabase sales error: ${error.message}`)
-  if (!data) return { orders: [], summary: { totalRevenue: 0, totalCosts: 0, totalPL: 0, avgMargin: 0, orderCount: 0 } }
+  const data = await fetchAllRows('dashboard_orders')
+  if (!data.length) return { orders: [], summary: { totalRevenue: 0, totalCosts: 0, totalPL: 0, avgMargin: 0, orderCount: 0 } }
 
   const orders: SalesOrder[] = []
   let totalRevenue = 0
