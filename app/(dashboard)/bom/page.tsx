@@ -3,504 +3,734 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ChevronRight, Package, Layers, DollarSign, Search, RefreshCw, BarChart3, X, Copy } from 'lucide-react'
-import type { BOMItem, BOMComponent } from '@/lib/google-sheets'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
+} from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle,
+} from 'lucide-react'
 
-type BOMTab = 'final' | 'sub' | 'individual'
+// ─── Types ───────────────────────────────────────────────────────
 
-const TAB_CONFIG: Record<
-  BOMTab,
-  { label: string; endpoint: string; emptyMessage: string }
-> = {
-  final: {
-    label: 'Final Assembly',
-    endpoint: '/api/bom',
-    emptyMessage: 'No final assembly BOM data available. Check the Google Sheets BOM tabs.',
-  },
-  sub: {
-    label: 'Sub Assembly',
-    endpoint: '/api/bom-sub',
-    emptyMessage: 'No sub-assembly BOM data available. Check the Google Sheets BOM tabs.',
-  },
-  individual: {
-    label: 'Individual Items',
-    endpoint: '/api/bom-individual',
-    emptyMessage: 'No individual item BOM data available. Check the Google Sheets BOM tabs.',
-  },
+interface IndividualItem {
+  id: string
+  part_number: string
+  description: string | null
+  cost_per_unit: number
+  unit: string
+  supplier: string | null
 }
 
-function getCategoryColor(category: BOMComponent['category']) {
-  switch (category) {
-    case 'raw':
-      return 'bg-amber-500/20 text-amber-600'
-    case 'component':
-      return 'bg-blue-500/20 text-blue-600'
-    case 'packaging':
-      return 'bg-slate-500/20 text-slate-600'
-    case 'energy':
-      return 'bg-purple-500/20 text-purple-600'
-    case 'assembly':
-      return 'bg-indigo-500/20 text-indigo-600'
-    default:
-      return 'bg-muted text-muted-foreground'
-  }
+interface SubAssemblyComponent {
+  id: string
+  sub_assembly_id: string
+  component_part_number: string
+  quantity: number
+  cost: number
+  is_scrap: boolean
+  scrap_rate: number | null
+  sort_order: number
 }
 
-function getCategoryLabel(category: BOMComponent['category']) {
-  switch (category) {
-    case 'raw':
-      return 'Raw Material'
-    case 'component':
-      return 'Component'
-    case 'packaging':
-      return 'Packaging'
-    case 'energy':
-      return 'Energy/Labor'
-    case 'assembly':
-      return 'Sub-Assembly'
-    default:
-      return category
-  }
+interface SubAssembly {
+  id: string
+  part_number: string
+  category: string | null
+  mold_name: string | null
+  part_weight: number | null
+  parts_per_hour: number | null
+  labor_rate_per_hour: number
+  num_employees: number
+  material_cost: number
+  labor_cost_per_part: number
+  overhead_cost: number
+  total_cost: number
+  bom_sub_assembly_components: SubAssemblyComponent[]
 }
 
-const barColors: Record<string, string> = {
-  raw: 'bg-amber-500',
-  component: 'bg-blue-500',
-  packaging: 'bg-slate-500',
-  energy: 'bg-purple-500',
-  assembly: 'bg-indigo-500',
+interface FinalAssemblyComponent {
+  id: string
+  final_assembly_id: string
+  component_part_number: string
+  component_source: string
+  quantity: number
+  cost: number
+  sort_order: number
 }
 
-export default function BOMExplorerPage() {
-  const [bomData, setBomData] = useState<BOMItem[]>([])
-  const [activeTab, setActiveTab] = useState<BOMTab>('final')
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedPart, setSelectedPart] = useState<BOMItem | null>(null)
-  const [compareSet, setCompareSet] = useState<Set<string>>(new Set())
-  const [showCompare, setShowCompare] = useState(false)
-  const [duplicateMsg, setDuplicateMsg] = useState(false)
+interface FinalAssembly {
+  id: string
+  part_number: string
+  product_category: string | null
+  sub_product_category: string | null
+  description: string | null
+  notes: string | null
+  parts_per_package: number | null
+  parts_per_hour: number | null
+  labor_rate_per_hour: number
+  num_employees: number
+  labor_cost_per_part: number
+  shipping_labor_cost: number
+  subtotal_cost: number
+  overhead_pct: number
+  overhead_cost: number
+  admin_pct: number
+  admin_cost: number
+  depreciation_pct: number
+  depreciation_cost: number
+  repairs_pct: number
+  repairs_cost: number
+  variable_cost: number
+  total_cost: number
+  profit_target_pct: number
+  profit_amount: number
+  sales_target: number
+  bom_final_assembly_components: FinalAssemblyComponent[]
+}
 
-  const fetchData = useCallback(async (tab: BOMTab, isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
-    setError(null)
+interface BomConfig {
+  id: string
+  key: string
+  value: number
+  label: string
+  description: string
+}
 
+// ─── Helpers ─────────────────────────────────────────────────────
+
+const fmt = (n: number) => `$${Number(n).toFixed(n < 1 ? 4 : 2)}`
+const pct = (n: number) => `${(Number(n) * 100).toFixed(2)}%`
+
+// ─── Main Page ───────────────────────────────────────────────────
+
+export default function BOMExplorer() {
+  const [tab, setTab] = useState('individual')
+  const [individualItems, setIndividualItems] = useState<IndividualItem[]>([])
+  const [subAssemblies, setSubAssemblies] = useState<SubAssembly[]>([])
+  const [finalAssemblies, setFinalAssemblies] = useState<FinalAssembly[]>([])
+  const [config, setConfig] = useState<BomConfig[]>([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
     try {
-      const res = await fetch(TAB_CONFIG[tab].endpoint)
-      if (!res.ok) throw new Error('Failed to fetch BOM data')
-      const data: BOMItem[] = await res.json()
-      setBomData(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch')
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
+      const [items, subs, finals, cfg] = await Promise.all([
+        fetch('/api/bom/individual-items').then(r => r.json()),
+        fetch('/api/bom/sub-assemblies').then(r => r.json()),
+        fetch('/api/bom/final-assemblies').then(r => r.json()),
+        fetch('/api/bom/config').then(r => r.json()),
+      ])
+      setIndividualItems(items)
+      setSubAssemblies(subs)
+      setFinalAssemblies(finals)
+      setConfig(cfg)
+    } catch (e) {
+      console.error('Failed to fetch BOM data', e)
     }
+    setLoading(false)
   }, [])
 
-  useEffect(() => {
-    setSearchTerm('')
-    setSelectedPart(null)
-    setCompareSet(new Set())
-    setShowCompare(false)
-    fetchData(activeTab)
-  }, [activeTab, fetchData])
-
-  useEffect(() => {
-    if (!selectedPart) return
-    const matchedPart = bomData.find((item) => item.partNumber === selectedPart.partNumber) || null
-    setSelectedPart(matchedPart)
-  }, [bomData, selectedPart])
-
-  const toggleCompare = (partNumber: string) => {
-    setCompareSet(prev => {
-      const next = new Set(prev)
-      if (next.has(partNumber)) next.delete(partNumber)
-      else next.add(partNumber)
-      return next
-    })
-  }
-
-  const filteredParts = bomData.filter((item) => {
-    if (!searchTerm) return true
-    const term = searchTerm.toLowerCase()
-    return (
-      item.partNumber.toLowerCase().includes(term) ||
-      item.product.toLowerCase().includes(term) ||
-      item.category.toLowerCase().includes(term)
-    )
-  })
-
-  const compareItems = bomData.filter(i => compareSet.has(i.partNumber))
-
-  // Cost drivers for selected part
-  const costDrivers = selectedPart
-    ? [...selectedPart.components]
-        .map(c => ({ ...c, lineCost: c.quantity * c.costPerUnit }))
-        .filter(c => c.lineCost > 0)
-        .sort((a, b) => b.lineCost - a.lineCost)
-        .slice(0, 10)
-    : []
-  const maxDriverCost = costDrivers.length > 0 ? costDrivers[0].lineCost : 1
+  useEffect(() => { fetchAll() }, [fetchAll])
 
   return (
-    <div className="p-4 pb-20">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📋 BOM Explorer</h1>
-        <button
-          onClick={() => fetchData(activeTab, true)}
-          disabled={refreshing}
-          className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
-      <p className="text-muted-foreground text-sm mb-4">
-        Bill of Materials breakdown by product
-      </p>
-
-      <div className="mb-4 border-b">
-        <div className="flex gap-1">
-          {(Object.keys(TAB_CONFIG) as BOMTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-              aria-current={activeTab === tab ? 'page' : undefined}
-            >
-              {TAB_CONFIG[tab].label}
-            </button>
-          ))}
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">BOM Explorer</h1>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search parts..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-8 w-64"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
         </div>
       </div>
 
-      {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="individual">Individual Items ({individualItems.length})</TabsTrigger>
+          <TabsTrigger value="sub">Sub Assemblies ({subAssemblies.length})</TabsTrigger>
+          <TabsTrigger value="final">Final Assemblies ({finalAssemblies.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="individual">
+          <IndividualItemsTab items={individualItems} search={search} onRefresh={fetchAll} />
+        </TabsContent>
+        <TabsContent value="sub">
+          <SubAssembliesTab assemblies={subAssemblies} individualItems={individualItems} search={search} onRefresh={fetchAll} />
+        </TabsContent>
+        <TabsContent value="final">
+          <FinalAssembliesTab
+            assemblies={finalAssemblies}
+            subAssemblies={subAssemblies}
+            individualItems={individualItems}
+            config={config}
+            search={search}
+            onRefresh={fetchAll}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+// ─── Tab 1: Individual Items ─────────────────────────────────────
+
+function IndividualItemsTab({ items, search, onRefresh }: {
+  items: IndividualItem[]
+  search: string
+  onRefresh: () => void
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editCost, setEditCost] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+  const [newItem, setNewItem] = useState({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
+
+  const filtered = items.filter(i =>
+    i.part_number.toLowerCase().includes(search.toLowerCase()) ||
+    (i.description || '').toLowerCase().includes(search.toLowerCase()) ||
+    (i.supplier || '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const saveCost = async (id: string) => {
+    await fetch(`/api/bom/individual-items/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cost_per_unit: Number(editCost) }),
+    })
+    setEditingId(null)
+    onRefresh()
+  }
+
+  const deleteItem = async (id: string) => {
+    if (!confirm('Delete this item? This may affect sub-assemblies and final assemblies.')) return
+    await fetch(`/api/bom/individual-items/${id}`, { method: 'DELETE' })
+    onRefresh()
+  }
+
+  const addItem = async () => {
+    await fetch('/api/bom/individual-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newItem, cost_per_unit: Number(newItem.cost_per_unit) }),
+    })
+    setShowAdd(false)
+    setNewItem({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
+    onRefresh()
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div>
+          <CardTitle className="text-lg">Raw Materials & Purchased Parts</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">Changing a cost here cascades to all sub-assemblies and final assemblies using this material.</p>
         </div>
-      )}
-
-      {error && <p className="text-center text-destructive py-10">{error}</p>}
-
-      {!loading && !error && bomData.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-            <Layers className="size-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              {TAB_CONFIG[activeTab].emptyMessage}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Comparison View */}
-      {showCompare && compareItems.length >= 2 && (
-        <Card className="mb-4">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="size-4" /> Comparison ({compareItems.length} items)
-              </CardTitle>
-              <button onClick={() => setShowCompare(false)} className="p-1 hover:bg-muted rounded">
-                <X className="size-4" />
-              </button>
+        <Dialog open={showAdd} onOpenChange={setShowAdd}>
+          <DialogTrigger asChild>
+            <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Item</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Add Individual Item</DialogTitle></DialogHeader>
+            <div className="grid gap-3">
+              <Input placeholder="Part Number *" value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
+              <Input placeholder="Description" value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
+              <Input placeholder="Cost per Unit *" type="number" step="0.0001" value={newItem.cost_per_unit} onChange={e => setNewItem({ ...newItem, cost_per_unit: e.target.value })} />
+              <Select value={newItem.unit} onValueChange={v => setNewItem({ ...newItem, unit: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lb">lb</SelectItem>
+                  <SelectItem value="ea">ea</SelectItem>
+                  <SelectItem value="ft">ft</SelectItem>
+                  <SelectItem value="roll">roll</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input placeholder="Supplier" value={newItem.supplier} onChange={e => setNewItem({ ...newItem, supplier: e.target.value })} />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 pr-4">Part</th>
-                    <th className="text-left py-2 pr-4">Category</th>
-                    <th className="text-right py-2 pr-4">Total</th>
-                    <th className="text-right py-2 pr-4">Material</th>
-                    <th className="text-right py-2 pr-4">Packaging</th>
-                    <th className="text-right py-2 pr-4">Labor/Energy</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {compareItems.map(item => {
-                    const minTotal = Math.min(...compareItems.map(i => i.totalCost))
-                    const maxTotal = Math.max(...compareItems.map(i => i.totalCost))
-                    return (
-                      <tr key={item.partNumber} className="border-b last:border-0">
-                        <td className="py-2 pr-4">
-                          <p className="font-medium">{item.partNumber}</p>
-                          <p className="text-xs text-muted-foreground">{item.product}</p>
-                        </td>
-                        <td className="py-2 pr-4 text-muted-foreground">{item.category}</td>
-                        <td className={`py-2 pr-4 text-right font-medium ${
-                          item.totalCost === minTotal && compareItems.length > 1 ? 'text-green-600' :
-                          item.totalCost === maxTotal && compareItems.length > 1 ? 'text-red-500' : ''
-                        }`}>
-                          ${item.totalCost.toFixed(2)}
-                        </td>
-                        <td className="py-2 pr-4 text-right text-amber-600">${item.materialCost.toFixed(2)}</td>
-                        <td className="py-2 pr-4 text-right text-slate-600">${item.packagingCost.toFixed(2)}</td>
-                        <td className="py-2 pr-4 text-right text-purple-600">${item.laborEnergyCost.toFixed(2)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!loading && !error && bomData.length > 0 && (
-        <div className="grid lg:grid-cols-3 gap-4">
-          {/* Part selector panel */}
-          <Card className="lg:col-span-1">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Package className="size-4" />
-                Select Product ({bomData.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search parts..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-
-              {compareSet.size >= 2 && (
-                <button
-                  onClick={() => setShowCompare(true)}
-                  className="w-full mb-3 px-3 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  Compare Selected ({compareSet.size})
-                </button>
-              )}
-
-              <div className="max-h-[500px] overflow-y-auto space-y-1">
-                {filteredParts.map((item) => (
-                  <div key={item.partNumber} className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={compareSet.has(item.partNumber)}
-                      onChange={() => toggleCompare(item.partNumber)}
-                      className="shrink-0 rounded border-muted-foreground/30"
-                    />
-                    <button
-                      onClick={() => setSelectedPart(item)}
-                      className={`flex-1 text-left px-3 py-2 rounded-md transition-colors flex items-center justify-between ${
-                        selectedPart?.partNumber === item.partNumber
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'hover:bg-muted'
-                      }`}
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button onClick={addItem} disabled={!newItem.part_number || !newItem.cost_per_unit}>Save</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Part Number</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead className="text-right">Cost/Unit</TableHead>
+              <TableHead>Unit</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead className="w-20"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map(item => (
+              <TableRow key={item.id}>
+                <TableCell className="font-mono text-sm">{item.part_number}</TableCell>
+                <TableCell className="text-muted-foreground">{item.description}</TableCell>
+                <TableCell className="text-right">
+                  {editingId === item.id ? (
+                    <div className="flex items-center gap-1 justify-end">
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        value={editCost}
+                        onChange={e => setEditCost(e.target.value)}
+                        className="w-28 h-7 text-right"
+                        onKeyDown={e => e.key === 'Enter' && saveCost(item.id)}
+                        autoFocus
+                      />
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => saveCost(item.id)}>
+                        <Save className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <span
+                      className="cursor-pointer hover:text-primary hover:underline"
+                      onClick={() => { setEditingId(item.id); setEditCost(String(item.cost_per_unit)) }}
                     >
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm">{item.partNumber}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {item.product} · ${item.totalCost.toFixed(2)}
-                        </p>
-                      </div>
-                      <ChevronRight className="size-4 text-muted-foreground shrink-0" />
-                    </button>
-                  </div>
-                ))}
-                {filteredParts.length === 0 && (
-                  <p className="text-center text-muted-foreground text-sm py-4">
-                    No parts found
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                      {fmt(item.cost_per_unit)}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>{item.unit}</TableCell>
+                <TableCell className="text-muted-foreground">{item.supplier}</TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteItem(item.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
 
-          {/* BOM details panel */}
-          <div className="lg:col-span-2 space-y-4">
-            {!selectedPart ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-                  <Layers className="size-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">
-                    Select a product to view its Bill of Materials
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
+// ─── Tab 2: Sub Assemblies ───────────────────────────────────────
+
+function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
+  assemblies: SubAssembly[]
+  individualItems: IndividualItem[]
+  search: string
+  onRefresh: () => void
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const filtered = assemblies.filter(a =>
+    a.part_number.toLowerCase().includes(search.toLowerCase()) ||
+    (a.category || '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const duplicate = async (id: string, partNumber: string) => {
+    const newPart = prompt('New part number for the clone:', `${partNumber}-COPY`)
+    if (!newPart) return
+    await fetch('/api/bom/sub-assemblies/duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, new_part_number: newPart }),
+    })
+    onRefresh()
+  }
+
+  const recalculate = async (id: string) => {
+    await fetch(`/api/bom/sub-assemblies/${id}/recalculate`, { method: 'POST' })
+    onRefresh()
+  }
+
+  const deleteAssembly = async (id: string) => {
+    if (!confirm('Delete this sub-assembly?')) return
+    await fetch(`/api/bom/sub-assemblies/${id}`, { method: 'DELETE' })
+    onRefresh()
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-lg">Sub Assemblies (Molded Parts)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-8"></TableHead>
+              <TableHead>Part Number</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead className="text-right">Weight</TableHead>
+              <TableHead className="text-right">Material</TableHead>
+              <TableHead className="text-right">Labor</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="w-28"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map(a => (
               <>
-                {/* Product header */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-xl">{selectedPart.partNumber}</CardTitle>
-                        <p className="text-muted-foreground">{selectedPart.product}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedPart.category} · {selectedPart.qtyPerPallet} per pallet
-                        </p>
-                      </div>
-                      <div className="text-right space-y-2">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Total Cost</p>
-                          <p className="text-2xl font-bold text-green-600">
-                            ${selectedPart.totalCost.toFixed(2)}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => { setDuplicateMsg(true); setTimeout(() => setDuplicateMsg(false), 3000) }}
-                          className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-muted hover:bg-muted/80 transition-colors"
-                        >
-                          <Copy className="size-3" /> Duplicate
-                        </button>
-                      </div>
+                <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
+                  <TableCell>
+                    {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </TableCell>
+                  <TableCell className="font-mono text-sm">{a.part_number}</TableCell>
+                  <TableCell>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-400">
+                      {a.category || 'N/A'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">{a.part_weight ? `${a.part_weight} lb` : '—'}</TableCell>
+                  <TableCell className="text-right">{fmt(a.material_cost)}</TableCell>
+                  <TableCell className="text-right">{fmt(a.labor_cost_per_part)}</TableCell>
+                  <TableCell className="text-right font-semibold">{fmt(a.total_cost)}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
+                        <RefreshCw className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => duplicate(a.id, a.part_number)} title="Clone">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteAssembly(a.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </CardHeader>
-                </Card>
-
-                {/* Duplicate coming soon toast */}
-                {duplicateMsg && (
-                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-sm text-blue-400">
-                    🚧 BOM editing coming soon — duplicating will be available when BOMs are managed in the dashboard.
-                  </div>
-                )}
-
-                {/* Components breakdown */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Layers className="size-4" />
-                      Components ({selectedPart.components.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {selectedPart.components.map((component, idx) => (
-                        <div
-                          key={component.partNumber + idx}
-                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`px-2 py-0.5 rounded text-xs font-medium ${getCategoryColor(
-                                component.category
-                              )}`}
-                            >
-                              {getCategoryLabel(component.category)}
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm">{component.partNumber}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {component.description}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium">
-                              {component.quantity} {component.unit}
-                            </p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
-                              <DollarSign className="size-3" />
-                              {(component.quantity * component.costPerUnit).toFixed(2)}
-                            </p>
+                  </TableCell>
+                </TableRow>
+                {expandedId === a.id && (
+                  <TableRow key={`${a.id}-detail`}>
+                    <TableCell colSpan={8} className="bg-muted/30 p-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="font-semibold mb-2 text-sm">Components</h4>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Part</TableHead>
+                                <TableHead className="text-right">Qty</TableHead>
+                                <TableHead className="text-right">Cost</TableHead>
+                                <TableHead>Scrap?</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {(a.bom_sub_assembly_components || []).sort((x, y) => x.sort_order - y.sort_order).map(c => (
+                                <TableRow key={c.id}>
+                                  <TableCell className="font-mono text-xs">{c.component_part_number}</TableCell>
+                                  <TableCell className="text-right">{Number(c.quantity).toFixed(4)}</TableCell>
+                                  <TableCell className="text-right">{fmt(c.cost)}</TableCell>
+                                  <TableCell>{c.is_scrap ? `Yes (${pct(c.scrap_rate || 0)})` : ''}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        <div>
+                          <h4 className="font-semibold mb-2 text-sm">Details</h4>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex justify-between"><span className="text-muted-foreground">Mold:</span><span>{a.mold_name || '—'}</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Parts/Hour:</span><span>{a.parts_per_hour}</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Labor Rate:</span><span>{fmt(a.labor_rate_per_hour)}/hr</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Employees:</span><span>{a.num_employees}</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Overhead:</span><span>{fmt(a.overhead_cost)}</span></div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Cost breakdown summary */}
-                    <div className="mt-4 pt-4 border-t">
-                      <div className="grid grid-cols-4 gap-4 text-center">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Raw Materials</p>
-                          <p className="text-lg font-semibold text-amber-600">
-                            ${selectedPart.materialCost.toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Components</p>
-                          <p className="text-lg font-semibold text-blue-600">
-                            $
-                            {selectedPart.components
-                              .filter((c) => c.category === 'component')
-                              .reduce((sum, c) => sum + c.quantity * c.costPerUnit, 0)
-                              .toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Packaging</p>
-                          <p className="text-lg font-semibold text-slate-600">
-                            ${selectedPart.packagingCost.toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Labor/Energy</p>
-                          <p className="text-lg font-semibold text-purple-600">
-                            ${selectedPart.laborEnergyCost.toFixed(2)}
-                          </p>
-                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Cost Analysis - Top Cost Drivers */}
-                {costDrivers.length > 0 && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <BarChart3 className="size-4" />
-                        Top Cost Drivers
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {costDrivers.map((driver, idx) => {
-                          const pct = selectedPart.totalCost > 0
-                            ? (driver.lineCost / selectedPart.totalCost) * 100
-                            : 0
-                          const barWidth = maxDriverCost > 0
-                            ? (driver.lineCost / maxDriverCost) * 100
-                            : 0
-                          return (
-                            <div key={driver.partNumber + idx}>
-                              <div className="flex items-center justify-between mb-1">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-sm font-medium truncate">{driver.partNumber}</span>
-                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getCategoryColor(driver.category)}`}>
-                                    {getCategoryLabel(driver.category)}
-                                  </span>
-                                </div>
-                                <div className="text-right text-sm shrink-0 ml-2">
-                                  <span className="font-medium">${driver.lineCost.toFixed(2)}</span>
-                                  <span className="text-muted-foreground ml-1">({pct.toFixed(1)}%)</span>
-                                </div>
-                              </div>
-                              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${barColors[driver.category] || 'bg-gray-500'}`}
-                                  style={{ width: `${barWidth}%` }}
-                                />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
+                    </TableCell>
+                  </TableRow>
                 )}
               </>
-            )}
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Tab 3: Final Assemblies ─────────────────────────────────────
+
+function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config, search, onRefresh }: {
+  assemblies: FinalAssembly[]
+  subAssemblies: SubAssembly[]
+  individualItems: IndividualItem[]
+  config: BomConfig[]
+  search: string
+  onRefresh: () => void
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showConfig, setShowConfig] = useState(false)
+  const [configEdits, setConfigEdits] = useState<Record<string, string>>({})
+
+  const filtered = assemblies.filter(a =>
+    a.part_number.toLowerCase().includes(search.toLowerCase()) ||
+    (a.product_category || '').toLowerCase().includes(search.toLowerCase()) ||
+    (a.description || '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const duplicate = async (id: string, partNumber: string) => {
+    const newPart = prompt('New part number for the clone:', `${partNumber}-COPY`)
+    if (!newPart) return
+    await fetch('/api/bom/final-assemblies/duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, new_part_number: newPart }),
+    })
+    onRefresh()
+  }
+
+  const recalculate = async (id: string) => {
+    await fetch(`/api/bom/final-assemblies/${id}/recalculate`, { method: 'POST' })
+    onRefresh()
+  }
+
+  const deleteAssembly = async (id: string) => {
+    if (!confirm('Delete this final assembly?')) return
+    await fetch(`/api/bom/final-assemblies/${id}`, { method: 'DELETE' })
+    onRefresh()
+  }
+
+  const saveConfig = async (applyToAll: boolean) => {
+    const configs = Object.entries(configEdits).map(([key, value]) => ({ key, value: Number(value) }))
+    if (configs.length === 0) return
+    await fetch('/api/bom/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ configs, apply_to_all: applyToAll }),
+    })
+    setShowConfig(false)
+    setConfigEdits({})
+    onRefresh()
+  }
+
+  const updateOverhead = async (id: string, field: string, value: number) => {
+    await fetch(`/api/bom/final-assemblies/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+    onRefresh()
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Config Panel */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <CardTitle className="text-lg">Final Assemblies (Finished Products)</CardTitle>
           </div>
-        </div>
-      )}
+          <div className="flex gap-2">
+            <Dialog open={showConfig} onOpenChange={v => { setShowConfig(v); if (v) { const m: Record<string, string> = {}; config.forEach(c => { m[c.key] = String(c.value) }); setConfigEdits(m) } }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm"><Settings className="h-4 w-4 mr-1" /> Overhead Settings</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Global Overhead Configuration</DialogTitle></DialogHeader>
+                <div className="grid gap-3">
+                  {config.map(c => (
+                    <div key={c.key} className="flex items-center gap-3">
+                      <label className="text-sm w-48">{c.label}</label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        value={configEdits[c.key] || ''}
+                        onChange={e => setConfigEdits({ ...configEdits, [c.key]: e.target.value })}
+                        className="w-32"
+                      />
+                      <span className="text-xs text-muted-foreground">{c.description}</span>
+                    </div>
+                  ))}
+                </div>
+                <DialogFooter className="flex gap-2">
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button variant="secondary" onClick={() => saveConfig(false)}>Save Config Only</Button>
+                  <Button onClick={() => {
+                    if (confirm(`Apply to ALL ${assemblies.length} products? This will recalculate all costs.`))
+                      saveConfig(true)
+                  }}>
+                    <AlertTriangle className="h-4 w-4 mr-1" /> Apply to All ({assemblies.length})
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8"></TableHead>
+                <TableHead>Part Number</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Pkg</TableHead>
+                <TableHead className="text-right">Subtotal</TableHead>
+                <TableHead className="text-right">Variable</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Sales Target</TableHead>
+                <TableHead className="w-28"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map(a => (
+                <>
+                  <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
+                    <TableCell>
+                      {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{a.part_number}</TableCell>
+                    <TableCell>
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-500/20 text-indigo-400">
+                        {a.product_category || 'N/A'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">{a.parts_per_package || '—'}</TableCell>
+                    <TableCell className="text-right">{fmt(a.subtotal_cost)}</TableCell>
+                    <TableCell className="text-right">{fmt(a.variable_cost)}</TableCell>
+                    <TableCell className="text-right font-semibold">{fmt(a.total_cost)}</TableCell>
+                    <TableCell className="text-right font-semibold text-green-400">{fmt(a.sales_target)}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
+                          <RefreshCw className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => duplicate(a.id, a.part_number)} title="Clone">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteAssembly(a.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {expandedId === a.id && (
+                    <TableRow key={`${a.id}-detail`}>
+                      <TableCell colSpan={9} className="bg-muted/30 p-4">
+                        <div className="grid grid-cols-3 gap-4">
+                          {/* Components */}
+                          <div className="col-span-2">
+                            <h4 className="font-semibold mb-2 text-sm">Components</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Part</TableHead>
+                                  <TableHead>Source</TableHead>
+                                  <TableHead className="text-right">Qty</TableHead>
+                                  <TableHead className="text-right">Cost</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {(a.bom_final_assembly_components || []).sort((x, y) => x.sort_order - y.sort_order).map(c => (
+                                  <TableRow key={c.id}>
+                                    <TableCell className="font-mono text-xs">{c.component_part_number}</TableCell>
+                                    <TableCell>
+                                      <span className={`px-1.5 py-0.5 rounded text-xs ${c.component_source === 'sub_assembly' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                                        {c.component_source === 'sub_assembly' ? 'Sub Assy' : 'Individual'}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right">{Number(c.quantity).toFixed(6)}</TableCell>
+                                    <TableCell className="text-right">{fmt(c.cost)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                          {/* Cost Breakdown */}
+                          <div>
+                            <h4 className="font-semibold mb-2 text-sm">Cost Breakdown</h4>
+                            <div className="space-y-1.5 text-sm">
+                              <div className="flex justify-between"><span className="text-muted-foreground">Description:</span><span className="text-right text-xs">{a.description || '—'}</span></div>
+                              <div className="flex justify-between"><span className="text-muted-foreground">Parts/Hr:</span><span>{a.parts_per_hour}</span></div>
+                              <div className="flex justify-between"><span className="text-muted-foreground">Labor/Part:</span><span>{fmt(a.labor_cost_per_part)}</span></div>
+                              <div className="flex justify-between"><span className="text-muted-foreground">Ship Labor:</span><span>{fmt(a.shipping_labor_cost)}</span></div>
+                              <hr className="border-border" />
+                              <div className="flex justify-between"><span className="text-muted-foreground">Subtotal:</span><span>{fmt(a.subtotal_cost)}</span></div>
+                              <OverheadLine label="Overhead" pctValue={a.overhead_pct} cost={a.overhead_cost} id={a.id} field="overhead_pct" onSave={updateOverhead} />
+                              <OverheadLine label="Admin" pctValue={a.admin_pct} cost={a.admin_cost} id={a.id} field="admin_pct" onSave={updateOverhead} />
+                              <OverheadLine label="Depreciation" pctValue={a.depreciation_pct} cost={a.depreciation_cost} id={a.id} field="depreciation_pct" onSave={updateOverhead} />
+                              <OverheadLine label="Repairs" pctValue={a.repairs_pct} cost={a.repairs_cost} id={a.id} field="repairs_pct" onSave={updateOverhead} />
+                              <hr className="border-border" />
+                              <div className="flex justify-between"><span className="text-muted-foreground">Variable Cost:</span><span>{fmt(a.variable_cost)}</span></div>
+                              <div className="flex justify-between font-semibold"><span>Total Cost:</span><span>{fmt(a.total_cost)}</span></div>
+                              <OverheadLine label="Profit Target" pctValue={a.profit_target_pct} cost={a.profit_amount} id={a.id} field="profit_target_pct" onSave={updateOverhead} />
+                              <div className="flex justify-between font-semibold text-green-400"><span>Sales Target:</span><span>{fmt(a.sales_target)}</span></div>
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ─── Editable Overhead Line ──────────────────────────────────────
+
+function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
+  label: string
+  pctValue: number
+  cost: number
+  id: string
+  field: string
+  onSave: (id: string, field: string, value: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState('')
+
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="flex items-center gap-1">
+        {editing ? (
+          <>
+            <Input
+              type="number"
+              step="0.01"
+              value={val}
+              onChange={e => setVal(e.target.value)}
+              className="w-16 h-6 text-xs text-right"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  onSave(id, field, Number(val) / 100)
+                  setEditing(false)
+                }
+              }}
+              autoFocus
+            />
+            <span className="text-xs">%</span>
+          </>
+        ) : (
+          <span
+            className="cursor-pointer hover:text-primary hover:underline text-xs"
+            onClick={() => { setEditing(true); setVal(String((Number(pctValue) * 100).toFixed(2))) }}
+          >
+            {pct(pctValue)}
+          </span>
+        )}
+        <span className="text-xs ml-1">= {fmt(cost)}</span>
+      </span>
     </div>
   )
 }
