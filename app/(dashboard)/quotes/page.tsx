@@ -130,7 +130,15 @@ export default function QuotesPage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">💰 Quotes Registry</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">💰 Quotes Registry</h1>
+        <a
+          href="/quotes/new"
+          className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition text-sm"
+        >
+          ➕ New Quote
+        </a>
+      </div>
       <p className="text-muted-foreground text-sm mb-4">
         Customer quotes and pricing history
       </p>

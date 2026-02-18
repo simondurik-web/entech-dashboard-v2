@@ -1,0 +1,432 @@
+// =====================================
+// ENTECH QUOTE SYSTEM - SERVER SIDE
+// Integrated with RT Labels Menu
+// =====================================
+
+const QUOTE_CONFIG = {
+ mainDataSheet: 'Customer Reference data',
+ dataStartRow: 2,
+ columns: {
+   customer: 0,        // Col A
+   customerPart: 1,    // Col B
+   internalPart: 2,    // Col C
+   paymentTerms: 3,    // Col D
+   notes: 4,           // Col E
+   category: 5,        // Col F
+   packageQuantity: 6, // Col G
+   packaging: 7,       // Col H
+   // Tiers start at Index 8 (Column I)
+   tier1Range: 8, tier1Price: 9,
+   tier2Range: 10, tier2Price: 11,
+   tier3Range: 12, tier3Price: 13,
+   tier4Range: 14, tier4Price: 15,
+   tier5Range: 16, tier5Price: 17
+ }
+};
+
+// MATCHING YOUR EXISTING MENU CALL
+function showQuoteForm() {
+ const html = HtmlService.createHtmlOutputFromFile('QuoteForm_Minimal')
+   .setWidth(1200)
+   .setHeight(800);
+ SpreadsheetApp.getUi().showModalDialog(html, 'Create New Quote - Entech Inc.');
+}
+
+// Get customers (Unique name to avoid conflicts)
+function getQuoteCustomers() {
+ try {
+   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(QUOTE_CONFIG.mainDataSheet);
+   if (!sheet) return [];
+   
+   const data = sheet.getDataRange().getValues();
+   const customerMap = new Map();
+   
+   for (let i = QUOTE_CONFIG.dataStartRow - 1; i < data.length; i++) {
+     const customerName = String(data[i][QUOTE_CONFIG.columns.customer] || '').trim();
+     const paymentTerms = String(data[i][QUOTE_CONFIG.columns.paymentTerms] || 'Net 30').trim();
+    
+     if (customerName && !customerMap.has(customerName)) {
+       customerMap.set(customerName, {
+         name: customerName,
+         paymentTerms: paymentTerms
+       });
+     }
+   }
+   return Array.from(customerMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+ } catch (e) {
+   Logger.log("Error in getQuoteCustomers: " + e.toString());
+   throw e;
+ }
+}
+
+// Get products (Unique name to avoid conflicts)
+function getQuoteProducts(customerName) {
+ const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(QUOTE_CONFIG.mainDataSheet);
+ const data = sheet.getDataRange().getValues();
+ const products = [];
+ const cols = QUOTE_CONFIG.columns;
+
+ for (let i = QUOTE_CONFIG.dataStartRow - 1; i < data.length; i++) {
+   const row = data[i];
+   const rowCustomer = String(row[cols.customer] || '').trim();
+  
+   if (rowCustomer === customerName) {
+     const internalPart = String(row[cols.internalPart] || '').trim();
+     const customerPart = String(row[cols.customerPart] || '').trim();
+    
+     if (!internalPart) continue;
+    
+     const tiers = [];
+     for (let tierNum = 1; tierNum <= 5; tierNum++) {
+       const rangeCol = cols[`tier${tierNum}Range`];
+       const priceCol = cols[`tier${tierNum}Price`];
+       
+       // Clean and parse numbers safely
+       const rawRange = row[rangeCol];
+       const rawPrice = String(row[priceCol]).replace(/[^0-9.]/g, '');
+       
+       if (rawRange && rawPrice && !isNaN(parseFloat(rawPrice))) {
+         const min = parseInt(rawRange);
+         tiers.push({
+           min: min,
+           price: parseFloat(rawPrice),
+           rangeText: `${min.toLocaleString()}+`,
+           displayText: `${min.toLocaleString()}+ units: $${parseFloat(rawPrice).toFixed(2)}/ea`
+         });
+       }
+     }
+    
+     if (tiers.length > 0) {
+       const productId = customerPart ? `${customerPart}_${internalPart}` : `INTERNAL_${internalPart}`;
+       products.push({
+         id: productId.replace(/[^a-zA-Z0-9_-]/g, ''),
+         customerPartNumber: customerPart || '',
+         internalPartNumber: internalPart,
+         name: internalPart,
+         displayName: customerPart ? `${internalPart} (${customerPart})` : internalPart,
+         tiers: tiers,
+         paymentTerms: String(row[cols.paymentTerms] || 'Net 30')
+       });
+     }
+   }
+ }
+ return {
+   products: products,
+   paymentTerms: products.length > 0 ? products[0].paymentTerms : 'Net 30'
+ };
+}
+
+// Process Submission
+function processQuoteSubmission(quoteData) {
+ try {
+   const quoteNumber = generateQuoteNumber();
+   quoteData.quoteNumber = quoteNumber;
+   quoteData.dateCreated = new Date();
+   
+   const pdfUrl = generateQuotePDF(quoteData);
+   logQuote(quoteData, pdfUrl);
+   
+   return { success: true, quoteNumber: quoteNumber, pdfUrl: pdfUrl };
+ } catch (error) {
+   return { success: false, error: error.toString() };
+ }
+}
+
+function generateQuoteNumber() {
+ const now = new Date();
+ const year = now.getFullYear();
+ const month = String(now.getMonth() + 1).padStart(2, '0');
+ const prefix = `ENT-Q${year}${month}`;
+ 
+ let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Quotes Registry');
+ if (!sheet) return `${prefix}-0001`;
+ 
+ const data = sheet.getDataRange().getValues();
+ let maxNumber = 0;
+ for (let i = 1; i < data.length; i++) {
+   const num = String(data[i][0]);
+   if (num.startsWith(prefix)) {
+     const parts = num.split('-');
+     const val = parseInt(parts[parts.length-1]);
+     if (!isNaN(val) && val > maxNumber) maxNumber = val;
+   }
+ }
+ return `${prefix}-${String(maxNumber + 1).padStart(4, '0')}`;
+}
+
+function logQuote(quoteData, pdfUrl) {
+ const ss = SpreadsheetApp.getActiveSpreadsheet();
+ let sheet = ss.getSheetByName('Quotes Registry');
+ if (!sheet) {
+   sheet = ss.insertSheet('Quotes Registry');
+   sheet.appendRow(['Quote Number', 'Customer', 'Date', 'Expiration', 'Total', 'PDF URL', 'Created By', 'Items', 'Notes', 'Payment Terms']);
+ }
+ sheet.appendRow([
+   quoteData.quoteNumber,
+   quoteData.customerName,
+   quoteData.dateCreated,
+   new Date(Date.now() + 30*24*60*60*1000),
+   quoteData.totalAmount,
+   pdfUrl,
+   'Philip Habecker',
+   quoteData.items.length,
+   quoteData.notes,
+   quoteData.paymentTerms
+ ]);
+}
+
+// PDF Generator (Professional Layout: Repeating Headers & Smart Page Breaks)
+function generateQuotePDF(quoteData) {
+  try {
+    // Calculate Dates
+    const createdDate = new Date(quoteData.dateCreated);
+    const expirationDate = new Date(createdDate);
+    expirationDate.setDate(createdDate.getDate() + 30);
+
+    const dateIssuedStr = createdDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const validUntilStr = expirationDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+    let html = `<!DOCTYPE html>
+ <html>
+ <head>
+  <meta charset="UTF-8">
+  <style>
+    @page { margin: 0.5in; size: letter; }
+    body { font-family: 'Helvetica', Arial, sans-serif; font-size: 9pt; color: #333; line-height: 1.4; margin: 0; padding: 0; }
+    
+    /* --- LAYOUT STRUCTURE FOR REPEATING HEADERS --- */
+    table.main-layout { width: 100%; border-collapse: collapse; }
+    thead.layout-header { display: table-header-group; } /* This repeats on every page */
+    tbody.layout-body { display: table-row-group; }
+    
+    /* Header Styling */
+    .header-content { border-bottom: 3px solid #c82333; padding-bottom: 15px; margin-bottom: 20px; }
+    .header-table { width: 100%; }
+    .logo-img { height: 50px; width: auto; }
+    .logo-text { font-size: 32pt; font-weight: bold; color: #c82333; }
+    .company-name { font-weight: bold; font-size: 11pt; text-transform: uppercase; }
+    .company-details { font-size: 9pt; color: #555; text-align: right; }
+ 
+    /* Content Styling */
+    .doc-title { text-align: center; font-size: 16pt; color: #999; text-transform: uppercase; letter-spacing: 2px; margin: 20px 0 25px 0; }
+ 
+    /* Info Grid */
+    .info-bar { width: 100%; margin-bottom: 25px; }
+    .info-cell { vertical-align: top; width: 25%; }
+    .label { font-weight: bold; font-size: 8pt; color: #666; text-transform: uppercase; display: block; margin-bottom: 2px; }
+    .value { font-weight: bold; font-size: 10pt; color: #000; }
+    .payment-terms { color: #c82333; }
+ 
+    /* Sales Rep */
+    .rep-section { margin-bottom: 30px; }
+    .rep-header { font-weight: bold; color: #c82333; text-transform: uppercase; font-size: 9pt; margin-bottom: 5px; }
+ 
+    /* Products Table */
+    .section-header { font-weight: bold; font-size: 10pt; color: #999; text-transform: uppercase; margin-bottom: 10px; }
+    .product-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .product-table th { text-align: left; color: #999; font-size: 8pt; font-weight: bold; text-transform: uppercase; padding: 5px 0; border-bottom: 1px solid #ddd; }
+    
+    /* CRITICAL: Prevent rows from splitting across pages */
+    tr.item-row { page-break-inside: avoid; } 
+    
+    .product-table td { padding: 12px 0; vertical-align: top; border-bottom: 1px solid #eee; }
+    
+    .item-col { width: 5%; color: #c82333; font-weight: bold; }
+    .part-col { width: 20%; font-weight: bold; }
+    .desc-col { width: 25%; }
+    .price-col { width: 35%; font-size: 8.5pt; }
+    .total-col { width: 15%; text-align: right; font-weight: bold; }
+ 
+    /* Totals & Terms - Prevent splitting */
+    .footer-block { page-break-inside: avoid; }
+    
+    .totals-container { width: 40%; margin-left: auto; border: 2px solid #c82333; padding: 10px; margin-top: 20px; }
+    .total-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+    .grand-total { font-size: 12pt; font-weight: bold; color: #c82333; border-top: 1px solid #ccc; padding-top: 5px; margin-top: 5px; }
+ 
+    .footer-terms { margin-top: 40px; border-top: 2px solid #eee; padding-top: 15px; }
+    .terms-title { font-weight: bold; text-transform: uppercase; font-size: 9pt; margin-bottom: 8px; }
+    .terms-list { list-style-type: disc; padding-left: 20px; font-size: 8.5pt; line-height: 1.5; color: #444; }
+    .thank-you { text-align: center; margin-top: 30px; color: #666; font-size: 9pt; }
+  </style>
+ </head>
+ <body>
+ 
+  <table class="main-layout">
+    
+    <thead class="layout-header">
+      <tr>
+        <td>
+          <div class="header-content">
+            <table class="header-table">
+              <tr>
+                <td style="width: 40%;">
+                  ${typeof ENTECH_LOGO_BASE64 !== 'undefined' ? 
+                    `<img src="${ENTECH_LOGO_BASE64}" class="logo-img">` : 
+                    `<div class="logo-text">entech</div>`
+                  }
+                </td>
+                <td style="width: 60%; text-align: right;">
+                  <div class="company-name">ENTECH, INC.</div>
+                  <div class="company-details">
+                    10440 County Road 2<br>
+                    Middlebury, IN 46540<br>
+                    Phone: 574.822.9107<br>
+                    www.4entech.com
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </td>
+      </tr>
+    </thead>
+ 
+    <tbody class="layout-body">
+      <tr>
+        <td>
+          
+          <div class="doc-title">QUOTATION</div>
+ 
+          <table class="info-bar">
+            <tr>
+              <td class="info-cell">
+                <span class="label">Quote Number</span>
+                <span class="value">${quoteData.quoteNumber}</span>
+              </td>
+              <td class="info-cell">
+                <span class="label">Customer</span>
+                <span class="value">${quoteData.customerName}</span>
+              </td>
+              <td class="info-cell">
+                <span class="label">Date Issued</span>
+                <span class="value">${dateIssuedStr}</span>
+              </td>
+              <td class="info-cell">
+                <span class="label">Valid Until</span>
+                <span class="value">${validUntilStr}</span>
+              </td>
+            </tr>
+            <tr><td colspan="4" style="height: 15px;"></td></tr>
+            <tr>
+              <td class="info-cell">
+                <span class="label">Payment Terms</span>
+                <span class="value payment-terms">${quoteData.paymentTerms || 'Net 30'}</span>
+              </td>
+              <td class="info-cell">
+                <span class="label">Currency</span>
+                <span class="value">USD</span>
+              </td>
+              <td class="info-cell"></td>
+              <td class="info-cell"></td>
+            </tr>
+          </table>
+ 
+          <div class="rep-section">
+            <div class="rep-header">YOUR SALES REPRESENTATIVE</div>
+            <div style="font-size: 9pt;">
+              <strong>Philip Habecker</strong><br>
+              Direct: 574.358.0585 | Ext: 418<br>
+              Email: philip.habecker@4entech.com | RollTech.Sales@4entech.com
+            </div>
+          </div>
+ 
+          <div class="section-header">QUOTED ITEMS</div>
+          <table class="product-table">
+            <thead>
+              <tr>
+                <th class="item-col">Item</th>
+                <th class="part-col">Customer P/N</th>
+                <th class="desc-col">Internal P/N</th>
+                <th class="price-col">Pricing</th>
+                <th class="total-col">Line Total</th>
+              </tr>
+            </thead>
+            <tbody>`;
+ 
+    // Loop Items
+    quoteData.items.forEach((item, index) => {
+      const itemNum = String(index + 1).padStart(3, '0');
+      
+      // Use item-row class to prevent page break inside a row
+      html += `<tr class="item-row">
+        <td class="item-col">${itemNum}</td>
+        <td class="part-col">${item.customerPartNumber || '-'}</td>
+        <td class="desc-col"><strong>${item.internalPartNumber}</strong></td>
+        <td class="price-col">`;
+      
+      if (item.displayMode === 'tiers') {
+        item.tiers.forEach(t => {
+          html += `<div style="margin-bottom:2px;">${t.rangeText} units: $${t.price.toFixed(2)}/ea</div>`;
+        });
+      } else {
+        html += `Qty: ${item.quantity.toLocaleString()} @ $${item.unitPrice.toFixed(2)}/ea`;
+      }
+      
+      html += `</td>
+        <td class="total-col">
+          ${item.displayMode === 'quantity' ? '$' + item.total.toFixed(2) : ''}
+        </td>
+      </tr>`;
+    });
+ 
+    html += `</tbody></table>`;
+ 
+    // FOOTER BLOCK (Totals + Terms) - Kept together to avoid orphans
+    html += `<div class="footer-block">`;
+
+    // Totals Box
+    if (quoteData.totalAmount > 0) {
+      html += `<div class="totals-container">
+        <div class="total-row">
+          <span style="font-weight:bold; color:#444;">Subtotal:</span>
+          <span>$${quoteData.totalAmount.toFixed(2)}</span>
+        </div>
+        <div class="total-row">
+          <span style="font-weight:bold; color:#444;">Tax (0%):</span>
+          <span>$0.00</span>
+        </div>
+        <div class="total-row grand-total">
+          <span style="color:#c82333">TOTAL:</span>
+          <span>$${quoteData.totalAmount.toFixed(2)}</span>
+        </div>
+      </div>`;
+    }
+ 
+    // Terms
+    html += `<div class="footer-terms">
+        <div class="terms-title">TERMS & CONDITIONS</div>
+        <ul class="terms-list">
+          <li>Payment Terms: <strong>${quoteData.paymentTerms || 'Net 30'}</strong></li>
+          <li>Prices valid for 30 days from quote date</li>
+          <li>Minimum order quantities may apply</li>
+          <li><strong>Shipping costs not included unless specified</strong></li>
+          <li>All sales subject to Entech's standard terms</li>
+        </ul>
+      </div>
+   
+      <div class="thank-you">
+        <strong>entech</strong><br>
+        Thank you for the opportunity.
+      </div>
+    </div>`; // End footer-block
+
+    html += `</td></tr></tbody></table></body></html>`;
+ 
+    const htmlBlob = Utilities.newBlob(html, 'text/html');
+    const pdfBlob = htmlBlob.getAs('application/pdf');
+    
+    const safeName = quoteData.customerName.replace(/[^a-zA-Z0-9]/g, '_');
+    const fileName = `${quoteData.quoteNumber}_${safeName}.pdf`;
+   
+    let folder;
+    const folders = DriveApp.getFoldersByName('Entech_Quotes');
+    folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('Entech_Quotes');
+    
+    return folder.createFile(pdfBlob).setName(fileName).getUrl();
+   
+  } catch (error) {
+    Logger.log('PDF ERROR: ' + error.toString());
+    throw error;
+  }
+ }

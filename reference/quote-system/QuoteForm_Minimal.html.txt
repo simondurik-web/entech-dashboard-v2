@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+ <base target="_top">
+ <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+ <style>
+   body { padding: 20px; background: #f8f9fa; }
+   .container-fluid { max-width: 1100px; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+   .product-item { border: 1px solid #dee2e6; padding: 15px; margin-bottom: 15px; border-radius: 5px; position: relative; background: white; }
+   .remove-product { position: absolute; top: 10px; right: 10px; cursor: pointer; color: #dc3545; font-size: 20px; font-weight: bold; }
+   .text-danger { color: #dc3545 !important; }
+   .btn-primary { background-color: #dc3545; border-color: #dc3545; }
+   .btn-primary:hover { background-color: #a71d2a; }
+ </style>
+</head>
+<body>
+ <div class="container-fluid">
+   <h2 style="color: #dc3545;">📝 Create New Quote</h2>
+   
+   <div id="loading" class="alert alert-info">Loading customers...</div>
+
+   <div class="mb-4">
+     <h5>👤 Customer Selection</h5>
+     <select class="form-select" id="customerSelect" onchange="customerChanged()">
+       <option value="">-- Select Customer --</option>
+     </select>
+     <div id="customerDetails" style="display:none; margin-top:10px; padding:10px; background:#e7f3ff; border-radius:5px;">
+       <strong>Payment Terms:</strong> <span id="selectedCustomerTerms"></span>
+     </div>
+   </div>
+
+   <div class="mb-4">
+     <h5>📦 Products</h5>
+     <div id="productsList"></div>
+     <button class="btn btn-outline-secondary mt-2" onclick="addProduct()">➕ Add Product</button>
+   </div>
+
+   <div class="mb-4">
+     <h5>📝 Notes</h5>
+     <textarea class="form-control" id="quoteNotes" rows="2"></textarea>
+   </div>
+
+   <div class="text-center">
+     <button class="btn btn-primary btn-lg" onclick="submitQuote()" id="generateBtn">🚀 Generate Quote</button>
+   </div>
+ </div>
+
+ <script>
+   let selectedCustomer = null;
+   let availableProducts = [];
+   let productCounter = 0;
+
+   // Initialize - CALLS NEW UNIQUE FUNCTION
+   window.onload = function() {
+     google.script.run
+       .withSuccessHandler(function(customers) {
+         document.getElementById('loading').style.display = 'none';
+         const select = document.getElementById('customerSelect');
+         if (customers.length === 0) {
+             alert("No customers found. Please check the 'Customer Reference data' sheet.");
+             return;
+         }
+         customers.forEach(c => {
+           const opt = document.createElement('option');
+           opt.value = JSON.stringify(c);
+           opt.textContent = c.name;
+           select.appendChild(opt);
+         });
+       })
+       .withFailureHandler(err => alert('Error loading customers: ' + err))
+       .getQuoteCustomers();
+   };
+
+   function customerChanged() {
+     const val = document.getElementById('customerSelect').value;
+     if (!val) {
+       selectedCustomer = null;
+       document.getElementById('productsList').innerHTML = '';
+       return;
+     }
+     selectedCustomer = JSON.parse(val);
+     document.getElementById('selectedCustomerTerms').textContent = selectedCustomer.paymentTerms;
+     document.getElementById('customerDetails').style.display = 'block';
+     
+     google.script.run
+       .withSuccessHandler(function(res) {
+         availableProducts = res.products;
+         document.getElementById('productsList').innerHTML = ''; // Clear list
+       })
+       .getQuoteProducts(selectedCustomer.name);
+   }
+
+   function addProduct() {
+     if (!selectedCustomer || availableProducts.length === 0) {
+       alert('Select a customer with valid products first.');
+       return;
+     }
+     productCounter++;
+     const pid = `prod_${productCounter}`;
+     const div = document.createElement('div');
+     div.className = 'product-item';
+     div.id = pid;
+     
+     let opts = '<option value="">-- Select Product --</option>';
+     availableProducts.forEach(p => {
+       opts += `<option value='${JSON.stringify(p)}'>${p.displayName}</option>`;
+     });
+
+     div.innerHTML = `
+       <span class="remove-product" onclick="document.getElementById('${pid}').remove()">✕</span>
+       <div class="mb-2">
+         <select class="form-select" onchange="updateRow('${pid}', this)">${opts}</select>
+       </div>
+       <div id="${pid}_details" style="display:none;">
+         <div class="form-check form-check-inline">
+           <input class="form-check-input" type="radio" name="${pid}_mode" value="tiers" checked onchange="updateMode('${pid}')"> Show Tiers
+         </div>
+         <div class="form-check form-check-inline">
+           <input class="form-check-input" type="radio" name="${pid}_mode" value="quantity" onchange="updateMode('${pid}')"> Quantity
+         </div>
+         <div id="${pid}_tiers" class="mt-2 small text-muted"></div>
+         <div id="${pid}_qty_input" class="mt-2" style="display:none;">
+           <input type="number" class="form-control" placeholder="Qty" onchange="calcRow('${pid}')">
+           <div class="mt-1 fw-bold text-danger" id="${pid}_total"></div>
+         </div>
+       </div>
+     `;
+     document.getElementById('productsList').appendChild(div);
+   }
+
+   function updateRow(pid, select) {
+     if (!select.value) return;
+     const p = JSON.parse(select.value);
+     document.getElementById(pid).dataset.product = select.value;
+     document.getElementById(pid + '_details').style.display = 'block';
+     
+     let tiersHtml = '<strong>Tiers:</strong><br>';
+     p.tiers.forEach(t => tiersHtml += `${t.rangeText}: $${t.price.toFixed(2)}<br>`);
+     document.getElementById(pid + '_tiers').innerHTML = tiersHtml;
+     updateMode(pid);
+   }
+
+   function updateMode(pid) {
+     const isQty = document.querySelector(`input[name="${pid}_mode"][value="quantity"]`).checked;
+     document.getElementById(pid + '_tiers').style.display = isQty ? 'none' : 'block';
+     document.getElementById(pid + '_qty_input').style.display = isQty ? 'block' : 'none';
+   }
+
+   function calcRow(pid) {
+     const p = JSON.parse(document.getElementById(pid).dataset.product);
+     const qty = parseInt(document.querySelector(`#${pid}_qty_input input`).value) || 0;
+     let price = 0;
+     p.tiers.forEach(t => { if(qty >= t.min) price = t.price; });
+     
+     document.getElementById(pid + '_total').textContent = qty > 0 ? 
+       `$${(qty * price).toFixed(2)} ($${price.toFixed(2)}/ea)` : '';
+   }
+
+   function submitQuote() {
+     if (!selectedCustomer) return alert('Select customer');
+     const items = [];
+     let total = 0;
+     
+     document.querySelectorAll('.product-item').forEach(div => {
+       if (!div.dataset.product) return;
+       const p = JSON.parse(div.dataset.product);
+       const pid = div.id;
+       const isQty = document.querySelector(`input[name="${pid}_mode"][value="quantity"]`).checked;
+       
+       const item = {
+         internalPartNumber: p.internalPartNumber,
+         customerPartNumber: p.customerPartNumber,
+         displayMode: isQty ? 'quantity' : 'tiers',
+         tiers: p.tiers,
+         quantity: 0, unitPrice: 0, total: 0
+       };
+       
+       if (isQty) {
+         const qty = parseInt(document.querySelector(`#${pid}_qty_input input`).value) || 0;
+         if (qty <= 0) return;
+         let price = 0;
+         p.tiers.forEach(t => { if(qty >= t.min) price = t.price; });
+         item.quantity = qty;
+         item.unitPrice = price;
+         item.total = qty * price;
+         total += item.total;
+       }
+       items.push(item);
+     });
+     
+     if (items.length === 0) return alert('Add at least one product.');
+     
+     const btn = document.getElementById('generateBtn');
+     btn.disabled = true;
+     btn.innerHTML = 'Processing...';
+     
+     google.script.run
+       .withSuccessHandler(res => {
+         if(res.success) {
+           window.open(res.pdfUrl, '_blank');
+           google.script.host.close();
+         } else {
+           alert('Error: ' + res.error);
+           btn.disabled = false;
+         }
+       })
+       .processQuoteSubmission({ // CALLING NEW UNIQUE FUNCTION
+         customerName: selectedCustomer.name,
+         paymentTerms: selectedCustomer.paymentTerms,
+         notes: document.getElementById('quoteNotes').value,
+         items: items,
+         totalAmount: total
+       });
+   }
+ </script>
+</body>
+</html>

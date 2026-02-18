@@ -10,6 +10,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.2",
     "@supabase/supabase-js": "^2.96.0",
     "@typescript/native-preview": "^7.0.0-dev.20260218.1",
     "chart.js": "^4.5.1",
