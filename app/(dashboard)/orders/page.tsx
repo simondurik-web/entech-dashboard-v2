@@ -19,8 +19,8 @@ const CATEGORY_FILTERS = [
 ] as const
 
 const STATUS_FILTERS = [
-  { key: 'pending', label: 'Need to Make', color: 'bg-yellow-500' },
-  { key: 'wip', label: 'Making', color: 'bg-teal-500' },
+  { key: 'pending', label: 'Pending', color: 'bg-yellow-500' },
+  { key: 'wip', label: 'Work in Progress', color: 'bg-teal-500' },
   { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
   { key: 'staged', label: 'Ready to Ship', color: 'bg-green-500' },
   { key: 'shipped', label: 'Shipped', color: 'bg-gray-500' },
@@ -62,10 +62,64 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
     },
   },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  {
+    key: 'partNumber',
+    label: 'Part #',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const order = row as unknown as Order
+      const cat = order.category.toLowerCase()
+      const active = isActiveStatus(order)
+      // Molding/Snap Pad: green if enough inventory, red if not
+      if (active && (cat.includes('molding') || cat.includes('snap'))) {
+        const enough = order.fusionInventory >= order.orderQty
+        return <strong className={enough ? 'text-green-500' : 'text-red-400 font-black'}>{String(v)}</strong>
+      }
+      return <strong>{String(v)}</strong>
+    },
+  },
   { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
-  { key: 'tire', label: 'Tire', sortable: true, filterable: true },
-  { key: 'hub', label: 'Hub', sortable: true, filterable: true },
+  {
+    key: 'tire',
+    label: 'Tire',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const order = row as unknown as Order
+      const isRollTech = order.category.toLowerCase().includes('roll')
+      if (!isRollTech) return <span className="text-muted-foreground">N/A</span>
+      const val = String(v || '')
+      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+      const active = isActiveStatus(order)
+      if (active) {
+        return order.hasTire
+          ? <span className="text-green-500">{val}</span>
+          : <strong className="text-red-400">{val}</strong>
+      }
+      return <span>{val}</span>
+    },
+  },
+  {
+    key: 'hub',
+    label: 'Hub',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const order = row as unknown as Order
+      const isRollTech = order.category.toLowerCase().includes('roll')
+      if (!isRollTech) return <span className="text-muted-foreground">N/A</span>
+      const val = String(v || '')
+      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+      const active = isActiveStatus(order)
+      if (active) {
+        return order.hasHub
+          ? <span className="text-green-500">{val}</span>
+          : <strong className="text-red-400">{val}</strong>
+      }
+      return <span>{val}</span>
+    },
+  },
   { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
   {
     key: 'internalStatus',
@@ -74,9 +128,10 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
     filterable: true,
     render: (v) => {
       const status = String(v || '')
+      const displayLabel = statusDisplayLabel(status)
       return (
         <span className={`px-2 py-0.5 text-xs rounded font-medium ${statusColor(status)}`}>
-          {status || 'N/A'}
+          {displayLabel || 'N/A'}
         </span>
       )
     },
@@ -84,6 +139,22 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
   { key: 'category', label: 'Category', sortable: true, filterable: true },
   { key: 'assignedTo', label: 'Assigned', filterable: true },
 ]
+
+function statusDisplayLabel(status: string): string {
+  const s = status.toLowerCase()
+  if (s === 'staged' || s === 'ready to ship') return 'Ready to Ship'
+  if (s === 'work in progress' || s === 'wip' || s === 'released' || s === 'in production') return 'Work in Progress'
+  if (s === 'pending' || s === 'need to make' || s === 'approved') return 'Pending'
+  if (s === 'completed') return 'Completed'
+  if (s === 'shipped' || s === 'invoiced' || s === 'to bill') return 'Shipped'
+  if (s === 'cancelled') return 'Cancelled'
+  return status || 'N/A'
+}
+
+function isActiveStatus(order: Order): boolean {
+  const s = normalizeStatus(order.internalStatus, order.ifStatus)
+  return s === 'pending' || s === 'wip' || s === 'completed'
+}
 
 function priorityColor(priority: string): string {
   if (priority === 'P1') return 'bg-red-500/20 text-red-600'
@@ -252,11 +323,11 @@ export default function OrdersPage() {
           <p className="text-xs text-muted-foreground">{totalUnits.toLocaleString()} units</p>
         </div>
         <div className="bg-yellow-500/10 rounded-lg p-3">
-          <p className="text-xs text-yellow-600">Need to Make</p>
+          <p className="text-xs text-yellow-600">Pending</p>
           <p className="text-xl font-bold text-yellow-600">{needToMake}</p>
         </div>
         <div className="bg-teal-500/10 rounded-lg p-3">
-          <p className="text-xs text-teal-600">Making</p>
+          <p className="text-xs text-teal-600">Work in Progress</p>
           <p className="text-xl font-bold text-teal-600">{making}</p>
         </div>
         <div className="bg-emerald-500/10 rounded-lg p-3">
