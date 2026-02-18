@@ -2,6 +2,7 @@
 
 import { Sidebar } from "@/components/layout/Sidebar"
 import { BottomNav } from "@/components/layout/bottom-nav"
+import { VersionBadge } from "@/components/layout/VersionBadge"
 import { PanelLeft } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -55,6 +56,7 @@ export default function DashboardLayout({
 
       {/* Mobile bottom nav */}
       <BottomNav />
+      <VersionBadge />
     </div>
   )
 }
