@@ -75,7 +75,7 @@ export default function InventoryHistoryPage() {
           (a, b) => (b.dataByDate[latestDate] ?? 0) - (a.dataByDate[latestDate] ?? 0)
         )
         setHistory({ dates: sortedDates, parts: sortedParts })
-        setSelectedParts(sortedParts.slice(0, 3).map((p) => p.partNumber))
+        // Start with no parts selected — user picks what they want
         if (sortedDates.length > 0) {
           setStartDate(toDateInputValue(sortedDates[0]))
           setEndDate(toDateInputValue(sortedDates[sortedDates.length - 1]))
