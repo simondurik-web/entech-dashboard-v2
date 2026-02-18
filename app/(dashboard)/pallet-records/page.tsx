@@ -68,9 +68,9 @@ const COLUMNS: ColumnDef<PalletRow>[] = [
   {
     key: 'photos',
     label: 'Photos',
-    render: (v) => {
-      const photos = v as string[]
-      return photos.length > 0 ? `📷 ${photos.length}` : '-'
+    render: (_v, row) => {
+      const r = row as PalletRow
+      return <PhotoGrid photos={r.photos} size="sm" maxVisible={3} context={{ ifNumber: r.ifNumber }} />
     },
   },
 ]
