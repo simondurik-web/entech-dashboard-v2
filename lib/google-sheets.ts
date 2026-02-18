@@ -923,3 +923,109 @@ export async function fetchBOM(gid: string = GIDS.bomFinal): Promise<BOMItem[]> 
 
   return items.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
 }
+
+/**
+ * Sub Assembly BOM (GID 206288913)
+ * Cols: A=Part, B=Category, C=Mold, D=Weight, E-G=Comp1(name/qty/cost),
+ * H-J=Comp2, K-M=Comp3, N-P=Comp4, Q-S=Comp5, T=MaterialCost,
+ * U=Parts/hr, V=Labor$/hr, W=Employees, X=Labor$/part, Z=TotalCost
+ */
+export async function fetchBOMSub(): Promise<BOMItem[]> {
+  const { rows } = await fetchSheetData(GIDS.bomSub)
+  const items: BOMItem[] = []
+
+  for (const row of rows) {
+    const partNumber = cellValue(row, 0)
+    if (!partNumber) continue
+
+    const category = cellValue(row, 1) || 'Other'
+    const weight = cellNumber(row, 3)
+    const components: BOMComponent[] = []
+
+    // 5 component groups: cols 4-6, 7-9, 10-12, 13-15, 16-18
+    for (let i = 0; i < 5; i++) {
+      const base = 4 + i * 3
+      const pn = cellValue(row, base)
+      if (!pn) continue
+      const qty = cellNumber(row, base + 1) || 1
+      const cost = parseCurrency(row.c[base + 2]?.v)
+      components.push({
+        partNumber: pn,
+        description: pn,
+        quantity: qty,
+        unit: 'ea',
+        costPerUnit: qty > 0 ? cost / qty : cost,
+        category: 'raw',
+      })
+    }
+
+    // Labor: cols 20=parts/hr, 21=labor$/hr, 22=employees, 23=labor$/part
+    const laborPerPart = parseCurrency(row.c[23]?.v)
+    if (laborPerPart > 0) {
+      components.push({
+        partNumber: 'LABOR',
+        description: 'Direct Labor',
+        quantity: 1,
+        unit: 'ea',
+        costPerUnit: laborPerPart,
+        category: 'energy',
+      })
+    }
+
+    const materialCost = parseCurrency(row.c[19]?.v)
+    const totalCost = parseCurrency(row.c[25]?.v) || (materialCost + laborPerPart)
+
+    items.push({
+      partNumber,
+      product: `${category}${weight ? ` · ${weight} lbs` : ''}`,
+      category,
+      qtyPerPallet: 0,
+      components,
+      totalCost,
+      materialCost,
+      packagingCost: 0,
+      laborEnergyCost: laborPerPart,
+    })
+  }
+
+  return items.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
+}
+
+/**
+ * Individual Items BOM (GID 751106736)
+ * Cols: A=Part Name, B=Description, C=Cost per pound/part, D=Supplier
+ */
+export async function fetchBOMIndividual(): Promise<BOMItem[]> {
+  const { rows } = await fetchSheetData(GIDS.bomIndividual)
+  const items: BOMItem[] = []
+
+  for (const row of rows) {
+    const partNumber = cellValue(row, 0)
+    if (!partNumber) continue
+
+    const description = cellValue(row, 1) || partNumber
+    const costPerUnit = parseCurrency(row.c[2]?.v)
+    const supplier = cellValue(row, 3)
+
+    items.push({
+      partNumber,
+      product: description,
+      category: supplier || 'Unknown',
+      qtyPerPallet: 0,
+      components: [{
+        partNumber,
+        description,
+        quantity: 1,
+        unit: 'ea',
+        costPerUnit,
+        category: 'raw',
+      }],
+      totalCost: costPerUnit,
+      materialCost: costPerUnit,
+      packagingCost: 0,
+      laborEnergyCost: 0,
+    })
+  }
+
+  return items.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
+}
