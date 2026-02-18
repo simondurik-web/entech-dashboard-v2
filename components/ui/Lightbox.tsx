@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react'
 import { getPhotoUrls } from '@/lib/drive-utils'
 
@@ -14,12 +14,30 @@ interface LightboxProps {
 export function Lightbox({ images, initialIndex, onClose, context }: LightboxProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [hoveredThumb, setHoveredThumb] = useState<number | null>(null)
+  const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null)
+  const animRef = useRef<number>(0)
 
   const currentImage = images[currentIndex]
   const { full: imageUrl } = getPhotoUrls(currentImage)
 
-  const goNext = useCallback(() => setCurrentIndex((i) => Math.min(i + 1, images.length - 1)), [images.length])
-  const goPrev = useCallback(() => setCurrentIndex((i) => Math.max(i - 1, 0)), [])
+  const goNext = useCallback(() => {
+    setSlideDir('left')
+    animRef.current++
+    setCurrentIndex((i) => (i + 1) % images.length) // infinite loop
+  }, [images.length])
+
+  const goPrev = useCallback(() => {
+    setSlideDir('right')
+    animRef.current++
+    setCurrentIndex((i) => (i - 1 + images.length) % images.length) // infinite loop
+  }, [images.length])
+
+  // Clear animation after it plays
+  useEffect(() => {
+    if (!slideDir) return
+    const t = setTimeout(() => setSlideDir(null), 250)
+    return () => clearTimeout(t)
+  }, [slideDir, animRef.current]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
@@ -66,103 +84,128 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
     return 1
   }
 
+  // Slide animation styles
+  const slideStyle = slideDir
+    ? {
+        animation: `slide-in-from-${slideDir} 250ms ease-out`,
+      }
+    : {}
+
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" onClick={onClose}>
-      {/* Close */}
-      <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10">
-        <X className="size-6" />
-      </button>
+    <>
+      <style jsx global>{`
+        @keyframes slide-in-from-left {
+          from { transform: translateX(60px); opacity: 0.3; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slide-in-from-right {
+          from { transform: translateX(-60px); opacity: 0.3; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
 
-      {/* Counter */}
-      <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm">
-        {currentIndex + 1} / {images.length}
-      </div>
-
-      {/* Actions */}
-      <div className="absolute top-4 right-16 flex gap-2">
-        <a
-          href={imageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-          title="Open in new tab"
-        >
-          <ExternalLink className="size-5" />
-        </a>
-        <button
-          onClick={(e) => { e.stopPropagation(); handleDownload() }}
-          className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-          title={`Download as ${getFilename()}`}
-        >
-          <Download className="size-5" />
+      <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" onClick={onClose}>
+        {/* Close */}
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10">
+          <X className="size-6" />
         </button>
-      </div>
 
-      {/* Previous */}
-      {currentIndex > 0 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); goPrev() }}
-          className="absolute left-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-        >
-          <ChevronLeft className="size-8" />
-        </button>
-      )}
-
-      {/* Image */}
-      <div className="max-w-[90vw] max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt={`Photo ${currentIndex + 1}`}
-          className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
-          }}
-        />
-      </div>
-
-      {/* Next */}
-      {currentIndex < images.length - 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); goNext() }}
-          className="absolute right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-        >
-          <ChevronRight className="size-8" />
-        </button>
-      )}
-
-      {/* Thumbnail strip — macOS dock effect + rounded corners */}
-      {images.length > 1 && (
-        <div
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-end gap-1.5 px-3 py-2 bg-black/60 backdrop-blur-md rounded-2xl max-w-[90vw] overflow-x-auto"
-          onClick={(e) => e.stopPropagation()}
-          onMouseLeave={() => setHoveredThumb(null)}
-        >
-          {images.map((img, i) => {
-            const scale = getThumbScale(i)
-            const { thumb } = getPhotoUrls(img)
-            return (
-              <button
-                key={i}
-                onClick={() => setCurrentIndex(i)}
-                onMouseEnter={() => setHoveredThumb(i)}
-                className="transition-all duration-150 ease-out rounded-lg overflow-hidden border-2 shrink-0"
-                style={{
-                  width: 48 * scale,
-                  height: 48 * scale,
-                  borderColor: i === currentIndex ? 'white' : 'transparent',
-                  opacity: i === currentIndex ? 1 : 0.7,
-                  marginBottom: (scale - 1) * 10,
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={thumb} alt={`${i + 1}`} className="w-full h-full object-cover" />
-              </button>
-            )
-          })}
+        {/* Counter */}
+        <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm">
+          {currentIndex + 1} / {images.length}
         </div>
-      )}
-    </div>
+
+        {/* Actions */}
+        <div className="absolute top-4 right-16 flex gap-2">
+          <a
+            href={imageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title="Open in new tab"
+          >
+            <ExternalLink className="size-5" />
+          </a>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleDownload() }}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title={`Download as ${getFilename()}`}
+          >
+            <Download className="size-5" />
+          </button>
+        </div>
+
+        {/* Previous — always visible for infinite loop */}
+        {images.length > 1 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); goPrev() }}
+            className="absolute left-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <ChevronLeft className="size-8" />
+          </button>
+        )}
+
+        {/* Image with slide animation */}
+        <div
+          className="max-w-[90vw] max-h-[85vh] flex items-center justify-center"
+          onClick={(e) => e.stopPropagation()}
+          style={slideStyle}
+          key={currentIndex}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={`Photo ${currentIndex + 1}`}
+            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
+            }}
+          />
+        </div>
+
+        {/* Next — always visible for infinite loop */}
+        {images.length > 1 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); goNext() }}
+            className="absolute right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <ChevronRight className="size-8" />
+          </button>
+        )}
+
+        {/* Thumbnail strip */}
+        {images.length > 1 && (
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-end gap-1.5 px-3 py-2 bg-black/60 backdrop-blur-md rounded-2xl max-w-[90vw] overflow-x-auto"
+            onClick={(e) => e.stopPropagation()}
+            onMouseLeave={() => setHoveredThumb(null)}
+          >
+            {images.map((img, i) => {
+              const scale = getThumbScale(i)
+              const { thumb } = getPhotoUrls(img)
+              return (
+                <button
+                  key={i}
+                  onClick={() => { setSlideDir(i > currentIndex ? 'left' : 'right'); setCurrentIndex(i) }}
+                  onMouseEnter={() => setHoveredThumb(i)}
+                  className="transition-all duration-150 ease-out rounded-lg overflow-hidden border-2 shrink-0"
+                  style={{
+                    width: 48 * scale,
+                    height: 48 * scale,
+                    borderColor: i === currentIndex ? 'white' : 'transparent',
+                    opacity: i === currentIndex ? 1 : 0.7,
+                    marginBottom: (scale - 1) * 10,
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumb} alt={`${i + 1}`} className="w-full h-full object-cover" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
