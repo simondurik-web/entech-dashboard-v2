@@ -60,6 +60,7 @@ const COLUMNS: ColumnDef<PalletRow>[] = [
   },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
   { key: 'ifNumber', label: 'IF#', sortable: true },
+  { key: 'lineNumber', label: 'Line #', sortable: true, filterable: true, render: (v) => (v as string) || '-' },
   { key: 'palletNumber', label: 'Pallet #', sortable: true },
   { key: 'category', label: 'Category', sortable: true, filterable: true },
   { key: 'weight', label: 'Weight', sortable: true },
@@ -284,7 +285,7 @@ export default function PalletRecordsPage() {
                     <div>
                       <CardTitle className="text-lg">{record.customer || 'Unknown'}</CardTitle>
                       <p className="text-sm text-muted-foreground">
-                        IF# {record.ifNumber} • Pallet #{record.palletNumber}
+                        IF# {record.ifNumber}{record.lineNumber ? ` • Line ${record.lineNumber}` : ''} • Pallet #{record.palletNumber}
                       </p>
                     </div>
                     <span className="text-xs text-muted-foreground">

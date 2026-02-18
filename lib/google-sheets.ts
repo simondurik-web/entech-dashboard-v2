@@ -531,6 +531,7 @@ export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
 export interface PalletRecord {
   timestamp: string
   orderNumber: string
+  lineNumber: string
   palletNumber: string
   customer: string
   ifNumber: string
@@ -580,6 +581,7 @@ export async function fetchPalletRecords(): Promise<PalletRecord[]> {
     records.push({
       timestamp,
       orderNumber,
+      lineNumber: findColumnValue(row, cols, ['line number', 'numero de linea', 'line #', 'line']),
       palletNumber: findColumnValue(row, cols, ['pallet number', 'numero de paleta']),
       customer: findColumnValue(row, cols, ['customer', 'cliente']),
       ifNumber,

@@ -20,7 +20,7 @@ export function VersionBadge() {
   return (
     <button
       onClick={() => setExpanded(!expanded)}
-      className="fixed bottom-2 left-2 z-50 px-2 py-1 rounded-md bg-muted/80 backdrop-blur text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-all font-mono"
+      className="fixed bottom-20 left-2 md:bottom-2 z-40 px-2 py-0.5 rounded-md bg-muted/60 backdrop-blur text-[9px] text-muted-foreground hover:bg-muted hover:text-foreground transition-all font-mono"
       title={`Build: ${hash} — ${dateRaw}`}
     >
       {expanded ? `v${hash} · ${formatted}` : `v${hash}`}
