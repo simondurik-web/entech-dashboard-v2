@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import {
   ClipboardList,
   Factory,
@@ -33,36 +34,37 @@ import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
 
 type NavItem = {
-  label: string
+  /** Translation key — resolved via t() */
+  tKey: string
   href: string
   icon: React.ReactNode
   sub?: boolean
 }
 
 const productionItems: NavItem[] = [
-  { label: "Orders Data", href: "/orders", icon: <ClipboardList className="size-4" /> },
-  { label: "Need to Make", href: "/need-to-make", icon: <Factory className="size-4" />, sub: true },
-  { label: "Need to Package", href: "/need-to-package", icon: <Package className="size-4" />, sub: true },
-  { label: "Ready to Ship", href: "/staged", icon: <PackageCheck className="size-4" />, sub: true },
-  { label: "Shipped", href: "/shipped", icon: <Truck className="size-4" />, sub: true },
-  { label: "Inventory", href: "/inventory", icon: <Archive className="size-4" /> },
-  { label: "Inventory History", href: "/inventory-history", icon: <TrendingUp className="size-4" />, sub: true },
-  { label: "Drawings", href: "/drawings", icon: <Ruler className="size-4" />, sub: true },
-  { label: "Pallet Records", href: "/pallet-records", icon: <Camera className="size-4" /> },
-  { label: "Shipping Records", href: "/shipping-records", icon: <Truck className="size-4" /> },
-  { label: "Staged Records", href: "/staged-records", icon: <FileText className="size-4" /> },
-  { label: "BOM Explorer", href: "/bom", icon: <Layers className="size-4" /> },
-  { label: "Material Requirements", href: "/material-requirements", icon: <Package className="size-4" />, sub: true },
-  { label: "FP Reference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
-  { label: "Customer Reference", href: "/customer-reference", icon: <Users className="size-4" /> },
-  { label: "Quotes Registry", href: "/quotes", icon: <DollarSign className="size-4" /> },
+  { tKey: "nav.ordersData", href: "/orders", icon: <ClipboardList className="size-4" /> },
+  { tKey: "nav.productionMake", href: "/need-to-make", icon: <Factory className="size-4" />, sub: true },
+  { tKey: "nav.ordersQueue", href: "/need-to-package", icon: <Package className="size-4" />, sub: true },
+  { tKey: "nav.ordersStaged", href: "/staged", icon: <PackageCheck className="size-4" />, sub: true },
+  { tKey: "nav.ordersShipped", href: "/shipped", icon: <Truck className="size-4" />, sub: true },
+  { tKey: "nav.inventory", href: "/inventory", icon: <Archive className="size-4" /> },
+  { tKey: "nav.inventoryHistory", href: "/inventory-history", icon: <TrendingUp className="size-4" />, sub: true },
+  { tKey: "nav.drawingsLibrary", href: "/drawings", icon: <Ruler className="size-4" />, sub: true },
+  { tKey: "nav.palletRecords", href: "/pallet-records", icon: <Camera className="size-4" /> },
+  { tKey: "nav.shippingRecords", href: "/shipping-records", icon: <Truck className="size-4" /> },
+  { tKey: "nav.stagedRecords", href: "/staged-records", icon: <FileText className="size-4" /> },
+  { tKey: "nav.bom", href: "/bom", icon: <Layers className="size-4" /> },
+  { tKey: "nav.materialReqs", href: "/material-requirements", icon: <Package className="size-4" />, sub: true },
+  { tKey: "nav.fpReference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
+  { tKey: "nav.customerRef", href: "/customer-reference", icon: <Users className="size-4" /> },
+  { tKey: "nav.quotes", href: "/quotes", icon: <DollarSign className="size-4" /> },
 ]
 
 const salesItems: NavItem[] = [
-  { label: "P/L Overview", href: "/sales-overview", icon: <BarChart3 className="size-4" /> },
-  { label: "By Part Number", href: "/sales-parts", icon: <Wrench className="size-4" />, sub: true },
-  { label: "By Customer", href: "/sales-customers", icon: <Users className="size-4" />, sub: true },
-  { label: "By Date", href: "/sales-dates", icon: <CalendarDays className="size-4" />, sub: true },
+  { tKey: "nav.salesOverview", href: "/sales-overview", icon: <BarChart3 className="size-4" /> },
+  { tKey: "nav.salesByPart", href: "/sales-parts", icon: <Wrench className="size-4" />, sub: true },
+  { tKey: "nav.salesByCustomer", href: "/sales-customers", icon: <Users className="size-4" />, sub: true },
+  { tKey: "nav.salesByDate", href: "/sales-dates", icon: <CalendarDays className="size-4" />, sub: true },
 ]
 
 export function Sidebar({
@@ -74,11 +76,11 @@ export function Sidebar({
 }) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
+  const { t } = useI18n()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    // Hydration sync - safe to set mounted state once on client
-    setMounted(true) // eslint-disable-line react/use-effect-no-sync-set-state
+    setMounted(true)
   }, [])
 
   return (
@@ -118,10 +120,7 @@ export function Sidebar({
 
         {/* Toggle controls */}
         <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3">
-          {/* Language toggle */}
           <LanguageToggle />
-
-          {/* Theme toggle */}
           {mounted && (
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -143,14 +142,12 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Zoom controls - desktop only */}
         <ZoomControls />
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4">
-          {/* Production section */}
           <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            Production
+            {t('nav.production')}
           </p>
           <ul className="space-y-0.5">
             {productionItems.map((item) => {
@@ -169,16 +166,15 @@ export function Sidebar({
                     )}
                   >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span>{t(item.tKey)}</span>
                   </Link>
                 </li>
               )
             })}
           </ul>
 
-          {/* Sales & Finance */}
           <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            Sales & Finance
+            {t('nav.salesFinance')}
           </p>
           <ul className="space-y-0.5">
             {salesItems.map((item) => {
@@ -197,16 +193,15 @@ export function Sidebar({
                     )}
                   >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span>{t(item.tKey)}</span>
                   </Link>
                 </li>
               )
             })}
           </ul>
 
-          {/* Raw Data */}
           <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            Raw Data
+            {t('nav.rawData')}
           </p>
           <ul className="space-y-0.5">
             <li>
@@ -231,7 +226,7 @@ export function Sidebar({
         <div className="border-t border-white/10 px-3 py-3">
           <button className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
             <Bot className="size-4" />
-            <span>Phil Assistant</span>
+            <span>{t('nav.aiAssistant')}</span>
           </button>
         </div>
       </aside>
