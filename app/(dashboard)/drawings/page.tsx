@@ -95,26 +95,26 @@ function CarouselLightbox({
           </button>
         )}
 
-        <div className="w-full overflow-hidden rounded-lg relative" style={{ minHeight: '50vh' }}>
+        <div className="w-full overflow-hidden rounded-lg relative max-h-[85vh] overflow-y-auto">
           {/* Current image */}
           <div
-            className="absolute inset-0 flex items-center justify-center"
             style={{
               transform: getTransform(),
               transition: animating ? 'transform 300ms ease-in-out' : 'none',
+              display: animating ? undefined : 'block',
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={getDriveThumbUrl(urls[idx], 1200)}
               alt={`${partNumber} drawing ${idx + 1}`}
-              className="w-full object-contain max-h-[80vh] bg-white/5"
+              className="w-full bg-white/5 rounded-lg"
             />
           </div>
-          {/* Incoming image */}
+          {/* Incoming image — overlaid during animation only */}
           {animating && (
             <div
-              className="absolute inset-0 flex items-center justify-center"
+              className="absolute inset-0"
               style={{
                 transform: getEnterTransform(),
                 transition: 'transform 300ms ease-in-out',
@@ -124,7 +124,7 @@ function CarouselLightbox({
               <img
                 src={getDriveThumbUrl(urls[nextIdx], 1200)}
                 alt={`${partNumber} drawing ${nextIdx + 1}`}
-                className="w-full object-contain max-h-[80vh] bg-white/5"
+                className="w-full bg-white/5 rounded-lg"
               />
             </div>
           )}
