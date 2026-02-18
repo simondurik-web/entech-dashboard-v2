@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Camera } from 'lucide-react'
 import { Lightbox } from './Lightbox'
+import { getPhotoUrls } from '@/lib/drive-utils'
 
 interface PhotoGridProps {
   photos: string[]
@@ -26,14 +27,7 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md' }: PhotoGridProp
   const visiblePhotos = photos.slice(0, maxVisible)
   const hiddenCount = photos.length - maxVisible
 
-  // Extract image URL from Google Drive format if needed
-  const getImageUrl = (url: string): string => {
-    const driveMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/)
-    if (driveMatch) {
-      return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`
-    }
-    return url
-  }
+  const getImageUrl = (url: string): string => getPhotoUrls(url).thumb
 
   const sizeClasses = {
     sm: 'w-10 h-10',

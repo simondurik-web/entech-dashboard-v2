@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react'
+import { getPhotoUrls } from '@/lib/drive-utils'
 
 interface LightboxProps {
   images: string[]
@@ -30,17 +31,8 @@ export function Lightbox({ images, currentIndex, onClose, onNext, onPrev }: Ligh
     }
   }, [handleKeyDown])
 
-  // Extract image URL from Google Drive format if needed
-  const getImageUrl = (url: string): string => {
-    // Handle Google Drive URLs
-    const driveMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/)
-    if (driveMatch) {
-      return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`
-    }
-    return url
-  }
-
-  const imageUrl = getImageUrl(currentImage)
+  const { full: imageUrl } = getPhotoUrls(currentImage)
+  const getThumbUrl = (url: string): string => getPhotoUrls(url).thumb
 
   return (
     <div 
@@ -138,7 +130,7 @@ export function Lightbox({ images, currentIndex, onClose, onNext, onPrev }: Ligh
               }`}
             >
               <img
-                src={getImageUrl(img)}
+                src={getThumbUrl(img)}
                 alt={`Thumbnail ${i + 1}`}
                 className="w-full h-full object-cover"
               />

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { X, Ruler, Package, FileText, Truck, Search } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
+import { getDriveThumbUrl } from '@/lib/drive-utils'
 
 interface OrderDetailProps {
   ifNumber?: string
@@ -201,7 +202,7 @@ export function OrderDetail({
               <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4" style={{ borderTop: '4px solid rgb(59, 130, 246)' }}>
                 <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-blue-400">
                   <Package className="size-4" />
-                  📦 Pallet Details
+                  Pallet Details
                 </h4>
                 {photoCategories.palletPhotos.length > 0 ? (
                   <>
@@ -223,7 +224,7 @@ export function OrderDetail({
               <div className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-4" style={{ borderTop: '4px solid rgb(20, 184, 166)' }}>
                 <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-teal-400">
                   <FileText className="size-4" />
-                  📄 Fusion Pictures
+                  Fusion Pictures
                 </h4>
                 {photoCategories.fusionPhotos.length > 0 ? (
                   <PhotoGrid photos={photoCategories.fusionPhotos} maxVisible={4} size="sm" />
@@ -236,7 +237,7 @@ export function OrderDetail({
               <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4" style={{ borderTop: '4px solid rgb(34, 197, 94)' }}>
                 <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-green-400">
                   <Truck className="size-4" />
-                  🚚 Shipment Photos
+                  Shipment Photos
                 </h4>
                 {photoCategories.shipmentPhotos.length > 0 || photoCategories.paperworkPhotos.length > 0 ? (
                   <div className="space-y-2">
@@ -262,7 +263,7 @@ export function OrderDetail({
               <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-4" style={{ borderTop: '4px solid rgb(168, 85, 247)' }}>
                 <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-purple-400">
                   <Search className="size-4" />
-                  🔍 Close-Up Pictures
+                  Close-Up Pictures
                 </h4>
                 {photoCategories.closeUpPhotos.length > 0 ? (
                   <PhotoGrid photos={photoCategories.closeUpPhotos} maxVisible={4} size="sm" />
@@ -283,14 +284,16 @@ export function OrderDetail({
                   {matchedDrawings.main && matchedDrawings.main.drawing1Url && (
                     <div className="flex flex-col items-center">
                       <button
-                        onClick={() => setLightboxUrl(matchedDrawings.main!.drawing1Url)}
+                        onClick={() => setLightboxUrl(getDriveThumbUrl(matchedDrawings.main!.drawing1Url, 1200))}
                         className="cursor-pointer overflow-hidden rounded-md border bg-muted hover:ring-2 hover:ring-primary transition-all"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={matchedDrawings.main.drawing1Url}
+                          src={getDriveThumbUrl(matchedDrawings.main.drawing1Url, 400)}
                           alt={`${matchedDrawings.main.partNumber} drawing`}
                           className="h-24 w-auto object-contain"
+                          loading="lazy"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
                       </button>
                       <span className="mt-1 text-xs text-muted-foreground">{matchedDrawings.main.partNumber}</span>
@@ -299,14 +302,16 @@ export function OrderDetail({
                   {matchedDrawings.tire && matchedDrawings.tire.drawing1Url && (
                     <div className="flex flex-col items-center">
                       <button
-                        onClick={() => setLightboxUrl(matchedDrawings.tire!.drawing1Url)}
+                        onClick={() => setLightboxUrl(getDriveThumbUrl(matchedDrawings.tire!.drawing1Url, 1200))}
                         className="cursor-pointer overflow-hidden rounded-md border bg-muted hover:ring-2 hover:ring-primary transition-all"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={matchedDrawings.tire.drawing1Url}
+                          src={getDriveThumbUrl(matchedDrawings.tire.drawing1Url, 400)}
                           alt={`Tire: ${matchedDrawings.tire.partNumber}`}
                           className="h-24 w-auto object-contain"
+                          loading="lazy"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
                       </button>
                       <span className="mt-1 text-xs text-muted-foreground">Tire: {matchedDrawings.tire.partNumber}</span>
@@ -315,14 +320,16 @@ export function OrderDetail({
                   {matchedDrawings.hub && matchedDrawings.hub.drawing1Url && (
                     <div className="flex flex-col items-center">
                       <button
-                        onClick={() => setLightboxUrl(matchedDrawings.hub!.drawing1Url)}
+                        onClick={() => setLightboxUrl(getDriveThumbUrl(matchedDrawings.hub!.drawing1Url, 1200))}
                         className="cursor-pointer overflow-hidden rounded-md border bg-muted hover:ring-2 hover:ring-primary transition-all"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={matchedDrawings.hub.drawing1Url}
+                          src={getDriveThumbUrl(matchedDrawings.hub.drawing1Url, 400)}
                           alt={`Hub: ${matchedDrawings.hub.partNumber}`}
                           className="h-24 w-auto object-contain"
+                          loading="lazy"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
                       </button>
                       <span className="mt-1 text-xs text-muted-foreground">Hub: {matchedDrawings.hub.partNumber}</span>

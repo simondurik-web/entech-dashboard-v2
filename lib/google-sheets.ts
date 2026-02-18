@@ -699,10 +699,19 @@ export async function fetchStagedRecords(): Promise<StagedRecord[]> {
       if (photoUrl) photos.push(photoUrl)
     }
     
-    // Parse fusion photos column (V1 compat: "Fusion Pictures")
+    // Parse fusion photos — scan ALL columns for fusion picture URLs
     const fusionPhotos: string[] = []
-    const fusionRaw = findColumnValue(row, cols, ['fusion pictures', 'fotos de fusion'])
-    if (fusionRaw) fusionPhotos.push(fusionRaw)
+    for (let ci = 0; ci < cols.length; ci++) {
+      const colName = cols[ci].toLowerCase()
+      // Match "Fusion Picture*" or "Foto de Fusion*" but NOT "Staged in Fusion"
+      if ((colName.includes('fusion picture') || colName.includes('foto de fusion') || colName === 'fusion') && !colName.includes('staged')) {
+        const val = cellValue(row, ci)
+        if (val && val.includes('http')) {
+          const urls = val.split(/[\s,]+/).filter((s: string) => s.startsWith('http'))
+          fusionPhotos.push(...urls)
+        }
+      }
+    }
 
     records.push({
       timestamp,
