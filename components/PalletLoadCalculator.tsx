@@ -327,11 +327,12 @@ export default function PalletLoadCalculator({
     )
   }
 
-  // ── SVG Diagram ────────────────────────────────────────
-  const svgWidth = 600
+  // ── SVG Diagram (horizontal: x=length, y=width) ──────
+  const svgWidth = 800
   const margin = 40
-  const scale = (svgWidth - margin * 2) / trailer.width
-  const svgTrailerH = trailer.length * scale
+  const scale = (svgWidth - margin * 2) / trailer.length
+  const svgTrailerW = trailer.length * scale
+  const svgTrailerH = trailer.width * scale
   const svgH = svgTrailerH + margin * 2 + (packResult.overflow > 0 ? 60 : 0)
 
   return (
@@ -565,39 +566,13 @@ export default function PalletLoadCalculator({
         </button>
       </div>
 
-      {/* SVG Trailer Diagram */}
+      {/* SVG Trailer Diagram — HORIZONTAL (left=front, right=door) */}
       <div className="overflow-x-auto">
         <svg
           viewBox={`0 0 ${svgWidth} ${svgH}`}
-          className="w-full max-w-[600px] mx-auto"
-          style={{ minHeight: 300 }}
+          className="w-full mx-auto"
+          style={{ minHeight: 200 }}
         >
-          {/* Trailer outline */}
-          <rect
-            x={margin}
-            y={margin}
-            width={trailer.width * scale}
-            height={svgTrailerH}
-            rx={6}
-            ry={6}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            className="text-border"
-          />
-
-          {/* Dimension arrows - width */}
-          <line x1={margin} y1={margin - 12} x2={margin + trailer.width * scale} y2={margin - 12} stroke="currentColor" strokeWidth={1} className="text-muted-foreground" markerStart="url(#arrowL)" markerEnd="url(#arrowR)" />
-          <text x={margin + (trailer.width * scale) / 2} y={margin - 18} textAnchor="middle" className="text-muted-foreground fill-current" fontSize={10}>
-            {trailer.width}&quot;
-          </text>
-
-          {/* Dimension arrows - length */}
-          <line x1={margin - 12} y1={margin} x2={margin - 12} y2={margin + svgTrailerH} stroke="currentColor" strokeWidth={1} className="text-muted-foreground" markerStart="url(#arrowU)" markerEnd="url(#arrowD)" />
-          <text x={margin - 18} y={margin + svgTrailerH / 2} textAnchor="middle" className="text-muted-foreground fill-current" fontSize={10} transform={`rotate(-90, ${margin - 18}, ${margin + svgTrailerH / 2})`}>
-            {trailer.length}&quot;
-          </text>
-
           {/* Arrow markers */}
           <defs>
             {['arrowR', 'arrowL', 'arrowD', 'arrowU'].map((id) => (
@@ -607,37 +582,67 @@ export default function PalletLoadCalculator({
             ))}
           </defs>
 
-          {/* DOOR label at bottom (back of trailer) */}
+          {/* Trailer outline */}
+          <rect
+            x={margin}
+            y={margin}
+            width={svgTrailerW}
+            height={svgTrailerH}
+            rx={6}
+            ry={6}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            className="text-border"
+          />
+
+          {/* Dimension arrows - length (top) */}
+          <line x1={margin} y1={margin - 12} x2={margin + svgTrailerW} y2={margin - 12} stroke="currentColor" strokeWidth={1} className="text-muted-foreground" markerStart="url(#arrowL)" markerEnd="url(#arrowR)" />
+          <text x={margin + svgTrailerW / 2} y={margin - 18} textAnchor="middle" className="text-muted-foreground fill-current" fontSize={10}>
+            {trailer.length}&quot;
+          </text>
+
+          {/* Dimension arrows - width (left) */}
+          <line x1={margin - 12} y1={margin} x2={margin - 12} y2={margin + svgTrailerH} stroke="currentColor" strokeWidth={1} className="text-muted-foreground" markerStart="url(#arrowU)" markerEnd="url(#arrowD)" />
+          <text x={margin - 18} y={margin + svgTrailerH / 2} textAnchor="middle" className="text-muted-foreground fill-current" fontSize={10} transform={`rotate(-90, ${margin - 18}, ${margin + svgTrailerH / 2})`}>
+            {trailer.width}&quot;
+          </text>
+
+          {/* FRONT label (left) */}
           <text
-            x={margin + (trailer.width * scale) / 2}
-            y={margin + svgTrailerH + 16}
-            textAnchor="middle"
+            x={margin - 4}
+            y={margin + svgTrailerH / 2}
+            textAnchor="end"
+            className="fill-current text-muted-foreground"
+            fontSize={9}
+            transform={`rotate(-90, ${margin - 4}, ${margin + svgTrailerH / 2})`}
+          >
+            ◄ FRONT
+          </text>
+
+          {/* DOOR label (right) */}
+          <text
+            x={margin + svgTrailerW + 16}
+            y={margin + svgTrailerH / 2 + 4}
+            textAnchor="start"
             className="fill-current text-muted-foreground"
             fontSize={12}
             fontWeight="bold"
           >
-            ↓ {t.door} ↓
+            {t.door} →
           </text>
 
-          {/* Direction arrow (front at top) */}
-          <text
-            x={margin + (trailer.width * scale) / 2}
-            y={margin - 4}
-            textAnchor="middle"
-            className="fill-current text-muted-foreground"
-            fontSize={9}
-          >
-            ▲ FRONT
-          </text>
-
-          {/* Placed pallets — y=0 is at DOOR (bottom), so we flip: svgY = margin + svgTrailerH - (p.y + p.along) * scale */}
+          {/* Placed pallets — horizontal: x maps to trailer length (along), y maps to width (across)
+              Packing algo: p.x = across position (width), p.y = along position (length from door)
+              In horizontal SVG: svgX = door is right, so x = margin + svgTrailerW - (p.y + p.along) * scale
+                                  svgY = margin + p.x * scale */}
           {packResult.placed.map((p, i) => {
             const c = PLC_COLORS[p.colorIdx] || PLC_COLORS[0]
-            const px = margin + p.x * scale
-            // y=0 starts at door (bottom of trailer). SVG top = front of trailer.
-            const py = margin + svgTrailerH - (p.y + p.along) * scale
-            const pw = p.across * scale
-            const ph = p.along * scale
+            // Horizontal: along direction = left-right (length), across = top-bottom (width)
+            const px = margin + svgTrailerW - (p.y + p.along) * scale
+            const py = margin + p.x * scale
+            const pw = p.along * scale  // along maps to x-width in SVG
+            const ph = p.across * scale // across maps to y-height in SVG
             return (
               <g key={i}>
                 <rect
@@ -651,16 +656,29 @@ export default function PalletLoadCalculator({
                   rx={2}
                   opacity={0.85}
                 />
-                {pw > 20 && ph > 12 && (
+                {/* Pallet label */}
+                {pw > 25 && ph > 14 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 + 3}
+                    y={py + ph / 2 - 2}
                     textAnchor="middle"
                     fill="white"
-                    fontSize={Math.min(10, pw / 5)}
+                    fontSize={Math.min(9, pw / 6)}
                     fontWeight="600"
                   >
                     {p.label.slice(0, 8)}
+                  </text>
+                )}
+                {/* Pallet dimensions */}
+                {pw > 30 && ph > 20 && (
+                  <text
+                    x={px + pw / 2}
+                    y={py + ph / 2 + 10}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.7)"
+                    fontSize={Math.min(8, pw / 7)}
+                  >
+                    {p.across}&quot;×{p.along}&quot;
                   </text>
                 )}
               </g>
@@ -672,23 +690,23 @@ export default function PalletLoadCalculator({
             <g>
               <rect
                 x={margin}
-                y={margin + svgTrailerH + 24}
-                width={trailer.width * scale}
-                height={30}
+                y={margin + svgTrailerH + 16}
+                width={svgTrailerW}
+                height={28}
                 fill="#fee2e2"
                 stroke="#ef4444"
                 strokeWidth={1}
                 rx={4}
               />
               <text
-                x={margin + (trailer.width * scale) / 2}
-                y={margin + svgTrailerH + 44}
+                x={margin + svgTrailerW / 2}
+                y={margin + svgTrailerH + 34}
                 textAnchor="middle"
                 fill="#dc2626"
                 fontSize={11}
                 fontWeight="600"
               >
-                +{packResult.overflow} overflow
+                +{packResult.overflow} pallets won&apos;t fit
               </text>
             </g>
           )}
