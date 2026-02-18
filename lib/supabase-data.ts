@@ -230,7 +230,7 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
     if (!partNumber) continue
 
     const product = str(row.product).trim()
-    const minimum = num(row.quantity_needed) || num(row.minimums)
+    const minimum = num(row.minimums) || num(row.quantity_needed)
     const target = num(row.manual_target)
     const moldType = str(row.mold_type)
 

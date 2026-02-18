@@ -408,7 +408,7 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
     if (!partNumber) continue
 
     const product = cellValue(row, PROD_COLS.product).trim()
-    const minimum = cellNumber(row, PROD_COLS.quantityNeeded) || cellNumber(row, PROD_COLS.minimums)
+    const minimum = cellNumber(row, PROD_COLS.minimums) || cellNumber(row, PROD_COLS.quantityNeeded)
     const target = cellNumber(row, PROD_COLS.manualTarget)
     const moldType = cellValue(row, PROD_COLS.moldType)
 

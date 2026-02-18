@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { Package, TrendingUp, TrendingDown, Minus, ExternalLink, X, AlertTriangle } from 'lucide-react'
+import { Search, Package, TrendingUp, TrendingDown, Minus, ExternalLink, X, AlertTriangle } from 'lucide-react'
 import type { InventoryItem } from '@/lib/google-sheets'
 import Link from 'next/link'
 
@@ -126,7 +126,7 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
                      hover:scale-110 active:scale-95 shrink-0"
           title={`View ${typeLabel.toLowerCase()} inventory`}
         >
-          <Package className="size-[11px]" />
+          <Search className="size-[11px]" />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -195,8 +195,8 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
                 {/* Stats */}
                 <div className="divide-y divide-border/30">
                   <Stat label="In Stock" value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
-                  <Stat label="Minimum" value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
-                  <Stat label="Target" value={item.target > 0 ? item.target.toLocaleString() : '—'} />
+                  <Stat label="Minimums" value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
+                  <Stat label="Manual Target" value={item.target > 0 ? item.target.toLocaleString() : '—'} />
                   {item.moldType && <Stat label="Mold" value={item.moldType} />}
                   {item.daysToMin !== null && item.daysToMin >= 0 && (
                     <Stat
