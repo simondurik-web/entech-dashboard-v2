@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { DataTable } from '@/components/data-table'
+import { OrderDetail } from '@/components/OrderDetail'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order, InventoryItem } from '@/lib/google-sheets'
@@ -178,6 +179,14 @@ export default function NeedToPackagePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+
+  const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
+
+  const toggleExpanded = (order: Order) => {
+    const key = getOrderKey(order)
+    setExpandedOrderKey((prev) => (prev === key ? null : key))
+  }
 
   useEffect(() => {
     Promise.all([
@@ -297,6 +306,23 @@ export default function NeedToPackagePage() {
           data={filtered}
           noun="order"
           exportFilename="need-to-package"
+          getRowKey={(row) => getOrderKey(row as unknown as Order)}
+          expandedRowKey={expandedOrderKey}
+          onRowClick={(row) => toggleExpanded(row as unknown as Order)}
+          renderExpandedContent={(row) => {
+            const order = row as unknown as PackageOrder
+            return (
+              <OrderDetail
+                ifNumber={order.ifNumber}
+                line={order.line}
+                isShipped={false}
+                partNumber={order.partNumber}
+                tirePartNum={order.tire}
+                hubPartNum={order.hub}
+                onClose={() => setExpandedOrderKey(null)}
+              />
+            )
+          }}
           cardClassName={(row) => {
             const order = row as unknown as PackageOrder
             if (order.urgentOverride) return 'border-l-red-500 bg-red-500/5'
@@ -316,8 +342,8 @@ export default function NeedToPackagePage() {
               <OrderCard
                 order={order}
                 index={i}
-                isExpanded={false}
-                onToggle={() => {}}
+                isExpanded={expandedOrderKey === getOrderKey(order)}
+                onToggle={() => toggleExpanded(order)}
                 statusOverride={order.canPackage ? '✓ Ready' : '✗ Missing'}
                 extraFields={
                   <div>
