@@ -93,7 +93,7 @@ export async function resolvePhotoUrls(driveUrls: string[]): Promise<string[]> {
  * Resolve all photo URLs in an array of records.
  * Pass the key(s) that contain photo URLs.
  */
-export async function resolveRecordPhotos<T extends Record<string, unknown>>(
+export async function resolveRecordPhotos<T>(
   records: T[],
   photoKeys: string[] = ['photos'],
 ): Promise<T[]> {
@@ -102,16 +102,17 @@ export async function resolveRecordPhotos<T extends Record<string, unknown>>(
 
   return Promise.all(
     records.map(async (record) => {
-      const resolved = { ...record }
+      const resolved = { ...record } as Record<string, unknown>
+      const rec = record as Record<string, unknown>
       for (const key of photoKeys) {
-        const val = record[key]
+        const val = rec[key]
         if (Array.isArray(val)) {
-          resolved[key] = await resolvePhotoUrls(val as string[]) as unknown as T[typeof key]
+          resolved[key] = await resolvePhotoUrls(val as string[])
         } else if (typeof val === 'string') {
-          resolved[key] = await resolvePhotoUrl(val) as unknown as T[typeof key]
+          resolved[key] = await resolvePhotoUrl(val)
         }
       }
-      return resolved
+      return resolved as T
     }),
   )
 }
