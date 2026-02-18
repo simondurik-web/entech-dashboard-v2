@@ -201,56 +201,50 @@ export default function MaterialRequirementsPage() {
         <>
           <div className="mb-6">
             <h3 className="text-lg font-semibold mb-1">📊 Material Inventory vs. Demand</h3>
-            <p className="text-xs text-muted-foreground mb-3">Click any row to see demand breakdown by component</p>
-            <p className="text-sm text-muted-foreground mb-3">
-              {filteredMaterials.length} material{filteredMaterials.length !== 1 ? 's' : ''}
+            <p className="text-xs text-muted-foreground mb-3">
+              {filteredMaterials.length} material{filteredMaterials.length !== 1 ? 's' : ''} · Click a row for demand breakdown
             </p>
 
-            <div className="space-y-2">
-              {filteredMaterials.map((mat) => {
-                const badge = statusBadge(mat.status)
-                const isExpanded = expandedMaterial === mat.name
-                return (
-                  <div key={mat.name}>
-                    <Card
-                      className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                        mat.status === 'shortage' ? 'border-l-4 border-l-red-500' :
-                        mat.status === 'low' ? 'border-l-4 border-l-yellow-500' :
-                        'border-l-4 border-l-green-500'
-                      }`}
-                      onClick={() => setExpandedMaterial(isExpanded ? null : mat.name)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                            <span className="font-medium">{mat.name}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {mat.category && mat.category !== 'Other' && (
-                              <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{mat.category}</span>
-                            )}
-                            <span className={`px-2 py-0.5 text-xs rounded ${badge.bg}`}>{badge.label}</span>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-3 text-sm">
-                          <div>
-                            <span className="text-muted-foreground text-xs">On Hand</span>
-                            <p className="font-semibold">{mat.onHand.toLocaleString()}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">Needed</span>
-                            <p className="font-semibold">{mat.needed.toLocaleString()}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">Surplus/Shortage</span>
-                            <p className={`font-semibold ${mat.surplus >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              {mat.surplus >= 0 ? '+' : ''}{mat.surplus.toLocaleString()}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground text-xs">Coverage</span>
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Material</th>
+                    <th className="text-left p-3 font-medium">Category</th>
+                    <th className="text-right p-3 font-medium">On Hand</th>
+                    <th className="text-right p-3 font-medium">Needed</th>
+                    <th className="text-right p-3 font-medium">Surplus/Shortage</th>
+                    <th className="p-3 font-medium" style={{ minWidth: 140 }}>Coverage</th>
+                    <th className="text-center p-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMaterials.map((mat) => {
+                    const badge = statusBadge(mat.status)
+                    const isExpanded = expandedMaterial === mat.name
+                    return (
+                      <>
+                        <tr
+                          key={mat.name}
+                          className={`border-t cursor-pointer transition-colors hover:bg-muted/50 ${
+                            mat.status === 'shortage' ? 'bg-red-500/5' :
+                            mat.status === 'low' ? 'bg-yellow-500/5' : ''
+                          }`}
+                          onClick={() => setExpandedMaterial(isExpanded ? null : mat.name)}
+                        >
+                          <td className="p-3 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {isExpanded ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
+                              {mat.name}
+                            </div>
+                          </td>
+                          <td className="p-3 text-muted-foreground">{mat.category !== 'Other' ? mat.category : '—'}</td>
+                          <td className="p-3 text-right font-medium">{mat.onHand.toLocaleString()}</td>
+                          <td className="p-3 text-right">{mat.needed.toLocaleString()}</td>
+                          <td className={`p-3 text-right font-semibold ${mat.surplus >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {mat.surplus >= 0 ? '+' : ''}{mat.surplus.toLocaleString()}
+                          </td>
+                          <td className="p-3">
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                 <div
@@ -258,59 +252,61 @@ export default function MaterialRequirementsPage() {
                                   style={{ width: `${Math.min(mat.coverage, 100)}%` }}
                                 />
                               </div>
-                              <span className="text-xs font-medium">{mat.coverage}%</span>
+                              <span className="text-xs font-medium w-8 text-right">{mat.coverage}%</span>
                             </div>
-                          </div>
-                        </div>
-
-                        {/* Expanded detail */}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 text-xs rounded ${badge.bg}`}>{badge.label}</span>
+                          </td>
+                        </tr>
                         {isExpanded && mat.sources.length > 0 && (
-                          <div className="mt-4 pt-3 border-t">
-                            <p className="text-sm font-medium mb-2">Demand Breakdown:</p>
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="text-left text-muted-foreground text-xs">
-                                    <th className="pb-1">Component</th>
-                                    <th className="pb-1">Type</th>
-                                    <th className="pb-1 text-right">Units</th>
-                                    <th className="pb-1 text-right">Lbs/Unit</th>
-                                    <th className="pb-1 text-right">Total Lbs</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {(() => {
-                                    // Group sources by component
-                                    const grouped = new Map<string, { qty: number; materialPerUnit: number; totalLbs: number; sourceLabel: string }>()
-                                    for (const s of mat.sources) {
-                                      const existing = grouped.get(s.component)
-                                      if (existing) {
-                                        existing.qty += s.qty
-                                        existing.totalLbs += s.totalLbs
-                                      } else {
-                                        grouped.set(s.component, { ...s })
+                          <tr key={`${mat.name}-detail`}>
+                            <td colSpan={7} className="p-0">
+                              <div className="bg-muted/30 px-6 py-3 border-t">
+                                <p className="text-xs font-medium text-muted-foreground mb-2">DEMAND BREAKDOWN</p>
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-muted-foreground text-xs">
+                                      <th className="pb-1">Component</th>
+                                      <th className="pb-1">Type</th>
+                                      <th className="pb-1 text-right">Units</th>
+                                      <th className="pb-1 text-right">Lbs/Unit</th>
+                                      <th className="pb-1 text-right">Total Lbs</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(() => {
+                                      const grouped = new Map<string, { qty: number; materialPerUnit: number; totalLbs: number; sourceLabel: string }>()
+                                      for (const s of mat.sources) {
+                                        const existing = grouped.get(s.component)
+                                        if (existing) {
+                                          existing.qty += s.qty
+                                          existing.totalLbs += s.totalLbs
+                                        } else {
+                                          grouped.set(s.component, { ...s })
+                                        }
                                       }
-                                    }
-                                    return Array.from(grouped.entries()).map(([comp, info]) => (
-                                      <tr key={comp} className="border-t border-muted">
-                                        <td className="py-1">{comp}</td>
-                                        <td className="py-1">{info.sourceLabel}</td>
-                                        <td className="py-1 text-right">{info.qty.toLocaleString()}</td>
-                                        <td className="py-1 text-right">{info.materialPerUnit.toFixed(3)}</td>
-                                        <td className="py-1 text-right">{Math.round(info.totalLbs).toLocaleString()}</td>
-                                      </tr>
-                                    ))
-                                  })()}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
+                                      return Array.from(grouped.entries()).map(([comp, info]) => (
+                                        <tr key={comp} className="border-t border-muted/50">
+                                          <td className="py-1">{comp}</td>
+                                          <td className="py-1">{info.sourceLabel}</td>
+                                          <td className="py-1 text-right">{info.qty.toLocaleString()}</td>
+                                          <td className="py-1 text-right">{info.materialPerUnit.toFixed(3)}</td>
+                                          <td className="py-1 text-right">{Math.round(info.totalLbs).toLocaleString()}</td>
+                                        </tr>
+                                      ))
+                                    })()}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                )
-              })}
+                      </>
+                    )
+                  })}
+                </tbody>
+              </table>
               {filteredMaterials.length === 0 && (
                 <p className="text-center text-muted-foreground py-10">No materials found</p>
               )}
