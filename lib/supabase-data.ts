@@ -389,7 +389,7 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
 export async function fetchDrawingsFromDB(): Promise<Drawing[]> {
   const { data, error } = await supabase
     .from('production_totals')
-    .select('part_number, product, drawing_1_url, drawing_2_url')
+    .select('part_number, product, mold_type, drawing_1_url, drawing_2_url')
 
   if (error) throw new Error(`Supabase drawings error: ${error.message}`)
   if (!data) return []
@@ -404,12 +404,13 @@ export async function fetchDrawingsFromDB(): Promise<Drawing[]> {
     if (!drawing1Url && !drawing2Url) continue
 
     const product = str(row.product).trim()
+    const moldType = str(row.mold_type).trim()
     const productLower = product.toLowerCase()
     let productType: Drawing['productType'] = 'Other'
     if (productLower.includes('tire')) productType = 'Tire'
     else if (productLower.includes('hub')) productType = 'Hub'
 
-    drawings.push({ partNumber, product, productType, drawing1Url, drawing2Url })
+    drawings.push({ partNumber, product, productType, drawing1Url, drawing2Url, moldType })
   }
 
   return drawings.sort((a, b) => a.partNumber.localeCompare(b.partNumber))

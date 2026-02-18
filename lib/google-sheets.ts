@@ -741,6 +741,7 @@ export interface Drawing {
   productType: 'Tire' | 'Hub' | 'Other'
   drawing1Url: string
   drawing2Url: string
+  moldType: string
 }
 
 export async function fetchDrawings(): Promise<Drawing[]> {
@@ -759,6 +760,7 @@ export async function fetchDrawings(): Promise<Drawing[]> {
     if (!drawing1Url && !drawing2Url) continue
     
     const product = cellValue(row, PROD_COLS.product).trim()
+    const moldType = cellValue(row, PROD_COLS.moldType).trim()
     const productLower = product.toLowerCase()
     
     let productType: Drawing['productType'] = 'Other'
@@ -771,6 +773,7 @@ export async function fetchDrawings(): Promise<Drawing[]> {
       productType,
       drawing1Url,
       drawing2Url,
+      moldType,
     })
   }
   

@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ImageModal } from '@/components/ImageModal'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import type { Drawing } from '@/lib/google-sheets'
+import { InventoryPopover } from '@/components/InventoryPopover'
 
 const TYPE_FILTERS = [
   { key: 'all', label: 'All Types' },
@@ -186,8 +187,20 @@ export default function DrawingsPage() {
                 )}
               </div>
               <CardContent className="p-2">
-                <p className="font-semibold text-xs truncate">{drawing.partNumber}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{drawing.productType}</p>
+                <div className="flex items-center gap-1">
+                  <p className="font-semibold text-xs truncate">{drawing.partNumber}</p>
+                  <InventoryPopover partNumber={drawing.partNumber} partType={drawing.productType === 'Tire' ? 'tire' : drawing.productType === 'Hub' ? 'hub' : 'part'} />
+                </div>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className={`text-[9px] px-1 py-px rounded ${
+                    drawing.productType === 'Tire' ? 'bg-orange-500/20 text-orange-500'
+                    : drawing.productType === 'Hub' ? 'bg-teal-500/20 text-teal-500'
+                    : 'bg-gray-500/20 text-gray-400'
+                  }`}>{drawing.productType}</span>
+                  {drawing.moldType && (
+                    <span className="text-[9px] text-muted-foreground truncate" title={drawing.moldType}>🔧 {drawing.moldType}</span>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}
