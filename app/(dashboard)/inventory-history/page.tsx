@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   LineChart,
   Line,
@@ -11,9 +11,8 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  BarChart,
-  Bar,
 } from 'recharts'
+import type { InventoryItem } from '@/lib/google-sheets'
 
 interface InventoryHistoryPart {
   partNumber: string
@@ -27,70 +26,94 @@ interface InventoryHistoryResponse {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
+const PRODUCT_TYPES = ['All', 'Tire', 'Hub', 'Bearing', 'Finished Part', 'Roll Tech Finished Product', 'Entech/Rubber', 'Molding Feedstock']
+const ITEM_TYPES = ['All', 'Manufactured', 'Purchased', 'COM']
+
 function parseUsDate(date: string): Date | null {
   const match = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (!match) return null
-  const month = Number(match[1])
-  const day = Number(match[2])
-  const year = Number(match[3])
-  return new Date(year, month - 1, day)
+  return new Date(Number(match[3]), Number(match[1]) - 1, Number(match[2]))
 }
 
 function toDateInputValue(date: string): string {
   const parsed = parseUsDate(date)
   if (!parsed) return ''
-  const year = parsed.getFullYear()
-  const month = String(parsed.getMonth() + 1).padStart(2, '0')
-  const day = String(parsed.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
 }
 
 export default function InventoryHistoryPage() {
   const [history, setHistory] = useState<InventoryHistoryResponse>({ dates: [], parts: [] })
+  const [inventoryMap, setInventoryMap] = useState<Map<string, InventoryItem>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedParts, setSelectedParts] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [productType, setProductType] = useState('All')
+  const [itemType, setItemType] = useState('All')
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 100
 
   useEffect(() => {
-    fetch('/api/inventory-history')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch inventory history')
-        return res.json()
-      })
-      .then((data: InventoryHistoryResponse) => {
-        const sortedDates = [...data.dates].sort((a, b) => {
+    Promise.all([
+      fetch('/api/inventory-history').then((r) => {
+        if (!r.ok) throw new Error('Failed to fetch history')
+        return r.json() as Promise<InventoryHistoryResponse>
+      }),
+      fetch('/api/inventory').then((r) => {
+        if (!r.ok) throw new Error('Failed to fetch inventory')
+        return r.json() as Promise<InventoryItem[]>
+      }),
+    ])
+      .then(([histData, invData]) => {
+        const sortedDates = [...histData.dates].sort((a, b) => {
           const da = parseUsDate(a)?.getTime() ?? 0
           const db = parseUsDate(b)?.getTime() ?? 0
           return da - db
         })
-
         const latestDate = sortedDates[sortedDates.length - 1]
-        const sortedParts = [...data.parts].sort(
+        const sortedParts = [...histData.parts].sort(
           (a, b) => (b.dataByDate[latestDate] ?? 0) - (a.dataByDate[latestDate] ?? 0)
         )
-
         setHistory({ dates: sortedDates, parts: sortedParts })
         setSelectedParts(sortedParts.slice(0, 3).map((p) => p.partNumber))
-
         if (sortedDates.length > 0) {
           setStartDate(toDateInputValue(sortedDates[0]))
           setEndDate(toDateInputValue(sortedDates[sortedDates.length - 1]))
         }
+
+        const map = new Map<string, InventoryItem>()
+        for (const item of invData) map.set(item.partNumber, item)
+        setInventoryMap(map)
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
 
-  const filteredParts = useMemo(
-    () =>
-      history.parts.filter((item) =>
-        item.partNumber.toLowerCase().includes(searchTerm.toLowerCase())
-      ),
-    [history.parts, searchTerm]
+  const filteredParts = useMemo(() => {
+    const term = searchTerm.toLowerCase()
+    return history.parts.filter((p) => {
+      if (term && !p.partNumber.toLowerCase().includes(term)) return false
+      const inv = inventoryMap.get(p.partNumber)
+      if (productType !== 'All') {
+        if (!inv || inv.product !== productType) return false
+      }
+      if (itemType !== 'All') {
+        if (!inv || inv.itemType !== itemType) return false
+      }
+      return true
+    })
+  }, [history.parts, searchTerm, productType, itemType, inventoryMap])
+
+  // Reset page when filters change
+  useEffect(() => { setPage(0) }, [searchTerm, productType, itemType])
+
+  const pagedParts = useMemo(
+    () => filteredParts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filteredParts, page]
   )
+  const totalPages = Math.ceil(filteredParts.length / PAGE_SIZE)
 
   const selectedItems = useMemo(
     () => history.parts.filter((p) => selectedParts.includes(p.partNumber)),
@@ -100,7 +123,6 @@ export default function InventoryHistoryPage() {
   const rangeDates = useMemo(() => {
     const startMs = startDate ? new Date(`${startDate}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
     const endMs = endDate ? new Date(`${endDate}T23:59:59`).getTime() : Number.POSITIVE_INFINITY
-
     return history.dates.filter((date) => {
       const ms = parseUsDate(date)?.getTime()
       if (ms === undefined) return false
@@ -122,30 +144,15 @@ export default function InventoryHistoryPage() {
     return selectedItems.map((item) => {
       const values = rangeDates.map((date) => item.dataByDate[date] ?? 0)
       const current = values.length ? values[values.length - 1] : 0
-      const min = values.length ? Math.min(...values) : 0
-      const max = values.length ? Math.max(...values) : 0
-      const avg = values.length
-        ? values.reduce((sum, v) => sum + v, 0) / values.length
-        : 0
-
-      return {
-        partNumber: item.partNumber,
-        current,
-        min,
-        max,
-        avg,
-      }
+      const first = values.length ? values[0] : 0
+      const change = current - first
+      const changePct = first !== 0 ? ((change / first) * 100) : 0
+      const inv = inventoryMap.get(item.partNumber)
+      return { partNumber: item.partNumber, current, change, changePct, inStock: inv?.inStock ?? current }
     })
-  }, [selectedItems, rangeDates])
+  }, [selectedItems, rangeDates, inventoryMap])
 
-  const comparisonData = statsByPart.map((item) => ({
-    name: item.partNumber.length > 15 ? `${item.partNumber.slice(0, 15)}...` : item.partNumber,
-    current: item.current,
-    min: item.min,
-    max: item.max,
-  }))
-
-  const togglePart = (partNumber: string) => {
+  const togglePart = useCallback((partNumber: string) => {
     setSelectedParts((prev) =>
       prev.includes(partNumber)
         ? prev.filter((p) => p !== partNumber)
@@ -153,7 +160,7 @@ export default function InventoryHistoryPage() {
           ? [...prev, partNumber]
           : prev
     )
-  }
+  }, [])
 
   if (loading) {
     return (
@@ -168,36 +175,105 @@ export default function InventoryHistoryPage() {
   }
 
   return (
-    <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">📈 Inventory History</h1>
-      <p className="text-muted-foreground text-sm mb-4">Track stock levels over time</p>
+    <div className="p-4 pb-20 space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold">📈 Inventory History</h1>
+        <p className="text-muted-foreground text-sm">Track stock levels over time</p>
+      </div>
 
-      <div className="grid lg:grid-cols-4 gap-4">
-        <Card className="lg:col-span-1">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Select Parts (max 5)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <input
-              type="text"
-              placeholder="Search parts..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-md bg-background mb-3"
-            />
-            <div className="max-h-[400px] overflow-y-auto space-y-1">
-              {filteredParts.slice(0, 50).map((item) => {
+      {/* Filters row */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Product Type chips */}
+        <div className="flex flex-wrap gap-1">
+          {PRODUCT_TYPES.map((pt) => (
+            <button
+              key={pt}
+              onClick={() => setProductType(pt)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                productType === pt
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
+              }`}
+            >
+              {pt}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-6 bg-border" />
+
+        {/* Item Type chips */}
+        <div className="flex flex-wrap gap-1">
+          {ITEM_TYPES.map((it) => (
+            <button
+              key={it}
+              onClick={() => setItemType(it)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                itemType === it
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
+              }`}
+            >
+              {it}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-6 bg-border" />
+
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search parts..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="px-3 py-1.5 text-xs border rounded-md bg-background w-48"
+        />
+
+        <div className="w-px h-6 bg-border" />
+
+        {/* Date range */}
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); if (endDate && e.target.value > endDate) setEndDate(e.target.value) }}
+            className="px-2 py-1.5 text-xs border rounded-md bg-background"
+          />
+          <span className="text-xs text-muted-foreground">→</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); if (startDate && e.target.value < startDate) setStartDate(e.target.value) }}
+            className="px-2 py-1.5 text-xs border rounded-md bg-background"
+          />
+        </div>
+
+        <span className="text-xs text-muted-foreground ml-auto">{filteredParts.length} parts</span>
+      </div>
+
+      {/* Main content: parts list + chart */}
+      <div className="grid lg:grid-cols-10 gap-4">
+        {/* Parts list — 30% */}
+        <Card className="lg:col-span-3">
+          <CardContent className="p-3">
+            <div className="text-xs text-muted-foreground mb-2">
+              Select up to 5 parts · {selectedParts.length}/5 selected
+            </div>
+            <div className="max-h-[500px] overflow-y-auto space-y-0.5">
+              {pagedParts.map((item) => {
                 const isSelected = selectedParts.includes(item.partNumber)
                 const colorIdx = selectedParts.indexOf(item.partNumber)
                 const latestQty = history.dates.length
                   ? item.dataByDate[history.dates[history.dates.length - 1]] ?? 0
                   : 0
+                const inv = inventoryMap.get(item.partNumber)
 
                 return (
                   <button
                     key={item.partNumber}
                     onClick={() => togglePart(item.partNumber)}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${
+                    className={`w-full text-left px-2 py-1.5 text-xs rounded transition-colors flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-primary/10 text-primary font-medium'
                         : 'hover:bg-muted'
@@ -205,156 +281,111 @@ export default function InventoryHistoryPage() {
                   >
                     {isSelected && (
                       <span
-                        className="w-3 h-3 rounded-full"
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: COLORS[colorIdx] }}
                       />
                     )}
                     <span className="truncate">{item.partNumber}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{latestQty}</span>
+                    {inv && (
+                      <span className="text-[10px] text-muted-foreground truncate ml-1">
+                        {inv.product}
+                      </span>
+                    )}
+                    <span className="ml-auto text-[10px] text-muted-foreground flex-shrink-0">{latestQty}</span>
                   </button>
                 )
               })}
             </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-2 pt-2 border-t">
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80 disabled:opacity-30"
+                >
+                  ← Prev
+                </button>
+                <span className="text-[10px] text-muted-foreground">{page + 1}/{totalPages}</span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80 disabled:opacity-30"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        <div className="lg:col-span-3 space-y-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Date Range</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <label className="text-sm">
-                  <span className="block mb-1 text-muted-foreground">Start date</span>
-                  <input
-                    type="date"
-                    value={startDate}
-                    min={history.dates[0] ? toDateInputValue(history.dates[0]) : undefined}
-                    max={endDate || (history.dates.length ? toDateInputValue(history.dates[history.dates.length - 1]) : undefined)}
-                    onChange={(e) => {
-                      const next = e.target.value
-                      setStartDate(next)
-                      if (endDate && next > endDate) setEndDate(next)
-                    }}
-                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
-                  />
-                </label>
-                <label className="text-sm">
-                  <span className="block mb-1 text-muted-foreground">End date</span>
-                  <input
-                    type="date"
-                    value={endDate}
-                    min={startDate || (history.dates[0] ? toDateInputValue(history.dates[0]) : undefined)}
-                    max={history.dates.length ? toDateInputValue(history.dates[history.dates.length - 1]) : undefined}
-                    onChange={(e) => {
-                      const next = e.target.value
-                      setEndDate(next)
-                      if (startDate && next < startDate) setStartDate(next)
-                    }}
-                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
-                  />
-                </label>
+        {/* Chart — 70% */}
+        <Card className="lg:col-span-7">
+          <CardContent className="p-4">
+            {selectedParts.length === 0 ? (
+              <div className="flex items-center justify-center h-[500px] text-muted-foreground text-sm">
+                ← Select parts to view trends
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Inventory Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selectedParts.length === 0 ? (
-                <p className="text-center text-muted-foreground py-10">
-                  Select parts from the left panel to view trends
-                </p>
-              ) : (
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="date" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--background))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                        }}
+            ) : (
+              <div className="h-[500px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="date" className="text-xs" tick={{ fontSize: 11 }} />
+                    <YAxis className="text-xs" tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--background))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+                    {selectedParts.map((part, idx) => (
+                      <Line
+                        key={part}
+                        type="monotone"
+                        dataKey={part}
+                        stroke={COLORS[idx]}
+                        strokeWidth={2}
+                        dot={false}
                       />
-                      <Legend />
-                      {selectedParts.map((part, idx) => (
-                        <Line
-                          key={part}
-                          type="monotone"
-                          dataKey={part}
-                          stroke={COLORS[idx]}
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Current vs Min/Max</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selectedParts.length === 0 ? (
-                <p className="text-center text-muted-foreground py-10">
-                  Select parts to compare stock levels
-                </p>
-              ) : (
-                <div className="h-[250px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={comparisonData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis type="number" className="text-xs" />
-                      <YAxis dataKey="name" type="category" width={100} className="text-xs" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--background))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                        }}
-                      />
-                      <Legend />
-                      <Bar dataKey="current" name="Current" fill="#3b82f6" />
-                      <Bar dataKey="min" name="Min" fill="#ef4444" />
-                      <Bar dataKey="max" name="Max" fill="#10b981" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {statsByPart.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {statsByPart.map((item, idx) => (
-                <Card
-                  key={item.partNumber}
-                  className="border-l-4"
-                  style={{ borderLeftColor: COLORS[idx] }}
-                >
-                  <CardContent className="pt-4">
-                    <p className="text-xs text-muted-foreground truncate">{item.partNumber}</p>
-                    <p className="text-lg font-semibold">Current: {item.current.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Min: {item.min.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Max: {item.max.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Avg: {item.avg.toFixed(1)}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Stat cards for selected parts */}
+      {statsByPart.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {statsByPart.map((item, idx) => (
+            <Card
+              key={item.partNumber}
+              className="border-l-4"
+              style={{ borderLeftColor: COLORS[idx] }}
+            >
+              <CardContent className="p-3">
+                <p className="text-xs text-muted-foreground truncate font-medium">{item.partNumber}</p>
+                <p className="text-xl font-bold mt-1">{item.inStock.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground">current stock</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <span className={`text-sm font-semibold ${item.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {item.change >= 0 ? '↑' : '↓'} {Math.abs(item.change).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    ({item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(1)}%)
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">over selected period</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
