@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ChevronRight, Package, Layers, DollarSign, Search, RefreshCw } from 'lucide-react'
+import { ChevronRight, Package, Layers, DollarSign, Search, RefreshCw, BarChart3, X } from 'lucide-react'
 import type { BOMItem, BOMComponent } from '@/lib/google-sheets'
 
 type BOMTab = 'final' | 'sub' | 'individual'
@@ -35,8 +35,12 @@ function getCategoryColor(category: BOMComponent['category']) {
       return 'bg-amber-500/20 text-amber-600'
     case 'component':
       return 'bg-blue-500/20 text-blue-600'
-    case 'assembly':
+    case 'packaging':
+      return 'bg-slate-500/20 text-slate-600'
+    case 'energy':
       return 'bg-purple-500/20 text-purple-600'
+    case 'assembly':
+      return 'bg-indigo-500/20 text-indigo-600'
     default:
       return 'bg-muted text-muted-foreground'
   }
@@ -48,11 +52,23 @@ function getCategoryLabel(category: BOMComponent['category']) {
       return 'Raw Material'
     case 'component':
       return 'Component'
+    case 'packaging':
+      return 'Packaging'
+    case 'energy':
+      return 'Energy/Labor'
     case 'assembly':
       return 'Sub-Assembly'
     default:
       return category
   }
+}
+
+const barColors: Record<string, string> = {
+  raw: 'bg-amber-500',
+  component: 'bg-blue-500',
+  packaging: 'bg-slate-500',
+  energy: 'bg-purple-500',
+  assembly: 'bg-indigo-500',
 }
 
 export default function BOMExplorerPage() {
@@ -63,6 +79,8 @@ export default function BOMExplorerPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPart, setSelectedPart] = useState<BOMItem | null>(null)
+  const [compareSet, setCompareSet] = useState<Set<string>>(new Set())
+  const [showCompare, setShowCompare] = useState(false)
 
   const fetchData = useCallback(async (tab: BOMTab, isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -85,6 +103,8 @@ export default function BOMExplorerPage() {
   useEffect(() => {
     setSearchTerm('')
     setSelectedPart(null)
+    setCompareSet(new Set())
+    setShowCompare(false)
     fetchData(activeTab)
   }, [activeTab, fetchData])
 
@@ -94,14 +114,36 @@ export default function BOMExplorerPage() {
     setSelectedPart(matchedPart)
   }, [bomData, selectedPart])
 
+  const toggleCompare = (partNumber: string) => {
+    setCompareSet(prev => {
+      const next = new Set(prev)
+      if (next.has(partNumber)) next.delete(partNumber)
+      else next.add(partNumber)
+      return next
+    })
+  }
+
   const filteredParts = bomData.filter((item) => {
     if (!searchTerm) return true
     const term = searchTerm.toLowerCase()
     return (
       item.partNumber.toLowerCase().includes(term) ||
-      item.product.toLowerCase().includes(term)
+      item.product.toLowerCase().includes(term) ||
+      item.category.toLowerCase().includes(term)
     )
   })
+
+  const compareItems = bomData.filter(i => compareSet.has(i.partNumber))
+
+  // Cost drivers for selected part
+  const costDrivers = selectedPart
+    ? [...selectedPart.components]
+        .map(c => ({ ...c, lineCost: c.quantity * c.costPerUnit }))
+        .filter(c => c.lineCost > 0)
+        .sort((a, b) => b.lineCost - a.lineCost)
+        .slice(0, 10)
+    : []
+  const maxDriverCost = costDrivers.length > 0 ? costDrivers[0].lineCost : 1
 
   return (
     <div className="p-4 pb-20">
@@ -158,6 +200,62 @@ export default function BOMExplorerPage() {
         </Card>
       )}
 
+      {/* Comparison View */}
+      {showCompare && compareItems.length >= 2 && (
+        <Card className="mb-4">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BarChart3 className="size-4" /> Comparison ({compareItems.length} items)
+              </CardTitle>
+              <button onClick={() => setShowCompare(false)} className="p-1 hover:bg-muted rounded">
+                <X className="size-4" />
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 pr-4">Part</th>
+                    <th className="text-left py-2 pr-4">Category</th>
+                    <th className="text-right py-2 pr-4">Total</th>
+                    <th className="text-right py-2 pr-4">Material</th>
+                    <th className="text-right py-2 pr-4">Packaging</th>
+                    <th className="text-right py-2 pr-4">Labor/Energy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {compareItems.map(item => {
+                    const minTotal = Math.min(...compareItems.map(i => i.totalCost))
+                    const maxTotal = Math.max(...compareItems.map(i => i.totalCost))
+                    return (
+                      <tr key={item.partNumber} className="border-b last:border-0">
+                        <td className="py-2 pr-4">
+                          <p className="font-medium">{item.partNumber}</p>
+                          <p className="text-xs text-muted-foreground">{item.product}</p>
+                        </td>
+                        <td className="py-2 pr-4 text-muted-foreground">{item.category}</td>
+                        <td className={`py-2 pr-4 text-right font-medium ${
+                          item.totalCost === minTotal && compareItems.length > 1 ? 'text-green-600' :
+                          item.totalCost === maxTotal && compareItems.length > 1 ? 'text-red-500' : ''
+                        }`}>
+                          ${item.totalCost.toFixed(2)}
+                        </td>
+                        <td className="py-2 pr-4 text-right text-amber-600">${item.materialCost.toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-right text-slate-600">${item.packagingCost.toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-right text-purple-600">${item.laborEnergyCost.toFixed(2)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && !error && bomData.length > 0 && (
         <div className="grid lg:grid-cols-3 gap-4">
           {/* Part selector panel */}
@@ -178,25 +276,42 @@ export default function BOMExplorerPage() {
                   className="pl-9"
                 />
               </div>
+
+              {compareSet.size >= 2 && (
+                <button
+                  onClick={() => setShowCompare(true)}
+                  className="w-full mb-3 px-3 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Compare Selected ({compareSet.size})
+                </button>
+              )}
+
               <div className="max-h-[500px] overflow-y-auto space-y-1">
                 {filteredParts.map((item) => (
-                  <button
-                    key={item.partNumber}
-                    onClick={() => setSelectedPart(item)}
-                    className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center justify-between ${
-                      selectedPart?.partNumber === item.partNumber
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'hover:bg-muted'
-                    }`}
-                  >
-                    <div>
-                      <p className="font-medium text-sm">{item.partNumber}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {item.product}
-                      </p>
-                    </div>
-                    <ChevronRight className="size-4 text-muted-foreground" />
-                  </button>
+                  <div key={item.partNumber} className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={compareSet.has(item.partNumber)}
+                      onChange={() => toggleCompare(item.partNumber)}
+                      className="shrink-0 rounded border-muted-foreground/30"
+                    />
+                    <button
+                      onClick={() => setSelectedPart(item)}
+                      className={`flex-1 text-left px-3 py-2 rounded-md transition-colors flex items-center justify-between ${
+                        selectedPart?.partNumber === item.partNumber
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'hover:bg-muted'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm">{item.partNumber}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {item.product} · ${item.totalCost.toFixed(2)}
+                        </p>
+                      </div>
+                      <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+                    </button>
+                  </div>
                 ))}
                 {filteredParts.length === 0 && (
                   <p className="text-center text-muted-foreground text-sm py-4">
@@ -227,6 +342,9 @@ export default function BOMExplorerPage() {
                       <div>
                         <CardTitle className="text-xl">{selectedPart.partNumber}</CardTitle>
                         <p className="text-muted-foreground">{selectedPart.product}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedPart.category} · {selectedPart.qtyPerPallet} per pallet
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-muted-foreground">Total Cost</p>
@@ -283,15 +401,11 @@ export default function BOMExplorerPage() {
 
                     {/* Cost breakdown summary */}
                     <div className="mt-4 pt-4 border-t">
-                      <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="grid grid-cols-4 gap-4 text-center">
                         <div>
                           <p className="text-xs text-muted-foreground">Raw Materials</p>
                           <p className="text-lg font-semibold text-amber-600">
-                            $
-                            {selectedPart.components
-                              .filter((c) => c.category === 'raw')
-                              .reduce((sum, c) => sum + c.quantity * c.costPerUnit, 0)
-                              .toFixed(2)}
+                            ${selectedPart.materialCost.toFixed(2)}
                           </p>
                         </div>
                         <div>
@@ -305,15 +419,67 @@ export default function BOMExplorerPage() {
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Total</p>
-                          <p className="text-lg font-semibold text-green-600">
-                            ${selectedPart.totalCost.toFixed(2)}
+                          <p className="text-xs text-muted-foreground">Packaging</p>
+                          <p className="text-lg font-semibold text-slate-600">
+                            ${selectedPart.packagingCost.toFixed(2)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Labor/Energy</p>
+                          <p className="text-lg font-semibold text-purple-600">
+                            ${selectedPart.laborEnergyCost.toFixed(2)}
                           </p>
                         </div>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Cost Analysis - Top Cost Drivers */}
+                {costDrivers.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <BarChart3 className="size-4" />
+                        Top Cost Drivers
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {costDrivers.map((driver, idx) => {
+                          const pct = selectedPart.totalCost > 0
+                            ? (driver.lineCost / selectedPart.totalCost) * 100
+                            : 0
+                          const barWidth = maxDriverCost > 0
+                            ? (driver.lineCost / maxDriverCost) * 100
+                            : 0
+                          return (
+                            <div key={driver.partNumber + idx}>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-medium truncate">{driver.partNumber}</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getCategoryColor(driver.category)}`}>
+                                    {getCategoryLabel(driver.category)}
+                                  </span>
+                                </div>
+                                <div className="text-right text-sm shrink-0 ml-2">
+                                  <span className="font-medium">${driver.lineCost.toFixed(2)}</span>
+                                  <span className="text-muted-foreground ml-1">({pct.toFixed(1)}%)</span>
+                                </div>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${barColors[driver.category] || 'bg-gray-500'}`}
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
           </div>

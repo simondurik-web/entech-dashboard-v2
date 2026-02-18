@@ -790,81 +790,132 @@ export interface BOMComponent {
   quantity: number
   unit: string
   costPerUnit: number
-  category: 'raw' | 'component' | 'assembly'
+  category: 'raw' | 'component' | 'packaging' | 'energy' | 'assembly'
 }
 
 export interface BOMItem {
   partNumber: string
   product: string
   category: string
+  qtyPerPallet: number
   components: BOMComponent[]
   totalCost: number
+  materialCost: number
+  packagingCost: number
+  laborEnergyCost: number
+}
+
+function parseCurrency(val: unknown): number {
+  if (val === null || val === undefined) return 0
+  if (typeof val === 'number') return val
+  const s = String(val).replace(/[$,\s]/g, '')
+  return parseFloat(s) || 0
+}
+
+function parseComponentGroup(
+  row: { c: Array<{ v: unknown } | null> },
+  startCol: number,
+  cat: BOMComponent['category'],
+  descriptionHint?: string
+): BOMComponent | null {
+  const pn = cellValue(row, startCol)
+  if (!pn) return null
+  const qty = cellNumber(row, startCol + 1) || 1
+  const cost = parseCurrency(row.c[startCol + 2]?.v)
+  return {
+    partNumber: pn,
+    description: descriptionHint || pn,
+    quantity: qty,
+    unit: 'ea',
+    costPerUnit: cost,
+    category: cat,
+  }
 }
 
 export async function fetchBOM(gid: string = GIDS.bomFinal): Promise<BOMItem[]> {
-  const { cols, rows } = await fetchSheetData(gid)
-  
-  // Group by parent part number
-  const bomMap = new Map<string, BOMItem>()
-  
+  const { rows } = await fetchSheetData(gid)
+
+  const items: BOMItem[] = []
+
   for (const row of rows) {
-    const parentPart = findColumnValue(row, cols, ['parent part', 'parent', 'finished good', 'product part'])
-    const parentProduct = findColumnValue(row, cols, ['product', 'product name', 'description'])
-    const parentCategory = findColumnValue(row, cols, ['category', 'type'])
-    
-    const componentPart = findColumnValue(row, cols, ['component', 'component part', 'child part', 'part number', 'material'])
-    const componentDesc = findColumnValue(row, cols, ['component description', 'component name', 'material description', 'description'])
-    const qty = parseFloat(findColumnValue(row, cols, ['quantity', 'qty', 'amount'])) || 0
-    const unit = findColumnValue(row, cols, ['unit', 'uom', 'unit of measure']) || 'ea'
-    const cost = parseFloat(findColumnValue(row, cols, ['cost', 'unit cost', 'price', 'cost per unit'])) || 0
-    const compCategory = findColumnValue(row, cols, ['component type', 'material type', 'category']).toLowerCase()
-    
-    if (!parentPart && !componentPart) continue
-    
-    // Determine component category
-    let category: BOMComponent['category'] = 'component'
-    if (compCategory.includes('raw') || compCategory.includes('material')) {
-      category = 'raw'
-    } else if (compCategory.includes('assembly') || compCategory.includes('sub')) {
-      category = 'assembly'
+    const partNumber = cellValue(row, 0)
+    if (!partNumber) continue
+
+    const category = cellValue(row, 1) || 'Other'
+    const product = cellValue(row, 4) || category
+    const qtyPerPallet = cellNumber(row, 5)
+
+    const components: BOMComponent[] = []
+
+    // Cols 6-8: Tire / main material (raw)
+    const tire = parseComponentGroup(row, 6, 'raw', 'Tire')
+    if (tire) components.push(tire)
+
+    // Cols 9-11: Hub (raw)
+    const hub = parseComponentGroup(row, 9, 'raw', 'Hub')
+    if (hub) components.push(hub)
+
+    // Cols 12-23: Components (bearings, plugs, springs, etc.) in groups of 3
+    for (let col = 12; col <= 21; col += 3) {
+      const comp = parseComponentGroup(row, col, 'component')
+      if (comp) components.push(comp)
     }
-    
-    const component: BOMComponent = {
-      partNumber: componentPart || parentPart,
-      description: componentDesc,
-      quantity: qty,
-      unit,
-      costPerUnit: cost,
-      category,
+
+    // Cols 24-41: Packaging in groups of 3
+    for (let col = 24; col <= 39; col += 3) {
+      const pkg = parseComponentGroup(row, col, 'packaging')
+      if (pkg) components.push(pkg)
     }
-    
-    // Use parent part as key, or component if no parent
-    const key = parentPart || componentPart
-    if (!bomMap.has(key)) {
-      bomMap.set(key, {
-        partNumber: key,
-        product: parentProduct || componentDesc,
-        category: parentCategory || 'Other',
-        components: [],
-        totalCost: 0,
+
+    // Cols 42-48: Energy & Labor
+    const kwhMultiplier = cellNumber(row, 43)
+    const kwhRate = parseCurrency(row.c[44]?.v)
+    if (kwhMultiplier && kwhRate) {
+      components.push({
+        partNumber: 'KWH',
+        description: 'Energy (KWH)',
+        quantity: kwhMultiplier,
+        unit: 'kwh',
+        costPerUnit: kwhRate,
+        category: 'energy',
       })
     }
-    
-    if (componentPart && parentPart) {
-      // This is a parent->component relationship
-      bomMap.get(key)!.components.push(component)
+
+    const laborCost = parseCurrency(row.c[48]?.v)
+    if (laborCost) {
+      components.push({
+        partNumber: 'LABOR',
+        description: 'Direct Labor',
+        quantity: 1,
+        unit: 'ea',
+        costPerUnit: laborCost,
+        category: 'energy',
+      })
     }
+
+    const materialCost = components
+      .filter(c => c.category === 'raw')
+      .reduce((s, c) => s + c.quantity * c.costPerUnit, 0)
+    const packagingCost = components
+      .filter(c => c.category === 'packaging')
+      .reduce((s, c) => s + c.quantity * c.costPerUnit, 0)
+    const laborEnergyCost = components
+      .filter(c => c.category === 'energy')
+      .reduce((s, c) => s + c.quantity * c.costPerUnit, 0)
+    const totalCost = components.reduce((s, c) => s + c.quantity * c.costPerUnit, 0)
+
+    items.push({
+      partNumber,
+      product,
+      category,
+      qtyPerPallet,
+      components,
+      totalCost,
+      materialCost,
+      packagingCost,
+      laborEnergyCost,
+    })
   }
-  
-  // Calculate total costs
-  for (const item of bomMap.values()) {
-    item.totalCost = item.components.reduce(
-      (sum, c) => sum + c.quantity * c.costPerUnit,
-      0
-    )
-  }
-  
-  return Array.from(bomMap.values())
-    .filter(item => item.components.length > 0)
-    .sort((a, b) => a.partNumber.localeCompare(b.partNumber))
+
+  return items.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
 }
