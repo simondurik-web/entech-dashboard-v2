@@ -6,6 +6,7 @@ import { OrderCard } from '@/components/cards/OrderCard'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
+import { OrderDetail } from '@/components/OrderDetail'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -205,6 +206,19 @@ export default function StagedPage() {
             getRowKey={(row) => getOrderKey(row as unknown as Order)}
             expandedRowKey={expandedOrderKey}
             onRowClick={(row) => toggleExpanded(row as unknown as Order)}
+            renderExpandedContent={(row) => {
+              const order = row as unknown as Order
+              return (
+                <OrderDetail
+                  ifNumber={order.ifNumber}
+                  line={order.line}
+                  tirePartNum={order.tire}
+                  hubPartNum={order.hub}
+                  partNumber={order.partNumber}
+                  onClose={() => setExpandedOrderKey(null)}
+                />
+              )
+            }}
             renderCard={(row, i) => {
               const order = row as unknown as Order
               return (
