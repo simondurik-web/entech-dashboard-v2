@@ -198,8 +198,8 @@ export function OrderDetail({
               </div>
             )}
 
-            {/* ── Photos — compact horizontal strip ── */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+            {/* ── 5 boxes: Pallet, Fusion, Shipment, Close-Up, Drawings ── */}
+            <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
               {/* Pallet Photos */}
               <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(59, 130, 246)' }}>
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 mb-2">
@@ -209,7 +209,7 @@ export function OrderDetail({
                   )}
                 </h4>
                 {photoCategories.palletPhotos.length > 0 ? (
-                  <PhotoGrid photos={photoCategories.palletPhotos} maxVisible={4} size="sm" />
+                  <PhotoGrid photos={photoCategories.palletPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'pallet' }} />
                 ) : (
                   <p className="text-[10px] text-muted-foreground">No photos</p>
                 )}
@@ -224,7 +224,7 @@ export function OrderDetail({
                   )}
                 </h4>
                 {photoCategories.fusionPhotos.length > 0 ? (
-                  <PhotoGrid photos={photoCategories.fusionPhotos} maxVisible={4} size="sm" />
+                  <PhotoGrid photos={photoCategories.fusionPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'fusion' }} />
                 ) : (
                   <p className="text-[10px] text-muted-foreground">No photos</p>
                 )}
@@ -240,8 +240,8 @@ export function OrderDetail({
                 </h4>
                 {photoCategories.shipmentPhotos.length > 0 || photoCategories.paperworkPhotos.length > 0 ? (
                   <div className="space-y-1">
-                    {photoCategories.shipmentPhotos.length > 0 && <PhotoGrid photos={photoCategories.shipmentPhotos} maxVisible={3} size="sm" />}
-                    {photoCategories.paperworkPhotos.length > 0 && <PhotoGrid photos={photoCategories.paperworkPhotos} maxVisible={2} size="sm" />}
+                    {photoCategories.shipmentPhotos.length > 0 && <PhotoGrid photos={photoCategories.shipmentPhotos} maxVisible={3} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'shipment' }} />}
+                    {photoCategories.paperworkPhotos.length > 0 && <PhotoGrid photos={photoCategories.paperworkPhotos} maxVisible={2} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'paperwork' }} />}
                   </div>
                 ) : (
                   <p className="text-[10px] text-muted-foreground">No photos</p>
@@ -257,43 +257,46 @@ export function OrderDetail({
                   )}
                 </h4>
                 {photoCategories.closeUpPhotos.length > 0 ? (
-                  <PhotoGrid photos={photoCategories.closeUpPhotos} maxVisible={4} size="sm" />
+                  <PhotoGrid photos={photoCategories.closeUpPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'closeup' }} />
                 ) : (
                   <p className="text-[10px] text-muted-foreground">No photos</p>
                 )}
               </div>
-            </div>
 
-            {/* ── Drawings — inline row ── */}
-            {hasDrawings && (
-              <div className="flex items-center gap-3 px-2 py-2 bg-muted/30 rounded-md">
-                <Ruler className="size-3.5 text-muted-foreground shrink-0" />
-                <span className="text-xs font-semibold text-muted-foreground shrink-0">Drawings</span>
-                <div className="flex gap-3 overflow-x-auto">
-                  {[
-                    { d: matchedDrawings.main, label: matchedDrawings.main?.partNumber },
-                    { d: matchedDrawings.tire, label: `Tire: ${matchedDrawings.tire?.partNumber}` },
-                    { d: matchedDrawings.hub, label: `Hub: ${matchedDrawings.hub?.partNumber}` },
-                  ].filter((x) => x.d?.drawing1Url).map((x, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setLightboxUrl(getDriveThumbUrl(x.d!.drawing1Url, 1200))}
-                      className="shrink-0 group flex flex-col items-center"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={getDriveThumbUrl(x.d!.drawing1Url, 300)}
-                        alt={x.label || ''}
-                        className="h-16 w-auto rounded border bg-muted object-contain group-hover:ring-2 ring-primary transition-all"
-                        loading="lazy"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
-                      <span className="text-[10px] text-muted-foreground mt-0.5">{x.label}</span>
-                    </button>
-                  ))}
-                </div>
+              {/* Drawings — 5th box */}
+              <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(249, 115, 22)' }}>
+                <h4 className="flex items-center gap-1.5 text-xs font-semibold text-orange-400 mb-2">
+                  <Ruler className="size-3" /> Drawings
+                </h4>
+                {hasDrawings ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { d: matchedDrawings.main, label: matchedDrawings.main?.partNumber },
+                      { d: matchedDrawings.tire, label: `Tire: ${matchedDrawings.tire?.partNumber}` },
+                      { d: matchedDrawings.hub, label: `Hub: ${matchedDrawings.hub?.partNumber}` },
+                    ].filter((x) => x.d?.drawing1Url).map((x, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setLightboxUrl(getDriveThumbUrl(x.d!.drawing1Url, 1200))}
+                        className="shrink-0 group flex flex-col items-center"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={getDriveThumbUrl(x.d!.drawing1Url, 300)}
+                          alt={x.label || ''}
+                          className="h-12 w-auto rounded border bg-muted object-contain group-hover:ring-2 ring-primary transition-all"
+                          loading="lazy"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                        <span className="text-[9px] text-muted-foreground mt-0.5 truncate max-w-[70px]">{x.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground">No drawings</p>
+                )}
               </div>
-            )}
+            </div>
 
             {/* ── Pallet Records — compact collapsible table ── */}
             {pallets.length > 0 && (
@@ -312,7 +315,7 @@ export function OrderDetail({
                 </div>
                 <div className={`overflow-hidden transition-all duration-300 ${showAllPallets ? 'max-h-[500px] overflow-y-auto' : 'max-h-[120px]'}`}>
                   <table className="w-full text-[11px]">
-                    <thead>
+                    <thead className="sticky top-0 bg-card z-10">
                       <tr className="border-b text-muted-foreground">
                         <th className="text-left px-3 py-1 font-medium">#</th>
                         <th className="text-left px-3 py-1 font-medium">Weight</th>

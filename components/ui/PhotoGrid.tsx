@@ -9,9 +9,11 @@ interface PhotoGridProps {
   photos: string[]
   maxVisible?: number
   size?: 'sm' | 'md' | 'lg'
+  /** Context for download file naming */
+  context?: { ifNumber?: string; lineNumber?: string; photoType?: string }
 }
 
-export function PhotoGrid({ photos, maxVisible = 4, size = 'md' }: PhotoGridProps) {
+export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: PhotoGridProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
 
@@ -26,8 +28,6 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md' }: PhotoGridProp
 
   const visiblePhotos = photos.slice(0, maxVisible)
   const hiddenCount = photos.length - maxVisible
-
-  const getImageUrl = (url: string): string => getPhotoUrls(url).thumb
 
   const sizeClasses = {
     sm: 'w-10 h-10',
@@ -49,8 +49,9 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md' }: PhotoGridProp
             onClick={() => openLightbox(i)}
             className={`${sizeClasses[size]} rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all hover:scale-105 cursor-pointer bg-muted`}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={getImageUrl(photo)}
+              src={getPhotoUrls(photo).thumb}
               alt={`Photo ${i + 1}`}
               className="w-full h-full object-cover"
               loading="lazy"
@@ -70,14 +71,12 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md' }: PhotoGridProp
         )}
       </div>
 
-      {/* Lightbox */}
       {lightboxOpen && (
         <Lightbox
           images={photos}
-          currentIndex={currentIndex}
+          initialIndex={currentIndex}
           onClose={() => setLightboxOpen(false)}
-          onNext={() => setCurrentIndex((i) => Math.min(i + 1, photos.length - 1))}
-          onPrev={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
+          context={context}
         />
       )}
     </>
