@@ -248,17 +248,6 @@ export default function InventoryHistoryPage() {
 
         <div className="w-px h-6 bg-border" />
 
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search parts..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="px-3 py-1.5 text-xs border rounded-md bg-background w-48"
-        />
-
-        <div className="w-px h-6 bg-border" />
-
         {/* Date range */}
         <div className="flex items-center gap-1.5">
           <input
@@ -275,8 +264,6 @@ export default function InventoryHistoryPage() {
             className="px-2 py-1.5 text-xs border rounded-md bg-background"
           />
         </div>
-
-        <span className="text-xs text-muted-foreground ml-auto">{filteredParts.length} parts</span>
       </div>
 
       {/* Main content: parts list + chart */}
@@ -284,8 +271,15 @@ export default function InventoryHistoryPage() {
         {/* Parts list — 30% */}
         <Card className="lg:col-span-3">
           <CardContent className="p-3">
-            <div className="text-xs text-muted-foreground mb-2">
-              Select up to 5 parts · {selectedParts.length}/5 selected
+            <input
+              type="text"
+              placeholder="Search parts..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs border rounded-md bg-background mb-2"
+            />
+            <div className="text-[10px] text-muted-foreground mb-2">
+              {selectedParts.length}/5 selected · {filteredParts.length} parts
             </div>
             <div className="max-h-[500px] overflow-y-auto space-y-0.5">
               {filteredParts.map((item) => {
