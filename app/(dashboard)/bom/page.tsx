@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ChevronRight, Package, Layers, DollarSign, Search, RefreshCw, BarChart3, X } from 'lucide-react'
+import { ChevronRight, Package, Layers, DollarSign, Search, RefreshCw, BarChart3, X, Copy } from 'lucide-react'
 import type { BOMItem, BOMComponent } from '@/lib/google-sheets'
 
 type BOMTab = 'final' | 'sub' | 'individual'
@@ -81,6 +81,7 @@ export default function BOMExplorerPage() {
   const [selectedPart, setSelectedPart] = useState<BOMItem | null>(null)
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set())
   const [showCompare, setShowCompare] = useState(false)
+  const [duplicateMsg, setDuplicateMsg] = useState(false)
 
   const fetchData = useCallback(async (tab: BOMTab, isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -346,15 +347,30 @@ export default function BOMExplorerPage() {
                           {selectedPart.category} · {selectedPart.qtyPerPallet} per pallet
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Total Cost</p>
-                        <p className="text-2xl font-bold text-green-600">
-                          ${selectedPart.totalCost.toFixed(2)}
-                        </p>
+                      <div className="text-right space-y-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Total Cost</p>
+                          <p className="text-2xl font-bold text-green-600">
+                            ${selectedPart.totalCost.toFixed(2)}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => { setDuplicateMsg(true); setTimeout(() => setDuplicateMsg(false), 3000) }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-muted hover:bg-muted/80 transition-colors"
+                        >
+                          <Copy className="size-3" /> Duplicate
+                        </button>
                       </div>
                     </div>
                   </CardHeader>
                 </Card>
+
+                {/* Duplicate coming soon toast */}
+                {duplicateMsg && (
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-sm text-blue-400">
+                    🚧 BOM editing coming soon — duplicating will be available when BOMs are managed in the dashboard.
+                  </div>
+                )}
 
                 {/* Components breakdown */}
                 <Card>
