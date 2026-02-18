@@ -29,7 +29,8 @@ function PriorityBadge({ level, urgent }: { level: number; urgent: boolean }) {
   if (urgent) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-600 text-white">URGENT</span>
   if (level >= 4) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-orange-500 text-white">P{level}</span>
   if (level >= 2) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500 text-black">P{level}</span>
-  return <span className="px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">P{level}</span>
+  if (level >= 1) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500 text-white">P{level}</span>
+  return <span className="px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">-</span>
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -40,9 +41,17 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="px-2 py-0.5 rounded text-xs bg-muted">{status}</span>
 }
 
-function InventoryCell({ value }: { value: string }) {
-  if (!value || value === '-') return <span className="text-muted-foreground">-</span>
-  return <span className="text-green-500 font-semibold">{value}</span>
+/** Category sort order: Roll Tech = 0, Molding = 1, Snap Pad = 2 */
+function categoryOrder(cat: string): number {
+  const c = cat.toLowerCase()
+  if (c.includes('roll')) return 0
+  if (c.includes('molding')) return 1
+  if (c.includes('snap')) return 2
+  return 3
+}
+
+function isRollTech(cat: string): boolean {
+  return cat.toLowerCase().includes('roll')
 }
 
 const COLUMNS: ColumnDef<PackageRow>[] = [
@@ -51,21 +60,32 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
     key: 'dateOfRequest',
     label: 'Due Date',
     sortable: true,
-    render: (v) => {
-      const s = String(v || '-')
-      return s
-    },
+    render: (v) => String(v || '-'),
   },
   {
     key: 'priorityLevel',
     label: 'Priority',
     sortable: true,
+    filterable: true,
     render: (v, row) => <PriorityBadge level={v as number} urgent={(row as unknown as PackageOrder).urgentOverride} />,
   },
-  { key: 'line', label: 'Line', sortable: true },
+  { key: 'line', label: 'Line', sortable: true, filterable: true },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'ifNumber', label: 'IF #', sortable: true },
-  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  { key: 'ifNumber', label: 'IF #', sortable: true, filterable: true },
+  {
+    key: 'partNumber',
+    label: 'Part #',
+    sortable: true,
+    filterable: true,
+    render: (v, row) => {
+      const order = row as unknown as PackageOrder
+      // Roll Tech: Part # is always white
+      if (isRollTech(order.category)) return <span>{String(v)}</span>
+      // Molding/Snap Pad: green if enough inventory, red if not
+      const enough = order.fusionInventory >= order.orderQty
+      return <span className={enough ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{String(v)}</span>
+    },
+  },
   {
     key: 'numPackages',
     label: '# Packages',
@@ -86,7 +106,8 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
     sortable: true,
     render: (v) => {
       const n = v as number
-      return <span className={n > 0 ? 'text-green-500' : ''}>{n > 0 ? n.toLocaleString() : '0'}</span>
+      // Always white/default — no color coding on this column
+      return <span>{n > 0 ? n.toLocaleString() : '0'}</span>
     },
   },
   {
@@ -95,11 +116,11 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
     sortable: true,
     filterable: true,
     render: (v, row) => {
-      const tire = String(v || '')
-      if (!tire) return <span className="text-muted-foreground">-</span>
       const order = row as unknown as PackageOrder
-      const hasTire = order.hasTire
-      return <span className={hasTire ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{tire}</span>
+      if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
+      const tire = String(v || '')
+      if (!tire || tire === '-') return <span className="text-muted-foreground">-</span>
+      return <span className={order.hasTire ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
     },
   },
   {
@@ -108,11 +129,11 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
     sortable: true,
     filterable: true,
     render: (v, row) => {
-      const hub = String(v || '')
-      if (!hub) return <span className="text-muted-foreground">-</span>
       const order = row as unknown as PackageOrder
-      const hasHub = order.hasHub
-      return <span className={hasHub ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{hub}</span>
+      if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
+      const hub = String(v || '')
+      if (!hub || hub === '-') return <span className="text-muted-foreground">-</span>
+      return <span className={order.hasHub ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
     },
   },
   { key: 'hubMold', label: 'Hub Mold', sortable: true, filterable: true },
@@ -152,13 +173,6 @@ function filterByCategory(orders: PackageOrder[], filter: FilterKey): PackageOrd
   }
 }
 
-function borderColor(order: PackageOrder): string {
-  if (order.canPackage) return 'border-l-green-500'
-  if (order.daysUntilDue !== null && order.daysUntilDue < 0) return 'border-l-red-500'
-  if (order.daysUntilDue !== null && order.daysUntilDue <= 3) return 'border-l-orange-500'
-  return 'border-l-yellow-500'
-}
-
 export default function NeedToPackagePage() {
   const [orders, setOrders] = useState<PackageOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -171,13 +185,11 @@ export default function NeedToPackagePage() {
       fetch('/api/inventory').then((res) => res.json()),
     ])
       .then(([ordersData, inventoryData]: [Order[], InventoryItem[]]) => {
-        // Build inventory map
         const stockMap = new Map<string, number>()
         inventoryData.forEach((item) => {
           stockMap.set(item.partNumber.toUpperCase(), item.inStock)
         })
 
-        // Filter to orders that are in production (pending/wip) but not staged/shipped
         const needToPackage = ordersData
           .filter((o) => {
             const status = normalizeStatus(o.internalStatus, o.ifStatus)
@@ -191,9 +203,19 @@ export default function NeedToPackagePage() {
               canPackage: stock >= o.orderQty,
             }
           })
-          // Sort by canPackage (ready first), then by due date
+          // Sort: category (RT→Molding→SnapPad), then urgent first, then priority P1→P4, then due date
           .sort((a, b) => {
-            if (a.canPackage !== b.canPackage) return b.canPackage ? 1 : -1
+            // 1. Category group
+            const catDiff = categoryOrder(a.category) - categoryOrder(b.category)
+            if (catDiff !== 0) return catDiff
+            // 2. Urgent always on top
+            if (a.urgentOverride && !b.urgentOverride) return -1
+            if (!a.urgentOverride && b.urgentOverride) return 1
+            // 3. Priority (lower number = higher priority, P1 before P4)
+            const aPri = a.priorityLevel || 99
+            const bPri = b.priorityLevel || 99
+            if (aPri !== bPri) return aPri - bPri
+            // 4. Due date (earlier = higher)
             return (a.daysUntilDue ?? 999) - (b.daysUntilDue ?? 999)
           })
 
@@ -215,7 +237,7 @@ export default function NeedToPackagePage() {
   const totalOrders = filtered.length
   const readyCount = filtered.filter((o) => o.canPackage).length
   const missingCount = filtered.filter((o) => !o.canPackage).length
-  const urgentReady = filtered.filter((o) => o.canPackage && o.daysUntilDue !== null && o.daysUntilDue <= 3).length
+  const urgentReady = filtered.filter((o) => o.urgentOverride || (o.canPackage && o.daysUntilDue !== null && o.daysUntilDue <= 3)).length
 
   return (
     <div className="p-4 pb-20">
@@ -259,25 +281,35 @@ export default function NeedToPackagePage() {
         ))}
       </div>
 
-      {/* Loading state */}
       {loading && (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       )}
 
-      {/* Error state */}
       {error && (
         <p className="text-center text-destructive py-10">{error}</p>
       )}
 
-      {/* Data table */}
       {!loading && !error && (
         <DataTable
           table={table}
           data={filtered}
           noun="order"
-          exportFilename="need-to-package.csv"
+          exportFilename="need-to-package"
+          cardClassName={(row) => {
+            const order = row as unknown as PackageOrder
+            if (order.urgentOverride) return 'border-l-red-500 bg-red-500/5'
+            if (order.canPackage) return 'border-l-green-500'
+            if (order.daysUntilDue !== null && order.daysUntilDue < 0) return 'border-l-red-500'
+            if (order.daysUntilDue !== null && order.daysUntilDue <= 3) return 'border-l-orange-500'
+            return 'border-l-yellow-500'
+          }}
+          rowClassName={(row) => {
+            const order = row as unknown as PackageOrder
+            if (order.urgentOverride) return 'bg-red-500/10'
+            return ''
+          }}
           renderCard={(row, i) => {
             const order = row as unknown as PackageOrder
             return (

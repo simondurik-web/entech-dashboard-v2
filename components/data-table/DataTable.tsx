@@ -31,6 +31,8 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   onRowClick?: (row: T, index: number) => void
   /** Render expandable content for desktop table/mobile cards */
   renderExpandedContent?: (row: T, index: number) => React.ReactNode
+  /** Optional className for each table row (e.g. urgent highlighting) */
+  rowClassName?: (row: T) => string
 }
 
 function SortIcon({ columnKey, sortKey, sortDir }: {
@@ -57,6 +59,7 @@ export function DataTable<T extends Record<string, unknown>>({
   expandedRowKey,
   onRowClick,
   renderExpandedContent,
+  rowClassName,
 }: DataTableProps<T>) {
   const {
     visibleColumns,
@@ -247,7 +250,8 @@ export function DataTable<T extends Record<string, unknown>>({
                     className={cn(
                       'border-b transition-colors',
                       !isExpanded && 'hover:bg-muted/30',
-                      isClickable && 'cursor-pointer'
+                      isClickable && 'cursor-pointer',
+                      rowClassName?.(row)
                     )}
                     onClick={isClickable ? () => onRowClick(row, i) : undefined}
                   >
