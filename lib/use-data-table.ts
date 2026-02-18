@@ -26,6 +26,7 @@ export interface UseDataTableReturn<T> {
   sortDir: SortDir
   filters: Map<string, Set<string>>
   hiddenColumns: Set<string>
+  columnOrder: string[]
   searchTerm: string
   toggleSort: (key: string) => void
   setFilter: (key: string, values: Set<string>) => void
@@ -33,6 +34,7 @@ export interface UseDataTableReturn<T> {
   clearAllFilters: () => void
   toggleColumn: (key: string) => void
   setSearch: (term: string) => void
+  moveColumn: (fromIndex: number, toIndex: number) => void
 }
 
 export function useDataTable<T extends Record<string, unknown>>({
@@ -52,19 +54,42 @@ export function useDataTable<T extends Record<string, unknown>>({
     }
     return new Set()
   })
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    if (storageKey && typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`dt-order-${storageKey}`)
+        if (stored) return JSON.parse(stored)
+      } catch { /* ignore */ }
+    }
+    return columns.map((c) => c.key)
+  })
   const [searchTerm, setSearchTerm] = useState('')
   const sortDirRef = useRef(sortDir)
   sortDirRef.current = sortDir
 
+  // Sync column order when columns change (new columns added)
+  useEffect(() => {
+    const colKeys = new Set(columns.map((c) => c.key))
+    const orderKeys = new Set(columnOrder)
+    const missing = columns.filter((c) => !orderKeys.has(c.key)).map((c) => c.key)
+    if (missing.length > 0) {
+      setColumnOrder((prev) => [...prev.filter((k) => colKeys.has(k)), ...missing])
+    }
+  }, [columns]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Persist hidden columns
   useEffect(() => {
     if (storageKey && typeof window !== 'undefined') {
-      localStorage.setItem(
-        `dt-hidden-${storageKey}`,
-        JSON.stringify([...hiddenColumns])
-      )
+      localStorage.setItem(`dt-hidden-${storageKey}`, JSON.stringify([...hiddenColumns]))
     }
   }, [hiddenColumns, storageKey])
+
+  // Persist column order
+  useEffect(() => {
+    if (storageKey && typeof window !== 'undefined') {
+      localStorage.setItem(`dt-order-${storageKey}`, JSON.stringify(columnOrder))
+    }
+  }, [columnOrder, storageKey])
 
   const toggleSort = useCallback((key: string) => {
     setSortKey((prevKey) => {
@@ -77,7 +102,6 @@ export function useDataTable<T extends Record<string, unknown>>({
         setSortDir('desc')
         return key
       }
-      // desc -> clear sort
       setSortDir(null)
       return null
     })
@@ -122,9 +146,33 @@ export function useDataTable<T extends Record<string, unknown>>({
     })
   }, [])
 
+  const moveColumn = useCallback((fromIndex: number, toIndex: number) => {
+    setColumnOrder((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+  }, [])
+
+  // Order columns by columnOrder, then filter hidden
+  const orderedColumns = useMemo(() => {
+    const colMap = new Map(columns.map((c) => [c.key, c]))
+    const ordered: ColumnDef<T>[] = []
+    for (const key of columnOrder) {
+      const col = colMap.get(key)
+      if (col) ordered.push(col)
+    }
+    // Add any columns not in order (safety)
+    for (const col of columns) {
+      if (!columnOrder.includes(col.key)) ordered.push(col)
+    }
+    return ordered
+  }, [columns, columnOrder])
+
   const visibleColumns = useMemo(
-    () => columns.filter((c) => !hiddenColumns.has(c.key)),
-    [columns, hiddenColumns]
+    () => orderedColumns.filter((c) => !hiddenColumns.has(c.key)),
+    [orderedColumns, hiddenColumns]
   )
 
   const processedData = useMemo(() => {
@@ -172,13 +220,14 @@ export function useDataTable<T extends Record<string, unknown>>({
   }, [data, searchTerm, filters, sortKey, sortDir, columns])
 
   return {
-    columns,
+    columns: orderedColumns,
     visibleColumns,
     processedData,
     sortKey,
     sortDir,
     filters,
     hiddenColumns,
+    columnOrder,
     searchTerm,
     toggleSort,
     setFilter,
@@ -186,5 +235,6 @@ export function useDataTable<T extends Record<string, unknown>>({
     clearAllFilters,
     toggleColumn,
     setSearch: setSearchTerm,
+    moveColumn,
   }
 }
