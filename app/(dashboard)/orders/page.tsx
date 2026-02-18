@@ -21,6 +21,7 @@ const CATEGORY_FILTERS = [
 const STATUS_FILTERS = [
   { key: 'pending', label: 'Need to Make', color: 'bg-yellow-500' },
   { key: 'wip', label: 'Making', color: 'bg-teal-500' },
+  { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
   { key: 'staged', label: 'Ready to Ship', color: 'bg-green-500' },
   { key: 'shipped', label: 'Shipped', color: 'bg-gray-500' },
 ] as const
@@ -41,8 +42,7 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
     filterable: true,
     render: (v, row) => {
       const order = row as unknown as Order
-      const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
-      if (isUrgent) {
+      if (order.urgentOverride) {
         return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">URGENT</span>
       }
       const priority = v ? `P${v}` : 'P-'
@@ -97,6 +97,8 @@ function statusColor(status: string): string {
   const s = status.toLowerCase()
   // Shipped/Invoiced - Blue
   if (s === 'shipped' || s === 'invoiced' || s === 'to bill') return 'bg-blue-500/20 text-blue-600'
+  // Completed - Emerald
+  if (s === 'completed') return 'bg-emerald-500/20 text-emerald-600'
   // Staged/Ready to Ship - Green
   if (s === 'staged' || s === 'ready to ship') return 'bg-green-500/20 text-green-600'
   // WIP/Making - Teal
@@ -119,11 +121,12 @@ function borderColor(order: Order): string {
 
 function getOrderStatus(order: Order): StatusKey | null {
   const status = normalizeStatus(order.internalStatus, order.ifStatus)
+  if (status === 'cancelled') return null // Filter out cancelled
   if (status === 'shipped' || order.shippedDate) return 'shipped'
   if (status === 'staged') return 'staged'
+  if (status === 'completed') return 'completed'
   if (status === 'wip') return 'wip'
   if (status === 'pending') return 'pending'
-  if (status === 'cancelled') return null // Filter out cancelled
   return 'pending'
 }
 
@@ -159,7 +162,7 @@ export default function OrdersPage() {
   const [error, setError] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
   const [activeStatuses, setActiveStatuses] = useState<Set<StatusKey>>(
-    new Set(['pending', 'wip', 'staged'])
+    new Set(['pending', 'wip', 'completed', 'staged'])
   )
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
@@ -223,6 +226,7 @@ export default function OrdersPage() {
   const totalUnits = filtered.reduce((sum, o) => sum + o.orderQty, 0)
   const needToMake = orders.filter((o) => getOrderStatus(o) === 'pending').length
   const making = orders.filter((o) => getOrderStatus(o) === 'wip').length
+  const completed = orders.filter((o) => getOrderStatus(o) === 'completed').length
   const readyToShip = orders.filter((o) => getOrderStatus(o) === 'staged').length
 
   return (
@@ -241,7 +245,7 @@ export default function OrdersPage() {
       <p className="text-muted-foreground text-sm mb-4">Complete order database with all statuses</p>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3">
           <p className="text-xs text-muted-foreground">Total Orders</p>
           <p className="text-xl font-bold">{totalOrders}</p>
@@ -254,6 +258,10 @@ export default function OrdersPage() {
         <div className="bg-teal-500/10 rounded-lg p-3">
           <p className="text-xs text-teal-600">Making</p>
           <p className="text-xl font-bold text-teal-600">{making}</p>
+        </div>
+        <div className="bg-emerald-500/10 rounded-lg p-3">
+          <p className="text-xs text-emerald-600">Completed</p>
+          <p className="text-xl font-bold text-emerald-600">{completed}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3">
           <p className="text-xs text-green-600">Ready to Ship</p>

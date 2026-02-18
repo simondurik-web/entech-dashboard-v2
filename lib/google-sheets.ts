@@ -105,11 +105,12 @@ export function normalizeStatus(status: string, ifStatus: string): string {
   if (s.includes('cancel')) return 'cancelled'
   if (s.includes('closed') || s.includes('void')) return 'cancelled'
   
-  // Standard statuses
-  if (s.includes('shipped') || s.includes('invoiced') || s.includes('to bill')) return 'shipped'
+  // Standard statuses (order matters — check more specific first)
+  if (s.includes('pending') || s.includes('approved') || s.includes('released')) return 'pending'
+  if (s.includes('completed')) return 'completed'
   if (s.includes('staged')) return 'staged'
   if (s.includes('work in progress') || s.includes('wip') || s.includes('in production')) return 'wip'
-  if (s.includes('pending') || s.includes('approved') || s.includes('released')) return 'pending'
+  if (s.includes('shipped') || s.includes('invoiced') || s.includes('to bill')) return 'shipped'
   
   // If no match, return the original (lowercased) or 'unknown'
   return s || 'unknown'
