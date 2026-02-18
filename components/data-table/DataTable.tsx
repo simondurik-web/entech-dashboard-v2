@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2 } from 'lucide-react'
+import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw, Bookmark } from 'lucide-react'
 import { Fragment, useState, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -74,6 +74,7 @@ export function DataTable<T extends Record<string, unknown>>({
     toggleColumn,
     setSearch,
     moveColumn,
+    resetView,
   } = table
 
   const hasActiveFilters = filters.size > 0 || searchTerm.trim() !== ''
@@ -144,6 +145,26 @@ export function DataTable<T extends Record<string, unknown>>({
               Clear Filters
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetView}
+            title="Reset to default view"
+          >
+            <RotateCcw className="size-3.5" />
+            <span className="hidden sm:inline">Reset</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled
+            title="Custom Views — coming soon with Google login"
+            className="opacity-50 cursor-not-allowed"
+          >
+            <Bookmark className="size-3.5" />
+            <span className="hidden sm:inline">Views</span>
+            <span className="hidden lg:inline text-[10px] text-muted-foreground ml-1">(soon)</span>
+          </Button>
           <ColumnToggle
             columns={columns}
             hiddenColumns={hiddenColumns}

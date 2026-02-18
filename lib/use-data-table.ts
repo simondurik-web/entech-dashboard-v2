@@ -35,6 +35,7 @@ export interface UseDataTableReturn<T> {
   toggleColumn: (key: string) => void
   setSearch: (term: string) => void
   moveColumn: (fromIndex: number, toIndex: number) => void
+  resetView: () => void
 }
 
 export function useDataTable<T extends Record<string, unknown>>({
@@ -155,6 +156,19 @@ export function useDataTable<T extends Record<string, unknown>>({
     })
   }, [])
 
+  const resetView = useCallback(() => {
+    setHiddenColumns(new Set())
+    setColumnOrder(columns.map((c) => c.key))
+    setFilters(new Map())
+    setSearchTerm('')
+    setSortKey(null)
+    setSortDir(null)
+    if (storageKey && typeof window !== 'undefined') {
+      localStorage.removeItem(`dt-hidden-${storageKey}`)
+      localStorage.removeItem(`dt-order-${storageKey}`)
+    }
+  }, [columns, storageKey])
+
   // Order columns by columnOrder, then filter hidden
   const orderedColumns = useMemo(() => {
     const colMap = new Map(columns.map((c) => [c.key, c]))
@@ -236,5 +250,6 @@ export function useDataTable<T extends Record<string, unknown>>({
     toggleColumn,
     setSearch: setSearchTerm,
     moveColumn,
+    resetView,
   }
 }
