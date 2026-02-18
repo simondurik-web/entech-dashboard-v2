@@ -50,10 +50,8 @@ export default function InventoryHistoryPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [productType, setProductType] = useState('All')
-  const [itemType, setItemType] = useState('All')
-  const [page, setPage] = useState(0)
-  const PAGE_SIZE = 100
+  const [productTypes, setProductTypes] = useState<Set<string>>(new Set(['All']))
+  const [itemTypes, setItemTypes] = useState<Set<string>>(new Set(['All']))
 
   useEffect(() => {
     Promise.all([
@@ -91,29 +89,50 @@ export default function InventoryHistoryPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const toggleProductType = useCallback((pt: string) => {
+    setProductTypes((prev) => {
+      const next = new Set(prev)
+      if (pt === 'All') return new Set(['All'])
+      next.delete('All')
+      if (next.has(pt)) {
+        next.delete(pt)
+        if (next.size === 0) return new Set(['All'])
+      } else {
+        next.add(pt)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleItemType = useCallback((it: string) => {
+    setItemTypes((prev) => {
+      const next = new Set(prev)
+      if (it === 'All') return new Set(['All'])
+      next.delete('All')
+      if (next.has(it)) {
+        next.delete(it)
+        if (next.size === 0) return new Set(['All'])
+      } else {
+        next.add(it)
+      }
+      return next
+    })
+  }, [])
+
   const filteredParts = useMemo(() => {
     const term = searchTerm.toLowerCase()
     return history.parts.filter((p) => {
       if (term && !p.partNumber.toLowerCase().includes(term)) return false
       const inv = inventoryMap.get(p.partNumber)
-      if (productType !== 'All') {
-        if (!inv || inv.product !== productType) return false
+      if (!productTypes.has('All')) {
+        if (!inv || !productTypes.has(inv.product)) return false
       }
-      if (itemType !== 'All') {
-        if (!inv || inv.itemType !== itemType) return false
+      if (!itemTypes.has('All')) {
+        if (!inv || !itemTypes.has(inv.itemType)) return false
       }
       return true
     })
-  }, [history.parts, searchTerm, productType, itemType, inventoryMap])
-
-  // Reset page when filters change
-  useEffect(() => { setPage(0) }, [searchTerm, productType, itemType])
-
-  const pagedParts = useMemo(
-    () => filteredParts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [filteredParts, page]
-  )
-  const totalPages = Math.ceil(filteredParts.length / PAGE_SIZE)
+  }, [history.parts, searchTerm, productTypes, itemTypes, inventoryMap])
 
   const selectedItems = useMemo(
     () => history.parts.filter((p) => selectedParts.includes(p.partNumber)),
@@ -148,7 +167,15 @@ export default function InventoryHistoryPage() {
       const change = current - first
       const changePct = first !== 0 ? ((change / first) * 100) : 0
       const inv = inventoryMap.get(item.partNumber)
-      return { partNumber: item.partNumber, current, change, changePct, inStock: inv?.inStock ?? current }
+      return {
+        partNumber: item.partNumber,
+        current,
+        change,
+        changePct,
+        inStock: inv?.inStock ?? current,
+        minimum: inv?.minimum ?? 0,
+        target: inv?.target ?? 0,
+      }
     })
   }, [selectedItems, rangeDates, inventoryMap])
 
@@ -183,14 +210,14 @@ export default function InventoryHistoryPage() {
 
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Product Type chips */}
+        {/* Product Type chips (multi-select) */}
         <div className="flex flex-wrap gap-1">
           {PRODUCT_TYPES.map((pt) => (
             <button
               key={pt}
-              onClick={() => setProductType(pt)}
+              onClick={() => toggleProductType(pt)}
               className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                productType === pt
+                productTypes.has(pt)
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
               }`}
@@ -202,14 +229,14 @@ export default function InventoryHistoryPage() {
 
         <div className="w-px h-6 bg-border" />
 
-        {/* Item Type chips */}
+        {/* Item Type chips (multi-select) */}
         <div className="flex flex-wrap gap-1">
           {ITEM_TYPES.map((it) => (
             <button
               key={it}
-              onClick={() => setItemType(it)}
+              onClick={() => toggleItemType(it)}
               className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                itemType === it
+                itemTypes.has(it)
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
               }`}
@@ -261,7 +288,7 @@ export default function InventoryHistoryPage() {
               Select up to 5 parts · {selectedParts.length}/5 selected
             </div>
             <div className="max-h-[500px] overflow-y-auto space-y-0.5">
-              {pagedParts.map((item) => {
+              {filteredParts.map((item) => {
                 const isSelected = selectedParts.includes(item.partNumber)
                 const colorIdx = selectedParts.indexOf(item.partNumber)
                 const latestQty = history.dates.length
@@ -296,25 +323,7 @@ export default function InventoryHistoryPage() {
                 )
               })}
             </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-2 pt-2 border-t">
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80 disabled:opacity-30"
-                >
-                  ← Prev
-                </button>
-                <span className="text-[10px] text-muted-foreground">{page + 1}/{totalPages}</span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/80 disabled:opacity-30"
-                >
-                  Next →
-                </button>
-              </div>
-            )}
+            {/* All parts shown — just scroll */}
           </CardContent>
         </Card>
 
@@ -372,7 +381,7 @@ export default function InventoryHistoryPage() {
                 <p className="text-xs text-muted-foreground truncate font-medium">{item.partNumber}</p>
                 <p className="text-xl font-bold mt-1">{item.inStock.toLocaleString()}</p>
                 <p className="text-[10px] text-muted-foreground">current stock</p>
-                <div className="flex items-center gap-1 mt-1">
+                <div className="flex items-center gap-1 mt-1.5">
                   <span className={`text-sm font-semibold ${item.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {item.change >= 0 ? '↑' : '↓'} {Math.abs(item.change).toLocaleString()}
                   </span>
@@ -380,7 +389,19 @@ export default function InventoryHistoryPage() {
                     ({item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(1)}%)
                   </span>
                 </div>
-                <p className="text-[10px] text-muted-foreground">over selected period</p>
+                <p className="text-[10px] text-muted-foreground mb-1.5">over selected period</p>
+                <div className="border-t border-border/40 pt-1.5 space-y-0.5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">Minimum</span>
+                    <span className={`font-medium ${item.minimum > 0 && item.inStock < item.minimum ? 'text-red-400' : ''}`}>
+                      {item.minimum > 0 ? item.minimum.toLocaleString() : '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">Manual Target</span>
+                    <span className="font-medium">{item.target > 0 ? item.target.toLocaleString() : '—'}</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}
