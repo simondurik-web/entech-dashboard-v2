@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server'
 import { fetchDrawingsFromDB } from '@/lib/supabase-data'
 import { fetchDrawings } from '@/lib/google-sheets'
+import { resolveRecordPhotos } from '@/lib/photo-resolver'
 
 export async function GET() {
   try {
+    let drawings
     try {
-      const drawings = await fetchDrawingsFromDB()
-      return NextResponse.json(drawings)
+      drawings = await fetchDrawingsFromDB()
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
-      const drawings = await fetchDrawings()
-      return NextResponse.json(drawings)
+      drawings = await fetchDrawings()
     }
+    const resolved = await resolveRecordPhotos(drawings, ['drawing1Url', 'drawing2Url'])
+    return NextResponse.json(resolved)
   } catch (error) {
     console.error('Failed to fetch drawings:', error)
     return NextResponse.json(
