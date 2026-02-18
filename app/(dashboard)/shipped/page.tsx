@@ -6,6 +6,7 @@ import { DataTable } from '@/components/data-table'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { OrderDetail } from '@/components/OrderDetail'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { InventoryPopover } from '@/components/InventoryPopover'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -31,7 +32,15 @@ type OrderRow = Order & Record<string, unknown>
 const COLUMNS: ColumnDef<OrderRow>[] = [
   { key: 'shippedDate', label: 'Ship Date', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part Number', sortable: true, filterable: true },
+  {
+    key: 'partNumber', label: 'Part Number', sortable: true, filterable: true,
+    render: (v) => (
+      <span className="inline-flex items-center gap-1">
+        <span className="font-bold">{String(v)}</span>
+        <InventoryPopover partNumber={String(v)} partType="part" />
+      </span>
+    ),
+  },
   { key: 'category', label: 'Category', sortable: true, filterable: true },
   { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
   { key: 'line', label: 'Line', sortable: true },

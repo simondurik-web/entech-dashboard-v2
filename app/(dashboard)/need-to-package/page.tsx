@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
 import { OrderCard } from '@/components/cards/OrderCard'
+import { InventoryPopover } from '@/components/InventoryPopover'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order, InventoryItem } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
@@ -80,11 +81,13 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
     filterable: true,
     render: (v, row) => {
       const order = row as unknown as PackageOrder
-      // Roll Tech: Part # is always white
-      if (isRollTech(order.category)) return <span>{String(v)}</span>
-      // Molding/Snap Pad: green if enough inventory, red if not
-      const enough = order.fusionInventory >= order.orderQty
-      return <span className={enough ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{String(v)}</span>
+      const colorClass = isRollTech(order.category) ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className={colorClass}>{String(v)}</span>
+          <InventoryPopover partNumber={String(v)} partType="part" />
+        </span>
+      )
     },
   },
   {
@@ -121,7 +124,12 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
       if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
       const tire = String(v || '')
       if (!tire || tire === '-') return <span className="text-muted-foreground">-</span>
-      return <span className={order.hasTire ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className={order.hasTire ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
+          <InventoryPopover partNumber={tire} partType="tire" />
+        </span>
+      )
     },
   },
   {
@@ -134,7 +142,12 @@ const COLUMNS: ColumnDef<PackageRow>[] = [
       if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
       const hub = String(v || '')
       if (!hub || hub === '-') return <span className="text-muted-foreground">-</span>
-      return <span className={order.hasHub ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className={order.hasHub ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
+          <InventoryPopover partNumber={hub} partType="hub" />
+        </span>
+      )
     },
   },
   { key: 'hubMold', label: 'Hub Mold', sortable: true, filterable: true },

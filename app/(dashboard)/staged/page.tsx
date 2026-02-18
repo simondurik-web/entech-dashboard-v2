@@ -8,6 +8,7 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import { OrderDetail } from '@/components/OrderDetail'
 import type { Order } from '@/lib/google-sheets'
+import { InventoryPopover } from '@/components/InventoryPopover'
 import { normalizeStatus } from '@/lib/google-sheets'
 
 const FILTERS = [
@@ -60,10 +61,42 @@ const STAGED_COLUMNS: ColumnDef<OrderRow>[] = [
     },
   },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  {
+    key: 'partNumber', label: 'Part #', sortable: true, filterable: true,
+    render: (v) => (
+      <span className="inline-flex items-center gap-1">
+        <span className="font-bold">{String(v)}</span>
+        <InventoryPopover partNumber={String(v)} partType="part" />
+      </span>
+    ),
+  },
   { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
-  { key: 'tire', label: 'Tire', sortable: true, filterable: true },
-  { key: 'hub', label: 'Hub', sortable: true, filterable: true },
+  {
+    key: 'tire', label: 'Tire', sortable: true, filterable: true,
+    render: (v) => {
+      const val = String(v || '')
+      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span>{val}</span>
+          <InventoryPopover partNumber={val} partType="tire" />
+        </span>
+      )
+    },
+  },
+  {
+    key: 'hub', label: 'Hub', sortable: true, filterable: true,
+    render: (v) => {
+      const val = String(v || '')
+      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span>{val}</span>
+          <InventoryPopover partNumber={val} partType="hub" />
+        </span>
+      )
+    },
+  },
   { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
 ]
 

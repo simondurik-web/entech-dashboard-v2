@@ -8,6 +8,7 @@ import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { OrderCard } from '@/components/cards/OrderCard'
+import { InventoryPopover } from '@/components/InventoryPopover'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
@@ -71,12 +72,15 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
       const order = row as unknown as Order
       const cat = order.category.toLowerCase()
       const active = isActiveStatus(order)
-      // Molding/Snap Pad: green if enough inventory, red if not
-      if (active && (cat.includes('molding') || cat.includes('snap'))) {
-        const enough = order.fusionInventory >= order.orderQty
-        return <strong className={enough ? 'text-green-500' : 'text-red-400 font-black'}>{String(v)}</strong>
-      }
-      return <strong>{String(v)}</strong>
+      const colorClass = active && (cat.includes('molding') || cat.includes('snap'))
+        ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-black')
+        : ''
+      return (
+        <span className="inline-flex items-center gap-1">
+          <strong className={colorClass}>{String(v)}</strong>
+          <InventoryPopover partNumber={String(v)} partType="part" />
+        </span>
+      )
     },
   },
   { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
@@ -92,12 +96,13 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
       const val = String(v || '')
       if (!val || val === '-') return <span className="text-muted-foreground">-</span>
       const active = isActiveStatus(order)
-      if (active) {
-        return order.hasTire
-          ? <span className="text-green-500">{val}</span>
-          : <strong className="text-red-400">{val}</strong>
-      }
-      return <span>{val}</span>
+      const colorClass = active ? (order.hasTire ? 'text-green-500' : 'text-red-400 font-bold') : ''
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className={colorClass}>{val}</span>
+          <InventoryPopover partNumber={val} partType="tire" />
+        </span>
+      )
     },
   },
   {
@@ -112,12 +117,13 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
       const val = String(v || '')
       if (!val || val === '-') return <span className="text-muted-foreground">-</span>
       const active = isActiveStatus(order)
-      if (active) {
-        return order.hasHub
-          ? <span className="text-green-500">{val}</span>
-          : <strong className="text-red-400">{val}</strong>
-      }
-      return <span>{val}</span>
+      const colorClass = active ? (order.hasHub ? 'text-green-500' : 'text-red-400 font-bold') : ''
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className={colorClass}>{val}</span>
+          <InventoryPopover partNumber={val} partType="hub" />
+        </span>
+      )
     },
   },
   { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },

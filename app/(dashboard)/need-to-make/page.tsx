@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { ProductionMakeItem } from '@/lib/google-sheets'
+import { InventoryPopover } from '@/components/InventoryPopover'
 
 // Product type filters matching v1
 const FILTERS = [
@@ -21,7 +22,15 @@ type ProductionRow = ProductionMakeItem & Record<string, unknown>
 
 const COLUMNS: ColumnDef<ProductionRow>[] = [
   { key: 'product', label: 'Product', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+  {
+    key: 'partNumber', label: 'Part #', sortable: true, filterable: true,
+    render: (v) => (
+      <span className="inline-flex items-center gap-1">
+        <span className="font-bold">{String(v)}</span>
+        <InventoryPopover partNumber={String(v)} partType="part" />
+      </span>
+    ),
+  },
   { key: 'moldType', label: 'Mold Type', sortable: true, filterable: true },
   {
     key: 'fusionInventory',

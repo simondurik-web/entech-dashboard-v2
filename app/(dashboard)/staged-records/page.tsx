@@ -6,6 +6,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
+import { InventoryPopover } from '@/components/InventoryPopover'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import type { StagedRecord } from '@/lib/google-sheets'
 
@@ -32,7 +33,15 @@ const COLUMNS: ColumnDef<StagedRow>[] = [
   { key: 'timestamp', label: 'Date Staged', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
   { key: 'ifNumber', label: 'IF#', sortable: true },
-  { key: 'partNumber', label: 'Part Number', sortable: true, filterable: true },
+  {
+    key: 'partNumber', label: 'Part Number', sortable: true, filterable: true,
+    render: (v) => (
+      <span className="inline-flex items-center gap-1">
+        <span className="font-bold">{String(v)}</span>
+        <InventoryPopover partNumber={String(v)} partType="part" />
+      </span>
+    ),
+  },
   { key: 'quantity', label: 'Qty', sortable: true },
   { key: 'location', label: 'Location', sortable: true, filterable: true },
   { key: 'category', label: 'Category', sortable: true, filterable: true },
