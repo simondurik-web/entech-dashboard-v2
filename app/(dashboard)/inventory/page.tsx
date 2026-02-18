@@ -154,15 +154,8 @@ function makeColumns(onHistoryClick: (partNumber: string) => void): ColumnDef<In
     { key: 'product', label: 'Product Type', sortable: true, filterable: true },
     {
       key: 'partNumber', label: 'Part Number', sortable: true, filterable: true,
-      render: (v, row) => (
-        <span className="flex items-center gap-1">
-          <span className="font-bold">{String(v)}</span>
-          <button
-            onClick={(e) => { e.stopPropagation(); onHistoryClick(String(v)) }}
-            className="text-blue-400 hover:text-blue-300 transition-colors"
-            title="View history"
-          >📈</button>
-        </span>
+      render: (v) => (
+        <span className="font-bold">{String(v)}</span>
       ),
     },
     { key: 'fusionQty', label: 'Fusion Qty', sortable: true, render: (v) => Number(v).toLocaleString() },
