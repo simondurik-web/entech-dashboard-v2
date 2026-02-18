@@ -26,17 +26,52 @@ function CarouselLightbox({
   onClose: () => void
 }) {
   const [idx, setIdx] = useState(0)
+  const [direction, setDirection] = useState<'left' | 'right'>('right')
+  const [animating, setAnimating] = useState(false)
   const total = urls.length
+
+  const goNext = () => {
+    if (animating || total <= 1) return
+    setDirection('right')
+    setAnimating(true)
+    setTimeout(() => {
+      setIdx((i) => (i + 1) % total)
+      setAnimating(false)
+    }, 300)
+  }
+
+  const goPrev = () => {
+    if (animating || total <= 1) return
+    setDirection('left')
+    setAnimating(true)
+    setTimeout(() => {
+      setIdx((i) => (i - 1 + total) % total)
+      setAnimating(false)
+    }, 300)
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowRight') setIdx((i) => (i + 1) % total)
-      if (e.key === 'ArrowLeft') setIdx((i) => (i - 1 + total) % total)
+      if (e.key === 'ArrowRight') goNext()
+      if (e.key === 'ArrowLeft') goPrev()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose, total])
+  })
+
+  // Animation: current image slides out, next slides in from the correct direction
+  const getTransform = () => {
+    if (!animating) return 'translateX(0)'
+    return direction === 'right' ? 'translateX(-100%)' : 'translateX(100%)'
+  }
+
+  const getEnterTransform = () => {
+    if (!animating) return 'translateX(100%)'
+    return 'translateX(0)'
+  }
+
+  const nextIdx = direction === 'right' ? (idx + 1) % total : (idx - 1 + total) % total
 
   return (
     <div
@@ -53,36 +88,51 @@ function CarouselLightbox({
       <div className="relative flex items-center w-full max-w-4xl px-12">
         {total > 1 && (
           <button
-            onClick={() => setIdx((i) => (i - 1 + total) % total)}
+            onClick={goPrev}
             className="absolute left-2 z-10 text-white text-4xl hover:text-white/80 select-none"
           >
             ‹
           </button>
         )}
 
-        <div className="w-full overflow-hidden rounded-lg">
+        <div className="w-full overflow-hidden rounded-lg relative" style={{ minHeight: '50vh' }}>
+          {/* Current image */}
           <div
-            className="flex"
+            className="absolute inset-0 flex items-center justify-center"
             style={{
-              transform: `translateX(-${idx * 100}%)`,
-              transition: 'transform 300ms ease-in-out',
+              transform: getTransform(),
+              transition: animating ? 'transform 300ms ease-in-out' : 'none',
             }}
           >
-            {urls.map((url, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={getDriveThumbUrl(url, 1200)}
-                alt={`${partNumber} drawing ${i + 1}`}
-                className="w-full flex-shrink-0 object-contain max-h-[80vh] bg-white/5"
-              />
-            ))}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={getDriveThumbUrl(urls[idx], 1200)}
+              alt={`${partNumber} drawing ${idx + 1}`}
+              className="w-full object-contain max-h-[80vh] bg-white/5"
+            />
           </div>
+          {/* Incoming image */}
+          {animating && (
+            <div
+              className="absolute inset-0 flex items-center justify-center"
+              style={{
+                transform: getEnterTransform(),
+                transition: 'transform 300ms ease-in-out',
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={getDriveThumbUrl(urls[nextIdx], 1200)}
+                alt={`${partNumber} drawing ${nextIdx + 1}`}
+                className="w-full object-contain max-h-[80vh] bg-white/5"
+              />
+            </div>
+          )}
         </div>
 
         {total > 1 && (
           <button
-            onClick={() => setIdx((i) => (i + 1) % total)}
+            onClick={goNext}
             className="absolute right-2 z-10 text-white text-4xl hover:text-white/80 select-none"
           >
             ›
