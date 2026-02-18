@@ -42,9 +42,20 @@ export function getDriveThumbUrl(url: string, size: number = 400): string {
 }
 
 /**
- * Get both thumbnail and full-size URLs for a photo
+ * Get both thumbnail and full-size URLs for a photo.
+ * Supabase Storage URLs are used directly (much faster than Drive thumbnails).
+ * Supabase image transformation adds /render/image for resizing.
  */
 export function getPhotoUrls(url: string): { thumb: string; full: string } {
+  // Supabase Storage public URL — use directly (CDN-cached, fast)
+  if (url && url.includes('supabase.co/storage')) {
+    return {
+      thumb: url, // Already optimized, ~50-150KB JPEGs
+      full: url,
+    }
+  }
+
+  // Legacy: Google Drive URL — convert to thumbnail API
   const fileId = extractDriveFileId(url)
   if (fileId) {
     return {
