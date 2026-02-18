@@ -29,42 +29,59 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: Phot
   const visiblePhotos = photos.slice(0, maxVisible)
   const hiddenCount = photos.length - maxVisible
 
-  const sizeClasses = {
-    sm: 'w-10 h-10',
-    md: 'w-14 h-14',
-    lg: 'w-20 h-20',
-  }
+  const baseSize = { sm: 40, md: 56, lg: 80 }[size]
 
   const openLightbox = (index: number) => {
     setCurrentIndex(index)
     setLightboxOpen(true)
   }
 
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+
+  const getScale = (i: number) => {
+    if (hoveredIdx === null) return 1
+    const dist = Math.abs(i - hoveredIdx)
+    if (dist === 0) return 1.35
+    if (dist === 1) return 1.15
+    return 1
+  }
+
   return (
     <>
-      <div className="flex gap-1.5 flex-wrap">
-        {visiblePhotos.map((photo, i) => (
-          <button
-            key={i}
-            onClick={() => openLightbox(i)}
-            className={`${sizeClasses[size]} rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all hover:scale-105 cursor-pointer bg-muted`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={getPhotoUrls(photo).thumb}
-              alt={`Photo ${i + 1}`}
-              className="w-full h-full object-cover"
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
+      <div className="flex gap-1.5 flex-wrap items-end" onMouseLeave={() => setHoveredIdx(null)}>
+        {visiblePhotos.map((photo, i) => {
+          const scale = getScale(i)
+          return (
+            <button
+              key={i}
+              onClick={() => openLightbox(i)}
+              onMouseEnter={() => setHoveredIdx(i)}
+              className="rounded-lg overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-muted shrink-0"
+              style={{
+                width: baseSize * scale,
+                height: baseSize * scale,
+                transition: 'all 150ms ease-out',
+                marginBottom: (scale - 1) * 8,
               }}
-            />
-          </button>
-        ))}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={getPhotoUrls(photo).thumb}
+                alt={`Photo ${i + 1}`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
+                }}
+              />
+            </button>
+          )
+        })}
         {hiddenCount > 0 && (
           <button
             onClick={() => openLightbox(maxVisible)}
-            className={`${sizeClasses[size]} rounded-lg bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer`}
+            className="rounded-lg bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground hover:bg-muted/80 transition-all cursor-pointer"
+            style={{ width: baseSize, height: baseSize }}
           >
             +{hiddenCount}
           </button>

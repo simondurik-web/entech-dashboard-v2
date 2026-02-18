@@ -21,6 +21,56 @@ function normalize(value: string | undefined): string {
   return (value || '').trim().toLowerCase()
 }
 
+/** Drawing thumbnails with hover-enlarge */
+function DrawingThumbs({ drawings, onOpen }: { drawings: { main?: Drawing | null; tire?: Drawing | null; hub?: Drawing | null }; onOpen: (url: string) => void }) {
+  const [hovered, setHovered] = useState<number | null>(null)
+  const items = [
+    { d: drawings.main, label: drawings.main?.partNumber },
+    { d: drawings.tire, label: `Tire: ${drawings.tire?.partNumber}` },
+    { d: drawings.hub, label: `Hub: ${drawings.hub?.partNumber}` },
+  ].filter((x) => x.d?.drawing1Url)
+
+  const getScale = (i: number) => {
+    if (hovered === null) return 1
+    const dist = Math.abs(i - hovered)
+    if (dist === 0) return 1.3
+    if (dist === 1) return 1.1
+    return 1
+  }
+
+  return (
+    <div className="flex gap-2 items-end flex-wrap" onMouseLeave={() => setHovered(null)}>
+      {items.map((x, i) => {
+        const scale = getScale(i)
+        return (
+          <button
+            key={i}
+            onClick={() => onOpen(getDriveThumbUrl(x.d!.drawing1Url, 1200))}
+            onMouseEnter={() => setHovered(i)}
+            className="shrink-0 group flex flex-col items-center"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={getDriveThumbUrl(x.d!.drawing1Url, 300)}
+              alt={x.label || ''}
+              className="rounded border bg-muted object-contain group-hover:ring-2 ring-primary"
+              style={{
+                height: 48 * scale,
+                width: 'auto',
+                transition: 'all 150ms ease-out',
+                marginBottom: (scale - 1) * 6,
+              }}
+              loading="lazy"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+            <span className="text-[9px] text-muted-foreground mt-0.5 truncate max-w-[70px]">{x.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Compact stat chip */
 function Chip({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
@@ -269,29 +319,7 @@ export function OrderDetail({
                   <Ruler className="size-3" /> Drawings
                 </h4>
                 {hasDrawings ? (
-                  <div className="flex gap-2 flex-wrap">
-                    {[
-                      { d: matchedDrawings.main, label: matchedDrawings.main?.partNumber },
-                      { d: matchedDrawings.tire, label: `Tire: ${matchedDrawings.tire?.partNumber}` },
-                      { d: matchedDrawings.hub, label: `Hub: ${matchedDrawings.hub?.partNumber}` },
-                    ].filter((x) => x.d?.drawing1Url).map((x, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setLightboxUrl(getDriveThumbUrl(x.d!.drawing1Url, 1200))}
-                        className="shrink-0 group flex flex-col items-center"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={getDriveThumbUrl(x.d!.drawing1Url, 300)}
-                          alt={x.label || ''}
-                          className="h-12 w-auto rounded border bg-muted object-contain group-hover:ring-2 ring-primary transition-all"
-                          loading="lazy"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
-                        <span className="text-[9px] text-muted-foreground mt-0.5 truncate max-w-[70px]">{x.label}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <DrawingThumbs drawings={matchedDrawings} onOpen={(url) => setLightboxUrl(url)} />
                 ) : (
                   <p className="text-[10px] text-muted-foreground">No drawings</p>
                 )}
@@ -313,7 +341,7 @@ export function OrderDetail({
                     </button>
                   )}
                 </div>
-                <div className={`overflow-hidden transition-all duration-300 ${showAllPallets ? 'max-h-[500px] overflow-y-auto' : 'max-h-[120px]'}`}>
+                <div className={`overflow-y-auto transition-all duration-300 ${showAllPallets ? 'max-h-[500px]' : 'max-h-[120px]'}`}>
                   <table className="w-full text-[11px]">
                     <thead className="sticky top-0 bg-card z-10">
                       <tr className="border-b text-muted-foreground">
@@ -324,7 +352,7 @@ export function OrderDetail({
                       </tr>
                     </thead>
                     <tbody>
-                      {visiblePallets.map((p, idx) => (
+                      {pallets.map((p, idx) => (
                         <tr key={idx} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
                           <td className="px-3 py-1 font-medium">{p.palletNumber || idx + 1}</td>
                           <td className="px-3 py-1">{p.weight || '-'} lbs</td>
