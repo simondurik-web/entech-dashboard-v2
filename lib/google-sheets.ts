@@ -820,14 +820,18 @@ function parseComponentGroup(
 ): BOMComponent | null {
   const pn = cellValue(row, startCol)
   if (!pn) return null
-  const qty = cellNumber(row, startCol + 1) || 1
-  const cost = parseCurrency(row.c[startCol + 2]?.v)
+  const qty = cellNumber(row, startCol + 1)
+  const extendedCost = parseCurrency(row.c[startCol + 2]?.v)
+  // Sheet stores: [part, qty_per_unit, extended_cost_per_unit]
+  // extended_cost = qty × unit_price (already multiplied)
+  // So costPerUnit = extendedCost / qty to allow qty × costPerUnit = extendedCost
+  const costPerUnit = qty > 0 ? extendedCost / qty : extendedCost
   return {
     partNumber: pn,
     description: descriptionHint || pn,
-    quantity: qty,
+    quantity: qty || 1,
     unit: 'ea',
-    costPerUnit: cost,
+    costPerUnit,
     category: cat,
   }
 }
