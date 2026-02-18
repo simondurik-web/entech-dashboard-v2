@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ImageModal } from '@/components/ImageModal'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import type { Drawing } from '@/lib/google-sheets'
 import { InventoryPopover } from '@/components/InventoryPopover'
@@ -16,13 +15,149 @@ const TYPE_FILTERS = [
 
 type TypeKey = (typeof TYPE_FILTERS)[number]['key']
 
+/* ── Carousel Lightbox ── */
+function CarouselLightbox({
+  urls,
+  partNumber,
+  onClose,
+}: {
+  urls: string[]
+  partNumber: string
+  onClose: () => void
+}) {
+  const [idx, setIdx] = useState(0)
+  const total = urls.length
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') setIdx((i) => (i + 1) % total)
+      if (e.key === 'ArrowLeft') setIdx((i) => (i - 1 + total) % total)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose, total])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <button
+        onClick={onClose}
+        className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors z-10"
+      >
+        <span className="text-2xl leading-none">&times;</span>
+      </button>
+
+      <div className="relative flex items-center w-full max-w-4xl px-12">
+        {total > 1 && (
+          <button
+            onClick={() => setIdx((i) => (i - 1 + total) % total)}
+            className="absolute left-2 z-10 text-white text-4xl hover:text-white/80 select-none"
+          >
+            ‹
+          </button>
+        )}
+
+        <div className="w-full overflow-hidden rounded-lg">
+          <div
+            className="flex"
+            style={{
+              transform: `translateX(-${idx * 100}%)`,
+              transition: 'transform 300ms ease-in-out',
+            }}
+          >
+            {urls.map((url, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={getDriveThumbUrl(url, 1200)}
+                alt={`${partNumber} drawing ${i + 1}`}
+                className="w-full flex-shrink-0 object-contain max-h-[80vh] bg-white/5"
+              />
+            ))}
+          </div>
+        </div>
+
+        {total > 1 && (
+          <button
+            onClick={() => setIdx((i) => (i + 1) % total)}
+            className="absolute right-2 z-10 text-white text-4xl hover:text-white/80 select-none"
+          >
+            ›
+          </button>
+        )}
+      </div>
+
+      <p className="text-white font-semibold mt-3 text-sm">{partNumber}</p>
+      {total > 1 && (
+        <p className="text-white/60 text-xs mt-1">Drawing {idx + 1} of {total}</p>
+      )}
+    </div>
+  )
+}
+
+/* ── Mini Carousel for comparison tiles ── */
+function MiniCarousel({ urls, partNumber }: { urls: string[]; partNumber: string }) {
+  const [idx, setIdx] = useState(0)
+  const total = urls.length
+
+  return (
+    <div className="relative w-full">
+      <div className="overflow-hidden rounded-lg">
+        <div
+          className="flex"
+          style={{
+            transform: `translateX(-${idx * 100}%)`,
+            transition: 'transform 300ms ease-in-out',
+          }}
+        >
+          {urls.map((url, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={getDriveThumbUrl(url, 1200)}
+              alt={`${partNumber} drawing ${i + 1}`}
+              className="w-full flex-shrink-0 object-contain max-h-[70vh] bg-white/5"
+            />
+          ))}
+        </div>
+      </div>
+      {total > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i - 1 + total) % total) }}
+            className="text-white/70 hover:text-white text-lg select-none"
+          >‹</button>
+          <span className="text-white/50 text-xs">{idx + 1}/{total}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i + 1) % total) }}
+            className="text-white/70 hover:text-white text-lg select-none"
+          >›</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Helper: get drawing URLs array ── */
+function getDrawingUrls(d: Drawing): string[] {
+  const urls: string[] = []
+  if (d.drawing1Url) urls.push(d.drawing1Url)
+  if (d.drawing2Url) urls.push(d.drawing2Url)
+  return urls
+}
+
 export default function DrawingsPage() {
   const [drawings, setDrawings] = useState<Drawing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeKey>('all')
-  const [modalImage, setModalImage] = useState<string | null>(null)
+
+  // Lightbox
+  const [lightbox, setLightbox] = useState<{ urls: string[]; partNumber: string } | null>(null)
 
   // Compare mode
   const [compareMode, setCompareMode] = useState(false)
@@ -40,7 +175,6 @@ export default function DrawingsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Close comparison modal on ESC
   useEffect(() => {
     if (!showCompare) return
     const handler = (e: KeyboardEvent) => {
@@ -71,8 +205,11 @@ export default function DrawingsPage() {
   const handleCardClick = (drawing: Drawing) => {
     if (compareMode) {
       toggleSelect(drawing)
-    } else if (drawing.drawing1Url) {
-      setModalImage(getDriveThumbUrl(drawing.drawing1Url, 1200))
+    } else {
+      const urls = getDrawingUrls(drawing)
+      if (urls.length > 0) {
+        setLightbox({ urls, partNumber: drawing.partNumber })
+      }
     }
   }
 
@@ -145,65 +282,70 @@ export default function DrawingsPage() {
 
       {!loading && !error && (
         <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          {filtered.map((drawing, i) => (
-            <Card
-              key={`${drawing.partNumber}-${i}`}
-              className={`overflow-hidden cursor-pointer transition-transform duration-200 hover:scale-105 hover:shadow-lg hover:z-10 relative ${
-                compareMode && isSelected(drawing) ? 'ring-2 ring-primary' : ''
-              }`}
-              onClick={() => handleCardClick(drawing)}
-            >
-              {compareMode && (
-                <div className={`absolute top-1.5 left-1.5 z-10 w-5 h-5 rounded border-2 flex items-center justify-center text-xs ${
-                  isSelected(drawing)
-                    ? 'bg-primary border-primary text-primary-foreground'
-                    : 'bg-background/80 border-border'
-                }`}>
-                  {isSelected(drawing) && '✓'}
-                </div>
-              )}
-              <div className="h-[140px] bg-muted flex items-center justify-center relative">
-                {drawing.drawing1Url ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getDriveThumbUrl(drawing.drawing1Url, 300)}
-                      alt={`Drawing for ${drawing.partNumber}`}
-                      className="w-full h-full object-contain p-1"
-                      onError={(e) => {
-                        e.currentTarget.src = '/placeholder-drawing.svg'
-                      }}
-                    />
-                    {drawing.drawing2Url && (
-                      <span className="absolute top-1 right-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded">
-                        +1
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-muted-foreground text-xs text-center p-2">
-                    No drawing
+          {filtered.map((drawing, i) => {
+            const urls = getDrawingUrls(drawing)
+            const hasBoth = urls.length === 2
+
+            return (
+              <Card
+                key={`${drawing.partNumber}-${i}`}
+                className={`overflow-hidden cursor-pointer transition-transform duration-200 hover:scale-105 hover:shadow-lg hover:z-10 relative ${
+                  compareMode && isSelected(drawing) ? 'ring-2 ring-primary' : ''
+                }`}
+                onClick={() => handleCardClick(drawing)}
+              >
+                {compareMode && (
+                  <div className={`absolute top-1.5 left-1.5 z-10 w-5 h-5 rounded border-2 flex items-center justify-center text-xs ${
+                    isSelected(drawing)
+                      ? 'bg-primary border-primary text-primary-foreground'
+                      : 'bg-background/80 border-border'
+                  }`}>
+                    {isSelected(drawing) && '✓'}
                   </div>
                 )}
-              </div>
-              <CardContent className="p-2">
-                <div className="flex items-center gap-1">
-                  <p className="font-semibold text-xs truncate">{drawing.partNumber}</p>
-                  <InventoryPopover partNumber={drawing.partNumber} partType={drawing.productType === 'Tire' ? 'tire' : drawing.productType === 'Hub' ? 'hub' : 'part'} />
-                </div>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className={`text-[9px] px-1 py-px rounded ${
-                    drawing.productType === 'Tire' ? 'bg-orange-500/20 text-orange-500'
-                    : drawing.productType === 'Hub' ? 'bg-teal-500/20 text-teal-500'
-                    : 'bg-gray-500/20 text-gray-400'
-                  }`}>{drawing.productType}</span>
-                  {drawing.moldType && (
-                    <span className="text-[9px] text-muted-foreground truncate" title={drawing.moldType}>🔧 {drawing.moldType}</span>
+                <div className="h-[180px] bg-muted flex items-center justify-center p-1">
+                  {urls.length > 0 ? (
+                    <div className={`flex ${hasBoth ? 'gap-1' : 'justify-center'} w-full h-full`}>
+                      {urls.map((url, j) => (
+                        <div key={j} className={`flex flex-col items-center ${hasBoth ? 'w-1/2' : 'w-full'}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={getDriveThumbUrl(url, 300)}
+                            alt={`${drawing.partNumber} drawing ${j + 1}`}
+                            className="w-full h-full object-contain flex-1 min-h-0"
+                            onError={(e) => { e.currentTarget.src = '/placeholder-drawing.svg' }}
+                          />
+                          {hasBoth && (
+                            <span className="text-[8px] text-muted-foreground mt-0.5">Dwg {j + 1}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-muted-foreground text-xs text-center p-2">
+                      No drawing
+                    </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+                <CardContent className="p-2">
+                  <div className="flex items-center gap-1">
+                    <p className="font-semibold text-xs truncate">{drawing.partNumber}</p>
+                    <InventoryPopover partNumber={drawing.partNumber} partType={drawing.productType === 'Tire' ? 'tire' : drawing.productType === 'Hub' ? 'hub' : 'part'} />
+                  </div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className={`text-[9px] px-1 py-px rounded ${
+                      drawing.productType === 'Tire' ? 'bg-orange-500/20 text-orange-500'
+                      : drawing.productType === 'Hub' ? 'bg-teal-500/20 text-teal-500'
+                      : 'bg-gray-500/20 text-gray-400'
+                    }`}>{drawing.productType}</span>
+                    {drawing.moldType && (
+                      <span className="text-[9px] text-muted-foreground truncate" title={drawing.moldType}>🔧 {drawing.moldType}</span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
           {filtered.length === 0 && (
             <div className="col-span-full text-center text-muted-foreground py-10">
               No drawings found
@@ -231,13 +373,14 @@ export default function DrawingsPage() {
         </div>
       )}
 
-      {/* Image Modal (single) */}
-      <ImageModal
-        src={modalImage || ''}
-        isOpen={!!modalImage}
-        onClose={() => setModalImage(null)}
-        alt="Drawing"
-      />
+      {/* Carousel Lightbox */}
+      {lightbox && (
+        <CarouselLightbox
+          urls={lightbox.urls}
+          partNumber={lightbox.partNumber}
+          onClose={() => setLightbox(null)}
+        />
+      )}
 
       {/* Comparison Modal */}
       {showCompare && (
@@ -252,18 +395,20 @@ export default function DrawingsPage() {
             <span className="text-2xl leading-none">&times;</span>
           </button>
           <div className={`grid ${gridCols} gap-4 max-h-[90vh] overflow-auto w-full max-w-6xl`}>
-            {selected.map((drawing, i) => (
-              <div key={`compare-${drawing.partNumber}-${i}`} className="flex flex-col items-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={getDriveThumbUrl(drawing.drawing1Url || '', 1200)}
-                  alt={drawing.partNumber}
-                  className="max-h-[70vh] object-contain rounded-lg bg-white/5"
-                />
-                <p className="text-white font-semibold mt-2 text-sm">{drawing.partNumber}</p>
-                <p className="text-white/60 text-xs">{drawing.productType}</p>
-              </div>
-            ))}
+            {selected.map((drawing, i) => {
+              const urls = getDrawingUrls(drawing)
+              return (
+                <div key={`compare-${drawing.partNumber}-${i}`} className="flex flex-col items-center">
+                  {urls.length > 0 ? (
+                    <MiniCarousel urls={urls} partNumber={drawing.partNumber} />
+                  ) : (
+                    <div className="text-white/40 text-sm">No drawing</div>
+                  )}
+                  <p className="text-white font-semibold mt-2 text-sm">{drawing.partNumber}</p>
+                  <p className="text-white/60 text-xs">{drawing.productType}</p>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
