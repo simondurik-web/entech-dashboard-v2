@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/layout/Sidebar"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { VersionBadge } from "@/components/layout/VersionBadge"
+import { AccessGuard } from "@/components/layout/AccessGuard"
 import { PanelLeft } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -51,7 +52,9 @@ export default function DashboardLayout({
         </header>
 
         {/* Main content - pad bottom on mobile for nav bar */}
-        <main className="pb-20 md:pb-0" style={{ zoom: zoomLevel }}>{children}</main>
+        <main className="pb-20 md:pb-0" style={{ zoom: zoomLevel }}>
+          <AccessGuard>{children}</AccessGuard>
+        </main>
       </div>
 
       {/* Mobile bottom nav */}

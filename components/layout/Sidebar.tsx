@@ -6,6 +6,8 @@ import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
+import { useAuth } from "@/lib/auth-context"
+import { usePermissions } from "@/lib/use-permissions"
 import {
   ClipboardList,
   Factory,
@@ -29,6 +31,10 @@ import {
   BarChart3,
   CalendarDays,
   Wrench,
+  LogIn,
+  LogOut,
+  Shield,
+  Settings,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -66,6 +72,27 @@ const salesItems: NavItem[] = [
   { tKey: "nav.salesByDate", href: "/sales-dates", icon: <CalendarDays className="size-4" />, sub: true },
 ]
 
+const adminItems: NavItem[] = [
+  { tKey: "User Management", href: "/admin/users", icon: <Users className="size-4" /> },
+  { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
+]
+
+const ROLE_LABELS: Record<string, string> = {
+  visitor: "Visitor",
+  regular_user: "User",
+  group_leader: "Group Leader",
+  manager: "Manager",
+  admin: "Admin",
+}
+
+const ROLE_COLORS: Record<string, string> = {
+  visitor: "bg-gray-500/30 text-gray-300",
+  regular_user: "bg-blue-500/30 text-blue-300",
+  group_leader: "bg-green-500/30 text-green-300",
+  manager: "bg-purple-500/30 text-purple-300",
+  admin: "bg-red-500/30 text-red-300",
+}
+
 export function Sidebar({
   open,
   onClose,
@@ -76,11 +103,40 @@ export function Sidebar({
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const { t } = useI18n()
+  const { user, profile, signIn, signOut } = useAuth()
+  const { canAccess } = usePermissions()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  const filteredProduction = productionItems.filter((item) => canAccess(item.href))
+  const filteredSales = salesItems.filter((item) => canAccess(item.href))
+  const showAllData = canAccess("/all-data")
+  const isAdmin = profile?.role === "admin"
+
+  const renderNavItem = (item: NavItem, useTranslation = true) => {
+    const isActive = pathname === item.href
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          onClick={onClose}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+            item.sub && "ml-4 text-xs",
+            isActive
+              ? "bg-white/20 font-medium text-white shadow-sm"
+              : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+          )}
+        >
+          {item.icon}
+          <span>{useTranslation ? t(item.tKey) : item.tKey}</span>
+        </Link>
+      </li>
+    )
+  }
 
   return (
     <>
@@ -145,80 +201,63 @@ export function Sidebar({
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4">
-          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            {t('nav.production')}
-          </p>
-          <ul className="space-y-0.5">
-            {productionItems.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <li key={item.href}>
+          {filteredProduction.length > 0 && (
+            <>
+              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
+                {t('nav.production')}
+              </p>
+              <ul className="space-y-0.5">
+                {filteredProduction.map((item) => renderNavItem(item))}
+              </ul>
+            </>
+          )}
+
+          {filteredSales.length > 0 && (
+            <>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
+                {t('nav.salesFinance')}
+              </p>
+              <ul className="space-y-0.5">
+                {filteredSales.map((item) => renderNavItem(item))}
+              </ul>
+            </>
+          )}
+
+          {showAllData && (
+            <>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
+                {t('nav.rawData')}
+              </p>
+              <ul className="space-y-0.5">
+                <li>
                   <Link
-                    href={item.href}
+                    href="/all-data"
                     onClick={onClose}
                     className={cn(
                       "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                      item.sub && "ml-4 text-xs",
-                      isActive
+                      pathname === "/all-data"
                         ? "bg-white/20 font-medium text-white shadow-sm"
                         : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
                     )}
                   >
-                    {item.icon}
-                    <span>{t(item.tKey)}</span>
+                    <Database className="size-4" />
+                    <span>All Data</span>
                   </Link>
                 </li>
-              )
-            })}
-          </ul>
+              </ul>
+            </>
+          )}
 
-          <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            {t('nav.salesFinance')}
-          </p>
-          <ul className="space-y-0.5">
-            {salesItems.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                      item.sub && "ml-4 text-xs",
-                      isActive
-                        ? "bg-white/20 font-medium text-white shadow-sm"
-                        : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
-                    )}
-                  >
-                    {item.icon}
-                    <span>{t(item.tKey)}</span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-
-          <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            {t('nav.rawData')}
-          </p>
-          <ul className="space-y-0.5">
-            <li>
-              <Link
-                href="/all-data"
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                  pathname === "/all-data"
-                    ? "bg-white/20 font-medium text-white shadow-sm"
-                    : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
-                )}
-              >
-                <Database className="size-4" />
-                <span>All Data</span>
-              </Link>
-            </li>
-          </ul>
+          {isAdmin && (
+            <>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
+                ADMIN
+              </p>
+              <ul className="space-y-0.5">
+                {adminItems.map((item) => renderNavItem(item, false))}
+              </ul>
+            </>
+          )}
         </nav>
 
         {/* Phil Assistant */}
@@ -227,6 +266,48 @@ export function Sidebar({
             <Bot className="size-4" />
             <span>{t('nav.aiAssistant')}</span>
           </button>
+        </div>
+
+        {/* Auth section */}
+        <div className="border-t border-white/10 px-3 py-3">
+          {user && profile ? (
+            <div className="flex items-center gap-3">
+              {profile.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt=""
+                  className="size-8 rounded-full"
+                />
+              ) : (
+                <div className="flex size-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+                  {(profile.full_name || profile.email || "?")[0].toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium">
+                  {profile.full_name || profile.email}
+                </p>
+                <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-medium", ROLE_COLORS[profile.role] || ROLE_COLORS.visitor)}>
+                  {ROLE_LABELS[profile.role] || profile.role}
+                </span>
+              </div>
+              <button
+                onClick={signOut}
+                className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
+                title="Sign out"
+              >
+                <LogOut className="size-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={signIn}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+            >
+              <LogIn className="size-4" />
+              <span>Sign in with Google</span>
+            </button>
+          )}
         </div>
       </aside>
     </>
