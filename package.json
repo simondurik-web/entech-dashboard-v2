@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.96.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260218.1",
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
