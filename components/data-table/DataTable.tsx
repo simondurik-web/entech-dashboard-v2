@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
 import type { ColumnDef, UseDataTableReturn } from '@/lib/use-data-table'
 import { ColumnFilter } from './ColumnFilter'
 import { ColumnToggle } from './ColumnToggle'
@@ -61,6 +62,7 @@ export function DataTable<T extends Record<string, unknown>>({
   renderExpandedContent,
   rowClassName,
 }: DataTableProps<T>) {
+  const { t } = useI18n()
   const {
     visibleColumns,
     columns,
@@ -126,7 +128,7 @@ export function DataTable<T extends Record<string, unknown>>({
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search..."
+            placeholder={t('ui.search')}
             value={searchTerm}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-9"
@@ -145,17 +147,17 @@ export function DataTable<T extends Record<string, unknown>>({
           {hasActiveFilters && (
             <Button variant="destructive" size="sm" onClick={clearAllFilters}>
               <Trash2 className="size-3.5 mr-1.5" />
-              Clear Filters
+              {t('ui.clearFilters')}
             </Button>
           )}
           <Button
             variant="outline"
             size="sm"
             onClick={resetView}
-            title="Reset to default view"
+            title={t('ui.reset')}
           >
             <RotateCcw className="size-3.5" />
-            <span className="hidden sm:inline">Reset</span>
+            <span className="hidden sm:inline">{t('ui.reset')}</span>
           </Button>
           <Button
             variant="outline"
@@ -165,8 +167,8 @@ export function DataTable<T extends Record<string, unknown>>({
             className="opacity-50 cursor-not-allowed"
           >
             <Bookmark className="size-3.5" />
-            <span className="hidden sm:inline">Views</span>
-            <span className="hidden lg:inline text-[10px] text-muted-foreground ml-1">(soon)</span>
+            <span className="hidden sm:inline">{t('ui.views')}</span>
+            <span className="hidden lg:inline text-[10px] text-muted-foreground ml-1">{t('ui.viewsSoon')}</span>
           </Button>
           <ColumnToggle
             columns={columns}

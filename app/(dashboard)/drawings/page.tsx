@@ -302,7 +302,7 @@ export default function DrawingsPage() {
       {/* Search */}
       <input
         type="text"
-        placeholder="Search by part number..."
+        placeholder={t('drawings.searchPlaceholder')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full p-3 mb-4 rounded-lg bg-muted border border-border"

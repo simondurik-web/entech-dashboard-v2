@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Search, Package, TrendingUp, TrendingDown, Minus, ExternalLink, X, AlertTriangle } from 'lucide-react'
 import type { InventoryItem } from '@/lib/google-sheets'
+import { useI18n } from '@/lib/i18n'
 import Link from 'next/link'
 
 // ─── Shared inventory cache (singleton across all popovers) ───
@@ -39,20 +40,20 @@ function findPart(items: InventoryItem[], partNumber: string): InventoryItem | n
 
 // ─── Status helpers ───
 
-function stockStatus(item: InventoryItem): { label: string; color: string; bgColor: string; icon: React.ReactNode } {
+function stockStatus(item: InventoryItem, t: (key: string) => string): { label: string; color: string; bgColor: string; icon: React.ReactNode } {
   const { inStock, minimum, target } = item
   const effectiveTarget = target > 0 ? target : minimum
 
   if (inStock <= 0) {
-    return { label: 'OUT OF STOCK', color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <AlertTriangle className="size-3" /> }
+    return { label: t('inventoryPopover.outOfStock'), color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <AlertTriangle className="size-3" /> }
   }
   if (minimum > 0 && inStock < minimum) {
-    return { label: 'BELOW MIN', color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <TrendingDown className="size-3" /> }
+    return { label: t('inventoryPopover.belowMin'), color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <TrendingDown className="size-3" /> }
   }
   if (effectiveTarget > 0 && inStock < effectiveTarget) {
-    return { label: 'LOW STOCK', color: 'text-amber-400', bgColor: 'bg-amber-500/15', icon: <TrendingDown className="size-3" /> }
+    return { label: t('inventoryPopover.lowStock'), color: 'text-amber-400', bgColor: 'bg-amber-500/15', icon: <TrendingDown className="size-3" /> }
   }
-  return { label: 'OK', color: 'text-emerald-400', bgColor: 'bg-emerald-500/15', icon: <TrendingUp className="size-3" /> }
+  return { label: t('inventoryPopover.ok'), color: 'text-emerald-400', bgColor: 'bg-emerald-500/15', icon: <TrendingUp className="size-3" /> }
 }
 
 function stockPercentage(item: InventoryItem): number | null {
@@ -88,6 +89,7 @@ interface InventoryPopoverProps {
 }
 
 export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPopoverProps) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [item, setItem] = useState<InventoryItem | null>(null)
   const [loading, setLoading] = useState(false)
@@ -155,20 +157,20 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
           {loading && (
             <div className="flex items-center gap-2 py-3 justify-center">
               <div className="size-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <span className="text-[11px] text-muted-foreground">Loading...</span>
+              <span className="text-[11px] text-muted-foreground">{t('inventoryPopover.loading')}</span>
             </div>
           )}
 
           {error && (
-            <p className="text-[11px] text-destructive text-center py-3">Failed to load inventory</p>
+            <p className="text-[11px] text-destructive text-center py-3">{t('inventoryPopover.failedToLoad')}</p>
           )}
 
           {!loading && !error && !item && (
-            <p className="text-[11px] text-muted-foreground text-center py-3">No inventory data found</p>
+            <p className="text-[11px] text-muted-foreground text-center py-3">{t('inventoryPopover.noData')}</p>
           )}
 
           {!loading && !error && item && (() => {
-            const status = stockStatus(item)
+            const status = stockStatus(item, t)
             const pct = stockPercentage(item)
 
             return (
@@ -188,24 +190,24 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <p className="text-[9px] text-muted-foreground/60 text-right">{pct}% of target</p>
+                    <p className="text-[9px] text-muted-foreground/60 text-right">{pct}% {t('inventoryPopover.ofTarget')}</p>
                   </div>
                 )}
 
                 {/* Stats */}
                 <div className="divide-y divide-border/30">
-                  <Stat label="In Stock" value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
-                  <Stat label="Minimums" value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
-                  <Stat label="Manual Target" value={item.target > 0 ? item.target.toLocaleString() : '—'} />
-                  {item.moldType && <Stat label="Mold" value={item.moldType} />}
+                  <Stat label={t('inventoryPopover.inStock')} value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
+                  <Stat label={t('inventoryPopover.minimums')} value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
+                  <Stat label={t('inventoryPopover.manualTarget')} value={item.target > 0 ? item.target.toLocaleString() : '—'} />
+                  {item.moldType && <Stat label={t('inventoryPopover.mold')} value={item.moldType} />}
                   {item.daysToMin !== null && item.daysToMin >= 0 && (
                     <Stat
-                      label="Days to Min"
+                      label={t('inventoryPopover.daysToMin')}
                       value={item.daysToMin === 0 ? 'Now' : `${item.daysToMin}d`}
                       accent={item.daysToMin <= 7 ? 'text-red-400' : item.daysToMin <= 14 ? 'text-amber-400' : ''}
                     />
                   )}
-                  {item.product && <Stat label="Type" value={item.product} />}
+                  {item.product && <Stat label={t('inventoryPopover.type')} value={item.product} />}
                 </div>
               </div>
             )
@@ -220,7 +222,7 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
               onClick={(e) => e.stopPropagation()}
               className="flex items-center justify-center gap-1 text-[10px] font-medium text-primary hover:text-primary/80 transition-colors py-0.5"
             >
-              Open Inventory
+              {t('inventoryPopover.openInventory')}
               <ExternalLink className="size-[10px]" />
             </Link>
           </div>

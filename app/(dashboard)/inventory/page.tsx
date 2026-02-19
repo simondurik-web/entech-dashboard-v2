@@ -135,44 +135,44 @@ function calculateProductionStats(
 
 // ─── Constants ───
 
-const STOCK_FILTERS: { key: StockFilterKey; label: string; emoji?: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'low', label: 'Low Stock', emoji: '⚠️' },
-  { key: 'production', label: 'Needs Production', emoji: '🔧' },
-  { key: 'running-low', label: 'Running Low', emoji: '🔥' },
+const STOCK_FILTERS: { key: StockFilterKey; labelKey: string; emoji?: string }[] = [
+  { key: 'all', labelKey: 'inventory.all' },
+  { key: 'low', labelKey: 'inventory.lowStock', emoji: '⚠️' },
+  { key: 'production', labelKey: 'inventory.needsProduction', emoji: '🔧' },
+  { key: 'running-low', labelKey: 'inventory.runningLow', emoji: '🔥' },
 ]
 
-const TYPE_FILTERS: { key: TypeFilterKey; label: string; emoji: string }[] = [
-  { key: 'manufactured', label: 'Manufactured', emoji: '🏭' },
-  { key: 'purchased', label: 'Purchased', emoji: '🛒' },
-  { key: 'com', label: 'COM', emoji: '📦' },
+const TYPE_FILTERS: { key: TypeFilterKey; labelKey: string; emoji: string }[] = [
+  { key: 'manufactured', labelKey: 'inventory.manufactured', emoji: '🏭' },
+  { key: 'purchased', labelKey: 'inventory.purchased', emoji: '🛒' },
+  { key: 'com', labelKey: 'inventory.com', emoji: '📦' },
 ]
 
 // ─── Column Definitions ───
 
-function makeColumns(onHistoryClick: (partNumber: string) => void): ColumnDef<InventoryRow>[] {
+function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string): ColumnDef<InventoryRow>[] {
   return [
-    { key: 'product', label: 'Product Type', sortable: true, filterable: true },
+    { key: 'product', label: t('inventory.colProduct'), sortable: true, filterable: true },
     {
-      key: 'partNumber', label: 'Part Number', sortable: true, filterable: true,
+      key: 'partNumber', label: t('inventory.colPartNumber'), sortable: true, filterable: true,
       render: (v) => (
         <span className="font-bold">{String(v)}</span>
       ),
     },
-    { key: 'fusionQty', label: 'Fusion Qty', sortable: true, render: (v) => Number(v).toLocaleString() },
-    { key: 'minimum', label: 'Minimum', sortable: true, render: (v) => Number(v).toLocaleString() },
-    { key: 'manualTarget', label: 'Manual Target', sortable: true, render: (v) => Number(v).toLocaleString() },
-    { key: 'qtyNeeded', label: 'Qty Needed', sortable: true, render: (v) => Number(v).toLocaleString() },
+    { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    { key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true, render: (v) => Number(v).toLocaleString() },
     {
-      key: 'partsToBeMade', label: 'Parts to Make', sortable: true,
+      key: 'partsToBeMade', label: t('inventory.colPartsToMake'), sortable: true,
       render: (v) => {
         const n = Number(v)
         return <span className={n > 0 ? 'text-red-400 font-semibold' : ''}>{n.toLocaleString()}</span>
       },
     },
-    { key: 'moldType', label: 'Mold Type', sortable: true, filterable: true },
+    { key: 'moldType', label: t('inventory.colMoldType'), sortable: true, filterable: true },
     {
-      key: 'avgUsage', label: 'Avg Usage/Day', sortable: true,
+      key: 'avgUsage', label: t('inventory.colAvgUsage'), sortable: true,
       render: (v, row) => {
         if (v == null) return '-'
         const n = Number(v)
@@ -185,11 +185,11 @@ function makeColumns(onHistoryClick: (partNumber: string) => void): ColumnDef<In
       },
     },
     {
-      key: 'trend', label: 'Trend', sortable: true,
+      key: 'trend', label: t('inventory.colTrend'), sortable: true,
       render: (v, row) => <span className={String(row.trendColor)}>{String(v)}</span>,
     },
     {
-      key: 'daysToMin', label: 'Days to Min', sortable: true,
+      key: 'daysToMin', label: t('inventory.colDaysToMin'), sortable: true,
       render: (v) => {
         if (v == null) return '-'
         const n = Number(v)
@@ -198,7 +198,7 @@ function makeColumns(onHistoryClick: (partNumber: string) => void): ColumnDef<In
       },
     },
     {
-      key: 'daysToZero', label: 'Days to Zero', sortable: true,
+      key: 'daysToZero', label: t('inventory.colDaysToZero'), sortable: true,
       render: (v, row) => {
         if (row.isManufactured) return <span className="text-muted-foreground">-</span>
         if (v == null) return '-'
@@ -208,22 +208,22 @@ function makeColumns(onHistoryClick: (partNumber: string) => void): ColumnDef<In
       },
     },
     {
-      key: 'status', label: 'Status', sortable: true, filterable: true,
+      key: 'status', label: t('inventory.colStatus'), sortable: true, filterable: true,
       render: (v) => {
         const s = String(v)
-        if (s === 'MAKE') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-red-400">MAKE</span>
-        if (s === 'LOW') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-yellow-500/20 text-yellow-400">LOW</span>
-        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-500/20 text-green-400">OK</span>
+        if (s === 'MAKE') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-red-400">{t('inventory.statusMake')}</span>
+        if (s === 'LOW') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-yellow-500/20 text-yellow-400">{t('inventory.statusLow')}</span>
+        return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-500/20 text-green-400">{t('inventory.statusOk')}</span>
       },
     },
     {
-      key: 'itemType', label: 'Item Type', sortable: true, filterable: true,
+      key: 'itemType', label: t('inventory.colItemType'), sortable: true, filterable: true,
       render: (v) => {
-        const t = String(v)
-        if (t === 'Manufactured') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">🏭 Manufactured</span>
-        if (t === 'Purchased') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-500/20 text-green-400">🛒 Purchased</span>
-        if (t === 'COM') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400">📦 COM</span>
-        return <span className="text-muted-foreground">{t || '-'}</span>
+        const val = String(v)
+        if (val === 'Manufactured') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400">🏭 {t('inventory.manufactured')}</span>
+        if (val === 'Purchased') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-500/20 text-green-400">🛒 {t('inventory.purchased')}</span>
+        if (val === 'COM') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400">📦 {t('inventory.com')}</span>
+        return <span className="text-muted-foreground">{val || '-'}</span>
       },
     },
   ]
@@ -635,7 +635,7 @@ export default function InventoryPage() {
   const needsProduction = rows.filter(r => r.partsToBeMade > 0).length
   const adequateStock = rows.filter(r => r.fusionQty >= r.minimum || r.minimum === 0).length
 
-  const columns = useMemo(() => makeColumns(setHistoryPart), [])
+  const columns = useMemo(() => makeColumns(setHistoryPart, t), [t])
 
   const table = useDataTable({
     data: filtered,
@@ -666,7 +666,7 @@ export default function InventoryPage() {
         <div className="bg-muted rounded-lg p-3 border border-zinc-700/50" style={{ borderImage: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3)) 1' }}>
           <p className="text-xs text-muted-foreground">{t('inventory.totalItems')}</p>
           <p className="text-xl font-bold">{totalItems}</p>
-          <p className="text-[10px] text-muted-foreground">{productTypes} product types</p>
+          <p className="text-[10px] text-muted-foreground">{productTypes} {t('inventory.productTypes')}</p>
         </div>
         <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
           <p className="text-xs text-red-400">{t('stats.lowStock')}</p>
@@ -687,7 +687,7 @@ export default function InventoryPage() {
         {/* Search */}
         <input
           type="text"
-          placeholder="Search by part number or product..."
+          placeholder={t('inventory.searchPlaceholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full p-2.5 rounded-lg bg-muted border border-border text-sm"
@@ -705,7 +705,7 @@ export default function InventoryPage() {
                   : 'bg-muted hover:bg-muted/80'
               }`}
             >
-              {f.emoji ? `${f.emoji} ` : ''}{f.label}
+              {f.emoji ? `${f.emoji} ` : ''}{t(f.labelKey)}
             </button>
           ))}
         </div>
@@ -722,21 +722,21 @@ export default function InventoryPage() {
                   : 'bg-muted hover:bg-muted/80 border-transparent'
               }`}
             >
-              {f.emoji} {f.label}
+              {f.emoji} {t(f.labelKey)}
             </button>
           ))}
 
           {/* Clear + Material Requirements */}
           {(stockFilter !== 'all' || typeFilters.size > 0 || search) && (
             <button onClick={clearFilters} className="px-3 py-1 rounded-full text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 whitespace-nowrap">
-              ✕ Clear Filters
+              ✕ {t('inventory.clearFilters')}
             </button>
           )}
           <Link
             href="/material-requirements"
             className="px-3 py-1 rounded-full text-sm bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 whitespace-nowrap flex items-center gap-1"
           >
-            <ExternalLink className="size-3" /> Material Requirements
+            <ExternalLink className="size-3" /> {t('inventory.materialRequirements')}
           </Link>
         </div>
       </div>
