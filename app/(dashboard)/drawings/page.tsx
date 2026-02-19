@@ -202,6 +202,7 @@ function getDrawingUrls(d: Drawing): string[] {
 }
 
 export default function DrawingsPage() {
+  const { t } = useI18n()
   const [drawings, setDrawings] = useState<Drawing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

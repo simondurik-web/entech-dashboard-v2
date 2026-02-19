@@ -198,6 +198,7 @@ function IndividualItemsTab({ items, search, onRefresh }: {
   search: string
   onRefresh: () => void
 }) {
+  const { t } = useI18n()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editCost, setEditCost] = useState('')
   const [showAdd, setShowAdd] = useState(false)
@@ -337,6 +338,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   search: string
   onRefresh: () => void
 }) {
+  const { t } = useI18n()
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const filtered = assemblies.filter(a =>
@@ -476,6 +478,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   search: string
   onRefresh: () => void
 }) {
+  const { t } = useI18n()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(false)
   const [configEdits, setConfigEdits] = useState<Record<string, string>>({})
