@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { useI18n } from '@/lib/i18n'
 
 type FPRecord = Record<string, unknown>
 
 export default function FPReferencePage() {
+  const { t } = useI18n()
   const [data, setData] = useState<FPRecord[]>([])
   const [columns, setColumns] = useState<ColumnDef<FPRecord>[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,19 +43,19 @@ export default function FPReferencePage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">📋 FP Reference</h1>
+      <h1 className="text-2xl font-bold mb-2">📋 {t('page.fpReference')}</h1>
       <p className="text-muted-foreground text-sm mb-4">
-        Finished product reference data
+        {t('page.fpReferenceSubtitle')}
       </p>
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-blue-500/10 rounded-lg p-3">
-          <p className="text-xs text-blue-600">Total Records</p>
+          <p className="text-xs text-blue-600">{t('stats.totalRecords')}</p>
           <p className="text-xl font-bold text-blue-600">{data.length}</p>
         </div>
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Columns</p>
+          <p className="text-xs text-muted-foreground">{t('ui.columns')}</p>
           <p className="text-xl font-bold">{columns.length}</p>
         </div>
       </div>

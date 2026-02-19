@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { useI18n } from '@/lib/i18n'
 
 interface Quote {
   id: string
@@ -51,6 +52,7 @@ export default function QuotesPage() {
   const [error, setError] = useState<string | null>(null)
   const [viewingPdf, setViewingPdf] = useState<{ url: string; quoteNumber: string } | null>(null)
   const [hoveredQuote, setHoveredQuote] = useState<string | null>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     fetch('/api/quotes')
@@ -131,7 +133,7 @@ export default function QuotesPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">💰 Quotes Registry</h1>
+        <h1 className="text-2xl font-bold">💰 {t('page.quotes')}</h1>
         <a
           href="/quotes/new"
           className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition text-sm"
@@ -140,13 +142,13 @@ export default function QuotesPage() {
         </a>
       </div>
       <p className="text-muted-foreground text-sm mb-4">
-        Customer quotes and pricing history
+        {t('page.quotesSubtitle')}
       </p>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-amber-500/10 rounded-lg p-3">
-          <p className="text-xs text-amber-600">Total Quotes</p>
+          <p className="text-xs text-amber-600">{t('stats.totalQuotes')}</p>
           <p className="text-xl font-bold text-amber-600">{data.length}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3">

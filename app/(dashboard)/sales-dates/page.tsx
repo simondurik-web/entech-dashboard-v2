@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { ArrowUpDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
+import { useI18n } from '@/lib/i18n'
 
 interface SalesOrder {
   line: string
@@ -64,6 +65,7 @@ export default function SalesDatesPage() {
   const [error, setError] = useState<string | null>(null)
   const [sortField, setSortField] = useState<SortField>('monthKey')
   const [sortAsc, setSortAsc] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     async function fetchData() {
@@ -161,7 +163,7 @@ export default function SalesDatesPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading sales data...</p>
+          <p className="text-muted-foreground">{t('ui.loading')}</p>
         </div>
       </div>
     )
@@ -180,13 +182,13 @@ export default function SalesDatesPage() {
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Sales by Date</h1>
-        <p className="text-sm text-muted-foreground">{monthSummaries.length} months of shipped orders</p>
+        <h1 className="text-2xl font-bold">{t('page.salesByDate')}</h1>
+        <p className="text-sm text-muted-foreground">{t('page.salesByDateSubtitle')}</p>
       </div>
 
       {/* Monthly P/L Bar Chart */}
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold mb-4">Monthly Revenue & P/L (Last 12 Months)</h3>
+        <h3 className="text-sm font-semibold mb-4">{t('salesDates.monthlyRevenuePL')}</h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
@@ -202,7 +204,7 @@ export default function SalesDatesPage() {
                 }}
               />
               <Legend />
-              <Bar dataKey="revenue" fill="#38a169" name="Revenue" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="revenue" fill="#38a169" name={t('table.revenue')} radius={[4, 4, 0, 0]} />
               <Bar dataKey="pl" fill="#3182ce" name="P/L" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -216,25 +218,25 @@ export default function SalesDatesPage() {
             <thead>
               <tr className="bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('monthKey')}>
-                  <span className="flex items-center gap-1">Month <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center gap-1">{t('salesDates.month')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('orderCount')}>
-                  <span className="flex items-center justify-end gap-1">Orders <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('table.orders')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('totalQty')}>
-                  <span className="flex items-center justify-end gap-1">Total Qty <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('table.qty')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('revenue')}>
-                  <span className="flex items-center justify-end gap-1">Revenue <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('table.revenue')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('costs')}>
-                  <span className="flex items-center justify-end gap-1">Costs <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('salesOverview.totalCosts')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('pl')}>
                   <span className="flex items-center justify-end gap-1">P/L <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('margin')}>
-                  <span className="flex items-center justify-end gap-1">Margin <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('salesOverview.avgMargin')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
               </tr>
             </thead>

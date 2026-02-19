@@ -5,6 +5,7 @@ import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp } fr
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
+import { useI18n } from '@/lib/i18n'
 
 interface OrderDetailProps {
   ifNumber?: string
@@ -91,6 +92,7 @@ export function OrderDetail({
   partNumber,
   onClose,
 }: OrderDetailProps) {
+  const { t } = useI18n()
   const [pallets, setPallets] = useState<PalletRecord[]>([])
   const [shipping, setShipping] = useState<ShippingRecord[]>([])
   const [staged, setStaged] = useState<StagedRecord[]>([])
@@ -210,20 +212,20 @@ export function OrderDetail({
         {/* ── Header row ── */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <p className="text-sm font-semibold">Order Details</p>
+            <p className="text-sm font-semibold">{t('order.details')}</p>
             <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded">
               IF# {ifNumber || '-'} {line ? `• Line ${line}` : ''}
             </span>
           </div>
           <button onClick={onClose} className="rounded-md border bg-background px-2 py-1 text-xs hover:bg-muted transition-colors">
-            <span className="inline-flex items-center gap-1"><X className="size-3" /> Close</span>
+            <span className="inline-flex items-center gap-1"><X className="size-3" /> {t('ui.close')}</span>
           </button>
         </div>
 
         {loading && (
           <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            Loading...
+            {t('ui.loading')}
           </div>
         )}
 
@@ -236,8 +238,8 @@ export function OrderDetail({
               <div className="flex flex-wrap items-center gap-4 px-2 py-1.5 bg-muted/40 rounded-md text-xs">
                 {pallets.length > 0 && (
                   <>
-                    <Chip label="Pallets" value={pallets.length} />
-                    <Chip label="Total Wt" value={`${totalWeight.toLocaleString()} lbs`} />
+                    <Chip label={t('order.palletCount')} value={pallets.length} />
+                    <Chip label={t('order.totalWeight')} value={`${totalWeight.toLocaleString()} lbs`} />
                     <Chip label="Dims" value={firstDim} />
                     <Chip label="Parts/Pallet" value={pallets[0]?.partsPerPallet || '-'} />
                     <Chip label="Total Parts" value={totalParts.toLocaleString()} />
@@ -246,9 +248,9 @@ export function OrderDetail({
                 {isShipped && firstShipping && (
                   <>
                     <span className="w-px h-4 bg-border" />
-                    <Chip label="Shipped" value={firstShipping.shipDate || shippedDate || '-'} />
-                    <Chip label="Carrier" value={firstShipping.carrier || '-'} />
-                    <Chip label="BOL" value={firstShipping.bol || '-'} />
+                    <Chip label={t('status.shipped')} value={firstShipping.shipDate || shippedDate || '-'} />
+                    <Chip label={t('table.carrier')} value={firstShipping.carrier || '-'} />
+                    <Chip label={t('table.bol')} value={firstShipping.bol || '-'} />
                   </>
                 )}
               </div>
@@ -259,7 +261,7 @@ export function OrderDetail({
               {/* Pallet Photos */}
               <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(59, 130, 246)' }}>
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 mb-2">
-                  <Package className="size-3" /> Pallet
+                  <Package className="size-3" /> {t('order.pallet')}
                   {photoCategories.palletPhotos.length > 0 && (
                     <span className="ml-auto text-[10px] bg-blue-500/20 px-1.5 py-0.5 rounded">{photoCategories.palletPhotos.length}</span>
                   )}
@@ -267,14 +269,14 @@ export function OrderDetail({
                 {photoCategories.palletPhotos.length > 0 ? (
                   <PhotoGrid photos={photoCategories.palletPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'pallet' }} />
                 ) : (
-                  <p className="text-[10px] text-muted-foreground">No photos</p>
+                  <p className="text-[10px] text-muted-foreground">{t('ui.noPhotos')}</p>
                 )}
               </div>
 
               {/* Shipment */}
               <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(34, 197, 94)' }}>
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-green-400 mb-2">
-                  <Truck className="size-3" /> Shipment
+                  <Truck className="size-3" /> {t('order.shipment')}
                   {(photoCategories.shipmentPhotos.length + photoCategories.paperworkPhotos.length) > 0 && (
                     <span className="ml-auto text-[10px] bg-green-500/20 px-1.5 py-0.5 rounded">{photoCategories.shipmentPhotos.length + photoCategories.paperworkPhotos.length}</span>
                   )}
@@ -285,14 +287,14 @@ export function OrderDetail({
                     {photoCategories.paperworkPhotos.length > 0 && <PhotoGrid photos={photoCategories.paperworkPhotos} maxVisible={2} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'paperwork' }} />}
                   </div>
                 ) : (
-                  <p className="text-[10px] text-muted-foreground">No photos</p>
+                  <p className="text-[10px] text-muted-foreground">{t('ui.noPhotos')}</p>
                 )}
               </div>
 
               {/* Close-Up */}
               <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(168, 85, 247)' }}>
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-purple-400 mb-2">
-                  <Search className="size-3" /> Close-Up
+                  <Search className="size-3" /> {t('order.closeUp')}
                   {photoCategories.closeUpPhotos.length > 0 && (
                     <span className="ml-auto text-[10px] bg-purple-500/20 px-1.5 py-0.5 rounded">{photoCategories.closeUpPhotos.length}</span>
                   )}
@@ -300,14 +302,14 @@ export function OrderDetail({
                 {photoCategories.closeUpPhotos.length > 0 ? (
                   <PhotoGrid photos={photoCategories.closeUpPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'closeup' }} />
                 ) : (
-                  <p className="text-[10px] text-muted-foreground">No photos</p>
+                  <p className="text-[10px] text-muted-foreground">{t('ui.noPhotos')}</p>
                 )}
               </div>
 
               {/* Drawings — 5th box */}
               <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(249, 115, 22)' }}>
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-orange-400 mb-2">
-                  <Ruler className="size-3" /> Drawings
+                  <Ruler className="size-3" /> {t('order.drawings')}
                 </h4>
                 {hasDrawings ? (
                   <DrawingThumbs drawings={matchedDrawings} onOpen={(url) => setLightboxUrl(url)} />

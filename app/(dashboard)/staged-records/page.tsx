@@ -8,6 +8,7 @@ import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
+import { useI18n } from '@/lib/i18n'
 import type { StagedRecord } from '@/lib/google-sheets'
 
 const CATEGORY_FILTERS = [
@@ -95,6 +96,7 @@ export default function StagedRecordsPage() {
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateKey>('30')
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
+  const { t } = useI18n()
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -137,7 +139,7 @@ export default function StagedRecordsPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📦 Staged Records</h1>
+        <h1 className="text-2xl font-bold">📦 {t('page.stagedRecords')}</h1>
         <AutoRefreshControl
           isEnabled={autoRefresh.isAutoRefreshEnabled}
           onToggle={autoRefresh.toggleAutoRefresh}
@@ -147,16 +149,16 @@ export default function StagedRecordsPage() {
           lastRefresh={autoRefresh.lastRefresh}
         />
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Items staged and ready for shipment</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.stagedRecordsSubtitle')}</p>
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Total Staged</p>
+          <p className="text-xs text-muted-foreground">{t('stats.totalStaged')}</p>
           <p className="text-xl font-bold">{totalStaged}</p>
         </div>
         <div className="bg-blue-500/10 rounded-lg p-3">
-          <p className="text-xs text-blue-600">Total Units</p>
+          <p className="text-xs text-blue-600">{t('stats.totalUnitsLabel')}</p>
           <p className="text-xl font-bold text-blue-600">{totalUnits.toLocaleString()}</p>
         </div>
       </div>
@@ -173,7 +175,7 @@ export default function StagedRecordsPage() {
                 : 'bg-muted hover:bg-muted/80'
             }`}
           >
-            {f.label}
+            {f.key === '7' ? t('ui.last7Days') : f.key === '30' ? t('ui.last30Days') : f.key === '90' ? t('ui.last90Days') : t('ui.allTime')}
           </button>
         ))}
       </div>
@@ -190,7 +192,7 @@ export default function StagedRecordsPage() {
                 : 'bg-muted hover:bg-muted/80'
             }`}
           >
-            {f.label}
+            {f.key === 'all' ? t('category.all') : f.key === 'rolltech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
           </button>
         ))}
       </div>
@@ -230,15 +232,15 @@ export default function StagedRecordsPage() {
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                     <div>
-                      <span className="text-muted-foreground">Date</span>
+                      <span className="text-muted-foreground">{t('table.date')}</span>
                       <p className="font-semibold">{record.timestamp || '-'}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Qty</span>
+                      <span className="text-muted-foreground">{t('table.qty')}</span>
                       <p className="font-semibold">{record.quantity || '-'}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Location</span>
+                      <span className="text-muted-foreground">{t('stagedRecords.location')}</span>
                       <p className="font-semibold text-xs">{record.location || '-'}</p>
                     </div>
                   </div>

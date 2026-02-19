@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { Save, Check } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 import { clearPermissionsCache } from '@/lib/use-permissions'
 
 interface RolePermission {
@@ -26,27 +27,27 @@ const ALL_MENU_PATHS = [
 ]
 
 const PATH_LABELS: Record<string, string> = {
-  '/orders': 'Orders',
-  '/need-to-make': 'Need to Make',
-  '/need-to-package': 'Need to Package',
-  '/staged': 'Staged',
-  '/shipped': 'Shipped',
-  '/inventory': 'Inventory',
+  '/orders': t('nav.ordersData'),
+  '/need-to-make': t('nav.productionMake'),
+  '/need-to-package': t('nav.ordersQueue'),
+  '/staged': t('nav.ordersStaged'),
+  '/shipped': t('nav.ordersShipped'),
+  '/inventory': t('nav.inventory'),
   '/inventory-history': 'Inv. History',
-  '/drawings': 'Drawings',
-  '/pallet-records': 'Pallet Records',
-  '/shipping-records': 'Shipping Records',
-  '/fp-reference': 'FP Reference',
-  '/staged-records': 'Staged Records',
-  '/sales-overview': 'Sales Overview',
-  '/sales-parts': 'Sales by Part',
-  '/sales-customers': 'Sales by Customer',
-  '/sales-dates': 'Sales by Date',
-  '/customer-reference': 'Customer Ref',
-  '/quotes': 'Quotes',
-  '/bom': 'BOM',
-  '/material-requirements': 'Material Reqs',
-  '/all-data': 'All Data',
+  '/drawings': t('nav.drawingsLibrary'),
+  '/pallet-records': t('nav.palletRecords'),
+  '/shipping-records': t('nav.shippingRecords'),
+  '/fp-reference': t('nav.fpReference'),
+  '/staged-records': t('nav.stagedRecords'),
+  '/sales-overview': t('nav.salesOverview'),
+  '/sales-parts': t('nav.salesByPart'),
+  '/sales-customers': t('nav.salesByCustomer'),
+  '/sales-dates': t('nav.salesByDate'),
+  '/customer-reference': t('nav.customerRef'),
+  '/quotes': t('nav.quotes'),
+  '/bom': t('nav.bom'),
+  '/material-requirements': t('nav.materialReqs'),
+  '/all-data': t('nav.allData'),
   '/admin/users': 'Admin: Users',
   '/admin/permissions': 'Admin: Permissions',
   '/phil-assistant': '🤖 Phil Assistant (AI)',
@@ -60,6 +61,7 @@ export default function AdminPermissionsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [userCounts, setUserCounts] = useState<Record<string, number>>({})
+  const { t } = useI18n()
 
   const fetchData = useCallback(async () => {
     const [permRes, usersRes] = await Promise.all([
@@ -141,9 +143,9 @@ export default function AdminPermissionsPage() {
     <div className="p-4 md:p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Role Permissions</h1>
+          <h1 className="text-2xl font-bold">{t('page.adminPermissions')}</h1>
           <p className="text-sm text-muted-foreground">
-            Configure menu access for each role
+            {t('page.adminPermissionsSubtitle')}
           </p>
         </div>
         <button
@@ -154,12 +156,12 @@ export default function AdminPermissionsPage() {
           {saved ? (
             <>
               <Check className="size-4" />
-              Saved
+              {t('ui.saved')}
             </>
           ) : (
             <>
               <Save className="size-4" />
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? t('ui.saving') : t('ui.saveChanges')}
             </>
           )}
         </button>
@@ -171,13 +173,13 @@ export default function AdminPermissionsPage() {
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="sticky left-0 z-10 bg-muted/50 px-4 py-3 text-left font-medium">
-                Page
+                {t('admin.page')}
               </th>
               {roles.map((r) => (
                 <th key={r.role} className="px-3 py-3 text-center font-medium">
                   <div>{r.label}</div>
                   <div className="text-xs font-normal text-muted-foreground">
-                    {userCounts[r.role] ?? 0} users
+                    {userCounts[r.role] ?? 0} {t('admin.users')}
                   </div>
                 </th>
               ))}

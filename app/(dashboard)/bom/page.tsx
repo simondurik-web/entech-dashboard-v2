@@ -17,6 +17,7 @@ import {
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle,
 } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ const pct = (n: number) => `${(Number(n) * 100).toFixed(2)}%`
 // ─── Main Page ───────────────────────────────────────────────────
 
 export default function BOMExplorer() {
+  const { t } = useI18n()
   const [tab, setTab] = useState('individual')
   const [individualItems, setIndividualItems] = useState<IndividualItem[]>([])
   const [subAssemblies, setSubAssemblies] = useState<SubAssembly[]>([])
@@ -144,12 +146,12 @@ export default function BOMExplorer() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">BOM Explorer</h1>
+        <h1 className="text-2xl font-bold">{t('page.bom')}</h1>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search parts..."
+              placeholder={t('ui.search')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-8 w-64"
@@ -163,9 +165,9 @@ export default function BOMExplorer() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="individual">Individual Items ({individualItems.length})</TabsTrigger>
-          <TabsTrigger value="sub">Sub Assemblies ({subAssemblies.length})</TabsTrigger>
-          <TabsTrigger value="final">Final Assemblies ({finalAssemblies.length})</TabsTrigger>
+          <TabsTrigger value="individual">{t('bom.individualItems')} ({individualItems.length})</TabsTrigger>
+          <TabsTrigger value="sub">{t('bom.subAssemblies')} ({subAssemblies.length})</TabsTrigger>
+          <TabsTrigger value="final">{t('bom.finalAssemblies')} ({finalAssemblies.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="individual">
@@ -238,18 +240,18 @@ function IndividualItemsTab({ items, search, onRefresh }: {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div>
-          <CardTitle className="text-lg">Raw Materials & Purchased Parts</CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">Changing a cost here cascades to all sub-assemblies and final assemblies using this material.</p>
+          <CardTitle className="text-lg">{t('bom.rawMaterials')}</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">{t('bom.costCascadeNote')}</p>
         </div>
         <Dialog open={showAdd} onOpenChange={setShowAdd}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Item</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Add Individual Item</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t('bom.addItem')}</DialogTitle></DialogHeader>
             <div className="grid gap-3">
               <Input placeholder="Part Number *" value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
-              <Input placeholder="Description" value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
+              <Input placeholder={t('table.description')} value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
               <Input placeholder="Cost per Unit *" type="number" step="0.0001" value={newItem.cost_per_unit} onChange={e => setNewItem({ ...newItem, cost_per_unit: e.target.value })} />
               <Select value={newItem.unit} onValueChange={v => setNewItem({ ...newItem, unit: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -260,11 +262,11 @@ function IndividualItemsTab({ items, search, onRefresh }: {
                   <SelectItem value="roll">roll</SelectItem>
                 </SelectContent>
               </Select>
-              <Input placeholder="Supplier" value={newItem.supplier} onChange={e => setNewItem({ ...newItem, supplier: e.target.value })} />
+              <Input placeholder={t('bom.supplier')} value={newItem.supplier} onChange={e => setNewItem({ ...newItem, supplier: e.target.value })} />
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={addItem} disabled={!newItem.part_number || !newItem.cost_per_unit}>Save</Button>
+              <DialogClose asChild><Button variant="outline">{t('ui.cancel')}</Button></DialogClose>
+              <Button onClick={addItem} disabled={!newItem.part_number || !newItem.cost_per_unit}>{t('ui.save')}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -273,10 +275,10 @@ function IndividualItemsTab({ items, search, onRefresh }: {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Part Number</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-right">Cost/Unit</TableHead>
-              <TableHead>Unit</TableHead>
+              <TableHead>{t('table.partNumber')}</TableHead>
+              <TableHead>{t('table.description')}</TableHead>
+              <TableHead className="text-right">{t('bom.costPerUnit')}</TableHead>
+              <TableHead>{t('bom.unit')}</TableHead>
               <TableHead>Supplier</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>

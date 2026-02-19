@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import type { Drawing } from '@/lib/google-sheets'
 import { InventoryPopover } from '@/components/InventoryPopover'
+import { useI18n } from '@/lib/i18n'
 
 const TYPE_FILTERS = [
   { key: 'all', label: 'All Types' },
@@ -25,6 +26,7 @@ function CarouselLightbox({
   partNumber: string
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const [idx, setIdx] = useState(0)
   const [direction, setDirection] = useState<'left' | 'right'>('right')
   const [animating, setAnimating] = useState(false)
@@ -276,7 +278,7 @@ export default function DrawingsPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📐 Drawings Library</h1>
+        <h1 className="text-2xl font-bold">📐 {t('page.drawings')}</h1>
         <button
           onClick={() => {
             setCompareMode((p) => !p)
@@ -452,7 +454,7 @@ export default function DrawingsPage() {
                   {urls.length > 0 ? (
                     <MiniCarousel urls={urls} partNumber={drawing.partNumber} />
                   ) : (
-                    <div className="text-white/40 text-sm">No drawing</div>
+                    <div className="text-white/40 text-sm">{t('drawings.noDrawing')}</div>
                   )}
                   <p className="text-white font-semibold mt-2 text-sm">{drawing.partNumber}</p>
                   <p className="text-white/60 text-xs">{drawing.productType}</p>

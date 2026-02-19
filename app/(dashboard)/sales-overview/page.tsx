@@ -6,6 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   LineChart, Line, CartesianGrid
 } from 'recharts'
+import { useI18n } from '@/lib/i18n'
 
 interface SalesOrder {
   line: string
@@ -53,6 +54,7 @@ export default function SalesOverviewPage() {
   const [data, setData] = useState<SalesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     async function fetchData() {
@@ -130,7 +132,7 @@ export default function SalesOverviewPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading sales data...</p>
+          <p className="text-muted-foreground">{t('ui.loading')}</p>
         </div>
       </div>
     )
@@ -151,29 +153,29 @@ export default function SalesOverviewPage() {
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Sales & P/L Overview</h1>
-        <p className="text-sm text-muted-foreground">Financial performance from shipped orders</p>
+        <h1 className="text-2xl font-bold">{t('page.salesOverview')}</h1>
+        <p className="text-sm text-muted-foreground">{t('page.salesOverviewSubtitle')}</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Revenue</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('stats.totalRevenue')}</p>
           <p className="text-2xl font-bold text-success mt-1">{formatCurrency(summary.totalRevenue)}</p>
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.orderCount)} orders</p>
         </div>
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Costs</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.totalCosts')}</p>
           <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalCosts)}</p>
         </div>
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Total P/L</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.totalPL')}</p>
           <p className={`text-2xl font-bold mt-1 ${summary.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>
             {formatCurrency(summary.totalPL)}
           </p>
         </div>
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Margin</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.avgMargin')}</p>
           <p className={`text-2xl font-bold mt-1 ${summary.avgMargin >= 0 ? 'text-success' : 'text-danger'}`}>
             {summary.avgMargin.toFixed(1)}%
           </p>
@@ -184,7 +186,7 @@ export default function SalesOverviewPage() {
       <div className="grid md:grid-cols-2 gap-6">
         {/* Revenue by Category Pie Chart */}
         <div className="rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold mb-4">Revenue by Category</h3>
+          <h3 className="text-sm font-semibold mb-4">{t('salesOverview.revenueByCategory')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -219,7 +221,7 @@ export default function SalesOverviewPage() {
 
         {/* Top Customers Bar Chart */}
         <div className="rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold mb-4">Top 10 Customers by Revenue</h3>
+          <h3 className="text-sm font-semibold mb-4">{t('salesOverview.topCustomers')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topCustomers} layout="vertical" margin={{ left: 0 }}>
@@ -235,7 +237,7 @@ export default function SalesOverviewPage() {
 
       {/* Monthly P/L Trend */}
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold mb-4">Monthly P/L Trend (Last 12 Months)</h3>
+        <h3 className="text-sm font-semibold mb-4">{t('salesOverview.monthlyPLTrend')}</h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={monthlyTrend}>

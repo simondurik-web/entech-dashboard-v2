@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight, ArrowUpDown } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
 interface SalesOrder {
   line: string
@@ -58,6 +59,7 @@ export default function SalesCustomersPage() {
   const [sortField, setSortField] = useState<SortField>('pl')
   const [sortAsc, setSortAsc] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const { t } = useI18n()
 
   useEffect(() => {
     async function fetchData() {
@@ -158,7 +160,7 @@ export default function SalesCustomersPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading sales data...</p>
+          <p className="text-muted-foreground">{t('ui.loading')}</p>
         </div>
       </div>
     )
@@ -178,12 +180,12 @@ export default function SalesCustomersPage() {
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Sales by Customer</h1>
-          <p className="text-sm text-muted-foreground">{customerSummaries.length} customers from shipped orders</p>
+          <h1 className="text-2xl font-bold">{t('page.salesByCustomer')}</h1>
+          <p className="text-sm text-muted-foreground">{t('page.salesByCustomerSubtitle')}</p>
         </div>
         <input
           type="text"
-          placeholder="Search customers..."
+          placeholder={t('ui.search')}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full md:w-64 rounded-lg border bg-background px-3 py-2 text-sm"
@@ -197,25 +199,25 @@ export default function SalesCustomersPage() {
               <tr className="bg-muted/50">
                 <th className="px-3 py-3 text-left font-medium w-8"></th>
                 <th className="px-3 py-3 text-left font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('customer')}>
-                  <span className="flex items-center gap-1">Customer <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center gap-1">{t('table.customer')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-3 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('orderCount')}>
-                  <span className="flex items-center justify-end gap-1">Orders <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('table.orders')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-3 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('totalQty')}>
-                  <span className="flex items-center justify-end gap-1">Total Qty <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('table.qty')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-3 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('revenue')}>
-                  <span className="flex items-center justify-end gap-1">Revenue <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('table.revenue')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-3 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('costs')}>
-                  <span className="flex items-center justify-end gap-1">Costs <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('salesOverview.totalCosts')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-3 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('pl')}>
                   <span className="flex items-center justify-end gap-1">P/L <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
                 <th className="px-3 py-3 text-right font-medium cursor-pointer hover:bg-muted" onClick={() => handleSort('margin')}>
-                  <span className="flex items-center justify-end gap-1">Margin <ArrowUpDown className="h-3 w-3" /></span>
+                  <span className="flex items-center justify-end gap-1">{t('salesOverview.avgMargin')} <ArrowUpDown className="h-3 w-3" /></span>
                 </th>
               </tr>
             </thead>
@@ -250,18 +252,18 @@ export default function SalesCustomersPage() {
                     <tr key={`${cust.customer}-expanded`}>
                       <td colSpan={8} className="bg-muted/20 px-6 py-3">
                         <div className="text-xs space-y-2">
-                          <p className="font-semibold text-muted-foreground mb-2">Orders by Part Number:</p>
+                          <p className="font-semibold text-muted-foreground mb-2">{t('salesCustomers.ordersByPart')}:</p>
                           <div className="overflow-x-auto">
                             <table className="w-full">
                               <thead>
                                 <tr className="text-muted-foreground">
-                                  <th className="text-left px-2 py-1">Line</th>
-                                  <th className="text-left px-2 py-1">Part #</th>
-                                  <th className="text-left px-2 py-1">Category</th>
-                                  <th className="text-right px-2 py-1">Qty</th>
-                                  <th className="text-right px-2 py-1">Revenue</th>
+                                  <th className="text-left px-2 py-1">{t('table.line')}</th>
+                                  <th className="text-left px-2 py-1">{t('table.partNumber')}</th>
+                                  <th className="text-left px-2 py-1">{t('table.category')}</th>
+                                  <th className="text-right px-2 py-1">{t('table.qty')}</th>
+                                  <th className="text-right px-2 py-1">{t('table.revenue')}</th>
                                   <th className="text-right px-2 py-1">P/L</th>
-                                  <th className="text-left px-2 py-1">Shipped</th>
+                                  <th className="text-left px-2 py-1">{t('status.shipped')}</th>
                                 </tr>
                               </thead>
                               <tbody>

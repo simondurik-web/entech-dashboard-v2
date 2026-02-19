@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useI18n } from '@/lib/i18n'
 
 interface AllDataResponse {
   columns: string[]
@@ -21,6 +22,7 @@ export default function AllDataPage() {
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set())
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const { t } = useI18n()
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -141,7 +143,7 @@ export default function AllDataPage() {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Database className="size-6 text-primary" />
-          <h1 className="text-2xl font-bold">All Data</h1>
+          <h1 className="text-2xl font-bold">{t('page.allData')}</h1>
         </div>
         <button
           onClick={() => fetchData(true)}
@@ -153,22 +155,22 @@ export default function AllDataPage() {
         </button>
       </div>
       <p className="text-muted-foreground text-sm mb-4">
-        Raw view of the Main Data sheet — all columns, all rows
+        {t('page.allDataSubtitle')}
       </p>
 
       {/* Stats */}
       {response && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <div className="bg-muted rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Total Rows</p>
+            <p className="text-xs text-muted-foreground">{t('stats.totalRecords')}</p>
             <p className="text-xl font-bold">{response.data.length.toLocaleString()}</p>
           </div>
           <div className="bg-muted rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Columns</p>
+            <p className="text-xs text-muted-foreground">{t('ui.columns')}</p>
             <p className="text-xl font-bold">{response.columns.length}</p>
           </div>
           <div className="bg-muted rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Showing</p>
+            <p className="text-xs text-muted-foreground">{t('allData.showing')}</p>
             <p className="text-xl font-bold">{filteredData.length.toLocaleString()}</p>
           </div>
         </div>
@@ -179,7 +181,7 @@ export default function AllDataPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search all columns..."
+            placeholder={t('ui.search')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -191,13 +193,13 @@ export default function AllDataPage() {
           <PopoverTrigger asChild>
             <Button variant="outline" className="gap-2">
               <Columns className="size-4" />
-              Columns
+              {t('ui.columns')}
               <ChevronDown className="size-4" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-64 max-h-80 overflow-auto p-2">
             <div className="flex justify-between items-center mb-2 pb-2 border-b">
-              <span className="text-sm font-medium">Toggle Columns</span>
+              <span className="text-sm font-medium">{t('ui.columns')}</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -224,7 +226,7 @@ export default function AllDataPage() {
         {/* Export */}
         <Button variant="outline" className="gap-2" onClick={exportCSV}>
           <Download className="size-4" />
-          Export CSV
+          {t('ui.export')} CSV
         </Button>
       </div>
 
@@ -284,7 +286,7 @@ export default function AllDataPage() {
           
           {filteredData.length === 0 && (
             <div className="text-center py-10 text-muted-foreground">
-              No data found
+              {t('ui.noData')}
             </div>
           )}
         </div>

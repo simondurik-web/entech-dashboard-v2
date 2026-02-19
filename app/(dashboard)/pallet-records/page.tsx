@@ -8,6 +8,7 @@ import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { Search } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 import type { PalletRecord } from '@/lib/google-sheets'
 
 const CATEGORY_FILTERS = [
@@ -71,6 +72,7 @@ export default function PalletRecordsPage() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderTypeKey>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const { t } = useI18n()
 
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return toDateInputValue(d)
@@ -159,7 +161,7 @@ export default function PalletRecordsPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📷 Pallet Records</h1>
+        <h1 className="text-2xl font-bold">📷 {t('page.palletRecords')}</h1>
         <AutoRefreshControl
           isEnabled={autoRefresh.isAutoRefreshEnabled}
           onToggle={autoRefresh.toggleAutoRefresh}
@@ -169,14 +171,14 @@ export default function PalletRecordsPage() {
           lastRefresh={autoRefresh.lastRefresh}
         />
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Pallet photos and dimension records</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.palletRecordsSubtitle')}</p>
 
       {/* Search */}
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search IF#, customer, line number..."
+          placeholder={t('palletRecords.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg text-sm outline-none placeholder:text-muted-foreground/60"
@@ -186,19 +188,19 @@ export default function PalletRecordsPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Pallets</p>
+          <p className="text-xs text-muted-foreground">{t('table.pallets')}</p>
           <p className="text-xl font-bold">{totalPallets}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3">
-          <p className="text-xs text-green-600">With Photos</p>
+          <p className="text-xs text-green-600">{t('palletRecords.withPhotos')}</p>
           <p className="text-xl font-bold text-green-600">{totalWithPhotos}</p>
         </div>
         <div className="bg-blue-500/10 rounded-lg p-3">
-          <p className="text-xs text-blue-600">Total Photos</p>
+          <p className="text-xs text-blue-600">{t('palletRecords.totalPhotos')}</p>
           <p className="text-xl font-bold text-blue-600">{totalPhotos}</p>
         </div>
         <div className="bg-purple-500/10 rounded-lg p-3">
-          <p className="text-xs text-purple-600">Customers</p>
+          <p className="text-xs text-purple-600">{t('palletRecords.customers')}</p>
           <p className="text-xl font-bold text-purple-600">{uniqueCustomers.size}</p>
         </div>
       </div>
@@ -207,10 +209,10 @@ export default function PalletRecordsPage() {
       <div className="mb-3">
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
           {[
-            { label: '7 Days', days: 7 },
-            { label: '30 Days', days: 30 },
-            { label: '90 Days', days: 90 },
-            { label: 'All Time', days: 'all' as const },
+            { label: t('palletRecords.7days'), days: 7 },
+            { label: t('palletRecords.30days'), days: 30 },
+            { label: t('palletRecords.90days'), days: 90 },
+            { label: t('ui.allTime'), days: 'all' as const },
           ].map((p) => (
             <button key={p.label} onClick={() => setPreset(p.days)}
               className="px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors bg-muted hover:bg-muted/80">
@@ -234,7 +236,7 @@ export default function PalletRecordsPage() {
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
               orderTypeFilter === f.key ? 'bg-blue-600 text-white' : 'bg-muted hover:bg-muted/80'
             }`}>
-            {f.label}
+            {f.key === 'all' ? t('palletRecords.allOrders') : f.key === 'if' ? t('palletRecords.ifOrders') : t('palletRecords.b2bOrders')}
           </button>
         ))}
       </div>
@@ -246,7 +248,7 @@ export default function PalletRecordsPage() {
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
               categoryFilter === f.key ? 'bg-green-600 text-white' : 'bg-muted hover:bg-muted/80'
             }`}>
-            {f.label}
+            {f.key === 'all' ? t('category.all') : f.key === 'rolltech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
           </button>
         ))}
       </div>
@@ -282,15 +284,15 @@ export default function PalletRecordsPage() {
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                     <div>
-                      <span className="text-muted-foreground">Weight</span>
+                      <span className="text-muted-foreground">{t('table.weight')}</span>
                       <p className="font-semibold">{record.weight || '-'}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Dimensions</span>
+                      <span className="text-muted-foreground">{t('table.dimensions')}</span>
                       <p className="font-semibold text-xs">{record.dimensions || '-'}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Parts/Pallet</span>
+                      <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
                       <p className="font-semibold">{record.partsPerPallet || '-'}</p>
                     </div>
                   </div>
@@ -298,7 +300,7 @@ export default function PalletRecordsPage() {
                     <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
                       {record.category || 'Uncategorized'}
                     </span>
-                    {record.orderNumber && <span>Order: {record.orderNumber}</span>}
+                    {record.orderNumber && <span>{t('table.orders')}: {record.orderNumber}</span>}
                   </div>
                   <PhotoGrid photos={record.photos} size="md" context={{ ifNumber: record.ifNumber }} />
                 </CardContent>

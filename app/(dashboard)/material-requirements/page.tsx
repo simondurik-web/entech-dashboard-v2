@@ -5,6 +5,7 @@ import { RefreshCw, Download, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { MaterialRequirementsData, MaterialRequirement } from '@/app/api/material-requirements/route'
+import { useI18n } from '@/lib/i18n'
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'All' },
@@ -41,6 +42,7 @@ export default function MaterialRequirementsPage() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
   const [expandedMaterial, setExpandedMaterial] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string>('')
+  const { t } = useI18n()
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -103,7 +105,7 @@ export default function MaterialRequirementsPage() {
     <div className="p-4 pb-20">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📦 Material Requirements</h1>
+        <h1 className="text-2xl font-bold">📦 {t('page.materialReqs')}</h1>
         <div className="flex items-center gap-2">
           {lastUpdated && (
             <span className="text-xs text-muted-foreground hidden sm:inline">Updated: {lastUpdated}</span>
@@ -126,7 +128,7 @@ export default function MaterialRequirementsPage() {
           </button>
         </div>
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Raw material demand vs. inventory for open orders</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.materialReqsSubtitle')}</p>
 
       {/* Summary Cards */}
       {data && (
@@ -161,7 +163,7 @@ export default function MaterialRequirementsPage() {
       {/* Search */}
       <Input
         type="text"
-        placeholder="Search materials..."
+        placeholder={t('ui.search')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="mb-4"
@@ -179,7 +181,7 @@ export default function MaterialRequirementsPage() {
                 : 'bg-muted hover:bg-muted/80'
             }`}
           >
-            {f.label}
+            {f.key === 'all' ? t('category.all') : f.key === 'roll tech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
           </button>
         ))}
       </div>

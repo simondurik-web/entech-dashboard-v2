@@ -8,6 +8,7 @@ import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { Search } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 import type { ShippingRecord } from '@/lib/google-sheets'
 
 const CATEGORY_FILTERS = [
@@ -73,6 +74,7 @@ export default function ShippingRecordsPage() {
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderTypeKey>('all')
   const [photoTypeFilter, setPhotoTypeFilter] = useState<PhotoTypeKey>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const { t } = useI18n()
 
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return toDateInputValue(d)
@@ -168,7 +170,7 @@ export default function ShippingRecordsPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">🚛 Shipping Records</h1>
+        <h1 className="text-2xl font-bold">🚛 {t('page.shippingRecords')}</h1>
         <AutoRefreshControl
           isEnabled={autoRefresh.isAutoRefreshEnabled}
           onToggle={autoRefresh.toggleAutoRefresh}
@@ -178,12 +180,12 @@ export default function ShippingRecordsPage() {
           lastRefresh={autoRefresh.lastRefresh}
         />
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Shipment history, photos, and tracking</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.shippingRecordsSubtitle')}</p>
 
       {/* Search */}
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <input type="text" placeholder="Search IF#, customer, carrier, BOL..."
+        <input type="text" placeholder={t('shippingRecords.searchPlaceholder')}
           value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg text-sm outline-none placeholder:text-muted-foreground/60" />
       </div>
@@ -191,15 +193,15 @@ export default function ShippingRecordsPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-green-500/10 rounded-lg p-3">
-          <p className="text-xs text-green-600">Shipments</p>
+          <p className="text-xs text-green-600">{t('shippingRecords.shipments')}</p>
           <p className="text-xl font-bold text-green-600">{totalShipments}</p>
         </div>
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Pallets</p>
+          <p className="text-xs text-muted-foreground">{t('table.pallets')}</p>
           <p className="text-xl font-bold">{totalPallets}</p>
         </div>
         <div className="bg-blue-500/10 rounded-lg p-3">
-          <p className="text-xs text-blue-600">Photos</p>
+          <p className="text-xs text-blue-600">{t('table.photos')}</p>
           <p className="text-xl font-bold text-blue-600">{totalPhotos}</p>
         </div>
       </div>
@@ -208,10 +210,10 @@ export default function ShippingRecordsPage() {
       <div className="mb-3">
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
           {[
-            { label: '7 Days', days: 7 },
-            { label: '30 Days', days: 30 },
-            { label: '90 Days', days: 90 },
-            { label: 'All Time', days: 'all' as const },
+            { label: t('palletRecords.7days'), days: 7 },
+            { label: t('palletRecords.30days'), days: 30 },
+            { label: t('palletRecords.90days'), days: 90 },
+            { label: t('ui.allTime'), days: 'all' as const },
           ].map(p => (
             <button key={p.label} onClick={() => setPreset(p.days)}
               className="px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors bg-muted hover:bg-muted/80">
@@ -234,7 +236,7 @@ export default function ShippingRecordsPage() {
           <button key={f.key} onClick={() => setOrderTypeFilter(f.key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
               orderTypeFilter === f.key ? 'bg-blue-600 text-white' : 'bg-muted hover:bg-muted/80'}`}>
-            {f.label}
+            {f.key === 'all' ? t('palletRecords.allOrders') : f.key === 'if' ? t('palletRecords.ifOrders') : t('palletRecords.b2bOrders')}
           </button>
         ))}
       </div>
@@ -244,7 +246,7 @@ export default function ShippingRecordsPage() {
           <button key={f.key} onClick={() => setPhotoTypeFilter(f.key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
               photoTypeFilter === f.key ? 'bg-purple-600 text-white' : 'bg-muted hover:bg-muted/80'}`}>
-            {f.label}
+            {f.key === 'all' ? t('shippingRecords.allPhotos') : f.key === 'shipment' ? '🚚 ' + t('shippingRecords.shipment') : f.key === 'paperwork' ? '📄 ' + t('shippingRecords.paperwork') : '🔍 ' + t('shippingRecords.closeup')}
           </button>
         ))}
       </div>
@@ -255,7 +257,7 @@ export default function ShippingRecordsPage() {
           <button key={f.key} onClick={() => setCategoryFilter(f.key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
               categoryFilter === f.key ? 'bg-green-600 text-white' : 'bg-muted hover:bg-muted/80'}`}>
-            {f.label}
+            {f.key === 'all' ? t('category.all') : f.key === 'rolltech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
           </button>
         ))}
       </div>
@@ -286,21 +288,21 @@ export default function ShippingRecordsPage() {
                         IF# {record.ifNumber} • {record.carrier || 'Unknown carrier'}
                       </p>
                     </div>
-                    <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600">Shipped</span>
+                    <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600">{t('status.shipped')}</span>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                     <div>
-                      <span className="text-muted-foreground">Ship Date</span>
+                      <span className="text-muted-foreground">{t('shippingRecords.shipDate')}</span>
                       <p className="font-semibold">{formatDate(record._parsed)}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">BOL#</span>
+                      <span className="text-muted-foreground">{t('table.bol')}</span>
                       <p className="font-semibold text-xs">{record.bol || '-'}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Pallets</span>
+                      <span className="text-muted-foreground">{t('table.pallets')}</span>
                       <p className="font-semibold">{record.palletCount || '-'}</p>
                     </div>
                   </div>

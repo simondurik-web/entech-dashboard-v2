@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { RefreshCw, X, ExternalLink } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets'
@@ -245,6 +246,7 @@ function HistoryModal({
   target: number
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const chartRef = useRef<unknown>(null)
   const [historyData, setHistoryData] = useState<HistoryData | null>(null)
@@ -377,7 +379,7 @@ function HistoryModal({
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[95vw] max-w-4xl max-h-[90vh] overflow-auto p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">📈 Inventory History — {partNumber}</h2>
+          <h2 className="text-xl font-bold">📈 {t('inventory.historyTitle')} — {partNumber}</h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-zinc-700 transition-colors"><X className="size-5" /></button>
         </div>
 
@@ -386,18 +388,18 @@ function HistoryModal({
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
           </div>
         ) : !historyData ? (
-          <p className="text-center text-muted-foreground py-10">No history data found for {partNumber}</p>
+          <p className="text-center text-muted-foreground py-10">{t('inventory.noHistoryData')} {partNumber}</p>
         ) : (
           <>
             {/* Date Range Controls */}
             <div className="flex gap-3 mb-4 flex-wrap">
               <div>
-                <label className="text-xs text-muted-foreground">Start Date</label>
+                <label className="text-xs text-muted-foreground">{t('inventory.startDate')}</label>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
                   className="block mt-1 px-3 py-1.5 rounded bg-zinc-800 border border-zinc-600 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">End Date</label>
+                <label className="text-xs text-muted-foreground">{t('inventory.endDate')}</label>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                   className="block mt-1 px-3 py-1.5 rounded bg-zinc-800 border border-zinc-600 text-sm" />
               </div>
@@ -411,19 +413,19 @@ function HistoryModal({
             {/* Stats Panels */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               <div className="bg-zinc-800 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground">Current Qty</p>
+                <p className="text-xs text-muted-foreground">{t('inventory.currentQty')}</p>
                 <p className="text-lg font-bold">{currentQty.toLocaleString()}</p>
               </div>
               <div className="bg-zinc-800 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground">Minimum Threshold</p>
+                <p className="text-xs text-muted-foreground">{t('inventory.minimumThreshold')}</p>
                 <p className="text-lg font-bold">{minimum.toLocaleString()}</p>
               </div>
               <div className="bg-zinc-800 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground">Historical Max</p>
+                <p className="text-xs text-muted-foreground">{t('inventory.historicalMax')}</p>
                 <p className="text-lg font-bold">{stats?.max.toLocaleString() ?? '-'}</p>
               </div>
               <div className="bg-zinc-800 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground">Average</p>
+                <p className="text-xs text-muted-foreground">{t('inventory.average')}</p>
                 <p className="text-lg font-bold">{stats?.avg.toLocaleString() ?? '-'}</p>
               </div>
             </div>
@@ -432,7 +434,7 @@ function HistoryModal({
             {stats && (
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="bg-zinc-800 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">{stats.isMfg ? '7-Day Avg Made/day' : '7-Day Avg Usage/day'}</p>
+                  <p className="text-xs text-muted-foreground">{stats.isMfg ? t('inventory.prodAvg7') : t('inventory.usageAvg7')}</p>
                   <p className="text-lg font-bold">
                     {stats.isMfg
                       ? ((stats as { prod7: number | null }).prod7?.toFixed(1) ?? '-')
@@ -440,7 +442,7 @@ function HistoryModal({
                   </p>
                 </div>
                 <div className="bg-zinc-800 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">{stats.isMfg ? '30-Day Avg Made/day' : '30-Day Avg Usage/day'}</p>
+                  <p className="text-xs text-muted-foreground">{stats.isMfg ? t('inventory.prodAvg30') : t('inventory.usageAvg30')}</p>
                   <p className="text-lg font-bold">
                     {stats.isMfg
                       ? ((stats as { prod30: number | null }).prod30?.toFixed(1) ?? '-')
@@ -448,7 +450,7 @@ function HistoryModal({
                   </p>
                 </div>
                 <div className="bg-zinc-800 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">{stats.isMfg ? 'Days to Target' : 'Days to Minimum'}</p>
+                  <p className="text-xs text-muted-foreground">{stats.isMfg ? t('inventory.daysToTarget') : t('inventory.daysToMinimum')}</p>
                   <p className="text-lg font-bold">
                     {stats.isMfg
                       ? ((stats as { daysToTarget: number | null }).daysToTarget != null ? `${(stats as { daysToTarget: number }).daysToTarget}d` : '-')
@@ -456,13 +458,13 @@ function HistoryModal({
                   </p>
                 </div>
                 <div className="bg-zinc-800 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">{stats.isMfg ? 'N/A' : 'Days to Zero'}</p>
+                  <p className="text-xs text-muted-foreground">{stats.isMfg ? 'N/A' : t('inventory.daysToZero')}</p>
                   <p className="text-lg font-bold">
                     {stats.isMfg ? '-' : ((stats as { daysToZero: number | null }).daysToZero != null ? `${(stats as { daysToZero: number }).daysToZero}d` : '-')}
                   </p>
                 </div>
                 <div className="bg-zinc-800 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">{stats.isMfg ? 'Production Trend' : 'Usage Trend'}</p>
+                  <p className="text-xs text-muted-foreground">{stats.isMfg ? t('inventory.productionTrend') : t('inventory.usageTrend')}</p>
                   <p className={`text-lg font-bold ${stats.trendColor}`}>{stats.trend} {stats.trendLabel}</p>
                 </div>
               </div>
@@ -486,6 +488,7 @@ export default function InventoryPage() {
   const [typeFilters, setTypeFilters] = useState<Set<TypeFilterKey>>(new Set())
   const [search, setSearch] = useState('')
   const [historyPart, setHistoryPart] = useState<string | null>(null)
+  const { t } = useI18n()
 
   const toggleTypeFilter = (key: TypeFilterKey) => {
     setTypeFilters(prev => {
@@ -647,7 +650,7 @@ export default function InventoryPage() {
     <div className="p-4 pb-20">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📦 Inventory</h1>
+        <h1 className="text-2xl font-bold">📦 {t('page.inventory')}</h1>
         <button
           onClick={() => fetchData(true)}
           disabled={refreshing}
@@ -656,25 +659,25 @@ export default function InventoryPage() {
           <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Inventory levels, usage forecasting & trend analysis</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.inventorySubtitle')}</p>
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3 border border-zinc-700/50" style={{ borderImage: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3)) 1' }}>
-          <p className="text-xs text-muted-foreground">Total Items</p>
+          <p className="text-xs text-muted-foreground">{t('inventory.totalItems')}</p>
           <p className="text-xl font-bold">{totalItems}</p>
           <p className="text-[10px] text-muted-foreground">{productTypes} product types</p>
         </div>
         <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
-          <p className="text-xs text-red-400">Low Stock</p>
+          <p className="text-xs text-red-400">{t('stats.lowStock')}</p>
           <p className="text-xl font-bold text-red-400">{lowStock}</p>
         </div>
         <div className="bg-yellow-500/10 rounded-lg p-3 border border-yellow-500/20">
-          <p className="text-xs text-yellow-400">Needs Production</p>
+          <p className="text-xs text-yellow-400">{t('stats.needsProduction')}</p>
           <p className="text-xl font-bold text-yellow-400">{needsProduction}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
-          <p className="text-xs text-green-400">Adequate Stock</p>
+          <p className="text-xs text-green-400">{t('inventory.adequateStock')}</p>
           <p className="text-xl font-bold text-green-400">{adequateStock}</p>
         </div>
       </div>

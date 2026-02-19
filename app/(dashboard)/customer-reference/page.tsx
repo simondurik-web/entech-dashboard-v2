@@ -34,6 +34,7 @@ import {
   ChevronLeft, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { getContributionColor, computeContributionLevel } from '@/lib/cost-config'
+import { useI18n } from '@/lib/i18n'
 
 interface Customer {
   id: string
@@ -106,6 +107,7 @@ export default function CustomerReferencePage() {
   const [customerForm, setCustomerForm] = useState({ name: '', payment_terms: 'Net 30', notes: '' })
   const [deleteTarget, setDeleteTarget] = useState<PartMapping | null>(null)
   const [saving, setSaving] = useState(false)
+  const { t } = useI18n()
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -257,13 +259,13 @@ export default function CustomerReferencePage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">👥 Customer Reference</h1>
+        <h1 className="text-2xl font-bold">👥 {t('page.customerRef')}</h1>
         <Button variant="ghost" size="icon" onClick={fetchData} disabled={loading}>
           <RefreshCw className={`size-5 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
       <p className="text-muted-foreground text-sm mb-4">
-        Customer part mappings with BOM cost analysis
+        {t('page.customerRefSubtitle')}
       </p>
 
       {/* Stats */}
@@ -325,7 +327,7 @@ export default function CustomerReferencePage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search by part number or customer..."
+            placeholder={t('ui.search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0) }}
             className="pl-9"
@@ -333,7 +335,7 @@ export default function CustomerReferencePage() {
         </div>
         <Select value={filterCustomer} onValueChange={(v) => { setFilterCustomer(v); setPage(0) }}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All Customers" />
+            <SelectValue placeholder={t('salesCustomers.allCustomers')} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Customers</SelectItem>
@@ -344,14 +346,14 @@ export default function CustomerReferencePage() {
         </Select>
         <Select value={filterLevel} onValueChange={(v) => { setFilterLevel(v); setPage(0) }}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All Levels" />
+            <SelectValue placeholder={t('customerRef.allLevels')} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Levels</SelectItem>
-            <SelectItem value="Critical Loss">Critical Loss</SelectItem>
-            <SelectItem value="Marginal Coverage">Marginal Coverage</SelectItem>
-            <SelectItem value="Net Profitable">Net Profitable</SelectItem>
-            <SelectItem value="Target Achieved">Target Achieved</SelectItem>
+            <SelectItem value="Critical Loss">{t('customerRef.criticalLoss')}</SelectItem>
+            <SelectItem value="Marginal Coverage">{t('customerRef.marginalCoverage')}</SelectItem>
+            <SelectItem value="Net Profitable">{t('customerRef.netProfitable')}</SelectItem>
+            <SelectItem value="Target Achieved">{t('customerRef.targetAchieved')}</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="outline" onClick={() => setShowCustomerDialog(true)}>
@@ -389,7 +391,7 @@ export default function CustomerReferencePage() {
                 {paged.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
-                      No mappings found
+                      {t('ui.noResults')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -475,7 +477,7 @@ export default function CustomerReferencePage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCustomerDialog(false)}>Cancel</Button>
             <Button onClick={handleSaveCustomer} disabled={saving || !customerForm.name}>
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('ui.saving') : t('ui.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -485,7 +487,7 @@ export default function CustomerReferencePage() {
       <Dialog open={showMappingDialog} onOpenChange={(open) => { setShowMappingDialog(open); if (!open) setEditingMapping(null) }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingMapping ? 'Edit' : 'Add'} Part Mapping</DialogTitle>
+            <DialogTitle>{editingMapping ? t('ui.edit') : t('ui.add')} {t('customerRef.partMapping')}</DialogTitle>
             <DialogDescription>
               {editingMapping ? 'Update the part mapping details.' : 'Create a new customer part mapping.'}
             </DialogDescription>
@@ -495,7 +497,7 @@ export default function CustomerReferencePage() {
               <Label>Customer *</Label>
               <Select value={formData.customer_id} onValueChange={(v) => setFormData({ ...formData, customer_id: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select customer" />
+                  <SelectValue placeholder={t('customerRef.selectCustomer')} />
                 </SelectTrigger>
                 <SelectContent>
                   {customers.map((c) => (
@@ -536,7 +538,7 @@ export default function CustomerReferencePage() {
                     <div key={tier} className="space-y-1">
                       <p className="text-xs text-muted-foreground">Tier {tier}</p>
                       <Input
-                        placeholder="Range"
+                        placeholder={t('customerRef.range')}
                         className="text-xs"
                         value={String(formData[rangeKey] ?? '')}
                         onChange={(e) => setFormData({ ...formData, [rangeKey]: e.target.value })}
@@ -544,7 +546,7 @@ export default function CustomerReferencePage() {
                       <Input
                         type="number"
                         step="0.01"
-                        placeholder="Price"
+                        placeholder={t('table.price')}
                         className="text-xs"
                         value={formData[priceKey] ?? ''}
                         onChange={(e) => setFormData({ ...formData, [priceKey]: e.target.value ? Number(e.target.value) : null })}
@@ -572,7 +574,7 @@ export default function CustomerReferencePage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowMappingDialog(false); setEditingMapping(null) }}>Cancel</Button>
             <Button onClick={handleSaveMapping} disabled={saving || !formData.customer_id || !formData.internal_part_number}>
-              {saving ? 'Saving...' : editingMapping ? 'Update' : 'Create'}
+              {saving ? t('ui.saving') : editingMapping ? t('customerRef.update') : t('customerRef.create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -593,7 +595,7 @@ export default function CustomerReferencePage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={saving}>
-              {saving ? 'Deleting...' : 'Delete'}
+              {saving ? t('customerRef.deleting') : t('ui.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
