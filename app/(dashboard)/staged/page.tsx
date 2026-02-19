@@ -52,6 +52,8 @@ function filterOrders(orders: Order[], filter: FilterKey, search: string): Order
 export default function StagedPage() {
   const { t } = useI18n()
   const [orders, setOrders] = useState<Order[]>([])
+  const [completedOrders, setCompletedOrders] = useState<Order[]>([])
+  const [needToPackageOrders, setNeedToPackageOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,6 +160,13 @@ export default function StagedPage() {
         (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'staged'
       )
       setOrders(staged)
+      // Also store completed and need-to-package for pallet calculator planning
+      setCompletedOrders(data.filter(
+        (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'completed'
+      ))
+      setNeedToPackageOrders(data.filter(
+        (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'wip'
+      ))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')
     } finally {
@@ -280,7 +289,7 @@ export default function StagedPage() {
           </button>
           {showPLC && (
             <div className="mt-3">
-              <PalletLoadCalculator stagedOrders={orders} />
+              <PalletLoadCalculator stagedOrders={orders} completedOrders={completedOrders} needToPackageOrders={needToPackageOrders} />
             </div>
           )}
         </div>

@@ -236,9 +236,13 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
 // ── Component ──────────────────────────────────────────────
 export default function PalletLoadCalculator({
   stagedOrders = [],
+  completedOrders = [],
+  needToPackageOrders = [],
   lang = 'en',
 }: {
   stagedOrders?: Order[]
+  completedOrders?: Order[]
+  needToPackageOrders?: Order[]
   lang?: 'en' | 'es'
 }) {
   const t = LABELS[lang]
@@ -248,6 +252,7 @@ export default function PalletLoadCalculator({
   const [palletTypes, setPalletTypes] = useState<PalletType[]>([defaultPalletType(0)])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [linkSearch, setLinkSearch] = useState('')
+  const [linkSource, setLinkSource] = useState<'staged' | 'completed' | 'package'>('staged')
 
   const trailer = PLC_TRAILERS[trailerKey]
 
@@ -306,25 +311,57 @@ export default function PalletLoadCalculator({
   const handleDragEnd = () => setDragIdx(null)
 
   const toggleOrderLink = (palletId: string, orderKey: string, order: Order) => {
-    setPalletTypes((prev) =>
-      prev.map((p) => {
-        if (p.id !== palletId) return p
-        const has = p.linkedOrderKeys.includes(orderKey)
-        const newKeys = has
-          ? p.linkedOrderKeys.filter((k) => k !== orderKey)
-          : [...p.linkedOrderKeys, orderKey]
-        // auto-fill from order when linking
-        if (!has) {
-          return {
-            ...p,
-            linkedOrderKeys: newKeys,
-            label: order.customer || p.label,
-            qty: Math.max(p.qty, order.orderQty || 1),
-          }
+    setPalletTypes((prev) => {
+      const idx = prev.findIndex((p) => p.id === palletId)
+      if (idx < 0) return prev
+      const pt = prev[idx]
+      const has = pt.linkedOrderKeys.includes(orderKey)
+
+      // Deselecting — remove order from pallet
+      if (has) {
+        const newKeys = pt.linkedOrderKeys.filter((k) => k !== orderKey)
+        const updated = { ...pt, linkedOrderKeys: newKeys }
+        if (newKeys.length === 0) {
+          updated.qty = 0
+          updated.weightEach = 0
+          updated.label = `Pallet ${idx + 1}`
         }
-        return { ...p, linkedOrderKeys: newKeys }
-      })
-    )
+        return prev.map((p, i) => (i === idx ? updated : p))
+      }
+
+      // Pallet already has an order → create NEW pallet type for this order
+      if (pt.linkedOrderKeys.length > 0) {
+        const ci = prev.length % PLC_COLORS.length
+        const palletCount = order.numPackages > 0 ? Math.ceil(order.numPackages) : 1
+        const newPt: PalletType = {
+          id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          label: order.customer ? order.customer.substring(0, 20) : `Pallet ${prev.length + 1}`,
+          colorIdx: ci,
+          width: 48,
+          length: 40,
+          qty: palletCount,
+          weightEach: 0,
+          orientation: 'auto',
+          doubleStack: false,
+          linkMode: true,
+          linkedOrderKeys: [orderKey],
+        }
+        return [...prev, newPt]
+      }
+
+      // Selecting order on empty pallet
+      const palletCount = order.numPackages > 0 ? Math.ceil(order.numPackages) : 1
+      return prev.map((p, i) =>
+        i === idx
+          ? {
+              ...p,
+              linkedOrderKeys: [orderKey],
+              label: order.customer ? order.customer.substring(0, 20) : p.label,
+              qty: palletCount,
+            }
+          : p
+      )
+    })
   }
 
   // ── SVG Diagram (horizontal: x=length, y=width) ──────
@@ -484,7 +521,7 @@ export default function PalletLoadCalculator({
                 </label>
 
                 {/* Link orders toggle */}
-                {stagedOrders.length > 0 && (
+                {(stagedOrders.length > 0 || completedOrders.length > 0 || needToPackageOrders.length > 0) && (
                   <button
                     onClick={() => updateType(pt.id, { linkMode: !pt.linkMode })}
                     className={`text-xs px-2 py-1 rounded ${
@@ -504,54 +541,75 @@ export default function PalletLoadCalculator({
                 </button>
               </div>
 
-              {/* Link orders panel */}
-              {pt.linkMode && stagedOrders.length > 0 && (
-                <div className="border rounded p-2 bg-muted/30 space-y-1 max-h-40 overflow-y-auto">
+              {/* Link orders panel — 3 sources */}
+              {pt.linkMode && (
+                <div className="border rounded p-2 bg-muted/30 space-y-2">
+                  {/* Source tabs */}
+                  <div className="flex gap-1 flex-wrap">
+                    <button onClick={() => setLinkSource('staged')} className={`text-[10px] px-2 py-1 rounded font-medium ${linkSource === 'staged' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      🚚 Link Ready to Ship ({stagedOrders.length})
+                    </button>
+                    <button onClick={() => setLinkSource('completed')} className={`text-[10px] px-2 py-1 rounded font-medium ${linkSource === 'completed' ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      ✅ Link Completed ({completedOrders.length})
+                    </button>
+                    <button onClick={() => setLinkSource('package')} className={`text-[10px] px-2 py-1 rounded font-medium ${linkSource === 'package' ? 'bg-amber-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      📦 Link Need to Package ({needToPackageOrders.length})
+                    </button>
+                  </div>
+                  {/* Disclaimer for non-staged */}
+                  {linkSource === 'completed' && (
+                    <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ This order is not staged yet — this is used for planning purposes.</p>
+                  )}
+                  {linkSource === 'package' && (
+                    <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ For planning purposes — these orders are not ready to ship.</p>
+                  )}
                   <input
                     value={linkSearch}
                     onChange={(e) => setLinkSearch(e.target.value)}
                     placeholder={t.search}
-                    className="w-full px-2 py-1 rounded border bg-background text-xs mb-1"
+                    className="w-full px-2 py-1 rounded border bg-background text-xs"
                   />
-                  {stagedOrders
-                    .filter((o) => {
-                      if (!linkSearch.trim()) return true
-                      const q = linkSearch.toLowerCase()
-                      return (
-                        o.customer.toLowerCase().includes(q) ||
-                        o.ifNumber.toLowerCase().includes(q) ||
-                        o.partNumber.toLowerCase().includes(q)
-                      )
-                    })
-                    .map((o) => {
-                      const key = getOrderKey(o)
-                      const linkedToPallet = orderLinkMap.get(key)
-                      const isLinkedHere = pt.linkedOrderKeys.includes(key)
-                      const isLinkedElsewhere = linkedToPallet !== undefined && !isLinkedHere
-                      return (
-                        <label
-                          key={key}
-                          className={`flex items-center gap-2 text-xs py-0.5 ${
-                            isLinkedElsewhere ? 'opacity-50' : 'cursor-pointer'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isLinkedHere}
-                            disabled={isLinkedElsewhere}
-                            onChange={() => toggleOrderLink(pt.id, key, o)}
-                          />
-                          <span>
-                            {o.ifNumber} — {o.customer} — {o.partNumber} ×{o.orderQty}
-                          </span>
-                          {isLinkedElsewhere && (
-                            <span className="text-muted-foreground">
-                              ({t.linkedTo} #{(linkedToPallet ?? 0) + 1})
+                  <div className="max-h-40 overflow-y-auto space-y-0.5">
+                    {(linkSource === 'staged' ? stagedOrders : linkSource === 'completed' ? completedOrders : needToPackageOrders)
+                      .filter((o) => {
+                        if (!linkSearch.trim()) return true
+                        const q = linkSearch.toLowerCase()
+                        return (
+                          o.customer.toLowerCase().includes(q) ||
+                          o.ifNumber.toLowerCase().includes(q) ||
+                          o.partNumber.toLowerCase().includes(q)
+                        )
+                      })
+                      .map((o) => {
+                        const key = getOrderKey(o)
+                        const linkedToPallet = orderLinkMap.get(key)
+                        const isLinkedHere = pt.linkedOrderKeys.includes(key)
+                        const isLinkedElsewhere = linkedToPallet !== undefined && !isLinkedHere
+                        return (
+                          <label
+                            key={key}
+                            className={`flex items-center gap-2 text-xs py-0.5 ${
+                              isLinkedElsewhere ? 'opacity-50' : 'cursor-pointer'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isLinkedHere}
+                              disabled={isLinkedElsewhere}
+                              onChange={() => toggleOrderLink(pt.id, key, o)}
+                            />
+                            <span>
+                              {o.ifNumber} — {o.customer} — {o.partNumber} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : `${o.orderQty} pcs`}
                             </span>
-                          )}
-                        </label>
-                      )
-                    })}
+                            {isLinkedElsewhere && (
+                              <span className="text-muted-foreground">
+                                ({t.linkedTo} #{(linkedToPallet ?? 0) + 1})
+                              </span>
+                            )}
+                          </label>
+                        )
+                      })}
+                  </div>
                 </div>
               )}
             </div>
