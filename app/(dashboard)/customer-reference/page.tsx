@@ -22,17 +22,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   Search, Plus, Copy, Pencil, Trash2, Users, AlertTriangle, TrendingUp, Target,
-  ChevronLeft, ChevronRight, RefreshCw,
+  RefreshCw,
 } from 'lucide-react'
+import { DataTable } from '@/components/data-table'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { getContributionColor, computeContributionLevel } from '@/lib/cost-config'
 import { useI18n } from '@/lib/i18n'
 
@@ -96,7 +90,6 @@ export default function CustomerReferencePage() {
   const [search, setSearch] = useState('')
   const [filterCustomer, setFilterCustomer] = useState<string>('all')
   const [filterLevel, setFilterLevel] = useState<string>('all')
-  const [page, setPage] = useState(0)
 
   // Dialog states
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
@@ -144,8 +137,31 @@ export default function CustomerReferencePage() {
     return true
   })
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  // Convert to Record<string, unknown> for DataTable — add customerName for sorting
+  type MappingRow = PartMapping & Record<string, unknown>
+  const tableData: MappingRow[] = filtered.map(m => ({ ...m, customerName: m.customers?.name || '' })) as MappingRow[]
+
+  const COLUMNS: ColumnDef<MappingRow>[] = [
+    { key: 'customerName' as keyof MappingRow & string, label: 'Customer', render: (_, row) => (row as unknown as PartMapping).customers?.name || '—' },
+    { key: 'customer_part_number' as keyof MappingRow & string, label: 'Cust P/N', render: (v) => (v as string) || '—' },
+    { key: 'internal_part_number' as keyof MappingRow & string, label: 'Internal P/N', render: (v) => <span className="font-mono text-sm">{v as string}</span> },
+    { key: 'category' as keyof MappingRow & string, label: 'Category', render: (v) => (v as string) || '—' },
+    { key: 'lowest_quoted_price' as keyof MappingRow & string, label: 'Lowest Price', render: (v) => fmt(v as number | null) },
+    { key: 'variable_cost' as keyof MappingRow & string, label: 'Variable Cost', render: (v) => fmt(v as number | null) },
+    { key: 'total_cost' as keyof MappingRow & string, label: 'Total Cost', render: (v) => fmt(v as number | null) },
+    { key: 'sales_target' as keyof MappingRow & string, label: 'Sales Target', render: (v) => fmt(v as number | null) },
+    {
+      key: 'contribution_level' as keyof MappingRow & string,
+      label: 'Contribution',
+      render: (v) => v ? <Badge variant="outline" className={getContributionColor(v as string)}>{v as string}</Badge> : <span className="text-muted-foreground">—</span>,
+    },
+  ]
+
+  const table = useDataTable({
+    data: tableData,
+    columns: COLUMNS,
+    storageKey: 'customer-reference',
+  })
 
   // Stats
   const stats = {
@@ -329,11 +345,11 @@ export default function CustomerReferencePage() {
           <Input
             placeholder={t('ui.search')}
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0) }}
+            onChange={(e) => { setSearch(e.target.value) }}
             className="pl-9"
           />
         </div>
-        <Select value={filterCustomer} onValueChange={(v) => { setFilterCustomer(v); setPage(0) }}>
+        <Select value={filterCustomer} onValueChange={(v) => { setFilterCustomer(v) }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder={t('salesCustomers.allCustomers')} />
           </SelectTrigger>
@@ -344,7 +360,7 @@ export default function CustomerReferencePage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={filterLevel} onValueChange={(v) => { setFilterLevel(v); setPage(0) }}>
+        <Select value={filterLevel} onValueChange={(v) => { setFilterLevel(v) }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder={t('customerRef.allLevels')} />
           </SelectTrigger>
@@ -370,87 +386,14 @@ export default function CustomerReferencePage() {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       ) : (
-        <>
-          <div className="rounded-lg border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Cust P/N</TableHead>
-                  <TableHead>Internal P/N</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Lowest Price</TableHead>
-                  <TableHead className="text-right">Variable Cost</TableHead>
-                  <TableHead className="text-right">Total Cost</TableHead>
-                  <TableHead className="text-right">Sales Target</TableHead>
-                  <TableHead>Contribution</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
-                      {t('ui.noResults')}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paged.map((m) => (
-                    <TableRow key={m.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">{m.customers?.name || '—'}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{m.customer_part_number || '—'}</TableCell>
-                      <TableCell className="font-mono text-sm">{m.internal_part_number}</TableCell>
-                      <TableCell className="text-sm">{m.category || '—'}</TableCell>
-                      <TableCell className="text-right font-medium">{fmt(m.lowest_quoted_price)}</TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">{fmt(m.variable_cost)}</TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">{fmt(m.total_cost)}</TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">{fmt(m.sales_target)}</TableCell>
-                      <TableCell>
-                        {m.contribution_level ? (
-                          <Badge variant="outline" className={getContributionColor(m.contribution_level)}>
-                            {m.contribution_level}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(m)} title="Edit">
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-7" onClick={() => handleDuplicate(m)} title="Duplicate">
-                            <Copy className="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-7 text-destructive" onClick={() => { setDeleteTarget(m); setShowDeleteDialog(true) }} title="Delete">
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-3">
-              <p className="text-sm text-muted-foreground">
-                Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
-              </p>
-              <div className="flex gap-1">
-                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
+        <DataTable
+          table={table}
+          data={tableData}
+          noun="mapping"
+          exportFilename="customer-reference"
+          getRowKey={(row) => (row as unknown as PartMapping).id}
+          onRowClick={(row) => openEdit(row as unknown as PartMapping)}
+        />
       )}
 
       {/* Add Customer Dialog */}
