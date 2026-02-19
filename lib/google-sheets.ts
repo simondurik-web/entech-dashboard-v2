@@ -43,6 +43,10 @@ export interface Order {
   daysUntilDue: number | null
   assignedTo: string
   shippedDate: string
+  // Pallet calculator enrichment (from pallet records)
+  palletWidth?: number
+  palletLength?: number
+  palletWeightEach?: number
 }
 
 // Column indices: A=0..Z=25, AA=26..AV=47

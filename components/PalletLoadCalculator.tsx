@@ -330,6 +330,12 @@ export default function PalletLoadCalculator({
         return prev.map((p, i) => (i === idx ? updated : p))
       }
 
+      // Pre-fill dimensions from order pallet records (staged/completed have data)
+      const hasData = (order.palletWidth && order.palletWidth > 0) || (order.palletLength && order.palletLength > 0)
+      const fillW = hasData && order.palletWidth ? order.palletWidth : 48
+      const fillL = hasData && order.palletLength ? order.palletLength : 40
+      const fillWeight = order.palletWeightEach || 0
+
       // Pallet already has an order → create NEW pallet type for this order
       if (pt.linkedOrderKeys.length > 0) {
         const ci = prev.length % PLC_COLORS.length
@@ -338,10 +344,10 @@ export default function PalletLoadCalculator({
           id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           label: order.customer ? order.customer.substring(0, 20) : `Pallet ${prev.length + 1}`,
           colorIdx: ci,
-          width: 48,
-          length: 40,
+          width: fillW,
+          length: fillL,
           qty: palletCount,
-          weightEach: 0,
+          weightEach: fillWeight,
           orientation: 'auto',
           doubleStack: false,
           linkMode: true,
@@ -360,6 +366,9 @@ export default function PalletLoadCalculator({
               linkedOrderKeys: [orderKey],
               label: order.customer ? order.customer.substring(0, 20) : p.label,
               qty: palletCount,
+              width: fillW,
+              length: fillL,
+              weightEach: fillWeight,
             }
           : p
       )
@@ -563,7 +572,7 @@ export default function PalletLoadCalculator({
                     <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ This order is not staged yet — this is used for planning purposes.</p>
                   )}
                   {pt.linkSource === 'package' && (
-                    <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ For planning purposes — these orders are not ready to ship.</p>
+                    <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ For planning purposes — these orders are not ready to ship. You must enter estimated dimensions and weight manually.</p>
                   )}
                   <input
                     value={linkSearch}
@@ -601,7 +610,10 @@ export default function PalletLoadCalculator({
                               onChange={() => toggleOrderLink(pt.id, key, o)}
                             />
                             <span>
-                              {o.ifNumber} — {o.customer} — {o.partNumber} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : `${o.orderQty} pcs`}
+                              {o.ifNumber} — {o.customer} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : `${o.orderQty} pcs`}
+                              {o.palletWidth && o.palletLength ? ` · ${o.palletWidth}×${o.palletLength}"` : ''}
+                              {o.palletWeightEach ? ` · ${o.palletWeightEach} lbs` : ''}
+                              {!o.palletWidth && !o.palletWeightEach && pt.linkSource !== 'package' ? ' · no dims' : ''}
                             </span>
                             {isLinkedElsewhere && (
                               <span className="text-muted-foreground">
@@ -741,19 +753,17 @@ export default function PalletLoadCalculator({
                     {p.across}×{p.along}
                   </text>
                 )}
-                {/* Dimension arrows on first pallet of each type */}
-                {i === packResult.placed.findIndex(pp => pp.typeId === p.typeId) && pw > 35 && ph > 25 && (
-                  <g>
-                    {/* Width arrow (vertical / across) */}
-                    <line x1={px - 4} y1={py + 2} x2={px - 4} y2={py + ph - 2} stroke="white" strokeWidth={0.8} strokeDasharray="2,1" opacity={0.7} markerStart="url(#arrowU)" markerEnd="url(#arrowD)" />
-                    <text x={px - 7} y={py + ph / 2} textAnchor="middle" fill="white" fontSize={7} opacity={0.8} transform={`rotate(-90, ${px - 7}, ${py + ph / 2})`}>
-                      W:{p.across}&quot;
-                    </text>
-                    {/* Length arrow (horizontal / along) */}
-                    <line x1={px + 2} y1={py + ph + 4} x2={px + pw - 2} y2={py + ph + 4} stroke="white" strokeWidth={0.8} strokeDasharray="2,1" opacity={0.7} markerStart="url(#arrowL)" markerEnd="url(#arrowR)" />
-                    <text x={px + pw / 2} y={py + ph + 11} textAnchor="middle" fill="white" fontSize={7} opacity={0.8}>
-                      L:{p.along}&quot;
-                    </text>
+                {/* W×L dimension arrows on every pallet */}
+                {pw > 30 && ph > 22 && (
+                  <g opacity={0.7}>
+                    {/* Width arrow (vertical / across) with arrowheads */}
+                    <line x1={px + 3} y1={py + 2} x2={px + 3} y2={py + ph - 2} stroke="white" strokeWidth={0.6} />
+                    <polygon points={`${px + 3},${py + 2} ${px + 1},${py + 6} ${px + 5},${py + 6}`} fill="white" />
+                    <polygon points={`${px + 3},${py + ph - 2} ${px + 1},${py + ph - 6} ${px + 5},${py + ph - 6}`} fill="white" />
+                    {/* Length arrow (horizontal / along) with arrowheads */}
+                    <line x1={px + 2} y1={py + ph - 3} x2={px + pw - 2} y2={py + ph - 3} stroke="white" strokeWidth={0.6} />
+                    <polygon points={`${px + 2},${py + ph - 3} ${px + 6},${py + ph - 5} ${px + 6},${py + ph - 1}`} fill="white" />
+                    <polygon points={`${px + pw - 2},${py + ph - 3} ${px + pw - 6},${py + ph - 5} ${px + pw - 6},${py + ph - 1}`} fill="white" />
                   </g>
                 )}
               </g>

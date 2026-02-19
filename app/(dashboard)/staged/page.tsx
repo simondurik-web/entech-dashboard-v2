@@ -153,23 +153,59 @@ export default function StagedPage() {
     setError(null)
 
     try {
-      const res = await fetch('/api/sheets')
+      const [res, palletRes] = await Promise.all([
+        fetch('/api/sheets'),
+        fetch('/api/pallet-records'),
+      ])
       if (!res.ok) throw new Error('Failed to fetch orders')
       const data: Order[] = await res.json()
+
+      // Build pallet dimension/weight lookup by line number
+      interface PalletRec { lineNumber: string; weight: string; dimensions: string }
+      const palletRecs: PalletRec[] = palletRes.ok ? await palletRes.json() : []
+      const palletByLine = new Map<string, { avgWeight: number; w: number; l: number }>()
+      const grouped = new Map<string, PalletRec[]>()
+      for (const pr of palletRecs) {
+        if (!pr.lineNumber) continue
+        const arr = grouped.get(pr.lineNumber) || []
+        arr.push(pr)
+        grouped.set(pr.lineNumber, arr)
+      }
+      for (const [line, recs] of grouped) {
+        const totalW = recs.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0)
+        const avgWeight = recs.length > 0 ? Math.round(totalW / recs.length) : 0
+        let w = 0, l = 0
+        const firstDims = recs.find(p => p.dimensions)?.dimensions || ''
+        if (firstDims) {
+          const parts = firstDims.split(/x/i).map(s => parseFloat(s.trim()))
+          if (parts.length >= 2) { w = parts[0] || 0; l = parts[1] || 0 }
+        }
+        palletByLine.set(line, { avgWeight, w, l })
+      }
+
+      // Enrich orders with pallet data
+      const enrich = (o: Order): Order => {
+        const pd = palletByLine.get(o.line)
+        if (pd) {
+          return { ...o, palletWidth: pd.w, palletLength: pd.l, palletWeightEach: pd.avgWeight }
+        }
+        return o
+      }
+
       const staged = data.filter(
         (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'staged'
-      )
+      ).map(enrich)
       setOrders(staged)
       // Also store completed and need-to-package for pallet calculator planning
       setCompletedOrders(data.filter(
         (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'completed'
-      ))
+      ).map(enrich))
       setNeedToPackageOrders(data.filter(
         (o) => {
           const s = normalizeStatus(o.internalStatus, o.ifStatus)
           return s === 'wip' || s === 'pending'
         }
-      ))
+      ).map(enrich))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')
     } finally {
