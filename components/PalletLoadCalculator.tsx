@@ -164,10 +164,17 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
     } else if (t.orientation === 'lengthwise') {
       across = t.length; along = t.width
     } else {
-      // auto: pick orientation that fits more across
-      const wAcross = Math.floor(trailer.width / t.width)
-      const lAcross = Math.floor(trailer.width / t.length)
-      if (wAcross >= lAcross) {
+      // auto: try both orientations and pick the one that wastes less space
+      // Option A: width across trailer
+      const aAcross = Math.floor(trailer.width / t.width)
+      const aAlong = t.length
+      const aWaste = trailer.width - (aAcross * t.width) // leftover width
+      // Option B: length across trailer
+      const bAcross = Math.floor(trailer.width / t.length)
+      const bAlong = t.width
+      const bWaste = trailer.width - (bAcross * t.length)
+      // Prefer orientation that fits more across; tiebreak: less wasted width; then shorter along (more rows)
+      if (aAcross > bAcross || (aAcross === bAcross && aWaste < bWaste) || (aAcross === bAcross && aWaste === bWaste && aAlong <= bAlong)) {
         across = t.width; along = t.length
       } else {
         across = t.length; along = t.width
@@ -414,29 +421,6 @@ export default function PalletLoadCalculator({
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-        <div className="bg-muted/50 rounded p-2">
-          <div className="text-muted-foreground text-xs">{t.totalPallets}</div>
-          <div className="font-bold text-lg">{totalPallets}</div>
-        </div>
-        <div className="bg-muted/50 rounded p-2">
-          <div className="text-muted-foreground text-xs">{t.totalWeight}</div>
-          <div className="font-bold text-lg">{totalWeight.toLocaleString()} lbs</div>
-          <div className="mt-1 h-2 rounded-full bg-muted overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${weightBarColor}`} style={{ width: `${weightPct}%` }} />
-          </div>
-        </div>
-        <div className="bg-muted/50 rounded p-2">
-          <div className="text-muted-foreground text-xs">{t.spaceUsed}</div>
-          <div className="font-bold text-lg">{spaceUsedPct}%</div>
-        </div>
-        <div className="bg-muted/50 rounded p-2">
-          <div className="text-muted-foreground text-xs">{t.loadStatus}</div>
-          <div className={`font-bold text-lg ${loadColor}`}>{loadStatus}</div>
-        </div>
-      </div>
-
       {/* Pallet types */}
       <div className="space-y-2">
         {palletTypes.map((pt, idx) => {
@@ -638,6 +622,30 @@ export default function PalletLoadCalculator({
         </button>
       </div>
 
+      {/* Stats bar — right above diagram for screenshot */}
+      <div id="plc-export-area" className="space-y-3 bg-background rounded-lg p-3 border">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div className="bg-muted/50 rounded p-2">
+          <div className="text-muted-foreground text-xs">{t.totalPallets}</div>
+          <div className="font-bold text-lg">{totalPallets}</div>
+        </div>
+        <div className="bg-muted/50 rounded p-2">
+          <div className="text-muted-foreground text-xs">{t.totalWeight}</div>
+          <div className="font-bold text-lg">{totalWeight.toLocaleString()} lbs</div>
+          <div className="mt-1 h-2 rounded-full bg-muted overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${weightBarColor}`} style={{ width: `${weightPct}%` }} />
+          </div>
+        </div>
+        <div className="bg-muted/50 rounded p-2">
+          <div className="text-muted-foreground text-xs">{t.spaceUsed}</div>
+          <div className="font-bold text-lg">{spaceUsedPct}%</div>
+        </div>
+        <div className="bg-muted/50 rounded p-2">
+          <div className="text-muted-foreground text-xs">{t.loadStatus}</div>
+          <div className={`font-bold text-lg ${loadColor}`}>{loadStatus}</div>
+        </div>
+      </div>
+
       {/* SVG Trailer Diagram — HORIZONTAL (left=front, right=door) */}
       <div className="overflow-x-auto">
         <svg
@@ -797,6 +805,102 @@ export default function PalletLoadCalculator({
           )}
         </svg>
       </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 text-xs">
+        {palletTypes.filter(pt => pt.qty > 0).map((pt) => {
+          const c = PLC_COLORS[pt.colorIdx]
+          const orientLabel = pt.orientation === 'widthwise' ? 'Width Across' : pt.orientation === 'lengthwise' ? 'Length Across' : 'Auto'
+          return (
+            <div key={pt.id} className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm" style={{ background: c.fill, border: `1px solid ${c.stroke}` }} />
+              <span>#{palletTypes.indexOf(pt) + 1} {pt.label} ({pt.width}&quot;×{pt.length}&quot;) — {pt.qty} pallets, {pt.weightEach} lbs/ea — {orientLabel}</span>
+            </div>
+          )
+        })}
+      </div>
+      </div>{/* end plc-export-area */}
+
+      {/* Export button */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => exportLoadPDF()}
+          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          📄 {lang === 'es' ? 'Exportar PDF' : 'Export Load Report (PDF)'}
+        </button>
+      </div>
     </div>
   )
+
+  function exportLoadPDF() {
+    // Build HTML report for printing as PDF
+    const trailerLabel = trailer.length === 636 ? '53\' Trailer' : '48\' Trailer'
+    const rows = palletTypes.filter(pt => pt.qty > 0).map((pt) => {
+      const orientLabel = pt.orientation === 'widthwise' ? 'Width Across' : pt.orientation === 'lengthwise' ? 'Length Across' : 'Auto'
+      // Find linked orders
+      const linkedOrders = pt.linkedOrderKeys.map(k => {
+        const [ifNum] = k.split('::')
+        return ifNum
+      })
+      return `<tr>
+        <td style="padding:6px 10px;border:1px solid #ddd;">${pt.label}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;">${linkedOrders.join(', ') || '—'}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${pt.width}"</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${pt.length}"</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${pt.qty}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${(pt.qty * pt.weightEach).toLocaleString()} lbs</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${orientLabel}</td>
+      </tr>`
+    }).join('')
+
+    // Capture the SVG diagram
+    const exportArea = document.getElementById('plc-export-area')
+    const svgEl = exportArea?.querySelector('svg')
+    const svgMarkup = svgEl ? svgEl.outerHTML : ''
+
+    const html = `<!DOCTYPE html><html><head><title>Load Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; color: #1a1a2e; }
+      h1 { font-size: 22px; margin-bottom: 4px; }
+      .meta { color: #666; font-size: 13px; margin-bottom: 16px; }
+      .stats { display: flex; gap: 20px; margin-bottom: 16px; }
+      .stat { background: #f0f4f8; border-radius: 8px; padding: 10px 16px; }
+      .stat-label { font-size: 11px; color: #666; }
+      .stat-value { font-size: 18px; font-weight: 700; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+      th { background: #1F3864; color: white; padding: 8px 10px; text-align: left; font-size: 12px; }
+      td { font-size: 12px; }
+      tr:nth-child(even) { background: #f2f6fc; }
+      .diagram { margin: 20px 0; }
+      .diagram svg { width: 100%; max-height: 300px; }
+      .status-ok { color: #16a34a; } .status-warn { color: #d97706; } .status-bad { color: #dc2626; }
+      @media print { body { margin: 10px; } .no-print { display: none; } }
+    </style></head><body>
+    <h1>🚚 Pallet Load Report</h1>
+    <div class="meta">${trailerLabel} · ${new Date().toLocaleDateString()} · Max Payload: ${maxPayload.toLocaleString()} lbs</div>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total Pallets</div><div class="stat-value">${totalPallets}</div></div>
+      <div class="stat"><div class="stat-label">Total Weight</div><div class="stat-value">${totalWeight.toLocaleString()} lbs</div></div>
+      <div class="stat"><div class="stat-label">Space Used</div><div class="stat-value">${spaceUsedPct}%</div></div>
+      <div class="stat"><div class="stat-label">Load Status</div><div class="stat-value ${isOverweight ? 'status-bad' : hasOverflow ? 'status-warn' : 'status-ok'}">${loadStatus}</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Customer / Label</th><th>IF Number(s)</th><th>Width</th><th>Length</th><th>Qty</th><th>Total Weight</th><th>Orientation</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="diagram">${svgMarkup}</div>
+    <div class="no-print" style="margin-top:20px;text-align:center;">
+      <button onclick="window.print()" style="padding:10px 24px;background:#1F3864;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨️ Print / Save as PDF</button>
+    </div>
+    </body></html>`
+
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+    }
+  }
 }
