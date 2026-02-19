@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useCallback, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react'
 import { getPhotoUrls } from '@/lib/drive-utils'
 
@@ -91,7 +92,10 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
       }
     : {}
 
-  return (
+  // Render via portal to escape overflow-hidden containers
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <>
       <style jsx global>{`
         @keyframes slide-in-from-left {
@@ -206,6 +210,7 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   )
 }
