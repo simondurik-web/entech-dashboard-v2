@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
+// Hardcoded super admin — cannot be demoted
+const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
+
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const userId = req.headers.get("x-user-id")
   if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
-    .select("role")
+    .select("role, email")
     .eq("id", userId)
     .single()
+  if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
   return profile?.role === "admin"
 }
 
@@ -51,6 +55,21 @@ export async function PUT(req: NextRequest) {
   const { user_id, role, custom_permissions, is_active } = body
 
   if (!user_id) return NextResponse.json({ error: "Missing user id" }, { status: 400 })
+
+  // Protect super admin — cannot be demoted or deactivated
+  const { data: targetUser } = await supabaseAdmin
+    .from("user_profiles")
+    .select("email")
+    .eq("id", user_id)
+    .single()
+  if (targetUser?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    if (role !== undefined && role !== "admin") {
+      return NextResponse.json({ error: "Cannot change super admin role" }, { status: 403 })
+    }
+    if (is_active === false) {
+      return NextResponse.json({ error: "Cannot deactivate super admin" }, { status: 403 })
+    }
+  }
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (role !== undefined) updates.role = role

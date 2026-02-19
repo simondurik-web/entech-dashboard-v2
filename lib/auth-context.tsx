@@ -6,6 +6,12 @@ import type { User, Session } from "@supabase/supabase-js"
 
 export type UserRole = 'visitor' | 'regular_user' | 'group_leader' | 'manager' | 'admin'
 
+// Hardcoded super admin — cannot be demoted by anyone
+export const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'
+export function isSuperAdmin(email?: string | null): boolean {
+  return email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
+}
+
 export type UserProfile = {
   id: string
   email: string
@@ -52,6 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (res.ok) {
         const data = await res.json()
+        // Enforce super admin — always admin regardless of DB
+        if (isSuperAdmin(u.email) && data.profile) {
+          data.profile.role = 'admin'
+        }
         setProfile(data.profile)
       }
     } catch (err) {

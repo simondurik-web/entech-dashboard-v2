@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth, type UserRole } from '@/lib/auth-context'
+import { useAuth, type UserRole, SUPER_ADMIN_EMAIL } from '@/lib/auth-context'
 import { Search, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-react'
 
 interface UserRecord {
@@ -249,20 +249,26 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
                   <td className="px-4 py-3">
-                    <select
-                      value={u.role}
-                      onChange={(e) =>
-                        updateUser(u.id, { role: e.target.value as UserRole })
-                      }
-                      disabled={saving === u.id}
-                      className="rounded border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r.replace(/_/g, ' ')}
-                        </option>
-                      ))}
-                    </select>
+                    {u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                        🔒 Super Admin
+                      </span>
+                    ) : (
+                      <select
+                        value={u.role}
+                        onChange={(e) =>
+                          updateUser(u.id, { role: e.target.value as UserRole })
+                        }
+                        disabled={saving === u.id}
+                        className="rounded border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {r.replace(/_/g, ' ')}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <button

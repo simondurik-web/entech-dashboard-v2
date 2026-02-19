@@ -63,7 +63,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ profile })
   }
 
-  // No pre-enrolled profile — insert new with visitor role
+  // No pre-enrolled profile — insert new (super admin gets admin, others get visitor)
+  const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
+  const defaultRole = email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() ? "admin" : "visitor"
+
   const { data: profile, error } = await supabaseAdmin
     .from("user_profiles")
     .insert({
@@ -71,7 +74,7 @@ export async function POST(req: NextRequest) {
       email,
       full_name: full_name || null,
       avatar_url: avatar_url || null,
-      role: "visitor",
+      role: defaultRole,
       updated_at: new Date().toISOString(),
     })
     .select()
