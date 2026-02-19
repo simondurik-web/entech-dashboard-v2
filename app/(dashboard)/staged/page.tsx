@@ -165,7 +165,10 @@ export default function StagedPage() {
         (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'completed'
       ))
       setNeedToPackageOrders(data.filter(
-        (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'wip'
+        (o) => {
+          const s = normalizeStatus(o.internalStatus, o.ifStatus)
+          return s === 'wip' || s === 'pending'
+        }
       ))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')

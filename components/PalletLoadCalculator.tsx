@@ -97,6 +97,7 @@ interface PalletType {
   doubleStack: boolean
   linkMode: boolean
   linkedOrderKeys: string[]
+  linkSource: 'staged' | 'completed' | 'package'
 }
 
 interface PlacedPallet {
@@ -135,6 +136,7 @@ function defaultPalletType(index: number): PalletType {
     doubleStack: false,
     linkMode: false,
     linkedOrderKeys: [],
+    linkSource: 'staged',
   }
 }
 
@@ -252,7 +254,6 @@ export default function PalletLoadCalculator({
   const [palletTypes, setPalletTypes] = useState<PalletType[]>([defaultPalletType(0)])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [linkSearch, setLinkSearch] = useState('')
-  const [linkSource, setLinkSource] = useState<'staged' | 'completed' | 'package'>('staged')
 
   const trailer = PLC_TRAILERS[trailerKey]
 
@@ -345,6 +346,7 @@ export default function PalletLoadCalculator({
           doubleStack: false,
           linkMode: true,
           linkedOrderKeys: [orderKey],
+          linkSource: pt.linkSource,
         }
         return [...prev, newPt]
       }
@@ -541,26 +543,26 @@ export default function PalletLoadCalculator({
                 </button>
               </div>
 
-              {/* Link orders panel — 3 sources */}
+              {/* Link orders panel — 3 sources (per-pallet) */}
               {pt.linkMode && (
                 <div className="border rounded p-2 bg-muted/30 space-y-2">
                   {/* Source tabs */}
                   <div className="flex gap-1 flex-wrap">
-                    <button onClick={() => setLinkSource('staged')} className={`text-[10px] px-2 py-1 rounded font-medium ${linkSource === 'staged' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                    <button onClick={() => updateType(pt.id, { linkSource: 'staged' })} className={`text-[10px] px-2 py-1 rounded font-medium ${pt.linkSource === 'staged' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
                       🚚 Link Ready to Ship ({stagedOrders.length})
                     </button>
-                    <button onClick={() => setLinkSource('completed')} className={`text-[10px] px-2 py-1 rounded font-medium ${linkSource === 'completed' ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                    <button onClick={() => updateType(pt.id, { linkSource: 'completed' })} className={`text-[10px] px-2 py-1 rounded font-medium ${pt.linkSource === 'completed' ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'}`}>
                       ✅ Link Completed ({completedOrders.length})
                     </button>
-                    <button onClick={() => setLinkSource('package')} className={`text-[10px] px-2 py-1 rounded font-medium ${linkSource === 'package' ? 'bg-amber-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                    <button onClick={() => updateType(pt.id, { linkSource: 'package' })} className={`text-[10px] px-2 py-1 rounded font-medium ${pt.linkSource === 'package' ? 'bg-amber-600 text-white' : 'bg-muted text-muted-foreground'}`}>
                       📦 Link Need to Package ({needToPackageOrders.length})
                     </button>
                   </div>
                   {/* Disclaimer for non-staged */}
-                  {linkSource === 'completed' && (
+                  {pt.linkSource === 'completed' && (
                     <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ This order is not staged yet — this is used for planning purposes.</p>
                   )}
-                  {linkSource === 'package' && (
+                  {pt.linkSource === 'package' && (
                     <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ For planning purposes — these orders are not ready to ship.</p>
                   )}
                   <input
@@ -570,7 +572,7 @@ export default function PalletLoadCalculator({
                     className="w-full px-2 py-1 rounded border bg-background text-xs"
                   />
                   <div className="max-h-40 overflow-y-auto space-y-0.5">
-                    {(linkSource === 'staged' ? stagedOrders : linkSource === 'completed' ? completedOrders : needToPackageOrders)
+                    {(pt.linkSource === 'staged' ? stagedOrders : pt.linkSource === 'completed' ? completedOrders : needToPackageOrders)
                       .filter((o) => {
                         if (!linkSearch.trim()) return true
                         const q = linkSearch.toLowerCase()
@@ -727,17 +729,32 @@ export default function PalletLoadCalculator({
                     {p.label.slice(0, 8)}
                   </text>
                 )}
-                {/* Pallet dimensions */}
-                {pw > 30 && ph > 20 && (
+                {/* Pallet dimensions W×L text */}
+                {pw > 25 && ph > 18 && (
                   <text
                     x={px + pw / 2}
                     y={py + ph / 2 + 10}
                     textAnchor="middle"
-                    fill="rgba(255,255,255,0.7)"
+                    fill="rgba(255,255,255,0.8)"
                     fontSize={Math.min(8, pw / 7)}
                   >
-                    {p.across}&quot;×{p.along}&quot;
+                    {p.across}×{p.along}
                   </text>
+                )}
+                {/* Dimension arrows on first pallet of each type */}
+                {i === packResult.placed.findIndex(pp => pp.typeId === p.typeId) && pw > 35 && ph > 25 && (
+                  <g>
+                    {/* Width arrow (vertical / across) */}
+                    <line x1={px - 4} y1={py + 2} x2={px - 4} y2={py + ph - 2} stroke="white" strokeWidth={0.8} strokeDasharray="2,1" opacity={0.7} markerStart="url(#arrowU)" markerEnd="url(#arrowD)" />
+                    <text x={px - 7} y={py + ph / 2} textAnchor="middle" fill="white" fontSize={7} opacity={0.8} transform={`rotate(-90, ${px - 7}, ${py + ph / 2})`}>
+                      W:{p.across}&quot;
+                    </text>
+                    {/* Length arrow (horizontal / along) */}
+                    <line x1={px + 2} y1={py + ph + 4} x2={px + pw - 2} y2={py + ph + 4} stroke="white" strokeWidth={0.8} strokeDasharray="2,1" opacity={0.7} markerStart="url(#arrowL)" markerEnd="url(#arrowR)" />
+                    <text x={px + pw / 2} y={py + ph + 11} textAnchor="middle" fill="white" fontSize={7} opacity={0.8}>
+                      L:{p.along}&quot;
+                    </text>
+                  </g>
                 )}
               </g>
             )
