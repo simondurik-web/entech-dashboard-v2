@@ -29,60 +29,71 @@ export async function exportToExcel<T extends Record<string, unknown>>(
 
   const ExcelJS = await import('exceljs')
   const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet('Data', {
-    views: [{ state: 'frozen', ySplit: 1 }],
-  })
+  const ws = wb.addWorksheet('Data')
 
-  // Header row
+  // Header row — matches HTML production dashboard exactly
   const headerRow = ws.addRow(columns.map((c) => c.label))
+  headerRow.height = 28
   headerRow.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }, // Blue matching the HTML dashboard
-    }
+    cell.font = { name: 'Aptos', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } }
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
     cell.border = {
-      bottom: { style: 'thin', color: { argb: 'FF000000' } },
-      right: { style: 'thin', color: { argb: 'FF3B6AB5' } },
+      bottom: { style: 'medium', color: { argb: 'FF0D1B3E' } },
+      left: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+      right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
     }
   })
-  headerRow.height = 28
 
-  // Data rows
-  data.forEach((row) => {
+  // Data rows with alternating row colors
+  data.forEach((row, ri) => {
     const values = columns.map((c) => {
       const val = row[c.key]
       if (val === null || val === undefined) return ''
       if (typeof val === 'number') return val
-      // Try to parse numeric strings
       const str = String(val)
       const num = Number(str)
       if (!isNaN(num) && str.trim() !== '' && !/^0\d/.test(str.trim())) return num
       return str
     })
-    ws.addRow(values)
+    const dataRow = ws.addRow(values)
+    dataRow.height = 22
+    const bgColor = ri % 2 === 0 ? 'FFF2F6FC' : 'FFFFFFFF'
+    dataRow.eachCell((cell) => {
+      cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF2D2D2D' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
+      cell.alignment = { horizontal: 'left', vertical: 'middle' }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+        bottom: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+        left: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+        right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+      }
+      // Center-align numbers
+      if (typeof cell.value === 'number') {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.numFmt = '#,##0'
+      }
+    })
   })
 
-  // Auto-filter
+  // Auto column widths
+  columns.forEach((col, i) => {
+    let maxLen = col.label.length
+    const sampleSize = Math.min(data.length, 200)
+    for (let r = 0; r < sampleSize; r++) {
+      const len = String(data[r][col.key] ?? '').length
+      if (len > maxLen) maxLen = len
+    }
+    ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 4, 10), 35)
+  })
+
+  // Freeze header + auto filter
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
   ws.autoFilter = {
     from: { row: 1, column: 1 },
     to: { row: data.length + 1, column: columns.length },
   }
-
-  // Auto-width columns (based on header + sample data)
-  columns.forEach((col, i) => {
-    const colObj = ws.getColumn(i + 1)
-    let maxLen = col.label.length
-    const sampleSize = Math.min(data.length, 100)
-    for (let r = 0; r < sampleSize; r++) {
-      const val = data[r][col.key]
-      const len = String(val ?? '').length
-      if (len > maxLen) maxLen = len
-    }
-    colObj.width = Math.min(Math.max(maxLen + 3, 8), 45)
-  })
 
   // Generate and download
   const buffer = await wb.xlsx.writeBuffer()
