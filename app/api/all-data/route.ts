@@ -14,12 +14,17 @@ function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): strin
   return val
 }
 
+function wrapResponse(data: Record<string, string>[]) {
+  const columns = data.length > 0 ? Object.keys(data[0]) : []
+  return { columns, data }
+}
+
 export async function GET() {
   try {
     // Primary: Supabase
     try {
       const data = await fetchAllDataFromDB()
-      return NextResponse.json(data)
+      return NextResponse.json(wrapResponse(data))
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
       // Fallback: Google Sheets
@@ -35,7 +40,7 @@ export async function GET() {
         const line = row['Line'] || row['Col A'] || ''
         return line !== '' && line !== 'Line'
       })
-      return NextResponse.json(data)
+      return NextResponse.json(wrapResponse(data))
     }
   } catch (error) {
     console.error('Failed to fetch all data:', error)
