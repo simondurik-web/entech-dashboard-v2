@@ -35,23 +35,71 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing id or email" }, { status: 400 })
   }
 
+  // Check if a pre-enrolled profile exists with this email
+  const { data: existing } = await supabaseAdmin
+    .from("user_profiles")
+    .select("*")
+    .eq("email", email)
+    .single()
+
+  if (existing) {
+    // Update the pre-enrolled row: set the real auth id, name, avatar, but KEEP existing role
+    const { data: profile, error } = await supabaseAdmin
+      .from("user_profiles")
+      .update({
+        id,
+        full_name: full_name || existing.full_name,
+        avatar_url: avatar_url || existing.avatar_url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("email", email)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Profile update error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ profile })
+  }
+
+  // No pre-enrolled profile — insert new with visitor role
   const { data: profile, error } = await supabaseAdmin
     .from("user_profiles")
-    .upsert(
-      {
-        id,
-        email,
-        full_name: full_name || null,
-        avatar_url: avatar_url || null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    )
+    .insert({
+      id,
+      email,
+      full_name: full_name || null,
+      avatar_url: avatar_url || null,
+      role: "visitor",
+      updated_at: new Date().toISOString(),
+    })
     .select()
     .single()
 
   if (error) {
-    console.error("Profile upsert error:", error)
+    // If insert fails due to id conflict (user already exists by id), update instead
+    if (error.code === "23505") {
+      const { data: updated, error: updateErr } = await supabaseAdmin
+        .from("user_profiles")
+        .update({
+          email,
+          full_name: full_name || null,
+          avatar_url: avatar_url || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single()
+
+      if (updateErr) {
+        console.error("Profile update error:", updateErr)
+        return NextResponse.json({ error: updateErr.message }, { status: 500 })
+      }
+      return NextResponse.json({ profile: updated })
+    }
+
+    console.error("Profile insert error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

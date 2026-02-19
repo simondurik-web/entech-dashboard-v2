@@ -2,19 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 async function isAdmin(req: NextRequest): Promise<boolean> {
-  const authHeader = req.headers.get("authorization")
-  if (!authHeader?.startsWith("Bearer ")) return false
-  const { createClient } = await import("@supabase/supabase-js")
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const { data: { user } } = await supabase.auth.getUser(authHeader.slice(7))
-  if (!user) return false
+  const userId = req.headers.get("x-user-id")
+  if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
     .select("role")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single()
   return profile?.role === "admin"
 }
@@ -40,7 +33,13 @@ export async function GET(req: NextRequest) {
     last_sign_in: authMap.get(u.id)?.last_sign_in_at || null,
   }))
 
-  return NextResponse.json({ users: enriched })
+  // Count users per role
+  const roleCounts: Record<string, number> = {}
+  for (const u of users ?? []) {
+    roleCounts[u.role] = (roleCounts[u.role] || 0) + 1
+  }
+
+  return NextResponse.json({ users: enriched, roleCounts })
 }
 
 export async function PUT(req: NextRequest) {
@@ -49,9 +48,9 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { id, role, custom_permissions, is_active } = body
+  const { user_id, role, custom_permissions, is_active } = body
 
-  if (!id) return NextResponse.json({ error: "Missing user id" }, { status: 400 })
+  if (!user_id) return NextResponse.json({ error: "Missing user id" }, { status: 400 })
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (role !== undefined) updates.role = role
@@ -61,7 +60,46 @@ export async function PUT(req: NextRequest) {
   const { data, error } = await supabaseAdmin
     .from("user_profiles")
     .update(updates)
-    .eq("id", id)
+    .eq("id", user_id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ user: data })
+}
+
+export async function POST(req: NextRequest) {
+  if (!(await isAdmin(req))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const body = await req.json()
+  const { email, role, full_name } = body
+
+  if (!email || !role) {
+    return NextResponse.json({ error: "Missing email or role" }, { status: 400 })
+  }
+
+  // Check if email already exists
+  const { data: existing } = await supabaseAdmin
+    .from("user_profiles")
+    .select("id")
+    .eq("email", email)
+    .single()
+
+  if (existing) {
+    return NextResponse.json({ error: "User with this email already exists" }, { status: 409 })
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("user_profiles")
+    .insert({
+      id: crypto.randomUUID(),
+      email,
+      role,
+      full_name: full_name || null,
+      is_active: true,
+    })
     .select()
     .single()
 

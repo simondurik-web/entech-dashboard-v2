@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth, type UserRole } from '@/lib/auth-context'
-import { Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { Search, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-react'
 
 interface UserRecord {
   id: string
@@ -35,6 +35,11 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [showEnroll, setShowEnroll] = useState(false)
+  const [enrollEmail, setEnrollEmail] = useState('')
+  const [enrollRole, setEnrollRole] = useState<UserRole>('regular_user')
+  const [enrollStatus, setEnrollStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [enrolling, setEnrolling] = useState(false)
 
   const fetchUsers = useCallback(async () => {
     if (!user) return
@@ -75,6 +80,38 @@ export default function AdminUsersPage() {
     updateUser(u.id, { custom_permissions: next.length > 0 ? next : null })
   }
 
+  const preEnrollUser = async () => {
+    if (!user || !enrollEmail) return
+    setEnrolling(true)
+    setEnrollStatus(null)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id,
+        },
+        body: JSON.stringify({ email: enrollEmail, role: enrollRole }),
+      })
+      if (res.ok) {
+        setEnrollStatus({ type: 'success', message: `Pre-enrolled ${enrollEmail}` })
+        setEnrollEmail('')
+        setEnrollRole('regular_user')
+        await fetchUsers()
+        setTimeout(() => {
+          setShowEnroll(false)
+          setEnrollStatus(null)
+        }, 1500)
+      } else {
+        const data = await res.json()
+        setEnrollStatus({ type: 'error', message: data.error || 'Failed to pre-enroll' })
+      }
+    } catch {
+      setEnrollStatus({ type: 'error', message: 'Network error' })
+    }
+    setEnrolling(false)
+  }
+
   const filtered = users.filter((u) => {
     const q = search.toLowerCase()
     return (
@@ -93,12 +130,68 @@ export default function AdminUsersPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">User Management</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage user roles and permissions ({users.length} users)
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">User Management</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage user roles and permissions ({users.length} users)
+          </p>
+        </div>
+        <button
+          onClick={() => { setShowEnroll(!showEnroll); setEnrollStatus(null) }}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          <UserPlus className="size-4" />
+          Pre-enroll User
+        </button>
       </div>
+
+      {showEnroll && (
+        <div className="mb-4 rounded-lg border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Pre-enroll New User</h3>
+            <button onClick={() => { setShowEnroll(false); setEnrollStatus(null) }} className="text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-muted-foreground">Email</label>
+              <input
+                type="email"
+                placeholder="user@example.com"
+                value={enrollEmail}
+                onChange={(e) => setEnrollEmail(e.target.value)}
+                className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Role</label>
+              <select
+                value={enrollRole}
+                onChange={(e) => setEnrollRole(e.target.value as UserRole)}
+                className="rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={preEnrollUser}
+              disabled={enrolling || !enrollEmail}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {enrolling ? 'Adding...' : 'Add'}
+            </button>
+          </div>
+          {enrollStatus && (
+            <p className={`mt-2 text-sm ${enrollStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
+              {enrollStatus.message}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-4 max-w-sm">
