@@ -27,58 +27,72 @@ export async function exportToExcel<T extends Record<string, unknown>>(
 ) {
   if (data.length === 0) return
 
-  // Dynamic import to avoid bundling xlsx for all pages
-  const XLSX = await import('xlsx')
+  const ExcelJS = await import('exceljs')
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('Data', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  })
 
-  const headers = columns.map((c) => c.label)
-  const rows = data.map((row) =>
-    columns.map((c) => {
+  // Header row
+  const headerRow = ws.addRow(columns.map((c) => c.label))
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' }, // Blue matching the HTML dashboard
+    }
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    cell.border = {
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF3B6AB5' } },
+    }
+  })
+  headerRow.height = 28
+
+  // Data rows
+  data.forEach((row) => {
+    const values = columns.map((c) => {
       const val = row[c.key]
       if (val === null || val === undefined) return ''
       if (typeof val === 'number') return val
-      return String(val)
+      // Try to parse numeric strings
+      const str = String(val)
+      const num = Number(str)
+      if (!isNaN(num) && str.trim() !== '' && !/^0\d/.test(str.trim())) return num
+      return str
     })
-  )
-
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
-
-  // Auto-width columns
-  ws['!cols'] = columns.map((col, i) => {
-    const maxLen = Math.max(
-      col.label.length,
-      ...rows.map((r) => String(r[i] ?? '').length)
-    )
-    return { wch: Math.min(Math.max(maxLen + 2, 8), 50) }
+    ws.addRow(values)
   })
 
-  // Freeze first row (header)
-  ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', state: 'frozen' }
-  // Also set as views for broader compatibility
-  if (!ws['!views']) ws['!views'] = []
-  ;(ws['!views'] as Array<{ state: string; ySplit: number }>).push({ state: 'frozen', ySplit: 1 })
-
-  // Style header row — bold with dark background
-  // Note: xlsx community edition has limited styling; use cell metadata
-  for (let c = 0; c < columns.length; c++) {
-    const cellRef = XLSX.utils.encode_cell({ r: 0, c })
-    if (ws[cellRef]) {
-      ws[cellRef].s = {
-        font: { bold: true, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '2D3748' } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          bottom: { style: 'thin', color: { rgb: '000000' } },
-        },
-      }
-    }
+  // Auto-filter
+  ws.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: data.length + 1, column: columns.length },
   }
 
-  // Auto-filter on header row
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: columns.length - 1 } }) }
+  // Auto-width columns (based on header + sample data)
+  columns.forEach((col, i) => {
+    const colObj = ws.getColumn(i + 1)
+    let maxLen = col.label.length
+    const sampleSize = Math.min(data.length, 100)
+    for (let r = 0; r < sampleSize; r++) {
+      const val = data[r][col.key]
+      const len = String(val ?? '').length
+      if (len > maxLen) maxLen = len
+    }
+    colObj.width = Math.min(Math.max(maxLen + 3, 8), 45)
+  })
 
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Data')
-  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`, { bookSST: true })
+  // Generate and download
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function escapeCSV(value: string): string {
