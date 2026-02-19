@@ -136,7 +136,13 @@ export function OrderDetail({
           return false
         }))
         setStaged(stagedData.filter((r) => normalize(r.ifNumber) === targetIf))
-        setShipping(shippingData.filter((r) => normalize(r.ifNumber) === targetIf))
+        setShipping(shippingData.filter((r) => {
+          if (targetIf && normalize(r.ifNumber) === targetIf) return true
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rLine = normalize((r as any).lineNumber)
+          if (targetLine && rLine && rLine === targetLine) return true
+          return false
+        }))
         setDrawings(drawingsData)
       } catch (err) {
         if (!mounted) return
@@ -248,8 +254,8 @@ export function OrderDetail({
               </div>
             )}
 
-            {/* ── 5 boxes: Pallet, Fusion, Shipment, Close-Up, Drawings ── */}
-            <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
+            {/* ── 4 boxes: Pallet, Shipment, Close-Up, Drawings ── */}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
               {/* Pallet Photos */}
               <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(59, 130, 246)' }}>
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 mb-2">
@@ -260,21 +266,6 @@ export function OrderDetail({
                 </h4>
                 {photoCategories.palletPhotos.length > 0 ? (
                   <PhotoGrid photos={photoCategories.palletPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'pallet' }} />
-                ) : (
-                  <p className="text-[10px] text-muted-foreground">No photos</p>
-                )}
-              </div>
-
-              {/* Fusion */}
-              <div className="rounded-lg border border-teal-500/20 bg-teal-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(20, 184, 166)' }}>
-                <h4 className="flex items-center gap-1.5 text-xs font-semibold text-teal-400 mb-2">
-                  <FileText className="size-3" /> Fusion
-                  {photoCategories.fusionPhotos.length > 0 && (
-                    <span className="ml-auto text-[10px] bg-teal-500/20 px-1.5 py-0.5 rounded">{photoCategories.fusionPhotos.length}</span>
-                  )}
-                </h4>
-                {photoCategories.fusionPhotos.length > 0 ? (
-                  <PhotoGrid photos={photoCategories.fusionPhotos} maxVisible={4} size="sm" context={{ ifNumber, lineNumber: line, photoType: 'fusion' }} />
                 ) : (
                   <p className="text-[10px] text-muted-foreground">No photos</p>
                 )}
