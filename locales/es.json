@@ -130,5 +130,42 @@
   "page.materialReqs": "Requerimientos de Material",
   "page.customerRef": "Referencia de Clientes",
   "page.fpReference": "Referencia FP",
-  "page.quotes": "Cotizaciones"
+  "page.quotes": "Cotizaciones",
+  "page.needToPackageSubtitle": "Órdenes listas para empacar según inventario",
+
+  "stats.urgentReady": "Urgente y Listo",
+
+  "table.packages": "# Paquetes",
+  "table.packaging": "Empaque",
+  "table.partPerPackage": "Parte/Paquete",
+  "table.fusionInv": "Inventario Fusion",
+  "table.hubMold": "Molde Centro",
+  "table.daysUntil": "Días Hasta",
+
+  "needToPackage.overdue": "Vencido",
+  "needToPackage.ready": "Listo",
+  "needToPackage.missing": "Faltante",
+  "needToPackage.stock": "Inventario",
+  "needToPackage.noun": "orden",
+
+  "page.needToMakeSubtitle": "Partes a fabricar basado en inventario vs mínimos",
+
+  "needToMake.tires": "Llantas",
+  "needToMake.hubs": "Centros",
+  "needToMake.finishedParts": "Partes Terminadas",
+  "needToMake.bearings": "Baleros",
+  "needToMake.stocked": "En Stock",
+  "needToMake.make": "Fabricar",
+  "needToMake.inStock": "En Stock",
+  "needToMake.mold": "Molde",
+
+  "stats.totalParts": "Total de Partes",
+  "stats.partsToMake": "Partes por Fabricar",
+  "stats.needsProduction": "Necesita Producción",
+  "stats.fullyStocked": "Completamente Surtido",
+
+  "table.product": "Producto",
+  "table.moldType": "Tipo de Molde",
+  "table.minimums": "Mínimos",
+  "table.partsToMake": "Partes por Fabricar"
 }

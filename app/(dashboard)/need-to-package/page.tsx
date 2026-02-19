@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
 import { OrderCard } from '@/components/cards/OrderCard'
@@ -8,15 +8,9 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order, InventoryItem } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
+import { useI18n } from '@/lib/i18n'
 
-const FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'rolltech', label: 'Roll Tech', emoji: '🔵' },
-  { key: 'molding', label: 'Molding', emoji: '🟡' },
-  { key: 'snappad', label: 'Snap Pad', emoji: '🟣' },
-] as const
-
-type FilterKey = (typeof FILTERS)[number]['key']
+type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
 interface PackageOrder extends Order {
   availableStock: number
@@ -35,11 +29,11 @@ function PriorityBadge({ level, urgent }: { level: number; urgent: boolean }) {
   return <span className="px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">-</span>
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: (key: string) => string }) {
   const s = status.toLowerCase()
-  if (s.includes('need') || s.includes('pending')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500 text-black">NEED TO MAKE</span>
-  if (s.includes('making') || s.includes('wip') || s.includes('progress')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500 text-white">MAKING</span>
-  if (s.includes('staged') || s.includes('ready')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-600 text-white">READY</span>
+  if (s.includes('need') || s.includes('pending')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500 text-black">{t('status.needToMake').toUpperCase()}</span>
+  if (s.includes('making') || s.includes('wip') || s.includes('progress')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500 text-white">{t('status.making').toUpperCase()}</span>
+  if (s.includes('staged') || s.includes('ready')) return <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-600 text-white">{t('status.readyToShip').toUpperCase()}</span>
   return <span className="px-2 py-0.5 rounded text-xs bg-muted">{status}</span>
 }
 
@@ -56,123 +50,125 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-const COLUMNS: ColumnDef<PackageRow>[] = [
-  { key: 'category', label: 'Category', sortable: true, filterable: true },
-  {
-    key: 'dateOfRequest',
-    label: 'Due Date',
-    sortable: true,
-    render: (v) => String(v || '-'),
-  },
-  {
-    key: 'priorityLevel',
-    label: 'Priority',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => <PriorityBadge level={v as number} urgent={(row as unknown as PackageOrder).urgentOverride} />,
-  },
-  { key: 'line', label: 'Line', sortable: true, filterable: true },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'ifNumber', label: 'IF #', sortable: true, filterable: true },
-  {
-    key: 'partNumber',
-    label: 'Part #',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as PackageOrder
-      const colorClass = isRollTech(order.category) ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span className={colorClass}>{String(v)}</span>
-          <InventoryPopover partNumber={String(v)} partType="part" />
-        </span>
-      )
+function getColumns(t: (key: string) => string): ColumnDef<PackageRow>[] {
+  return [
+    { key: 'category', label: t('table.category'), sortable: true, filterable: true },
+    {
+      key: 'dateOfRequest',
+      label: t('table.dueDate'),
+      sortable: true,
+      render: (v) => String(v || '-'),
     },
-  },
-  {
-    key: 'numPackages',
-    label: '# Packages',
-    sortable: true,
-    render: (v) => { const n = v as number; return n > 0 ? Math.ceil(n).toString() : '-' },
-  },
-  { key: 'packaging', label: 'Packaging', sortable: true, filterable: true },
-  {
-    key: 'partsPerPackage',
-    label: 'Part/Package',
-    sortable: true,
-    render: (v) => { const n = v as number; return n > 0 ? n.toLocaleString() : '-' },
-  },
-  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
-  {
-    key: 'fusionInventory',
-    label: 'Fusion Inventory',
-    sortable: true,
-    render: (v) => {
-      const n = v as number
-      // Always white/default — no color coding on this column
-      return <span>{n > 0 ? n.toLocaleString() : '0'}</span>
+    {
+      key: 'priorityLevel',
+      label: t('table.priority'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => <PriorityBadge level={v as number} urgent={(row as unknown as PackageOrder).urgentOverride} />,
     },
-  },
-  {
-    key: 'tire',
-    label: 'Tire',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as PackageOrder
-      if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
-      const tire = String(v || '')
-      if (!tire || tire === '-') return <span className="text-muted-foreground">-</span>
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span className={order.hasTire ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
-          <InventoryPopover partNumber={tire} partType="tire" />
-        </span>
-      )
+    { key: 'line', label: t('table.line'), sortable: true, filterable: true },
+    { key: 'customer', label: t('table.customer'), sortable: true, filterable: true },
+    { key: 'ifNumber', label: t('table.ifNumber'), sortable: true, filterable: true },
+    {
+      key: 'partNumber',
+      label: t('table.partNumber'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as PackageOrder
+        const colorClass = isRollTech(order.category) ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className={colorClass}>{String(v)}</span>
+            <InventoryPopover partNumber={String(v)} partType="part" />
+          </span>
+        )
+      },
     },
-  },
-  {
-    key: 'hub',
-    label: 'Hub',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as PackageOrder
-      if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
-      const hub = String(v || '')
-      if (!hub || hub === '-') return <span className="text-muted-foreground">-</span>
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span className={order.hasHub ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
-          <InventoryPopover partNumber={hub} partType="hub" />
-        </span>
-      )
+    {
+      key: 'numPackages',
+      label: t('table.packages'),
+      sortable: true,
+      render: (v) => { const n = v as number; return n > 0 ? Math.ceil(n).toString() : '-' },
     },
-  },
-  { key: 'hubMold', label: 'Hub Mold', sortable: true, filterable: true },
-  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
-  { key: 'assignedTo', label: 'Assigned To', sortable: true, filterable: true },
-  {
-    key: 'internalStatus',
-    label: 'Status',
-    sortable: true,
-    filterable: true,
-    render: (v) => <StatusBadge status={String(v || '')} />,
-  },
-  {
-    key: 'daysUntilDue',
-    label: 'Days Until',
-    sortable: true,
-    render: (v) => {
-      const days = v as number | null
-      if (days === null) return '-'
-      if (days < 0) return <span className="text-red-500 font-semibold">Overdue</span>
-      if (days <= 3) return <span className="text-orange-500 font-semibold">{days}d</span>
-      return `${days}d`
+    { key: 'packaging', label: t('table.packaging'), sortable: true, filterable: true },
+    {
+      key: 'partsPerPackage',
+      label: t('table.partPerPackage'),
+      sortable: true,
+      render: (v) => { const n = v as number; return n > 0 ? n.toLocaleString() : '-' },
     },
-  },
-]
+    { key: 'orderQty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
+    {
+      key: 'fusionInventory',
+      label: t('table.fusionInv'),
+      sortable: true,
+      render: (v) => {
+        const n = v as number
+        // Always white/default -- no color coding on this column
+        return <span>{n > 0 ? n.toLocaleString() : '0'}</span>
+      },
+    },
+    {
+      key: 'tire',
+      label: t('table.tire'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as PackageOrder
+        if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
+        const tire = String(v || '')
+        if (!tire || tire === '-') return <span className="text-muted-foreground">-</span>
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className={order.hasTire ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
+            <InventoryPopover partNumber={tire} partType="tire" />
+          </span>
+        )
+      },
+    },
+    {
+      key: 'hub',
+      label: t('table.hub'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as PackageOrder
+        if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
+        const hub = String(v || '')
+        if (!hub || hub === '-') return <span className="text-muted-foreground">-</span>
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className={order.hasHub ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
+            <InventoryPopover partNumber={hub} partType="hub" />
+          </span>
+        )
+      },
+    },
+    { key: 'hubMold', label: t('table.hubMold'), sortable: true, filterable: true },
+    { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
+    { key: 'assignedTo', label: t('table.assignedTo'), sortable: true, filterable: true },
+    {
+      key: 'internalStatus',
+      label: t('table.status'),
+      sortable: true,
+      filterable: true,
+      render: (v) => <StatusBadge status={String(v || '')} t={t} />,
+    },
+    {
+      key: 'daysUntilDue',
+      label: t('table.daysUntil'),
+      sortable: true,
+      render: (v) => {
+        const days = v as number | null
+        if (days === null) return '-'
+        if (days < 0) return <span className="text-red-500 font-semibold">{t('needToPackage.overdue')}</span>
+        if (days <= 3) return <span className="text-orange-500 font-semibold">{days}d</span>
+        return `${days}d`
+      },
+    },
+  ]
+}
 
 function filterByCategory(orders: PackageOrder[], filter: FilterKey): PackageOrder[] {
   switch (filter) {
@@ -188,11 +184,21 @@ function filterByCategory(orders: PackageOrder[], filter: FilterKey): PackageOrd
 }
 
 export default function NeedToPackagePage() {
+  const { t } = useI18n()
   const [orders, setOrders] = useState<PackageOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+
+  const FILTERS = useMemo(() => [
+    { key: 'all' as const, label: t('category.all') },
+    { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
+    { key: 'molding' as const, label: t('category.molding'), emoji: '🟡' },
+    { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
+  ], [t])
+
+  const columns = useMemo(() => getColumns(t), [t])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -225,7 +231,7 @@ export default function NeedToPackagePage() {
               canPackage: stock >= o.orderQty,
             }
           })
-          // Sort: category (RT→Molding→SnapPad), then urgent first, then priority P1→P4, then due date
+          // Sort: category (RT->Molding->SnapPad), then urgent first, then priority P1->P4, then due date
           .sort((a, b) => {
             // 1. Category group
             const catDiff = categoryOrder(a.category) - categoryOrder(b.category)
@@ -251,7 +257,7 @@ export default function NeedToPackagePage() {
 
   const table = useDataTable({
     data: filtered,
-    columns: COLUMNS,
+    columns,
     storageKey: 'need-to-package',
   })
 
@@ -263,25 +269,25 @@ export default function NeedToPackagePage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">📦 Need to Package</h1>
-      <p className="text-muted-foreground text-sm mb-4">Orders ready to be packaged based on inventory</p>
+      <h1 className="text-2xl font-bold mb-2">📦 {t('page.needToPackage')}</h1>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.needToPackageSubtitle')}</p>
 
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Total Orders</p>
+          <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
           <p className="text-xl font-bold">{totalOrders}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3">
-          <p className="text-xs text-green-600">Ready to Package</p>
+          <p className="text-xs text-green-600">{t('stats.readyToPackage')}</p>
           <p className="text-xl font-bold text-green-600">{readyCount}</p>
         </div>
         <div className="bg-red-500/10 rounded-lg p-3">
-          <p className="text-xs text-red-500">Missing Stock</p>
+          <p className="text-xs text-red-500">{t('stats.missingStock')}</p>
           <p className="text-xl font-bold text-red-500">{missingCount}</p>
         </div>
         <div className="bg-orange-500/10 rounded-lg p-3">
-          <p className="text-xs text-orange-500">Urgent & Ready</p>
+          <p className="text-xs text-orange-500">{t('stats.urgentReady')}</p>
           <p className="text-xl font-bold text-orange-500">{urgentReady}</p>
         </div>
       </div>
@@ -317,7 +323,7 @@ export default function NeedToPackagePage() {
         <DataTable
           table={table}
           data={filtered}
-          noun="order"
+          noun={t('needToPackage.noun')}
           exportFilename="need-to-package"
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
@@ -357,10 +363,10 @@ export default function NeedToPackagePage() {
                 index={i}
                 isExpanded={expandedOrderKey === getOrderKey(order)}
                 onToggle={() => toggleExpanded(order)}
-                statusOverride={order.canPackage ? '✓ Ready' : '✗ Missing'}
+                statusOverride={order.canPackage ? `✓ ${t('needToPackage.ready')}` : `✗ ${t('needToPackage.missing')}`}
                 extraFields={
                   <div>
-                    <span className="text-muted-foreground">Stock</span>
+                    <span className="text-muted-foreground">{t('needToPackage.stock')}</span>
                     <p className={`font-semibold ${order.availableStock >= order.orderQty ? 'text-green-600' : 'text-red-500'}`}>
                       {order.availableStock.toLocaleString()}
                     </p>

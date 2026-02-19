@@ -130,5 +130,42 @@
   "page.materialReqs": "Material Requirements",
   "page.customerRef": "Customer Reference",
   "page.fpReference": "FP Reference",
-  "page.quotes": "Quotes"
+  "page.quotes": "Quotes",
+  "page.needToPackageSubtitle": "Orders ready to be packaged based on inventory",
+
+  "stats.urgentReady": "Urgent & Ready",
+
+  "table.packages": "# Packages",
+  "table.packaging": "Packaging",
+  "table.partPerPackage": "Part/Package",
+  "table.fusionInv": "Fusion Inventory",
+  "table.hubMold": "Hub Mold",
+  "table.daysUntil": "Days Until",
+
+  "needToPackage.overdue": "Overdue",
+  "needToPackage.ready": "Ready",
+  "needToPackage.missing": "Missing",
+  "needToPackage.stock": "Stock",
+  "needToPackage.noun": "order",
+
+  "page.needToMakeSubtitle": "Parts to manufacture based on inventory vs minimums",
+
+  "needToMake.tires": "Tires",
+  "needToMake.hubs": "Hubs",
+  "needToMake.finishedParts": "Finished Parts",
+  "needToMake.bearings": "Bearings",
+  "needToMake.stocked": "Stocked",
+  "needToMake.make": "Make",
+  "needToMake.inStock": "In Stock",
+  "needToMake.mold": "Mold",
+
+  "stats.totalParts": "Total Parts",
+  "stats.partsToMake": "Parts to Make",
+  "stats.needsProduction": "Needs Production",
+  "stats.fullyStocked": "Fully Stocked",
+
+  "table.product": "Product",
+  "table.moldType": "Mold Type",
+  "table.minimums": "Minimums",
+  "table.partsToMake": "Parts to Make"
 }

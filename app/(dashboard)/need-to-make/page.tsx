@@ -1,66 +1,38 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { ProductionMakeItem } from '@/lib/google-sheets'
 import { InventoryPopover } from '@/components/InventoryPopover'
+import { useI18n } from '@/lib/i18n'
 
-// Product type filters matching v1
-const FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'tire', label: 'Tires', color: 'bg-orange-500' },
-  { key: 'hub', label: 'Hubs', color: 'bg-teal-500' },
-  { key: 'finished', label: 'Finished Parts', color: 'bg-purple-500' },
-  { key: 'bearing', label: 'Bearings', color: 'bg-gray-500' },
-] as const
+// Product type filter keys
+const FILTER_KEYS = ['all', 'tire', 'hub', 'finished', 'bearing'] as const
+type FilterKey = (typeof FILTER_KEYS)[number]
 
-type FilterKey = (typeof FILTERS)[number]['key']
+const FILTER_COLORS: Record<FilterKey, string | undefined> = {
+  all: undefined,
+  tire: 'bg-orange-500',
+  hub: 'bg-teal-500',
+  finished: 'bg-purple-500',
+  bearing: 'bg-gray-500',
+}
+
+const FILTER_I18N: Record<FilterKey, string> = {
+  all: 'category.all',
+  tire: 'needToMake.tires',
+  hub: 'needToMake.hubs',
+  finished: 'needToMake.finishedParts',
+  bearing: 'needToMake.bearings',
+}
 
 type ProductionRow = ProductionMakeItem & Record<string, unknown>
 
-const COLUMNS: ColumnDef<ProductionRow>[] = [
-  { key: 'product', label: 'Product', sortable: true, filterable: true },
-  {
-    key: 'partNumber', label: 'Part #', sortable: true, filterable: true,
-    render: (v) => (
-      <span className="inline-flex items-center gap-1">
-        <span className="font-bold">{String(v)}</span>
-        <InventoryPopover partNumber={String(v)} partType="part" />
-      </span>
-    ),
-  },
-  { key: 'moldType', label: 'Mold Type', sortable: true, filterable: true },
-  {
-    key: 'fusionInventory',
-    label: 'Fusion Inv',
-    sortable: true,
-    render: (v) => (v as number).toLocaleString(),
-  },
-  {
-    key: 'minimums',
-    label: 'Minimums',
-    sortable: true,
-    render: (v) => (v as number).toLocaleString(),
-  },
-  {
-    key: 'partsToBeMade',
-    label: 'Parts to Make',
-    sortable: true,
-    render: (v) => {
-      const val = v as number
-      if (val > 0) {
-        return <span className="font-bold text-orange-500">{val.toLocaleString()}</span>
-      }
-      return <span className="text-green-500">0</span>
-    },
-  },
-]
-
 function filterByProduct(items: ProductionMakeItem[], filter: FilterKey): ProductionMakeItem[] {
   if (filter === 'all') return items
-  
+
   return items.filter((item) => {
     const product = item.product.toLowerCase()
     switch (filter) {
@@ -85,10 +57,49 @@ function borderColor(item: ProductionMakeItem): string {
 }
 
 export default function NeedToMakePage() {
+  const { t } = useI18n()
   const [items, setItems] = useState<ProductionMakeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
+
+  const columns: ColumnDef<ProductionRow>[] = useMemo(() => [
+    { key: 'product', label: t('table.product'), sortable: true, filterable: true },
+    {
+      key: 'partNumber', label: t('table.partNumber'), sortable: true, filterable: true,
+      render: (v) => (
+        <span className="inline-flex items-center gap-1">
+          <span className="font-bold">{String(v)}</span>
+          <InventoryPopover partNumber={String(v)} partType="part" />
+        </span>
+      ),
+    },
+    { key: 'moldType', label: t('table.moldType'), sortable: true, filterable: true },
+    {
+      key: 'fusionInventory',
+      label: t('table.fusionInv'),
+      sortable: true,
+      render: (v) => (v as number).toLocaleString(),
+    },
+    {
+      key: 'minimums',
+      label: t('table.minimums'),
+      sortable: true,
+      render: (v) => (v as number).toLocaleString(),
+    },
+    {
+      key: 'partsToBeMade',
+      label: t('table.partsToMake'),
+      sortable: true,
+      render: (v) => {
+        const val = v as number
+        if (val > 0) {
+          return <span className="font-bold text-orange-500">{val.toLocaleString()}</span>
+        }
+        return <span className="text-green-500">0</span>
+      },
+    },
+  ], [t])
 
   useEffect(() => {
     fetch('/api/production-make')
@@ -107,7 +118,7 @@ export default function NeedToMakePage() {
 
   const table = useDataTable({
     data: filtered,
-    columns: COLUMNS,
+    columns,
     storageKey: 'need-to-make',
   })
 
@@ -119,44 +130,44 @@ export default function NeedToMakePage() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-2">🏭 Need to Make</h1>
-      <p className="text-muted-foreground text-sm mb-4">Parts to manufacture based on inventory vs minimums</p>
+      <h1 className="text-2xl font-bold mb-2">{t('page.needToMake')}</h1>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.needToMakeSubtitle')}</p>
 
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Total Parts</p>
+          <p className="text-xs text-muted-foreground">{t('stats.totalParts')}</p>
           <p className="text-xl font-bold">{totalParts}</p>
         </div>
         <div className="bg-orange-500/10 rounded-lg p-3">
-          <p className="text-xs text-orange-500">Parts to Make</p>
+          <p className="text-xs text-orange-500">{t('stats.partsToMake')}</p>
           <p className="text-xl font-bold text-orange-500">{totalToMake.toLocaleString()}</p>
         </div>
         <div className="bg-red-500/10 rounded-lg p-3">
-          <p className="text-xs text-red-500">Needs Production</p>
+          <p className="text-xs text-red-500">{t('stats.needsProduction')}</p>
           <p className="text-xl font-bold text-red-500">{needsProduction}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3">
-          <p className="text-xs text-green-500">Fully Stocked</p>
+          <p className="text-xs text-green-500">{t('stats.fullyStocked')}</p>
           <p className="text-xl font-bold text-green-500">{fullyStocked}</p>
         </div>
       </div>
 
       {/* Product type filter chips */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {FILTERS.map((f) => (
+        {FILTER_KEYS.map((key) => (
           <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
+            key={key}
+            onClick={() => setFilter(key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              filter === f.key
-                ? f.key === 'all'
+              filter === key
+                ? key === 'all'
                   ? 'bg-primary text-primary-foreground'
-                  : `${f.color} text-white`
+                  : `${FILTER_COLORS[key]} text-white`
                 : 'bg-muted hover:bg-muted/80'
             }`}
           >
-            {f.label}
+            {t(FILTER_I18N[key])}
           </button>
         ))}
       </div>
@@ -193,11 +204,11 @@ export default function NeedToMakePage() {
                     </div>
                     {item.partsToBeMade > 0 ? (
                       <span className="px-2 py-1 text-xs rounded bg-orange-500/20 text-orange-600 font-bold">
-                        Make {item.partsToBeMade}
+                        {t('needToMake.make')} {item.partsToBeMade}
                       </span>
                     ) : (
                       <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600">
-                        ✓ Stocked
+                        {t('needToMake.stocked')}
                       </span>
                     )}
                   </div>
@@ -205,15 +216,15 @@ export default function NeedToMakePage() {
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2 text-sm">
                     <div>
-                      <span className="text-muted-foreground">In Stock</span>
+                      <span className="text-muted-foreground">{t('needToMake.inStock')}</span>
                       <p className="font-semibold">{item.fusionInventory.toLocaleString()}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Minimum</span>
+                      <span className="text-muted-foreground">{t('table.minimum')}</span>
                       <p className="font-semibold">{item.minimums.toLocaleString()}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Mold</span>
+                      <span className="text-muted-foreground">{t('needToMake.mold')}</span>
                       <p className="font-semibold text-xs">{item.moldType || '-'}</p>
                     </div>
                   </div>

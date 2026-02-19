@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { DataTable } from '@/components/data-table'
@@ -10,15 +10,9 @@ import { OrderDetail } from '@/components/OrderDetail'
 import type { Order } from '@/lib/google-sheets'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { normalizeStatus } from '@/lib/google-sheets'
+import { useI18n } from '@/lib/i18n'
 
-const FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'rolltech', label: 'Roll Tech', emoji: '🔵' },
-  { key: 'molding', label: 'Molding', emoji: '🟡' },
-  { key: 'snappad', label: 'Snap Pad', emoji: '🟣' },
-] as const
-
-type FilterKey = (typeof FILTERS)[number]['key']
+type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 type OrderRow = Order & Record<string, unknown>
 
 function priorityColor(priority: string): string {
@@ -28,77 +22,6 @@ function priorityColor(priority: string): string {
   if (priority === 'P4') return 'bg-blue-500/20 text-blue-600'
   return 'bg-muted text-muted-foreground'
 }
-
-const STAGED_COLUMNS: ColumnDef<OrderRow>[] = [
-  { key: 'line', label: 'Line', sortable: true },
-  { key: 'ifNumber', label: 'IF #', sortable: true },
-  { key: 'poNumber', label: 'PO #', sortable: true },
-  {
-    key: 'priorityLevel',
-    label: 'Priority',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as Order
-      const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
-      if (isUrgent) {
-        return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">URGENT</span>
-      }
-      const priority = v ? `P${v}` : 'P-'
-      return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
-    },
-  },
-  {
-    key: 'daysUntilDue',
-    label: 'Days Until',
-    sortable: true,
-    render: (v) => {
-      const days = v as number | null
-      if (days === null) return '-'
-      if (days < 0) return <span className="text-red-500 font-bold">{days}</span>
-      if (days <= 3) return <span className="text-orange-500 font-semibold">{days}</span>
-      return String(days)
-    },
-  },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  {
-    key: 'partNumber', label: 'Part #', sortable: true, filterable: true,
-    render: (v) => (
-      <span className="inline-flex items-center gap-1">
-        <span className="font-bold">{String(v)}</span>
-        <InventoryPopover partNumber={String(v)} partType="part" />
-      </span>
-    ),
-  },
-  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
-  {
-    key: 'tire', label: 'Tire', sortable: true, filterable: true,
-    render: (v) => {
-      const val = String(v || '')
-      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span>{val}</span>
-          <InventoryPopover partNumber={val} partType="tire" />
-        </span>
-      )
-    },
-  },
-  {
-    key: 'hub', label: 'Hub', sortable: true, filterable: true,
-    render: (v) => {
-      const val = String(v || '')
-      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span>{val}</span>
-          <InventoryPopover partNumber={val} partType="hub" />
-        </span>
-      )
-    },
-  },
-  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
-]
 
 function filterOrders(orders: Order[], filter: FilterKey, search: string): Order[] {
   let result = orders
@@ -127,6 +50,7 @@ function filterOrders(orders: Order[], filter: FilterKey, search: string): Order
 }
 
 export default function StagedPage() {
+  const { t } = useI18n()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -135,6 +59,84 @@ export default function StagedPage() {
   const [search, setSearch] = useState('')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
   const [showPLC, setShowPLC] = useState(false)
+
+  const FILTERS = useMemo(() => [
+    { key: 'all' as const, label: t('category.all') },
+    { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
+    { key: 'molding' as const, label: t('category.molding'), emoji: '🟡' },
+    { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
+  ], [t])
+
+  const STAGED_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
+    { key: 'line', label: t('table.line'), sortable: true },
+    { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
+    { key: 'poNumber', label: t('table.po'), sortable: true },
+    {
+      key: 'priorityLevel',
+      label: t('table.priority'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
+        if (isUrgent) {
+          return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">{t('priority.urgent')}</span>
+        }
+        const priority = v ? `P${v}` : 'P-'
+        return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
+      },
+    },
+    {
+      key: 'daysUntilDue',
+      label: t('staged.daysUntil'),
+      sortable: true,
+      render: (v) => {
+        const days = v as number | null
+        if (days === null) return '-'
+        if (days < 0) return <span className="text-red-500 font-bold">{days}</span>
+        if (days <= 3) return <span className="text-orange-500 font-semibold">{days}</span>
+        return String(days)
+      },
+    },
+    { key: 'customer', label: t('table.customer'), sortable: true, filterable: true },
+    {
+      key: 'partNumber', label: t('table.partNumber'), sortable: true, filterable: true,
+      render: (v) => (
+        <span className="inline-flex items-center gap-1">
+          <span className="font-bold">{String(v)}</span>
+          <InventoryPopover partNumber={String(v)} partType="part" />
+        </span>
+      ),
+    },
+    { key: 'orderQty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
+    {
+      key: 'tire', label: t('table.tire'), sortable: true, filterable: true,
+      render: (v) => {
+        const val = String(v || '')
+        if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span>{val}</span>
+            <InventoryPopover partNumber={val} partType="tire" />
+          </span>
+        )
+      },
+    },
+    {
+      key: 'hub', label: t('table.hub'), sortable: true, filterable: true,
+      render: (v) => {
+        const val = String(v || '')
+        if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span>{val}</span>
+            <InventoryPopover partNumber={val} partType="hub" />
+          </span>
+        )
+      },
+    },
+    { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
+  ], [t])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -147,7 +149,7 @@ export default function StagedPage() {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     setError(null)
-    
+
     try {
       const res = await fetch('/api/sheets')
       if (!res.ok) throw new Error('Failed to fetch orders')
@@ -179,7 +181,7 @@ export default function StagedPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Ready to Ship</h1>
+        <h1 className="text-2xl font-bold">{t('page.staged')}</h1>
         <button
           onClick={() => fetchData(true)}
           disabled={refreshing}
@@ -193,7 +195,7 @@ export default function StagedPage() {
       {/* Search */}
       <input
         type="text"
-        placeholder="Search staged orders..."
+        placeholder={t('staged.searchPlaceholder')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full p-3 mb-4 rounded-lg bg-muted border border-border"
@@ -234,7 +236,7 @@ export default function StagedPage() {
           <DataTable
             table={table}
             data={filtered}
-            noun="staged order"
+            noun={t('staged.noun')}
             exportFilename="staged-orders.csv"
             getRowKey={(row) => getOrderKey(row as unknown as Order)}
             expandedRowKey={expandedOrderKey}
@@ -274,7 +276,7 @@ export default function StagedPage() {
             onClick={() => setShowPLC((v) => !v)}
             className="w-full py-3 rounded-lg bg-muted hover:bg-muted/80 text-sm font-medium transition-colors flex items-center justify-center gap-2"
           >
-            📦 Pallet Load Calculator {showPLC ? '▲' : '▼'}
+            {t('staged.palletLoadCalc')} {showPLC ? '▲' : '▼'}
           </button>
           {showPLC && (
             <div className="mt-3">

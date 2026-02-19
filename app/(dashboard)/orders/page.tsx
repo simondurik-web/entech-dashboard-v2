@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
@@ -9,152 +9,53 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { InventoryPopover } from '@/components/InventoryPopover'
+import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
-const CATEGORY_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'rolltech', label: 'Roll Tech', emoji: '🔵' },
-  { key: 'molding', label: 'Molding', emoji: '🟡' },
-  { key: 'snappad', label: 'Snap Pad', emoji: '🟣' },
-] as const
+const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
+const CATEGORY_EMOJIS: Record<string, string> = {
+  rolltech: '🔵',
+  molding: '🟡',
+  snappad: '🟣',
+}
+const CATEGORY_I18N: Record<string, string> = {
+  all: 'category.all',
+  rolltech: 'category.rollTech',
+  molding: 'category.molding',
+  snappad: 'category.snappad',
+}
 
-const STATUS_FILTERS = [
-  { key: 'pending', label: 'Pending', color: 'bg-yellow-500' },
-  { key: 'wip', label: 'Work in Progress', color: 'bg-teal-500' },
-  { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
-  { key: 'staged', label: 'Ready to Ship', color: 'bg-green-500' },
-  { key: 'shipped', label: 'Shipped', color: 'bg-gray-500' },
-] as const
+const STATUS_KEYS = ['pending', 'wip', 'completed', 'staged', 'shipped'] as const
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-yellow-500',
+  wip: 'bg-teal-500',
+  completed: 'bg-emerald-500',
+  staged: 'bg-green-500',
+  shipped: 'bg-gray-500',
+}
+const STATUS_I18N: Record<string, string> = {
+  pending: 'status.pending',
+  wip: 'status.wip',
+  completed: 'status.completed',
+  staged: 'status.readyToShip',
+  shipped: 'status.shipped',
+}
 
-type CategoryKey = (typeof CATEGORY_FILTERS)[number]['key']
-type StatusKey = (typeof STATUS_FILTERS)[number]['key']
+type CategoryKey = (typeof CATEGORY_KEYS)[number]
+type StatusKey = (typeof STATUS_KEYS)[number]
 
 type OrderRow = Order & Record<string, unknown>
 
-const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
-  { key: 'line', label: 'Line', sortable: true },
-  { key: 'ifNumber', label: 'IF #', sortable: true },
-  { key: 'poNumber', label: 'PO #', sortable: true },
-  {
-    key: 'priorityLevel',
-    label: 'Priority',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as Order
-      if (order.urgentOverride) {
-        return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">URGENT</span>
-      }
-      const priority = v ? `P${v}` : 'P-'
-      return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
-    },
-  },
-  {
-    key: 'daysUntilDue',
-    label: 'Days Until',
-    sortable: true,
-    render: (v) => {
-      const days = v as number | null
-      if (days === null) return '-'
-      if (days < 0) return <span className="text-red-500 font-bold">{days}</span>
-      if (days <= 3) return <span className="text-orange-500 font-semibold">{days}</span>
-      return String(days)
-    },
-  },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  {
-    key: 'partNumber',
-    label: 'Part #',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as Order
-      const cat = order.category.toLowerCase()
-      const active = isActiveStatus(order)
-      const colorClass = active && (cat.includes('molding') || cat.includes('snap'))
-        ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-black')
-        : ''
-      return (
-        <span className="inline-flex items-center gap-1">
-          <strong className={colorClass}>{String(v)}</strong>
-          <InventoryPopover partNumber={String(v)} partType="part" />
-        </span>
-      )
-    },
-  },
-  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
-  {
-    key: 'tire',
-    label: 'Tire',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as Order
-      const isRollTech = order.category.toLowerCase().includes('roll')
-      if (!isRollTech) return <span className="text-muted-foreground">N/A</span>
-      const val = String(v || '')
-      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
-      const active = isActiveStatus(order)
-      const colorClass = active ? (order.hasTire ? 'text-green-500' : 'text-red-400 font-bold') : ''
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span className={colorClass}>{val}</span>
-          <InventoryPopover partNumber={val} partType="tire" />
-        </span>
-      )
-    },
-  },
-  {
-    key: 'hub',
-    label: 'Hub',
-    sortable: true,
-    filterable: true,
-    render: (v, row) => {
-      const order = row as unknown as Order
-      const isRollTech = order.category.toLowerCase().includes('roll')
-      if (!isRollTech) return <span className="text-muted-foreground">N/A</span>
-      const val = String(v || '')
-      if (!val || val === '-') return <span className="text-muted-foreground">-</span>
-      const active = isActiveStatus(order)
-      const colorClass = active ? (order.hasHub ? 'text-green-500' : 'text-red-400 font-bold') : ''
-      return (
-        <span className="inline-flex items-center gap-1">
-          <span className={colorClass}>{val}</span>
-          <InventoryPopover partNumber={val} partType="hub" />
-        </span>
-      )
-    },
-  },
-  { key: 'bearings', label: 'Bearings', sortable: true, filterable: true },
-  {
-    key: 'internalStatus',
-    label: 'Status',
-    sortable: true,
-    filterable: true,
-    render: (v) => {
-      const status = String(v || '')
-      const displayLabel = statusDisplayLabel(status)
-      return (
-        <span className={`px-2 py-0.5 text-xs rounded font-medium ${statusColor(status)}`}>
-          {displayLabel || 'N/A'}
-        </span>
-      )
-    },
-  },
-  { key: 'category', label: 'Category', sortable: true, filterable: true },
-  { key: 'assignedTo', label: 'Assigned', filterable: true },
-]
-
-function statusDisplayLabel(status: string): string {
+function statusDisplayLabel(status: string, t: (key: string) => string): string {
   const s = status.toLowerCase()
-  if (s === 'staged' || s === 'ready to ship') return 'Ready to Ship'
-  if (s === 'work in progress' || s === 'wip' || s === 'released' || s === 'in production') return 'Work in Progress'
-  if (s === 'pending' || s === 'need to make' || s === 'approved') return 'Pending'
-  if (s === 'completed') return 'Completed'
-  if (s === 'shipped' || s === 'invoiced' || s === 'to bill') return 'Shipped'
-  if (s === 'cancelled') return 'Cancelled'
-  return status || 'N/A'
+  if (s === 'staged' || s === 'ready to ship') return t('status.readyToShip')
+  if (s === 'work in progress' || s === 'wip' || s === 'released' || s === 'in production') return t('status.wip')
+  if (s === 'pending' || s === 'need to make' || s === 'approved') return t('status.pending')
+  if (s === 'completed') return t('status.completed')
+  if (s === 'shipped' || s === 'invoiced' || s === 'to bill') return t('status.shipped')
+  if (s === 'cancelled') return t('status.cancelled')
+  return status || t('ui.na')
 }
 
 function isActiveStatus(order: Order): boolean {
@@ -233,6 +134,7 @@ function filterByStatus(orders: Order[], activeStatuses: Set<StatusKey>): Order[
 }
 
 export default function OrdersPage() {
+  const { t } = useI18n()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -242,6 +144,120 @@ export default function OrdersPage() {
     new Set(['pending', 'wip', 'completed', 'staged'])
   )
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+
+  const ORDER_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
+    { key: 'line', label: t('table.line'), sortable: true },
+    { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
+    { key: 'poNumber', label: t('table.po'), sortable: true },
+    {
+      key: 'priorityLevel',
+      label: t('table.priority'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        if (order.urgentOverride) {
+          return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">{t('priority.urgent')}</span>
+        }
+        const priority = v ? `P${v}` : 'P-'
+        return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
+      },
+    },
+    {
+      key: 'daysUntilDue',
+      label: t('table.daysUntil'),
+      sortable: true,
+      render: (v) => {
+        const days = v as number | null
+        if (days === null) return '-'
+        if (days < 0) return <span className="text-red-500 font-bold">{days}</span>
+        if (days <= 3) return <span className="text-orange-500 font-semibold">{days}</span>
+        return String(days)
+      },
+    },
+    { key: 'customer', label: t('table.customer'), sortable: true, filterable: true },
+    {
+      key: 'partNumber',
+      label: t('table.partNumber'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        const cat = order.category.toLowerCase()
+        const active = isActiveStatus(order)
+        const colorClass = active && (cat.includes('molding') || cat.includes('snap'))
+          ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-black')
+          : ''
+        return (
+          <span className="inline-flex items-center gap-1">
+            <strong className={colorClass}>{String(v)}</strong>
+            <InventoryPopover partNumber={String(v)} partType="part" />
+          </span>
+        )
+      },
+    },
+    { key: 'orderQty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
+    {
+      key: 'tire',
+      label: t('table.tire'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        const isRollTech = order.category.toLowerCase().includes('roll')
+        if (!isRollTech) return <span className="text-muted-foreground">{t('ui.na')}</span>
+        const val = String(v || '')
+        if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+        const active = isActiveStatus(order)
+        const colorClass = active ? (order.hasTire ? 'text-green-500' : 'text-red-400 font-bold') : ''
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className={colorClass}>{val}</span>
+            <InventoryPopover partNumber={val} partType="tire" />
+          </span>
+        )
+      },
+    },
+    {
+      key: 'hub',
+      label: t('table.hub'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        const isRollTech = order.category.toLowerCase().includes('roll')
+        if (!isRollTech) return <span className="text-muted-foreground">{t('ui.na')}</span>
+        const val = String(v || '')
+        if (!val || val === '-') return <span className="text-muted-foreground">-</span>
+        const active = isActiveStatus(order)
+        const colorClass = active ? (order.hasHub ? 'text-green-500' : 'text-red-400 font-bold') : ''
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className={colorClass}>{val}</span>
+            <InventoryPopover partNumber={val} partType="hub" />
+          </span>
+        )
+      },
+    },
+    { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
+    {
+      key: 'internalStatus',
+      label: t('table.status'),
+      sortable: true,
+      filterable: true,
+      render: (v) => {
+        const status = String(v || '')
+        const displayLabel = statusDisplayLabel(status, t)
+        return (
+          <span className={`px-2 py-0.5 text-xs rounded font-medium ${statusColor(status)}`}>
+            {displayLabel || t('ui.na')}
+          </span>
+        )
+      },
+    },
+    { key: 'category', label: t('table.category'), sortable: true, filterable: true },
+    { key: 'assignedTo', label: t('table.assignedTo'), filterable: true },
+  ], [t])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -309,7 +325,7 @@ export default function OrdersPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">📋 Orders Data</h1>
+        <h1 className="text-2xl font-bold">📋 {t('page.ordersData')}</h1>
         <AutoRefreshControl
           isEnabled={autoRefresh.isAutoRefreshEnabled}
           onToggle={autoRefresh.toggleAutoRefresh}
@@ -319,64 +335,64 @@ export default function OrdersPage() {
           lastRefresh={autoRefresh.lastRefresh}
         />
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Complete order database with all statuses</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.ordersSubtitle')}</p>
 
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Total Orders</p>
+          <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
           <p className="text-xl font-bold">{totalOrders}</p>
-          <p className="text-xs text-muted-foreground">{totalUnits.toLocaleString()} units</p>
+          <p className="text-xs text-muted-foreground">{totalUnits.toLocaleString()} {t('stats.totalUnits')}</p>
         </div>
         <div className="bg-yellow-500/10 rounded-lg p-3">
-          <p className="text-xs text-yellow-600">Pending</p>
+          <p className="text-xs text-yellow-600">{t('stats.pending')}</p>
           <p className="text-xl font-bold text-yellow-600">{needToMake}</p>
         </div>
         <div className="bg-teal-500/10 rounded-lg p-3">
-          <p className="text-xs text-teal-600">Work in Progress</p>
+          <p className="text-xs text-teal-600">{t('stats.wip')}</p>
           <p className="text-xl font-bold text-teal-600">{making}</p>
         </div>
         <div className="bg-emerald-500/10 rounded-lg p-3">
-          <p className="text-xs text-emerald-600">Completed</p>
+          <p className="text-xs text-emerald-600">{t('stats.completed')}</p>
           <p className="text-xl font-bold text-emerald-600">{completed}</p>
         </div>
         <div className="bg-green-500/10 rounded-lg p-3">
-          <p className="text-xs text-green-600">Ready to Ship</p>
+          <p className="text-xs text-green-600">{t('stats.readyToShip')}</p>
           <p className="text-xl font-bold text-green-600">{readyToShip}</p>
         </div>
       </div>
 
       {/* Category filters */}
       <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-        {CATEGORY_FILTERS.map((f) => (
+        {CATEGORY_KEYS.map((key) => (
           <button
-            key={f.key}
-            onClick={() => setCategoryFilter(f.key)}
+            key={key}
+            onClick={() => setCategoryFilter(key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              categoryFilter === f.key
+              categoryFilter === key
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted hover:bg-muted/80'
             }`}
           >
-            {'emoji' in f ? `${f.emoji} ` : ''}{f.label}
+            {CATEGORY_EMOJIS[key] ? `${CATEGORY_EMOJIS[key]} ` : ''}{t(CATEGORY_I18N[key])}
           </button>
         ))}
       </div>
 
       {/* Status filters (toggleable) */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        <span className="text-xs text-muted-foreground self-center mr-1">Status:</span>
-        {STATUS_FILTERS.map((f) => (
+        <span className="text-xs text-muted-foreground self-center mr-1">{t('ui.status')}:</span>
+        {STATUS_KEYS.map((key) => (
           <button
-            key={f.key}
-            onClick={() => toggleStatus(f.key)}
+            key={key}
+            onClick={() => toggleStatus(key)}
             className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              activeStatuses.has(f.key)
-                ? `${f.color} text-white`
+              activeStatuses.has(key)
+                ? `${STATUS_COLORS[key]} text-white`
                 : 'bg-muted hover:bg-muted/80 opacity-50'
             }`}
           >
-            {f.label}
+            {t(STATUS_I18N[key])}
           </button>
         ))}
       </div>
@@ -398,7 +414,7 @@ export default function OrdersPage() {
         <DataTable
           table={table}
           data={filtered}
-          noun="order"
+          noun={t('orders.noun')}
           exportFilename="orders.csv"
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
