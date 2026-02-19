@@ -51,9 +51,34 @@ export async function exportToExcel<T extends Record<string, unknown>>(
     return { wch: Math.min(Math.max(maxLen + 2, 8), 50) }
   })
 
+  // Freeze first row (header)
+  ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', state: 'frozen' }
+  // Also set as views for broader compatibility
+  if (!ws['!views']) ws['!views'] = []
+  ;(ws['!views'] as Array<{ state: string; ySplit: number }>).push({ state: 'frozen', ySplit: 1 })
+
+  // Style header row — bold with dark background
+  // Note: xlsx community edition has limited styling; use cell metadata
+  for (let c = 0; c < columns.length; c++) {
+    const cellRef = XLSX.utils.encode_cell({ r: 0, c })
+    if (ws[cellRef]) {
+      ws[cellRef].s = {
+        font: { bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '2D3748' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+        },
+      }
+    }
+  }
+
+  // Auto-filter on header row
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: columns.length - 1 } }) }
+
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Data')
-  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`)
+  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`, { bookSST: true })
 }
 
 function escapeCSV(value: string): string {
