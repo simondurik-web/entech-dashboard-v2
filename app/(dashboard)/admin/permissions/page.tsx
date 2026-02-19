@@ -22,6 +22,7 @@ const ALL_MENU_PATHS = [
   '/customer-reference', '/quotes',
   '/bom', '/material-requirements', '/all-data',
   '/admin/users', '/admin/permissions',
+  '/phil-assistant',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -48,6 +49,7 @@ const PATH_LABELS: Record<string, string> = {
   '/all-data': 'All Data',
   '/admin/users': 'Admin: Users',
   '/admin/permissions': 'Admin: Permissions',
+  '/phil-assistant': '🤖 Phil Assistant (AI)',
 }
 
 export default function AdminPermissionsPage() {

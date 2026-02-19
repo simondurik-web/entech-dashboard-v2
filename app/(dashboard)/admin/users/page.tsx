@@ -26,6 +26,7 @@ const ALL_MENU_PATHS = [
   '/customer-reference', '/quotes',
   '/bom', '/material-requirements', '/all-data',
   '/admin/users', '/admin/permissions',
+  '/phil-assistant',
 ]
 
 export default function AdminUsersPage() {

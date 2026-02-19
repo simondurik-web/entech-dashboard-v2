@@ -151,7 +151,7 @@ export function Sidebar({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-64 flex-col overflow-y-auto",
-          "bg-gradient-to-b from-[#1a365d] to-[#2c5282] text-white",
+          "bg-gradient-to-b from-[#2b6cb0] to-[#2c5282] text-white",
           "dark:from-[#0f1f38] dark:to-[#1a365d]",
           "transition-transform duration-300 ease-in-out",
           "lg:translate-x-0 lg:z-30",
@@ -260,13 +260,15 @@ export function Sidebar({
           )}
         </nav>
 
-        {/* Phil Assistant */}
-        <div className="border-t border-white/10 px-3 py-3">
-          <button className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
-            <Bot className="size-4" />
-            <span>{t('nav.aiAssistant')}</span>
-          </button>
-        </div>
+        {/* Phil Assistant — gated by /phil-assistant permission */}
+        {canAccess('/phil-assistant') && (
+          <div className="border-t border-white/10 px-3 py-3">
+            <button className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
+              <Bot className="size-4" />
+              <span>{t('nav.aiAssistant')}</span>
+            </button>
+          </div>
+        )}
 
         {/* Auth section */}
         <div className="border-t border-white/10 px-3 py-3">
