@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useI18n } from '@/lib/i18n'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   LineChart,
@@ -42,6 +43,7 @@ function toDateInputValue(date: string): string {
 }
 
 export default function InventoryHistoryPage() {
+  const { t } = useI18n()
   const [history, setHistory] = useState<InventoryHistoryResponse>({ dates: [], parts: [] })
   const [inventoryMap, setInventoryMap] = useState<Map<string, InventoryItem>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -204,8 +206,8 @@ export default function InventoryHistoryPage() {
   return (
     <div className="p-4 pb-20 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">📈 Inventory History</h1>
-        <p className="text-muted-foreground text-sm">Track stock levels over time</p>
+        <h1 className="text-2xl font-bold">📈 {t('page.inventoryHistory')}</h1>
+        <p className="text-muted-foreground text-sm">{t('inventoryHistory.trackStock')}</p>
       </div>
 
       {/* Filters row */}
@@ -273,13 +275,13 @@ export default function InventoryHistoryPage() {
           <CardContent className="p-3">
             <input
               type="text"
-              placeholder="Search parts..."
+              placeholder={t('inventoryHistory.searchParts')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-3 py-1.5 text-xs border rounded-md bg-background mb-2"
             />
             <div className="text-[10px] text-muted-foreground mb-2">
-              {selectedParts.length}/5 selected · {filteredParts.length} parts
+              {selectedParts.length}/5 {t('inventoryHistory.selected')} · {filteredParts.length} {t('inventoryHistory.parts')}
             </div>
             <div className="max-h-[500px] overflow-y-auto space-y-0.5">
               {filteredParts.map((item) => {
@@ -326,7 +328,7 @@ export default function InventoryHistoryPage() {
           <CardContent className="p-4">
             {selectedParts.length === 0 ? (
               <div className="flex items-center justify-center h-[500px] text-muted-foreground text-sm">
-                ← Select parts to view trends
+                ← {t('inventoryHistory.selectParts')}
               </div>
             ) : (
               <div className="h-[500px]">
@@ -374,7 +376,7 @@ export default function InventoryHistoryPage() {
               <CardContent className="p-3">
                 <p className="text-xs text-muted-foreground truncate font-medium">{item.partNumber}</p>
                 <p className="text-xl font-bold mt-1">{item.inStock.toLocaleString()}</p>
-                <p className="text-[10px] text-muted-foreground">current stock</p>
+                <p className="text-[10px] text-muted-foreground">{t('inventoryHistory.currentStock')}</p>
                 <div className="flex items-center gap-1 mt-1.5">
                   <span className={`text-sm font-semibold ${item.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {item.change >= 0 ? '↑' : '↓'} {Math.abs(item.change).toLocaleString()}
@@ -383,16 +385,16 @@ export default function InventoryHistoryPage() {
                     ({item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(1)}%)
                   </span>
                 </div>
-                <p className="text-[10px] text-muted-foreground mb-1.5">over selected period</p>
+                <p className="text-[10px] text-muted-foreground mb-1.5">{t('inventoryHistory.overPeriod')}</p>
                 <div className="border-t border-border/40 pt-1.5 space-y-0.5">
                   <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">Minimum</span>
+                    <span className="text-muted-foreground">{t('table.minimum')}</span>
                     <span className={`font-medium ${item.minimum > 0 && item.inStock < item.minimum ? 'text-red-400' : ''}`}>
                       {item.minimum > 0 ? item.minimum.toLocaleString() : '—'}
                     </span>
                   </div>
                   <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">Manual Target</span>
+                    <span className="text-muted-foreground">{t('inventoryHistory.manualTarget')}</span>
                     <span className="font-medium">{item.target > 0 ? item.target.toLocaleString() : '—'}</span>
                   </div>
                 </div>

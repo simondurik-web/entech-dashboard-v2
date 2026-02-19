@@ -1,52 +1,20 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { OrderDetail } from '@/components/OrderDetail'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { InventoryPopover } from '@/components/InventoryPopover'
+import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 
-const DATE_FILTERS = [
-  { key: 'all', label: 'All Time' },
-  { key: '7', label: 'Last 7 Days' },
-  { key: '30', label: 'Last 30 Days' },
-  { key: '90', label: 'Last 90 Days' },
-] as const
-
-const CATEGORY_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'rolltech', label: 'Roll Tech', emoji: '🔵' },
-  { key: 'molding', label: 'Molding', emoji: '🟡' },
-  { key: 'snappad', label: 'Snap Pad', emoji: '🟣' },
-] as const
-
-type DateKey = (typeof DATE_FILTERS)[number]['key']
-type CategoryKey = (typeof CATEGORY_FILTERS)[number]['key']
+type DateKey = 'all' | '7' | '30' | '90'
+type CategoryKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
 type OrderRow = Order & Record<string, unknown>
-
-const COLUMNS: ColumnDef<OrderRow>[] = [
-  { key: 'shippedDate', label: 'Ship Date', sortable: true },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  {
-    key: 'partNumber', label: 'Part Number', sortable: true, filterable: true,
-    render: (v) => (
-      <span className="inline-flex items-center gap-1">
-        <span className="font-bold">{String(v)}</span>
-        <InventoryPopover partNumber={String(v)} partType="part" />
-      </span>
-    ),
-  },
-  { key: 'category', label: 'Category', sortable: true, filterable: true },
-  { key: 'orderQty', label: 'Qty', sortable: true, render: (v) => (v as number).toLocaleString() },
-  { key: 'line', label: 'Line', sortable: true },
-  { key: 'ifNumber', label: 'IF#', sortable: true },
-  { key: 'poNumber', label: 'PO#' },
-]
 
 function parseDate(dateStr: string): Date | null {
   if (!dateStr) return null
@@ -87,6 +55,41 @@ export default function ShippedPage() {
   const [dateFilter, setDateFilter] = useState<DateKey>('30')
   const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+
+  const { t } = useI18n()
+
+  const DATE_FILTERS = useMemo(() => [
+    { key: 'all' as const, label: t('ui.allTime') },
+    { key: '7' as const, label: t('ui.last7Days') },
+    { key: '30' as const, label: t('ui.last30Days') },
+    { key: '90' as const, label: t('ui.last90Days') },
+  ], [t])
+
+  const CATEGORY_FILTERS = useMemo(() => [
+    { key: 'all' as const, label: t('category.all') },
+    { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
+    { key: 'molding' as const, label: t('category.molding'), emoji: '🟡' },
+    { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
+  ], [t])
+
+  const COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
+    { key: 'shippedDate', label: t('table.shipDate'), sortable: true },
+    { key: 'customer', label: t('table.customer'), sortable: true, filterable: true },
+    {
+      key: 'partNumber', label: t('table.partNumber'), sortable: true, filterable: true,
+      render: (v) => (
+        <span className="inline-flex items-center gap-1">
+          <span className="font-bold">{String(v)}</span>
+          <InventoryPopover partNumber={String(v)} partType="part" />
+        </span>
+      ),
+    },
+    { key: 'category', label: t('table.category'), sortable: true, filterable: true },
+    { key: 'orderQty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
+    { key: 'line', label: t('table.line'), sortable: true },
+    { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
+    { key: 'poNumber', label: t('table.poNumber') },
+  ], [t])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -143,7 +146,7 @@ export default function ShippedPage() {
   return (
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold">🚚 Shipped</h1>
+        <h1 className="text-2xl font-bold">🚚 {t('page.shipped')}</h1>
         <button
           onClick={() => fetchData(true)}
           disabled={refreshing}
@@ -153,16 +156,16 @@ export default function ShippedPage() {
           <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
-      <p className="text-muted-foreground text-sm mb-4">Completed shipments</p>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.shippedSubtitle')}</p>
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-green-500/10 rounded-lg p-3">
-          <p className="text-xs text-green-600">Total Shipments</p>
+          <p className="text-xs text-green-600">{t('stats.totalShipments')}</p>
           <p className="text-xl font-bold text-green-600">{totalShipped}</p>
         </div>
         <div className="bg-muted rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Total Units</p>
+          <p className="text-xs text-muted-foreground">{t('stats.totalUnitsLabel')}</p>
           <p className="text-xl font-bold">{totalUnits.toLocaleString()}</p>
         </div>
       </div>
