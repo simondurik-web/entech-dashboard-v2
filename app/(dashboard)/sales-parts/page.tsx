@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { useViewFromUrl } from '@/lib/use-view-from-url'
 
 interface SalesOrder {
   line: string
@@ -157,11 +158,16 @@ function PartExpandedSection({ part }: { part: PartRow }) {
 }
 
 export default function SalesPartsPage() {
+  return <Suspense><SalesPartsContent /></Suspense>
+}
+
+function SalesPartsContent() {
   const [data, setData] = useState<SalesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedPart, setExpandedPart] = useState<string | null>(null)
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
 
   useEffect(() => {
     fetch('/api/sales')
@@ -222,6 +228,7 @@ export default function SalesPartsPage() {
         noun="part"
         exportFilename="sales-by-part"
         page="sales-by-part"
+        initialView={initialView}
         getRowKey={(row) => (row as PartRow).partNumber}
         expandedRowKey={expandedPart}
         onRowClick={(row) => {

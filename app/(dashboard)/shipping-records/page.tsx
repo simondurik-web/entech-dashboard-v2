@@ -272,6 +272,7 @@ export default function ShippingRecordsPage() {
 
       {!loading && !error && (
         <DataTable table={table} data={filtered} noun="shipment" exportFilename="shipping-records.csv"
+          page="shipping-records"
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const record = row as unknown as ShippingRow

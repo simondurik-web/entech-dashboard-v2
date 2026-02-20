@@ -211,6 +211,7 @@ export default function StagedRecordsPage() {
           data={filtered}
           noun="record"
           exportFilename="staged-records.csv"
+          page="staged-records"
           cardClassName={() => 'border-l-4 border-l-blue-500'}
           renderCard={(row, i) => {
             const record = row as unknown as StagedRecord

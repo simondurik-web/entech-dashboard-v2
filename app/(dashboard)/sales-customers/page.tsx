@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { useViewFromUrl } from '@/lib/use-view-from-url'
 
 interface SalesOrder {
   line: string
@@ -94,11 +95,16 @@ function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storage
 }
 
 export default function SalesCustomersPage() {
+  return <Suspense><SalesCustomersContent /></Suspense>
+}
+
+function SalesCustomersContent() {
   const [data, setData] = useState<SalesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
 
   useEffect(() => {
     async function fetchData() {
@@ -152,6 +158,7 @@ export default function SalesCustomersPage() {
         noun="customer"
         exportFilename="sales-by-customer"
         page="sales-by-customer"
+        initialView={initialView}
         getRowKey={(row) => (row as CustomerRow).customer}
         expandedRowKey={expandedCustomer}
         onRowClick={(row) => {

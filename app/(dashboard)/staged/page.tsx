@@ -286,6 +286,7 @@ export default function StagedPage() {
             data={filtered}
             noun={t('staged.noun')}
             exportFilename="staged-orders.csv"
+          page="staged"
             getRowKey={(row) => getOrderKey(row as unknown as Order)}
             expandedRowKey={expandedOrderKey}
             onRowClick={(row) => toggleExpanded(row as unknown as Order)}

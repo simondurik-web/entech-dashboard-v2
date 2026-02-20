@@ -35,6 +35,7 @@ import {
   LogOut,
   Shield,
   Settings,
+  FileBarChart,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -222,6 +223,28 @@ export function Sidebar({
               </ul>
             </>
           )}
+
+          {/* Reports / Custom Views */}
+          <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
+            REPORTS
+          </p>
+          <ul className="space-y-0.5">
+            <li>
+              <Link
+                href="/reports"
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                  pathname === "/reports"
+                    ? "bg-white/20 font-medium text-white shadow-sm"
+                    : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                )}
+              >
+                <FileBarChart className="size-4" />
+                <span>Custom Reports</span>
+              </Link>
+            </li>
+          </ul>
 
           {showAllData && (
             <>

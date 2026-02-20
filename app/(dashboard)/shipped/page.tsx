@@ -223,6 +223,7 @@ export default function ShippedPage() {
           data={filtered}
           noun="shipment"
           exportFilename="shipped.csv"
+          page="shipped"
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

@@ -325,6 +325,7 @@ export default function NeedToPackagePage() {
           data={filtered}
           noun={t('needToPackage.noun')}
           exportFilename="need-to-package"
+          page="need-to-package"
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

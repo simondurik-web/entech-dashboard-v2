@@ -758,6 +758,7 @@ export default function InventoryPage() {
           data={filtered}
           noun="item"
           exportFilename="inventory"
+          page="inventory"
           getRowKey={(row) => row.partNumber}
           onRowClick={(row) => setHistoryPart(row.partNumber)}
           rowClassName={(row) => {

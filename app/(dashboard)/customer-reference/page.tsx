@@ -391,6 +391,7 @@ export default function CustomerReferencePage() {
           data={tableData}
           noun="mapping"
           exportFilename="customer-reference"
+          page="customer-reference"
           getRowKey={(row) => (row as unknown as PartMapping).id}
           onRowClick={(row) => openEdit(row as unknown as PartMapping)}
         />

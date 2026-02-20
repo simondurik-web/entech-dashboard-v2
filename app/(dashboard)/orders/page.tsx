@@ -416,6 +416,7 @@ export default function OrdersPage() {
           data={filtered}
           noun={t('orders.noun')}
           exportFilename="orders.csv"
+          page="orders"
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

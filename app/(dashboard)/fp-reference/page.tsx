@@ -74,6 +74,7 @@ export default function FPReferencePage() {
           data={data}
           noun="record"
           exportFilename="fp-reference.csv"
+          page="fp-reference"
         />
       )}
     </div>

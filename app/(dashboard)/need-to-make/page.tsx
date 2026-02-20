@@ -191,6 +191,7 @@ export default function NeedToMakePage() {
           data={filtered}
           noun="part"
           exportFilename="need-to-make.csv"
+          page="need-to-make"
           cardClassName={(row) => `border-l-4 ${borderColor(row as unknown as ProductionMakeItem)}`}
           renderCard={(row, i) => {
             const item = row as unknown as ProductionMakeItem

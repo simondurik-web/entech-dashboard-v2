@@ -136,6 +136,7 @@ export default function AllDataPage() {
         data={tableData}
         noun={t('allData.noun') || 'record'}
         exportFilename="all-data"
+          page="all-data"
         getRowKey={(row, i) => String((row as Record<string, unknown>)['Line'] || i)}
       />
     </div>

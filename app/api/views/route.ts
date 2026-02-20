@@ -7,8 +7,14 @@ export async function GET(req: NextRequest) {
 
   if (!page) return NextResponse.json({ error: 'page required' }, { status: 400 })
 
-  let query = supabaseAdmin.from('saved_views').select('*').eq('page', page).order('created_at', { ascending: false })
+  let query = supabaseAdmin.from('saved_views').select('*').order('created_at', { ascending: false })
 
+  // __all returns all views; otherwise filter by page
+  if (page !== '__all') {
+    query = query.eq('page', page)
+  }
+
+  // If user is logged in, show their views + shared views; otherwise shared only
   if (userId) {
     query = query.or(`user_id.eq.${userId},shared.eq.true`)
   } else {
@@ -30,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('saved_views')
-    .insert({ user_id: userId, page, name, config: config ?? {}, shared: Boolean(shared) })
+    .insert({ user_id: userId, page, name, config: config ?? {}, shared: shared !== false })
     .select()
     .single()
 

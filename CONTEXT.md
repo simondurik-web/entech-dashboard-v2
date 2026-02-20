@@ -110,3 +110,43 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 2026-02-17: Simon added Supabase env vars to Vercel — pending deployment verification
 2026-02-17: Remaining routes still on Sheets: pallet-records, staged-records, shipping-records, BOM×3, inventory-history, generic-sheet
 
+
+## 🚨 CRITICAL: DataTable Standard (2026-02-19)
+
+**EVERY table in the dashboard MUST have the FULL DataTable toolbar:**
+- Search bar 🔍
+- Reset button 🔄
+- Views button (save/share views — see below)
+- Columns button (hide/show)
+- Export button (CSV + Excel)
+- Sort on every column ↕️
+- Filter on every column 🔽
+- Column reorder (drag & drop)
+
+**This applies to ALL tables including:**
+- Main tables on every page
+- Sub-tables when expanding a row (e.g., orders within a part)
+- Sub-sub-tables (e.g., orders for a customer within a part)
+- Customer group tables within expanded parts
+
+**NO EXCEPTIONS.** If it's a table, it gets the full DataTable treatment.
+
+### Views Feature (Priority: HIGH)
+The "Views" button (currently shows "Soon") should allow:
+1. **Save current view** — column order, hidden columns, sort, filters → saved as a named view
+2. **Load a saved view** — click to instantly apply a saved configuration
+3. **Share views** — users can share their views with others
+4. **Per-user views** — each user sees their own + shared views
+5. **Storage:** Supabase `saved_views` table with: id, user_id, page, name, config (JSON), shared (bool), created_at
+6. **Config JSON:** { columnOrder, hiddenColumns, sortKey, sortDir, filters }
+
+### Excel Export Formatting (GLOBAL)
+- Currency columns → $#,##0.00 (Revenue, Cost, P/L, Price, Profit, etc.)
+- Number columns → #,##0 (Qty, Orders, etc.)
+- Right-aligned numbers
+- This is in `lib/export-utils.ts` (global) and also in sales-parts local `downloadExcel`
+
+### Current Issue (2026-02-19)
+- Sales by Part: customer-level table (when multiple customers for a part) is still a raw HTML table
+- Needs conversion to full DataTable component with all features
+- The order-level tables ARE DataTables already

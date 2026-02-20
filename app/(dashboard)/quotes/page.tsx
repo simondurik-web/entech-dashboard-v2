@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { useViewFromUrl } from '@/lib/use-view-from-url'
 
 interface Quote {
   id: string
@@ -48,12 +49,17 @@ function statusBadge(s: string) {
 }
 
 export default function QuotesPage() {
+  return <Suspense><QuotesContent /></Suspense>
+}
+
+function QuotesContent() {
   const [data, setData] = useState<Quote[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewingPdf, setViewingPdf] = useState<{ url: string; quoteNumber: string } | null>(null)
   const [hoveredQuote, setHoveredQuote] = useState<string | null>(null)
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
 
   useEffect(() => {
     fetch('/api/quotes')
@@ -179,6 +185,7 @@ export default function QuotesPage() {
           noun="quote"
           exportFilename="quotes-registry.csv"
           page="quotes"
+          initialView={initialView}
           onRowClick={(row) => handleRowClick(row as unknown as Quote)}
         />
       )}

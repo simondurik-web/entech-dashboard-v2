@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
-import type { ColumnDef, UseDataTableReturn } from '@/lib/use-data-table'
+import type { ColumnDef, DataTableViewConfig, UseDataTableReturn } from '@/lib/use-data-table'
 import { ColumnFilter } from './ColumnFilter'
 import { ColumnToggle } from './ColumnToggle'
 import { ExportMenu } from './ExportMenu'
@@ -25,8 +25,10 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   onRowClick?: (row: T, index: number) => void
   renderExpandedContent?: (row: T, index: number) => React.ReactNode
   rowClassName?: (row: T) => string
+  /** Page key for saved views — pass to enable Custom Views button */
   page?: string
-  userId?: string
+  /** Initial view config to apply (e.g. from URL query param) */
+  initialView?: DataTableViewConfig | null
 }
 
 function SortIcon({ columnKey, sortKey, sortDir }: {
@@ -51,7 +53,7 @@ export function DataTable<T extends Record<string, unknown>>({
   renderExpandedContent,
   rowClassName,
   page,
-  userId,
+  initialView,
 }: DataTableProps<T>) {
   const { t } = useI18n()
   const {
@@ -75,31 +77,14 @@ export function DataTable<T extends Record<string, unknown>>({
     getViewConfig,
   } = table
 
-  const [resolvedUserId, setResolvedUserId] = useState<string | null>(userId ?? null)
-
+  // Apply initial view config once on mount
+  const appliedInitial = useRef(false)
   useEffect(() => {
-    if (userId) {
-      setResolvedUserId(userId)
-      return
+    if (initialView && !appliedInitial.current) {
+      appliedInitial.current = true
+      applyView(initialView)
     }
-    if (typeof window === 'undefined') return
-    const candidates = [
-      localStorage.getItem('user-email'),
-      localStorage.getItem('userEmail'),
-      localStorage.getItem('x-user-id'),
-    ]
-    const userRaw = localStorage.getItem('user')
-    if (userRaw) {
-      try {
-        const parsed = JSON.parse(userRaw)
-        candidates.push(parsed?.email)
-      } catch {
-        // ignore
-      }
-    }
-    const found = candidates.find(Boolean) ?? null
-    setResolvedUserId(found)
-  }, [userId])
+  }, [initialView, applyView])
 
   const hasActiveFilters = filters.size > 0 || searchTerm.trim() !== ''
 
@@ -161,14 +146,13 @@ export function DataTable<T extends Record<string, unknown>>({
             <span className="hidden sm:inline">{t('ui.reset')}</span>
           </Button>
 
-          {page && resolvedUserId ? (
+          {page && (
             <ViewsMenu
               page={page}
-              userId={resolvedUserId}
               getCurrentConfig={getViewConfig}
               onApplyView={applyView}
             />
-          ) : null}
+          )}
 
           <ColumnToggle columns={columns} hiddenColumns={hiddenColumns} onToggle={toggleColumn} />
           <ExportMenu data={processedData} columns={visibleColumns} filename={exportFilename} />

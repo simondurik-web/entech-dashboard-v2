@@ -263,6 +263,7 @@ export default function PalletRecordsPage() {
 
       {!loading && !error && (
         <DataTable table={table} data={filtered} noun="pallet" exportFilename="pallet-records.csv"
+          page="pallet-records"
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const record = row as unknown as PalletRow

@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { useViewFromUrl } from '@/lib/use-view-from-url'
 
 interface SalesOrder {
   line: string
@@ -69,10 +70,15 @@ const MONTH_COLUMNS: ColumnDef<MonthRow>[] = [
 ]
 
 export default function SalesDatesPage() {
+  return <Suspense><SalesDatesContent /></Suspense>
+}
+
+function SalesDatesContent() {
   const [data, setData] = useState<SalesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
 
   useEffect(() => {
     async function fetchData() {
@@ -156,7 +162,7 @@ export default function SalesDatesPage() {
         </div>
       </div>
 
-      <DataTable table={table} data={monthRows} noun="month" exportFilename="sales-by-date" page="sales-by-date" />
+      <DataTable table={table} data={monthRows} noun="month" exportFilename="sales-by-date" page="sales-by-date" initialView={initialView} />
     </div>
   )
 }

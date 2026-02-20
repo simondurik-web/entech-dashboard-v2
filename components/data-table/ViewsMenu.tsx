@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Bookmark, Globe, Lock, Pencil, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bookmark, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useAuth } from '@/lib/auth-context'
 import type { DataTableViewConfig } from '@/lib/use-data-table'
 
 interface SavedView {
@@ -19,92 +20,51 @@ interface SavedView {
 
 interface ViewsMenuProps {
   page: string
-  userId: string
   getCurrentConfig: () => DataTableViewConfig
   onApplyView: (config: DataTableViewConfig) => void
 }
 
-export function ViewsMenu({ page, userId, getCurrentConfig, onApplyView }: ViewsMenuProps) {
+export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProps) {
+  const { user, profile } = useAuth()
+  const userId = profile?.email || user?.email || null
   const [open, setOpen] = useState(false)
   const [views, setViews] = useState<SavedView[]>([])
   const [newName, setNewName] = useState('')
   const [saving, setSaving] = useState(false)
-
-  const ownViews = useMemo(() => views.filter((v) => v.user_id === userId), [views, userId])
-  const sharedViews = useMemo(() => views.filter((v) => v.user_id !== userId && v.shared), [views, userId])
+  const [saved, setSaved] = useState(false)
 
   async function loadViews() {
-    const res = await fetch(`/api/views?page=${encodeURIComponent(page)}`, {
-      headers: { 'x-user-id': userId },
-    })
-    if (!res.ok) return
-    const data = await res.json()
-    setViews(data)
+    try {
+      const headers: Record<string, string> = {}
+      if (userId) headers['x-user-id'] = userId
+      const res = await fetch(`/api/views?page=${encodeURIComponent(page)}`, { headers })
+      if (!res.ok) return
+      const data = await res.json()
+      setViews(data)
+    } catch { /* ignore */ }
   }
 
   useEffect(() => {
-    if (open) loadViews()
+    if (open) { loadViews(); setSaved(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, page, userId])
 
-  async function saveCurrentView() {
-    if (!newName.trim()) return
+  async function saveView() {
+    if (!newName.trim() || !userId) return
     setSaving(true)
     try {
       const res = await fetch('/api/views', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId,
-        },
-        body: JSON.stringify({
-          page,
-          name: newName.trim(),
-          config: getCurrentConfig(),
-          shared: false,
-        }),
+        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        body: JSON.stringify({ page, name: newName.trim(), config: getCurrentConfig(), shared: true }),
       })
       if (res.ok) {
         setNewName('')
+        setSaved(true)
         await loadViews()
+        setTimeout(() => setSaved(false), 2000)
       }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function deleteView(id: string) {
-    const res = await fetch(`/api/views/${id}`, {
-      method: 'DELETE',
-      headers: { 'x-user-id': userId },
-    })
-    if (res.ok) await loadViews()
-  }
-
-  async function renameView(view: SavedView) {
-    const next = prompt('Rename view', view.name)
-    if (!next || !next.trim()) return
-    const res = await fetch(`/api/views/${view.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': userId,
-      },
-      body: JSON.stringify({ name: next.trim() }),
-    })
-    if (res.ok) await loadViews()
-  }
-
-  async function toggleShare(view: SavedView) {
-    const res = await fetch(`/api/views/${view.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': userId,
-      },
-      body: JSON.stringify({ shared: !view.shared }),
-    })
-    if (res.ok) await loadViews()
+    } finally { setSaving(false) }
   }
 
   return (
@@ -112,72 +72,51 @@ export function ViewsMenu({ page, userId, getCurrentConfig, onApplyView }: Views
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm">
           <Bookmark className="size-3.5" />
-          <span className="hidden sm:inline">Views</span>
+          <span className="hidden sm:inline">Custom Views</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-3 space-y-3">
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Save Current View</p>
-          <div className="flex items-center gap-2">
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="View name"
-              className="h-8"
-            />
-            <Button size="sm" onClick={saveCurrentView} disabled={saving || !newName.trim()}>
-              Save
-            </Button>
+      <PopoverContent align="end" className="w-80 p-3 space-y-3">
+        {userId ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Save Current View</p>
+            <div className="flex items-center gap-2">
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="View name..."
+                className="h-8"
+                onKeyDown={(e) => { if (e.key === 'Enter') saveView() }}
+              />
+              <Button size="sm" onClick={saveView} disabled={saving || !newName.trim()}>
+                {saved ? <Check className="size-3.5" /> : 'Save'}
+              </Button>
+            </div>
+            {saved && <p className="text-xs text-green-500">✓ Saved! Find it in Reports.</p>}
           </div>
-        </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Sign in to save custom views.</p>
+        )}
 
-        <div className="space-y-2 max-h-72 overflow-y-auto">
-          {ownViews.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">My Views</p>
-              {ownViews.map((v) => (
-                <div key={v.id} className="rounded border p-2 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      className="text-sm font-medium hover:underline text-left"
-                      onClick={() => onApplyView(v.config || {})}
-                    >
-                      {v.name}
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <button className="p-1 hover:bg-muted rounded" title="Rename" onClick={() => renameView(v)}>
-                        <Pencil className="size-3" />
-                      </button>
-                      <button className="p-1 hover:bg-muted rounded" title={v.shared ? 'Unshare' : 'Share'} onClick={() => toggleShare(v)}>
-                        {v.shared ? <Globe className="size-3" /> : <Lock className="size-3" />}
-                      </button>
-                      <button className="p-1 hover:bg-muted rounded text-destructive" title="Delete" onClick={() => deleteView(v.id)}>
-                        <Trash2 className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        {views.length > 0 && (
+          <div className="space-y-1 max-h-52 overflow-y-auto border-t pt-2">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Quick Apply</p>
+            {views.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => { onApplyView(v.config || {}); setOpen(false) }}
+                className="w-full text-left rounded px-2 py-1.5 text-sm hover:bg-muted transition-colors"
+              >
+                <span className="font-medium">{v.name}</span>
+                <span className="text-[11px] text-muted-foreground ml-2">by {v.user_id}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
-          {sharedViews.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Shared Views</p>
-              {sharedViews.map((v) => (
-                <div key={v.id} className="rounded border p-2">
-                  <button className="text-sm font-medium hover:underline text-left" onClick={() => onApplyView(v.config || {})}>
-                    {v.name}
-                  </button>
-                  <p className="text-[11px] text-muted-foreground">by {v.user_id}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {ownViews.length === 0 && sharedViews.length === 0 && (
-            <p className="text-sm text-muted-foreground py-4 text-center">No saved views yet.</p>
-          )}
+        <div className="border-t pt-2">
+          <a href="/reports" className="text-xs text-blue-400 hover:underline">
+            View all saved reports →
+          </a>
         </div>
       </PopoverContent>
     </Popover>
