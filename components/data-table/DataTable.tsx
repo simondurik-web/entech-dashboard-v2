@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 import type { ColumnDef, DataTableViewConfig, UseDataTableReturn } from '@/lib/use-data-table'
+import { exportToCSV, exportToExcel } from '@/lib/export-utils'
 import { ColumnFilter } from './ColumnFilter'
 import { ColumnToggle } from './ColumnToggle'
 import { ExportMenu } from './ExportMenu'
@@ -29,6 +30,8 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   page?: string
   /** Initial view config to apply (e.g. from URL query param) */
   initialView?: DataTableViewConfig | null
+  /** Auto-export format — triggers download once data is ready */
+  autoExport?: 'csv' | 'xlsx' | null
 }
 
 function SortIcon({ columnKey, sortKey, sortDir }: {
@@ -54,6 +57,7 @@ export function DataTable<T extends Record<string, unknown>>({
   rowClassName,
   page,
   initialView,
+  autoExport,
 }: DataTableProps<T>) {
   const { t } = useI18n()
   const {
@@ -85,6 +89,24 @@ export function DataTable<T extends Record<string, unknown>>({
       applyView(initialView)
     }
   }, [initialView, applyView])
+
+  // Auto-export: trigger download once data is loaded + view applied
+  const autoExported = useRef(false)
+  useEffect(() => {
+    if (!autoExport || autoExported.current || processedData.length === 0) return
+    // Wait a tick for view to be fully applied
+    const timer = setTimeout(() => {
+      autoExported.current = true
+      const cols = visibleColumns.map((c) => ({ key: c.key as string, label: c.label }))
+      const exportData = processedData as Record<string, unknown>[]
+      if (autoExport === 'csv') {
+        exportToCSV(exportData, cols, exportFilename || 'export')
+      } else {
+        exportToExcel(exportData, cols, exportFilename || 'export')
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [autoExport, processedData, visibleColumns, exportFilename])
 
   const hasActiveFilters = filters.size > 0 || searchTerm.trim() !== ''
 

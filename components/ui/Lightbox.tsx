@@ -58,7 +58,7 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
     if (e.key === 'Escape') { if (isZoomed) { setZoom(1); setPan({ x: 0, y: 0 }) } else { onClose() } }
     if (e.key === 'ArrowRight' && !isZoomed) goNext()
     if (e.key === 'ArrowLeft' && !isZoomed) goPrev()
-    if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(z + 0.5, 5))
+    if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(z + 0.5, 8))
     if (e.key === '-') { setZoom((z) => { const next = Math.max(z - 0.5, 1); if (next === 1) setPan({ x: 0, y: 0 }); return next }) }
   }, [onClose, goNext, goPrev, isZoomed])
 
@@ -76,7 +76,7 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
     e.stopPropagation()
     const delta = e.deltaY > 0 ? -0.3 : 0.3
     setZoom((z) => {
-      const next = Math.max(1, Math.min(z + delta, 5))
+      const next = Math.max(1, Math.min(z + delta, 8))
       if (next === 1) setPan({ x: 0, y: 0 })
       return next
     })
@@ -89,15 +89,15 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
       setZoom(1)
       setPan({ x: 0, y: 0 })
     } else {
-      // Zoom to 2.5x centered on click position
+      // Zoom to 3x centered on click position
       const rect = imgContainerRef.current?.getBoundingClientRect()
       if (rect) {
         const relX = (e.clientX - rect.left) / rect.width - 0.5
         const relY = (e.clientY - rect.top) / rect.height - 0.5
-        setZoom(2.5)
-        setPan({ x: -relX * rect.width * 1.5, y: -relY * rect.height * 1.5 })
+        setZoom(3)
+        setPan({ x: -relX * rect.width * 2, y: -relY * rect.height * 2 })
       } else {
-        setZoom(2.5)
+        setZoom(3)
       }
     }
   }, [isZoomed])
@@ -200,7 +200,7 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
         {/* Actions */}
         <div className="absolute top-4 right-16 flex gap-2">
           <button
-            onClick={(e) => { e.stopPropagation(); setZoom((z) => z >= 2.5 ? 1 : 2.5); if (zoom >= 2.5) setPan({ x: 0, y: 0 }) }}
+            onClick={(e) => { e.stopPropagation(); setZoom((z) => z >= 3 ? 1 : 3); if (zoom >= 3) setPan({ x: 0, y: 0 }) }}
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
             title={isZoomed ? 'Zoom out' : 'Zoom in'}
           >

@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
-import { useViewFromUrl } from '@/lib/use-view-from-url'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 interface SalesOrder {
   line: string
@@ -79,6 +79,7 @@ function SalesDatesContent() {
   const [error, setError] = useState<string | null>(null)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
 
   useEffect(() => {
     async function fetchData() {
@@ -162,7 +163,7 @@ function SalesDatesContent() {
         </div>
       </div>
 
-      <DataTable table={table} data={monthRows} noun="month" exportFilename="sales-by-date" page="sales-by-date" initialView={initialView} />
+      <DataTable table={table} data={monthRows} noun="month" exportFilename="sales-by-date" page="sales-by-date" initialView={initialView} autoExport={autoExport} />
     </div>
   )
 }

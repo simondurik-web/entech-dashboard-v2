@@ -25,3 +25,13 @@ export function useViewFromUrl(): DataTableViewConfig | null {
 
   return config
 }
+
+/**
+ * Returns the autoExport param if present ('csv' | 'xlsx' | null)
+ */
+export function useAutoExport(): 'csv' | 'xlsx' | null {
+  const searchParams = useSearchParams()
+  const val = searchParams.get('autoExport')
+  if (val === 'csv' || val === 'xlsx') return val
+  return null
+}

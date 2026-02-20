@@ -5,7 +5,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
-import { useViewFromUrl } from '@/lib/use-view-from-url'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 interface Quote {
   id: string
@@ -60,6 +60,7 @@ function QuotesContent() {
   const [hoveredQuote, setHoveredQuote] = useState<string | null>(null)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
 
   useEffect(() => {
     fetch('/api/quotes')
@@ -186,6 +187,7 @@ function QuotesContent() {
           exportFilename="quotes-registry.csv"
           page="quotes"
           initialView={initialView}
+          autoExport={autoExport}
           onRowClick={(row) => handleRowClick(row as unknown as Quote)}
         />
       )}

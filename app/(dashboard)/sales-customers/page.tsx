@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
-import { useViewFromUrl } from '@/lib/use-view-from-url'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 interface SalesOrder {
   line: string
@@ -105,6 +105,7 @@ function SalesCustomersContent() {
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
 
   useEffect(() => {
     async function fetchData() {
@@ -159,6 +160,7 @@ function SalesCustomersContent() {
         exportFilename="sales-by-customer"
         page="sales-by-customer"
         initialView={initialView}
+        autoExport={autoExport}
         getRowKey={(row) => (row as CustomerRow).customer}
         expandedRowKey={expandedCustomer}
         onRowClick={(row) => {

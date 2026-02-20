@@ -1,8 +1,8 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState, useCallback } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Trash2, ExternalLink, Pencil, FileDown, Check, X } from 'lucide-react'
+import { Trash2, ExternalLink, Pencil, FileDown, FileText, FileSpreadsheet, Check, X, ExternalLinkIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth, isSuperAdmin } from '@/lib/auth-context'
@@ -102,6 +102,48 @@ function EditableCell({ value, onSave, editable }: { value: string; onSave: (v: 
       <span>{value || <span className="text-muted-foreground italic">Click to add</span>}</span>
       <Pencil className="size-3 opacity-0 group-hover:opacity-50" />
     </span>
+  )
+}
+
+function ExportDropdown({ viewId, route }: { viewId: string; route: string }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  function triggerExport(format: 'csv' | 'xlsx') {
+    // Open page in hidden iframe with autoExport param — it will trigger download automatically
+    const url = `${route}?viewId=${viewId}&autoExport=${format}`
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    iframe.src = url
+    document.body.appendChild(iframe)
+    // Clean up after 30s
+    setTimeout(() => { try { document.body.removeChild(iframe) } catch {} }, 30000)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <Button variant="ghost" size="sm" onClick={() => setOpen(!open)} title="Export report data">
+        <FileDown className="size-3.5 mr-1" /> Export
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg min-w-[130px] py-1">
+          <button onClick={() => triggerExport('csv')} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
+            <FileText className="size-4" /> CSV
+          </button>
+          <button onClick={() => triggerExport('xlsx')} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
+            <FileSpreadsheet className="size-4" /> Excel
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -236,20 +278,17 @@ function ReportsContent() {
       render: (_v, row) => {
         const r = row as ReportRow
         const canDelete = r.isOwn || isAdmin
+        const view = views.find((v) => v.id === r.id)
+        const route = view ? (PAGE_ROUTES[view.page] || `/${view.page}`) : '#'
         return (
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" onClick={() => openReport(views.find((v) => v.id === r.id)!)} title="Open report">
+            <Button variant="ghost" size="sm" onClick={() => view && openReport(view)} title="Open report">
               <ExternalLink className="size-3.5 mr-1" /> Open
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => {
-              const view = views.find((v) => v.id === r.id)
-              if (!view) return
-              const route = PAGE_ROUTES[view.page] || `/${view.page}`
-              // Export: navigate with export flag
-              window.open(`${route}?viewId=${view.id}`, '_blank')
-            }} title="Open in new tab to export">
-              <FileDown className="size-3.5 mr-1" /> Export
+            <Button variant="ghost" size="sm" onClick={() => window.open(`${route}?viewId=${r.id}`, '_blank')} title="Open in new tab">
+              <ExternalLinkIcon className="size-3.5 mr-1" /> New Tab
             </Button>
+            <ExportDropdown viewId={r.id} route={route} />
             {canDelete && (
               <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteView(r.id)} title="Delete report">
                 <Trash2 className="size-3.5" />
