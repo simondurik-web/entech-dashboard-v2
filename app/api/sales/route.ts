@@ -107,7 +107,7 @@ async function fetchSalesFromSheets() {
     const customer = cellValue(row, COLS.customer)
     if (!line || !customer) continue
     const status = normalizeStatus(cellValue(row, COLS.internalStatus), cellValue(row, COLS.ifStatus))
-    if (status === 'cancelled' || status !== 'shipped') continue
+    if (status === 'cancelled') continue
 
     const revenue = cellNumber(row, revenueCol)
     const variableCost = cellNumber(row, variableCostCol)
@@ -126,9 +126,14 @@ async function fetchSalesFromSheets() {
     totalPL += pl
   }
 
+  const shippedOrders = orders.filter(o => o.status === 'shipped')
+  const shippedPL = shippedOrders.reduce((s, o) => s + o.pl, 0)
+  const shippedCount = shippedOrders.length
+  const forecastPL = totalPL - shippedPL
+  const pendingCount = orders.length - shippedCount
   const avgMargin = totalRevenue > 0 ? (totalPL / totalRevenue) * 100 : 0
   return NextResponse.json({
     orders,
-    summary: { totalRevenue, totalCosts, totalPL, avgMargin, orderCount: orders.length },
+    summary: { totalRevenue, totalCosts, totalPL, avgMargin, orderCount: orders.length, shippedPL, shippedCount, forecastPL, pendingCount },
   })
 }

@@ -36,6 +36,10 @@ export interface SalesSummary {
   totalPL: number
   avgMargin: number
   orderCount: number
+  shippedPL: number
+  shippedCount: number
+  forecastPL: number
+  pendingCount: number
 }
 
 export interface SalesData {
@@ -340,7 +344,7 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
 
 export async function fetchSalesFromDB(): Promise<SalesData> {
   const data = await fetchAllRows('dashboard_orders')
-  if (!data.length) return { orders: [], summary: { totalRevenue: 0, totalCosts: 0, totalPL: 0, avgMargin: 0, orderCount: 0 } }
+  if (!data.length) return { orders: [], summary: { totalRevenue: 0, totalCosts: 0, totalPL: 0, avgMargin: 0, orderCount: 0, shippedPL: 0, shippedCount: 0, forecastPL: 0, pendingCount: 0 } }
 
   const orders: SalesOrder[] = []
   let totalRevenue = 0
@@ -353,7 +357,7 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     if (!line || !customer) continue
 
     const status = normalizeStatus(str(row.work_order_status), str(row.if_status_fusion))
-    if (status === 'cancelled' || status !== 'shipped') continue
+    if (status === 'cancelled') continue
 
     const revenue = num(row.revenue)
     const variableCost = num(row.variable_cost)
@@ -381,11 +385,16 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     totalPL += pl
   }
 
+  const shippedOrders = orders.filter(o => o.status === 'shipped')
+  const shippedPL = shippedOrders.reduce((s, o) => s + o.pl, 0)
+  const shippedCount = shippedOrders.length
+  const forecastPL = totalPL - shippedPL
+  const pendingCount = orders.length - shippedCount
   const avgMargin = totalRevenue > 0 ? (totalPL / totalRevenue) * 100 : 0
 
   return {
     orders,
-    summary: { totalRevenue, totalCosts, totalPL, avgMargin, orderCount: orders.length },
+    summary: { totalRevenue, totalCosts, totalPL, avgMargin, orderCount: orders.length, shippedPL, shippedCount, forecastPL, pendingCount },
   }
 }
 

@@ -28,6 +28,10 @@ interface SalesSummary {
   totalPL: number
   avgMargin: number
   orderCount: number
+  shippedPL?: number
+  shippedCount?: number
+  forecastPL?: number
+  pendingCount?: number
 }
 
 interface SalesData {
@@ -157,7 +161,7 @@ export default function SalesOverviewPage() {
         <p className="text-sm text-muted-foreground">{t('page.salesOverviewSubtitle')}</p>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Cards — matches HTML dashboard layout */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('stats.totalRevenue')}</p>
@@ -165,20 +169,25 @@ export default function SalesOverviewPage() {
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.orderCount)} orders</p>
         </div>
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.totalCosts')}</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalCosts)}</p>
-        </div>
-        <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.totalPL')}</p>
           <p className={`text-2xl font-bold mt-1 ${summary.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>
             {formatCurrency(summary.totalPL)}
           </p>
+          <p className="text-xs text-muted-foreground mt-1">Margin: {summary.avgMargin.toFixed(2)}%</p>
         </div>
         <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.avgMargin')}</p>
-          <p className={`text-2xl font-bold mt-1 ${summary.avgMargin >= 0 ? 'text-success' : 'text-danger'}`}>
-            {summary.avgMargin.toFixed(1)}%
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Shipped P/L</p>
+          <p className={`text-2xl font-bold mt-1 ${(summary.shippedPL ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+            {formatCurrency(summary.shippedPL ?? 0)}
           </p>
+          <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.shippedCount ?? 0)} shipped</p>
+        </div>
+        <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Forecasted P/L</p>
+          <p className={`text-2xl font-bold mt-1 ${(summary.forecastPL ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+            {formatCurrency(summary.forecastPL ?? 0)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.pendingCount ?? 0)} pending</p>
         </div>
       </div>
 
