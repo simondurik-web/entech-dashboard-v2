@@ -11,6 +11,7 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CategoryFilter, filterByCategory } from '@/components/category-filter'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -320,6 +321,7 @@ function SalesDatesContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -332,12 +334,18 @@ function SalesDatesContent() {
       .finally(() => setLoading(false))
   }, [])
 
+  // ─── Filter orders by category ───
+  const filteredOrders = useMemo(() => {
+    if (!data) return []
+    return filterByCategory(data.orders, categoryFilter)
+  }, [data, categoryFilter])
+
   // ─── Aggregate by month using attribution date ───
   const monthRows: MonthRow[] = useMemo(() => {
-    if (!data) return []
+    if (!filteredOrders.length && !data) return []
     const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedPL: number; forecastPL: number; costs: number }> = {}
 
-    for (const order of data.orders) {
+    for (const order of filteredOrders) {
       const dateStr = getAttributionDate(order)
       const monthKey = dateStr ? getMonthKey(dateStr) : null
       if (!monthKey) continue
@@ -376,7 +384,7 @@ function SalesDatesContent() {
         }
       })
       .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
-  }, [data])
+  }, [filteredOrders, data])
 
   // ─── Totals ───
   const totals = useMemo(() => {
@@ -458,10 +466,13 @@ function SalesDatesContent() {
 
   return (
     <div className="p-4 md:p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">P/L by Date</h1>
-        <p className="text-sm text-muted-foreground">Revenue and profit breakdown by month</p>
+      {/* Header + Category Filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">P/L by Date</h1>
+          <p className="text-sm text-muted-foreground">Revenue and profit breakdown by month</p>
+        </div>
+        <CategoryFilter value={categoryFilter} onChange={setCategoryFilter} />
       </div>
 
       {/* Stat Cards */}
@@ -474,16 +485,47 @@ function SalesDatesContent() {
 
       {/* Monthly P/L Breakdown Chart */}
       <div className="rounded-xl border bg-card p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Monthly P/L Breakdown</h3>
-        <div className="h-80">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Monthly P/L Breakdown</h3>
+          <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(16,185,129,0.85)' }} /> Shipped Profit</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(239,68,68,0.85)' }} /> Shipped Loss</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(16,185,129,0.35)' }} /> Forecast Profit</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(239,68,68,0.35)' }} /> Forecast Loss</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 rounded" style={{ background: '#60a5fa' }} /> Revenue</span>
+          </div>
+        </div>
+        <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} vertical={false} />
+            <ComposedChart data={chartData} barGap={0} barCategoryGap="12%">
+              <defs>
+                <linearGradient id="shippedProfitGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="#059669" stopOpacity={0.75} />
+                </linearGradient>
+                <linearGradient id="shippedLossGrad" x1="0" y1="1" x2="0" y2="0">
+                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="#dc2626" stopOpacity={0.75} />
+                </linearGradient>
+                <linearGradient id="forecastProfitGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#059669" stopOpacity={0.2} />
+                </linearGradient>
+                <linearGradient id="forecastLossGrad" x1="0" y1="1" x2="0" y2="0">
+                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#dc2626" stopOpacity={0.2} />
+                </linearGradient>
+                <filter id="barShadow">
+                  <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.15" />
+                </filter>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.2} vertical={false} />
               <XAxis
                 dataKey="month"
                 tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                 tickLine={false}
                 axisLine={false}
+                dy={6}
               />
               <YAxis
                 yAxisId="left"
@@ -491,6 +533,7 @@ function SalesDatesContent() {
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                width={60}
               />
               <YAxis
                 yAxisId="right"
@@ -499,19 +542,17 @@ function SalesDatesContent() {
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                width={60}
               />
-              <Tooltip content={<ChartTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: '11px' }}
-                iconType="square"
-              />
-              {/* Stacked bars for P/L */}
-              <Bar yAxisId="left" dataKey="shippedProfit" name="Shipped Profit" stackId="shipped" fill="rgba(16,185,129,0.8)" radius={[0, 0, 0, 0]} />
-              <Bar yAxisId="left" dataKey="shippedLoss" name="Shipped Loss" stackId="shipped" fill="rgba(239,68,68,0.8)" radius={[0, 0, 0, 0]} />
-              <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="rgba(16,185,129,0.35)" radius={[0, 0, 0, 0]} />
-              <Bar yAxisId="left" dataKey="forecastLoss" name="Forecast Loss" stackId="forecast" fill="rgba(239,68,68,0.35)" radius={[0, 0, 0, 0]} />
+              <Tooltip content={<ChartTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15, radius: 6 }} />
+              {/* Stacked bars — shipped stack */}
+              <Bar yAxisId="left" dataKey="shippedProfit" name="Shipped Profit" stackId="shipped" fill="url(#shippedProfitGrad)" radius={[6, 6, 0, 0]} />
+              <Bar yAxisId="left" dataKey="shippedLoss" name="Shipped Loss" stackId="shipped" fill="url(#shippedLossGrad)" radius={[0, 0, 6, 6]} />
+              {/* Stacked bars — forecast stack */}
+              <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="url(#forecastProfitGrad)" radius={[6, 6, 0, 0]} />
+              <Bar yAxisId="left" dataKey="forecastLoss" name="Forecast Loss" stackId="forecast" fill="url(#forecastLossGrad)" radius={[0, 0, 6, 6]} />
               {/* Revenue line */}
-              <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3, fill: '#3b82f6' }} activeDot={{ r: 5 }} />
+              <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 3.5, fill: '#60a5fa', strokeWidth: 2, stroke: 'hsl(var(--card))' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#60a5fa', fill: 'hsl(var(--card))' }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

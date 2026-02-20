@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
+import { CategoryFilter, filterByCategory } from '@/components/category-filter'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
@@ -167,6 +168,7 @@ function SalesPartsContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedPart, setExpandedPart] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -179,10 +181,15 @@ function SalesPartsContent() {
       .finally(() => setLoading(false))
   }, [])
 
-  const partSummaries: PartRow[] = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     if (!data) return []
+    return filterByCategory(data.orders, categoryFilter)
+  }, [data, categoryFilter])
+
+  const partSummaries: PartRow[] = useMemo(() => {
+    if (!filteredOrders.length && !data) return []
     const byPart: Record<string, PartRow> = {}
-    for (const o of data.orders) {
+    for (const o of filteredOrders) {
       const k = o.partNumber || 'Unknown'
       if (!byPart[k]) byPart[k] = { partNumber: k, category: o.category, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, pl: 0, margin: 0, orders: [] }
       byPart[k].orderCount++
@@ -193,7 +200,7 @@ function SalesPartsContent() {
       byPart[k].orders.push(o)
     }
     return Object.values(byPart).map((p) => ({ ...p, margin: p.revenue > 0 ? (p.pl / p.revenue) * 100 : 0 }))
-  }, [data])
+  }, [filteredOrders, data])
 
   const PART_COLUMNS: ColumnDef<PartRow>[] = useMemo(() => [
     { key: 'partNumber', label: t('table.partNumber'), sortable: true, filterable: true },
@@ -219,9 +226,12 @@ function SalesPartsContent() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t('page.salesByPart')}</h1>
-        <p className="text-sm text-muted-foreground">{t('page.salesByPartSubtitle')}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{t('page.salesByPart')}</h1>
+          <p className="text-sm text-muted-foreground">{t('page.salesByPartSubtitle')}</p>
+        </div>
+        <CategoryFilter value={categoryFilter} onChange={setCategoryFilter} />
       </div>
 
       <DataTable

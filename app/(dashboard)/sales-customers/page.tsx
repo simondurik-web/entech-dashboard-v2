@@ -6,6 +6,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { CategoryFilter, filterByCategory } from '@/components/category-filter'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -448,6 +449,7 @@ function SalesCustomersContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -468,10 +470,15 @@ function SalesCustomersContent() {
     fetchData()
   }, [])
 
-  const customerRows: CustomerRow[] = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     if (!data) return []
+    return filterByCategory(data.orders, categoryFilter)
+  }, [data, categoryFilter])
+
+  const customerRows: CustomerRow[] = useMemo(() => {
+    if (!filteredOrders.length && !data) return []
     const byCustomer: Record<string, CustomerRow> = {}
-    for (const order of data.orders) {
+    for (const order of filteredOrders) {
       const key = order.customer || 'Unknown'
       if (!byCustomer[key]) {
         byCustomer[key] = { customer: key, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, pl: 0, margin: 0, orders: [] }
@@ -484,7 +491,7 @@ function SalesCustomersContent() {
       byCustomer[key].orders.push(order)
     }
     return Object.values(byCustomer).map((c) => ({ ...c, margin: c.revenue > 0 ? (c.pl / c.revenue) * 100 : 0 }))
-  }, [data])
+  }, [filteredOrders, data])
 
   const table = useDataTable({ data: customerRows, columns: CUSTOMER_COLUMNS, storageKey: 'sales-by-customer' })
 
@@ -493,9 +500,12 @@ function SalesCustomersContent() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t('page.salesByCustomer')}</h1>
-        <p className="text-sm text-muted-foreground">{t('page.salesByCustomerSubtitle')}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{t('page.salesByCustomer')}</h1>
+          <p className="text-sm text-muted-foreground">{t('page.salesByCustomerSubtitle')}</p>
+        </div>
+        <CategoryFilter value={categoryFilter} onChange={setCategoryFilter} />
       </div>
 
       <DataTable
