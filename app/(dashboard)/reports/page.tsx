@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Trash2, ExternalLink, Search, X } from 'lucide-react'
+import { Trash2, ExternalLink, Pencil, FileDown, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useAuth } from '@/lib/auth-context'
-import { useI18n } from '@/lib/i18n'
+import { useAuth, isSuperAdmin } from '@/lib/auth-context'
+import { DataTable } from '@/components/data-table'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { exportToCSV, exportToExcel } from '@/lib/export-utils'
 
 interface SavedView {
   id: string
@@ -16,6 +18,18 @@ interface SavedView {
   config: Record<string, unknown>
   shared: boolean
   created_at: string
+  notes: string
+}
+
+interface ReportRow extends Record<string, unknown> {
+  id: string
+  name: string
+  page: string
+  pageLabel: string
+  user_id: string
+  notes: string
+  created_at: string
+  isOwn: boolean
 }
 
 const PAGE_LABELS: Record<string, string> = {
@@ -38,9 +52,9 @@ const PAGE_LABELS: Record<string, string> = {
   'fp-reference': 'FP Reference',
   'drawings': 'Drawings',
   'material-requirements': 'Material Requirements',
+  'staged-records': 'Staged Records',
 }
 
-// Map page key to its route
 const PAGE_ROUTES: Record<string, string> = {
   'orders': '/orders',
   'need-to-make': '/need-to-make',
@@ -61,64 +75,193 @@ const PAGE_ROUTES: Record<string, string> = {
   'fp-reference': '/fp-reference',
   'drawings': '/drawings',
   'material-requirements': '/material-requirements',
+  'staged-records': '/staged-records',
+}
+
+// Inline editable cell
+function EditableCell({ value, onSave, editable }: { value: string; onSave: (v: string) => void; editable: boolean }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(value)
+
+  if (!editable) return <span className="text-muted-foreground">{value || '—'}</span>
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <Input value={text} onChange={(e) => setText(e.target.value)} className="h-7 text-sm" autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter') { onSave(text); setEditing(false) } if (e.key === 'Escape') { setText(value); setEditing(false) } }}
+        />
+        <button onClick={() => { onSave(text); setEditing(false) }} className="p-1 hover:bg-muted rounded"><Check className="size-3" /></button>
+        <button onClick={() => { setText(value); setEditing(false) }} className="p-1 hover:bg-muted rounded"><X className="size-3" /></button>
+      </div>
+    )
+  }
+
+  return (
+    <span className="group flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setEditing(true) }}>
+      <span>{value || <span className="text-muted-foreground italic">Click to add</span>}</span>
+      <Pencil className="size-3 opacity-0 group-hover:opacity-50" />
+    </span>
+  )
 }
 
 export default function ReportsPage() {
+  return <Suspense><ReportsContent /></Suspense>
+}
+
+function ReportsContent() {
   const [views, setViews] = useState<SavedView[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterCreator, setFilterCreator] = useState<string>('all')
   const { user, profile } = useAuth()
-  const { t } = useI18n()
   const router = useRouter()
   const userId = profile?.email || user?.email || null
+  const isAdmin = isSuperAdmin(userId)
 
-  async function loadViews() {
+  const loadViews = useCallback(async () => {
     try {
       const headers: Record<string, string> = {}
       if (userId) headers['x-user-id'] = userId
-      // Fetch all pages
       const res = await fetch('/api/views?page=__all', { headers })
       if (!res.ok) return
       setViews(await res.json())
     } catch { /* ignore */ }
     finally { setLoading(false) }
-  }
+  }, [userId])
 
-  useEffect(() => { loadViews() }, [userId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadViews() }, [loadViews])
 
-  const creators = useMemo(() => {
-    const set = new Set(views.map((v) => v.user_id))
-    return [...set].sort()
-  }, [views])
-
-  const filtered = useMemo(() => {
-    let list = views
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter((v) => v.name.toLowerCase().includes(q) || (PAGE_LABELS[v.page] || v.page).toLowerCase().includes(q))
-    }
-    if (filterCreator !== 'all') {
-      list = list.filter((v) => v.user_id === filterCreator)
-    }
-    return list
-  }, [views, search, filterCreator])
-
-  function openReport(view: SavedView) {
-    const route = PAGE_ROUTES[view.page] || `/${view.page}`
-    // Pass view ID as query param — the page will load and apply the config
-    router.push(`${route}?viewId=${view.id}`)
+  async function updateView(id: string, patch: Record<string, unknown>) {
+    if (!userId) return
+    const res = await fetch(`/api/views/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+      body: JSON.stringify(patch),
+    })
+    if (res.ok) await loadViews()
   }
 
   async function deleteView(id: string) {
     if (!userId) return
     if (!confirm('Delete this report?')) return
-    const res = await fetch(`/api/views/${id}`, {
-      method: 'DELETE',
-      headers: { 'x-user-id': userId },
-    })
+    // Super admin uses a special header to delete anyone's
+    const headers: Record<string, string> = { 'x-user-id': userId }
+    if (isAdmin) headers['x-super-admin'] = 'true'
+    const res = await fetch(`/api/views/${id}`, { method: 'DELETE', headers })
     if (res.ok) setViews((prev) => prev.filter((v) => v.id !== id))
   }
+
+  function openReport(view: SavedView) {
+    const route = PAGE_ROUTES[view.page] || `/${view.page}`
+    router.push(`${route}?viewId=${view.id}`)
+  }
+
+  const rows: ReportRow[] = useMemo(() => views.map((v) => ({
+    id: v.id,
+    name: v.name,
+    page: v.page,
+    pageLabel: PAGE_LABELS[v.page] || v.page,
+    user_id: v.user_id,
+    notes: v.notes || '',
+    created_at: v.created_at,
+    isOwn: v.user_id === userId,
+  })), [views, userId])
+
+  const columns: ColumnDef<ReportRow>[] = useMemo(() => [
+    {
+      key: 'name',
+      label: 'Report Name',
+      sortable: true,
+      filterable: true,
+      render: (_v, row) => {
+        const r = row as ReportRow
+        return (
+          <EditableCell
+            value={r.name}
+            editable={r.isOwn}
+            onSave={(name) => updateView(r.id, { name })}
+          />
+        )
+      },
+    },
+    {
+      key: 'pageLabel',
+      label: 'Source Page',
+      sortable: true,
+      filterable: true,
+      render: (v) => (
+        <span className="inline-block px-2 py-0.5 rounded-full text-xs border bg-muted/50">
+          {v as string}
+        </span>
+      ),
+    },
+    {
+      key: 'user_id',
+      label: 'Created By',
+      sortable: true,
+      filterable: true,
+      render: (v) => (
+        <span>
+          {v as string}
+          {v === userId && <span className="ml-1 text-xs text-blue-400">(me)</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'notes',
+      label: 'Notes',
+      sortable: false,
+      filterable: false,
+      render: (_v, row) => {
+        const r = row as ReportRow
+        return (
+          <EditableCell
+            value={r.notes}
+            editable={r.isOwn}
+            onSave={(notes) => updateView(r.id, { notes })}
+          />
+        )
+      },
+    },
+    {
+      key: 'created_at',
+      label: 'Created',
+      sortable: true,
+      render: (v) => new Date(v as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    },
+    {
+      key: 'id',
+      label: 'Actions',
+      sortable: false,
+      filterable: false,
+      render: (_v, row) => {
+        const r = row as ReportRow
+        const canDelete = r.isOwn || isAdmin
+        return (
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="sm" onClick={() => openReport(views.find((v) => v.id === r.id)!)} title="Open report">
+              <ExternalLink className="size-3.5 mr-1" /> Open
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => {
+              const view = views.find((v) => v.id === r.id)
+              if (!view) return
+              const route = PAGE_ROUTES[view.page] || `/${view.page}`
+              // Export: navigate with export flag
+              window.open(`${route}?viewId=${view.id}`, '_blank')
+            }} title="Open in new tab to export">
+              <FileDown className="size-3.5 mr-1" /> Export
+            </Button>
+            {canDelete && (
+              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteView(r.id)} title="Delete report">
+                <Trash2 className="size-3.5" />
+              </Button>
+            )}
+          </div>
+        )
+      },
+    },
+  ], [userId, isAdmin, views]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const table = useDataTable({ data: rows, columns, storageKey: 'reports-list' })
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -129,96 +272,28 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Search reports..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-9"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <select
-            value={filterCreator}
-            onChange={(e) => setFilterCreator(e.target.value)}
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="all">All creators</option>
-            {creators.map((c) => (
-              <option key={c} value={c}>{c === userId ? `${c} (me)` : c}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <p className="text-lg mb-2">No saved reports yet</p>
           <p className="text-sm">Go to any table, configure columns/filters/sort, then click <strong>Custom Views → Save</strong></p>
         </div>
       ) : (
-        <div className="rounded-md border overflow-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="text-left font-medium px-3 py-2">Report Name</th>
-                <th className="text-left font-medium px-3 py-2">Source Page</th>
-                <th className="text-left font-medium px-3 py-2">Created By</th>
-                <th className="text-left font-medium px-3 py-2">Created</th>
-                <th className="text-right font-medium px-3 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((view) => {
-                const isOwn = view.user_id === userId
-                return (
-                  <tr key={view.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => openReport(view)}>
-                    <td className="px-3 py-2.5">
-                      <span className="font-medium text-blue-400 hover:underline">{view.name}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs border bg-muted/50">
-                        {PAGE_LABELS[view.page] || view.page}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {view.user_id}
-                      {isOwn && <span className="ml-1 text-xs text-blue-400">(me)</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {new Date(view.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon-xs" onClick={() => openReport(view)} title="Open report">
-                          <ExternalLink className="size-3.5" />
-                        </Button>
-                        {isOwn && (
-                          <Button variant="ghost" size="icon-xs" className="text-destructive" onClick={() => deleteView(view.id)} title="Delete">
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          table={table}
+          data={rows}
+          noun="report"
+          exportFilename="custom-reports"
+          page="reports"
+          onRowClick={(row) => {
+            const r = row as ReportRow
+            const view = views.find((v) => v.id === r.id)
+            if (view) openReport(view)
+          }}
+        />
       )}
     </div>
   )

@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Download, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react'
 import { getPhotoUrls } from '@/lib/drive-utils'
 
 interface LightboxProps {
@@ -18,22 +18,36 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
   const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null)
   const animRef = useRef<number>(0)
 
+  // Zoom state
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+  const dragStart = useRef({ x: 0, y: 0 })
+  const panStart = useRef({ x: 0, y: 0 })
+  const imgContainerRef = useRef<HTMLDivElement>(null)
+
   const currentImage = images[currentIndex]
   const { full: imageUrl } = getPhotoUrls(currentImage)
+  const isZoomed = zoom > 1
+
+  // Reset zoom on image change
+  useEffect(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [currentIndex])
 
   const goNext = useCallback(() => {
     setSlideDir('left')
     animRef.current++
-    setCurrentIndex((i) => (i + 1) % images.length) // infinite loop
+    setCurrentIndex((i) => (i + 1) % images.length)
   }, [images.length])
 
   const goPrev = useCallback(() => {
     setSlideDir('right')
     animRef.current++
-    setCurrentIndex((i) => (i - 1 + images.length) % images.length) // infinite loop
+    setCurrentIndex((i) => (i - 1 + images.length) % images.length)
   }, [images.length])
 
-  // Clear animation after it plays
   useEffect(() => {
     if (!slideDir) return
     const t = setTimeout(() => setSlideDir(null), 250)
@@ -41,10 +55,12 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
   }, [slideDir, animRef.current]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose()
-    if (e.key === 'ArrowRight') goNext()
-    if (e.key === 'ArrowLeft') goPrev()
-  }, [onClose, goNext, goPrev])
+    if (e.key === 'Escape') { if (isZoomed) { setZoom(1); setPan({ x: 0, y: 0 }) } else { onClose() } }
+    if (e.key === 'ArrowRight' && !isZoomed) goNext()
+    if (e.key === 'ArrowLeft' && !isZoomed) goPrev()
+    if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(z + 0.5, 5))
+    if (e.key === '-') { setZoom((z) => { const next = Math.max(z - 0.5, 1); if (next === 1) setPan({ x: 0, y: 0 }); return next }) }
+  }, [onClose, goNext, goPrev, isZoomed])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
@@ -54,6 +70,59 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
       document.body.style.overflow = ''
     }
   }, [handleKeyDown])
+
+  // Scroll to zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.stopPropagation()
+    const delta = e.deltaY > 0 ? -0.3 : 0.3
+    setZoom((z) => {
+      const next = Math.max(1, Math.min(z + delta, 5))
+      if (next === 1) setPan({ x: 0, y: 0 })
+      return next
+    })
+  }, [])
+
+  // Click to toggle zoom
+  const handleImageClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (isZoomed) {
+      setZoom(1)
+      setPan({ x: 0, y: 0 })
+    } else {
+      // Zoom to 2.5x centered on click position
+      const rect = imgContainerRef.current?.getBoundingClientRect()
+      if (rect) {
+        const relX = (e.clientX - rect.left) / rect.width - 0.5
+        const relY = (e.clientY - rect.top) / rect.height - 0.5
+        setZoom(2.5)
+        setPan({ x: -relX * rect.width * 1.5, y: -relY * rect.height * 1.5 })
+      } else {
+        setZoom(2.5)
+      }
+    }
+  }, [isZoomed])
+
+  // Drag to pan when zoomed
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!isZoomed) return
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(true)
+    dragStart.current = { x: e.clientX, y: e.clientY }
+    panStart.current = { ...pan }
+  }, [isZoomed, pan])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragging) return
+    e.stopPropagation()
+    const dx = e.clientX - dragStart.current.x
+    const dy = e.clientY - dragStart.current.y
+    setPan({ x: panStart.current.x + dx, y: panStart.current.y + dy })
+  }, [dragging])
+
+  const handleMouseUp = useCallback(() => {
+    setDragging(false)
+  }, [])
 
   const getFilename = () => {
     const prefix = context?.ifNumber ? `IF${context.ifNumber}` : context?.lineNumber ? `Line${context.lineNumber}` : 'photo'
@@ -85,14 +154,10 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
     return 1
   }
 
-  // Slide animation styles
   const slideStyle = slideDir
-    ? {
-        animation: `slide-in-from-${slideDir} 250ms ease-out`,
-      }
+    ? { animation: `slide-in-from-${slideDir} 250ms ease-out` }
     : {}
 
-  // Render via portal to escape overflow-hidden containers
   if (typeof document === 'undefined') return null
 
   return createPortal(
@@ -108,19 +173,39 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
         }
       `}</style>
 
-      <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" onClick={onClose}>
+      <div
+        className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+        onClick={isZoomed ? undefined : onClose}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         {/* Close */}
         <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10">
           <X className="size-6" />
         </button>
 
-        {/* Counter */}
-        <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm">
-          {currentIndex + 1} / {images.length}
+        {/* Counter + Zoom indicator */}
+        <div className="absolute top-4 left-4 flex items-center gap-2">
+          <span className="px-3 py-1.5 rounded-full bg-white/10 text-white text-sm">
+            {currentIndex + 1} / {images.length}
+          </span>
+          {isZoomed && (
+            <span className="px-3 py-1.5 rounded-full bg-blue-500/30 text-blue-300 text-sm">
+              {zoom.toFixed(1)}x — scroll to zoom, drag to pan, click to reset
+            </span>
+          )}
         </div>
 
         {/* Actions */}
         <div className="absolute top-4 right-16 flex gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); setZoom((z) => z >= 2.5 ? 1 : 2.5); if (zoom >= 2.5) setPan({ x: 0, y: 0 }) }}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title={isZoomed ? 'Zoom out' : 'Zoom in'}
+          >
+            {isZoomed ? <ZoomOut className="size-5" /> : <ZoomIn className="size-5" />}
+          </button>
           <a
             href={imageUrl}
             target="_blank"
@@ -140,46 +225,55 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
           </button>
         </div>
 
-        {/* Previous — always visible for infinite loop */}
-        {images.length > 1 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); goPrev() }}
-            className="absolute left-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-          >
-            <ChevronLeft className="size-8" />
-          </button>
+        {/* Navigation arrows — hide when zoomed */}
+        {images.length > 1 && !isZoomed && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); goPrev() }}
+              className="absolute left-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              <ChevronLeft className="size-8" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); goNext() }}
+              className="absolute right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              <ChevronRight className="size-8" />
+            </button>
+          </>
         )}
 
-        {/* Image with slide animation */}
+        {/* Image with zoom + pan */}
         <div
-          className="max-w-[90vw] max-h-[85vh] flex items-center justify-center"
-          onClick={(e) => e.stopPropagation()}
-          style={slideStyle}
+          ref={imgContainerRef}
+          className="max-w-[90vw] max-h-[85vh] flex items-center justify-center overflow-hidden"
+          onClick={handleImageClick}
+          onMouseDown={handleMouseDown}
+          onWheel={handleWheel}
+          style={{
+            ...slideStyle,
+            cursor: isZoomed ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
+          }}
           key={currentIndex}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
             alt={`Photo ${currentIndex + 1}`}
-            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
+            draggable={false}
+            style={{
+              transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+              transition: dragging ? 'none' : 'transform 0.2s ease-out',
+            }}
             onError={(e) => {
               (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
             }}
           />
         </div>
 
-        {/* Next — always visible for infinite loop */}
-        {images.length > 1 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); goNext() }}
-            className="absolute right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-          >
-            <ChevronRight className="size-8" />
-          </button>
-        )}
-
-        {/* Thumbnail strip */}
-        {images.length > 1 && (
+        {/* Thumbnail strip — hide when zoomed */}
+        {images.length > 1 && !isZoomed && (
           <div
             className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-end gap-1.5 px-3 py-2 bg-black/60 backdrop-blur-md rounded-2xl max-w-[90vw] overflow-x-auto"
             onClick={(e) => e.stopPropagation()}
