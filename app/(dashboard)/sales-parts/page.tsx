@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
-import { CategoryFilter, filterByCategory } from '@/components/category-filter'
+import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
@@ -168,7 +168,7 @@ function SalesPartsContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedPart, setExpandedPart] = useState<string | null>(null)
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState(DEFAULT_CATEGORIES)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()

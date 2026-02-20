@@ -11,7 +11,7 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { CategoryFilter, filterByCategory } from '@/components/category-filter'
+import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -321,7 +321,7 @@ function SalesDatesContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState(DEFAULT_CATEGORIES)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
