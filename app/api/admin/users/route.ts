@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing email or role" }, { status: 400 })
   }
 
-  // Check if email already exists
+  // Check if email already exists in profiles
   const { data: existing } = await supabaseAdmin
     .from("user_profiles")
     .select("id")
@@ -110,10 +110,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "User with this email already exists" }, { status: 409 })
   }
 
+  // Use Supabase Auth admin to create an invited user — this creates a real auth.users entry
+  // so the user_profiles FK constraint is satisfied
+  const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    email_confirm: false,
+    user_metadata: { full_name: full_name || '', pre_enrolled: true, assigned_role: role },
+  })
+
+  if (authError) {
+    // If user already exists in auth but not profiles, get their ID
+    if (authError.message?.includes('already been registered') || authError.status === 422) {
+      const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
+      const found = authUsers?.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+      if (found) {
+        const { data, error } = await supabaseAdmin
+          .from("user_profiles")
+          .insert({ id: found.id, email, role, full_name: full_name || null, is_active: true })
+          .select()
+          .single()
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ user: data })
+      }
+    }
+    return NextResponse.json({ error: authError.message }, { status: 500 })
+  }
+
+  // Create the profile with the real auth user ID
   const { data, error } = await supabaseAdmin
     .from("user_profiles")
     .insert({
-      id: crypto.randomUUID(),
+      id: authUser.user.id,
       email,
       role,
       full_name: full_name || null,
