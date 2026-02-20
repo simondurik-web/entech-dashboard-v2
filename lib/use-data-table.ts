@@ -12,6 +12,14 @@ export interface ColumnDef<T> {
   render?: (value: T[keyof T], row: T) => React.ReactNode
 }
 
+export interface DataTableViewConfig {
+  columnOrder?: string[]
+  hiddenColumns?: string[]
+  sortKey?: string | null
+  sortDir?: SortDir
+  filters?: Record<string, string[]>
+}
+
 export interface UseDataTableOptions<T> {
   data: T[]
   columns: ColumnDef<T>[]
@@ -36,6 +44,8 @@ export interface UseDataTableReturn<T> {
   setSearch: (term: string) => void
   moveColumn: (fromIndex: number, toIndex: number) => void
   resetView: () => void
+  applyView: (config: DataTableViewConfig) => void
+  getViewConfig: () => DataTableViewConfig
 }
 
 export function useDataTable<T extends Record<string, unknown>>({
@@ -68,7 +78,6 @@ export function useDataTable<T extends Record<string, unknown>>({
   const sortDirRef = useRef(sortDir)
   sortDirRef.current = sortDir
 
-  // Sync column order when columns change (new columns added)
   useEffect(() => {
     const colKeys = new Set(columns.map((c) => c.key))
     const orderKeys = new Set(columnOrder)
@@ -78,14 +87,12 @@ export function useDataTable<T extends Record<string, unknown>>({
     }
   }, [columns]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist hidden columns
   useEffect(() => {
     if (storageKey && typeof window !== 'undefined') {
       localStorage.setItem(`dt-hidden-${storageKey}`, JSON.stringify([...hiddenColumns]))
     }
   }, [hiddenColumns, storageKey])
 
-  // Persist column order
   useEffect(() => {
     if (storageKey && typeof window !== 'undefined') {
       localStorage.setItem(`dt-order-${storageKey}`, JSON.stringify(columnOrder))
@@ -169,7 +176,35 @@ export function useDataTable<T extends Record<string, unknown>>({
     }
   }, [columns, storageKey])
 
-  // Order columns by columnOrder, then filter hidden
+  const applyView = useCallback((config: DataTableViewConfig) => {
+    if (config.columnOrder && config.columnOrder.length > 0) {
+      setColumnOrder(config.columnOrder)
+    }
+    setHiddenColumns(new Set(config.hiddenColumns ?? []))
+    setSortKey(config.sortKey ?? null)
+    setSortDir(config.sortDir ?? null)
+
+    const nextFilters = new Map<string, Set<string>>()
+    for (const [k, vals] of Object.entries(config.filters ?? {})) {
+      if (vals?.length) nextFilters.set(k, new Set(vals))
+    }
+    setFilters(nextFilters)
+  }, [])
+
+  const getViewConfig = useCallback((): DataTableViewConfig => {
+    const serializableFilters: Record<string, string[]> = {}
+    for (const [key, valueSet] of filters.entries()) {
+      serializableFilters[key] = [...valueSet]
+    }
+    return {
+      columnOrder,
+      hiddenColumns: [...hiddenColumns],
+      sortKey,
+      sortDir,
+      filters: serializableFilters,
+    }
+  }, [columnOrder, hiddenColumns, sortKey, sortDir, filters])
+
   const orderedColumns = useMemo(() => {
     const colMap = new Map(columns.map((c) => [c.key, c]))
     const ordered: ColumnDef<T>[] = []
@@ -177,7 +212,6 @@ export function useDataTable<T extends Record<string, unknown>>({
       const col = colMap.get(key)
       if (col) ordered.push(col)
     }
-    // Add any columns not in order (safety)
     for (const col of columns) {
       if (!columnOrder.includes(col.key)) ordered.push(col)
     }
@@ -192,7 +226,6 @@ export function useDataTable<T extends Record<string, unknown>>({
   const processedData = useMemo(() => {
     let result = [...data]
 
-    // Global search
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase()
       result = result.filter((row) =>
@@ -203,7 +236,6 @@ export function useDataTable<T extends Record<string, unknown>>({
       )
     }
 
-    // Column filters
     for (const [key, allowedValues] of filters) {
       result = result.filter((row) => {
         const val = String(row[key as keyof T] ?? '')
@@ -211,7 +243,6 @@ export function useDataTable<T extends Record<string, unknown>>({
       })
     }
 
-    // Sort
     if (sortKey && sortDir) {
       result.sort((a, b) => {
         const aVal = a[sortKey as keyof T]
@@ -251,5 +282,7 @@ export function useDataTable<T extends Record<string, unknown>>({
     setSearch: setSearchTerm,
     moveColumn,
     resetView,
+    applyView,
+    getViewConfig,
   }
 }

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
+import { useAuth } from '@/lib/auth-context'
 
 interface Quote {
   id: string
@@ -177,6 +178,7 @@ export default function QuotesPage() {
           data={genericData}
           noun="quote"
           exportFilename="quotes-registry.csv"
+          page="quotes"
           onRowClick={(row) => handleRowClick(row as unknown as Quote)}
         />
       )}
