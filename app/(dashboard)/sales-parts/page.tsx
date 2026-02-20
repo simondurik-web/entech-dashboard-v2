@@ -104,7 +104,7 @@ function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storage
 
   const table = useDataTable({ data: rows, columns: ORDER_COLUMNS, storageKey })
 
-  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} getRowKey={(r) => (r as OrderRow).line} />
+  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} page={storageKey} getRowKey={(r) => (r as OrderRow).line} />
 }
 
 function CustomersDataTable({ customerGroups, partNumber }: { customerGroups: [string, SalesOrder[]][]; partNumber: string }) {
@@ -126,6 +126,7 @@ function CustomersDataTable({ customerGroups, partNumber }: { customerGroups: [s
       data={rows}
       noun="customer"
       exportFilename={`${partNumber}_customers`}
+      page={`${partNumber}_customers`}
       getRowKey={(r) => (r as CustomerGroupRow).customer}
       expandedRowKey={expandedCustomer}
       onRowClick={(r) => {

@@ -5,6 +5,10 @@ import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SalesOrder {
   line: string
@@ -36,19 +40,39 @@ interface CustomerRow extends Record<string, unknown> {
   orders: SalesOrder[]
 }
 
+interface PartSummaryRow extends Record<string, unknown> {
+  partNumber: string
+  category: string
+  orderCount: number
+  totalQty: number
+  avgUnitPrice: number
+  revenue: number
+  totalCost: number
+  pl: number
+  margin: number
+  contribution: string
+  orders: SalesOrder[]
+}
+
 interface OrderRow extends Record<string, unknown> {
   line: string
   partNumber: string
   category: string
   qty: number
+  unitPrice: number
   revenue: number
+  totalCost: number
   pl: number
+  margin: number
   shippedDate: string
   status: string
 }
 
+// ─── Formatters ──────────────────────────────────────────────────────────────
+
 function fmt(v: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v) }
 function fmtN(v: number) { return new Intl.NumberFormat('en-US').format(Math.round(v)) }
+function fmtPrice(v: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) }
 
 const CATEGORY_CLASSES: Record<string, string> = {
   'Roll Tech': 'bg-blue-500/20 text-blue-400 border-blue-500/50',
@@ -57,16 +81,7 @@ const CATEGORY_CLASSES: Record<string, string> = {
   Other: 'bg-gray-500/20 text-gray-400 border-gray-500/50',
 }
 
-const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
-  { key: 'line', label: 'Line', sortable: true, filterable: true },
-  { key: 'partNumber', label: 'Part Number', sortable: true, filterable: true },
-  { key: 'category', label: 'Category', sortable: true, filterable: true, render: (v) => <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${CATEGORY_CLASSES[v as string] || CATEGORY_CLASSES.Other}`}>{v as string}</span> },
-  { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
-  { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
-  { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt(v as number)}</span> },
-  { key: 'shippedDate', label: 'Shipped', sortable: true, filterable: true },
-  { key: 'status', label: 'Status', sortable: true, filterable: true },
-]
+// ─── Customer-level columns ──────────────────────────────────────────────────
 
 const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
@@ -78,21 +93,317 @@ const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
   { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{(v as number).toFixed(1)}%</span> },
 ]
 
-function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storageKey: string }) {
-  const rows: OrderRow[] = useMemo(() => orders.map((o) => ({
-    line: o.line,
-    partNumber: o.partNumber,
-    category: o.category,
-    qty: o.qty,
-    revenue: o.revenue,
-    pl: o.pl,
-    shippedDate: o.shippedDate,
-    status: o.status,
-  })), [orders])
+// ─── Stat Card ───────────────────────────────────────────────────────────────
 
-  const table = useDataTable({ data: rows, columns: ORDER_COLUMNS, storageKey })
-  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} />
+function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="rounded-xl border bg-card p-4 flex items-start gap-3 shadow-sm">
+      <div className={`rounded-lg p-2.5 ${color || 'bg-primary/10 text-primary'}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+        <p className="text-xl font-bold mt-0.5">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  )
 }
+
+// ─── Price History Chart ─────────────────────────────────────────────────────
+
+function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
+  const chartData = useMemo(() => {
+    const sorted = [...orders]
+      .filter((o) => o.shippedDate && o.qty > 0)
+      .sort((a, b) => new Date(a.shippedDate).getTime() - new Date(b.shippedDate).getTime())
+      .map((o) => ({
+        date: new Date(o.shippedDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+        rawDate: o.shippedDate,
+        unitPrice: o.revenue / o.qty,
+        qty: o.qty,
+        line: o.line,
+      }))
+    return sorted
+  }, [orders])
+
+  const avgPrice = useMemo(() => {
+    if (chartData.length === 0) return 0
+    return chartData.reduce((s, d) => s + d.unitPrice, 0) / chartData.length
+  }, [chartData])
+
+  if (chartData.length < 2) return null
+
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Price History</h4>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+            tickLine={false}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `$${v.toFixed(0)}`}
+            width={55}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsl(var(--card))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '8px',
+              fontSize: '12px',
+            }}
+            formatter={(value: number | undefined) => [fmtPrice(value ?? 0), 'Unit Price']}
+            labelFormatter={(label) => `Date: ${label}`}
+          />
+          <ReferenceLine
+            y={avgPrice}
+            stroke="hsl(var(--muted-foreground))"
+            strokeDasharray="5 5"
+            opacity={0.5}
+            label={{ value: `Avg ${fmtPrice(avgPrice)}`, position: 'right', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+          />
+          <Line
+            type="monotone"
+            dataKey="unitPrice"
+            stroke="hsl(var(--primary))"
+            strokeWidth={2.5}
+            dot={{ r: 4, fill: 'hsl(var(--primary))', strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+            activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--primary))', fill: 'hsl(var(--card))' }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ─── Contribution Badge ──────────────────────────────────────────────────────
+
+function ContributionBadge({ margin }: { margin: number }) {
+  if (margin >= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+        PROFITABLE
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
+      LOSS
+    </span>
+  )
+}
+
+// ─── Part Expanded Row (orders + chart) ──────────────────────────────────────
+
+function PartExpandedContent({ part }: { part: PartSummaryRow }) {
+  const orderRows: OrderRow[] = useMemo(() =>
+    part.orders
+      .sort((a, b) => new Date(b.shippedDate).getTime() - new Date(a.shippedDate).getTime())
+      .map((o) => ({
+        line: o.line,
+        partNumber: o.partNumber,
+        category: o.category,
+        qty: o.qty,
+        unitPrice: o.qty > 0 ? o.revenue / o.qty : 0,
+        revenue: o.revenue,
+        totalCost: o.totalCost || o.variableCost,
+        pl: o.pl,
+        margin: o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0,
+        shippedDate: o.shippedDate,
+        status: o.status,
+      })),
+    [part.orders]
+  )
+
+  const ORDER_DETAIL_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
+    { key: 'line', label: 'Line', sortable: true, filterable: true },
+    { key: 'status', label: 'Status', sortable: true, filterable: true, render: (v) => {
+      const s = v as string
+      const cls = s === 'shipped' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+      return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{s}</span>
+    }},
+    { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
+    { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'margin', label: 'Margin', sortable: true, render: (v) => {
+      const n = v as number
+      return <span className={n >= 0 ? 'text-emerald-400' : 'text-red-400'}>{n.toFixed(1)}%</span>
+    }},
+    { key: 'shippedDate', label: 'Shipped', sortable: true, filterable: true },
+  ], [])
+
+  const storageKey = `customer_part_${part.partNumber.replace(/\W/g, '_')}_orders`
+  const table = useDataTable({ data: orderRows, columns: ORDER_DETAIL_COLUMNS, storageKey })
+
+  return (
+    <div className="space-y-4 py-2">
+      <PriceHistoryChart orders={part.orders} />
+      <DataTable table={table} data={orderRows} noun="order" exportFilename={storageKey} page={storageKey} />
+    </div>
+  )
+}
+
+// ─── Customer Drilldown (stat cards + part summary table) ────────────────────
+
+function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
+  const [expandedPart, setExpandedPart] = useState<string | null>(null)
+
+  // Group orders by part number
+  const partSummaries: PartSummaryRow[] = useMemo(() => {
+    const byPart: Record<string, { orders: SalesOrder[]; category: string }> = {}
+    for (const o of customerRow.orders) {
+      const k = o.partNumber || 'Unknown'
+      if (!byPart[k]) byPart[k] = { orders: [], category: o.category }
+      byPart[k].orders.push(o)
+    }
+
+    return Object.entries(byPart)
+      .map(([partNumber, { orders, category }]) => {
+        const totalQty = orders.reduce((s, o) => s + o.qty, 0)
+        const revenue = orders.reduce((s, o) => s + o.revenue, 0)
+        const totalCost = orders.reduce((s, o) => s + (o.totalCost || o.variableCost), 0)
+        const pl = orders.reduce((s, o) => s + o.pl, 0)
+        const margin = revenue > 0 ? (pl / revenue) * 100 : 0
+        const avgUnitPrice = totalQty > 0 ? revenue / totalQty : 0
+        return {
+          partNumber,
+          category,
+          orderCount: orders.length,
+          totalQty,
+          avgUnitPrice,
+          revenue,
+          totalCost,
+          pl,
+          margin,
+          contribution: margin >= 0 ? 'PROFITABLE' : 'LOSS',
+          orders,
+        }
+      })
+      .sort((a, b) => b.revenue - a.revenue)
+  }, [customerRow.orders])
+
+  const uniquePartCount = partSummaries.length
+
+  const PART_SUMMARY_COLUMNS: ColumnDef<PartSummaryRow>[] = useMemo(() => [
+    {
+      key: 'partNumber',
+      label: 'Part Number',
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const r = row as PartSummaryRow
+        const isExpanded = expandedPart === r.partNumber
+        return (
+          <span className="flex items-center gap-1.5 font-medium">
+            {isExpanded ? <ChevronDown className="size-3.5 text-primary" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
+            {v as string}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'category',
+      label: 'Category',
+      sortable: true,
+      filterable: true,
+      render: (v) => <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${CATEGORY_CLASSES[v as string] || CATEGORY_CLASSES.Other}`}>{v as string}</span>,
+    },
+    { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'avgUnitPrice', label: 'Avg Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
+    { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+    {
+      key: 'contribution',
+      label: 'Contribution',
+      sortable: true,
+      filterable: true,
+      render: (_v, row) => <ContributionBadge margin={(row as PartSummaryRow).margin} />,
+    },
+    {
+      key: 'margin',
+      label: 'Margin',
+      sortable: true,
+      render: (v) => {
+        const n = v as number
+        return <span className={n >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{n.toFixed(1)}%</span>
+      },
+    },
+    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+  ], [expandedPart])
+
+  const storageKey = `sales_customer_${customerRow.customer.replace(/\W/g, '_')}_parts`
+  const table = useDataTable({ data: partSummaries, columns: PART_SUMMARY_COLUMNS, storageKey })
+
+  return (
+    <div className="space-y-4 py-3">
+      {/* Breadcrumb */}
+      <p className="text-xs text-muted-foreground">
+        Customers › <span className="text-foreground font-medium">{customerRow.customer}</span>
+      </p>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          icon={<Package className="size-4" />}
+          label="Products"
+          value={String(uniquePartCount)}
+          color="bg-blue-500/10 text-blue-400"
+        />
+        <StatCard
+          icon={<Hash className="size-4" />}
+          label="Total Qty"
+          value={fmtN(customerRow.totalQty)}
+          sub={`${fmtN(customerRow.orderCount)} orders`}
+          color="bg-violet-500/10 text-violet-400"
+        />
+        <StatCard
+          icon={<DollarSign className="size-4" />}
+          label="Revenue"
+          value={fmt(customerRow.revenue)}
+          color="bg-emerald-500/10 text-emerald-400"
+        />
+        <StatCard
+          icon={<TrendingUp className="size-4" />}
+          label="P/L"
+          value={fmt(customerRow.pl)}
+          sub={`${customerRow.margin.toFixed(1)}% margin`}
+          color={customerRow.pl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}
+        />
+      </div>
+
+      {/* Part Summary Table */}
+      <div>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Product Breakdown</h3>
+        <DataTable
+          table={table}
+          data={partSummaries}
+          noun="part"
+          exportFilename={storageKey}
+          page={storageKey}
+          getRowKey={(row) => (row as PartSummaryRow).partNumber}
+          expandedRowKey={expandedPart}
+          onRowClick={(row) => {
+            const pn = (row as PartSummaryRow).partNumber
+            setExpandedPart((prev) => (prev === pn ? null : pn))
+          }}
+          renderExpandedContent={(row) => <PartExpandedContent part={row as PartSummaryRow} />}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function SalesCustomersPage() {
   return <Suspense><SalesCustomersContent /></Suspense>
@@ -167,10 +478,7 @@ function SalesCustomersContent() {
           const c = (row as CustomerRow).customer
           setExpandedCustomer((prev) => (prev === c ? null : c))
         }}
-        renderExpandedContent={(row) => {
-          const r = row as CustomerRow
-          return <OrdersDataTable orders={r.orders} storageKey={`sales_customer_${r.customer.replace(/\W/g, '_')}`} />
-        }}
+        renderExpandedContent={(row) => <CustomerDrilldown customerRow={row as CustomerRow} />}
       />
     </div>
   )
