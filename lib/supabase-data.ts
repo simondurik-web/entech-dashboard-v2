@@ -27,6 +27,7 @@ export interface SalesOrder {
   totalCost: number
   pl: number
   shippedDate: string
+  requestedDate: string
   status: string
 }
 
@@ -377,6 +378,7 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
       totalCost,
       pl,
       shippedDate: str(row.shipped_date),
+      requestedDate: str(row.requested_completion_date),
       status,
     })
 

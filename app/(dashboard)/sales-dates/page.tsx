@@ -1,11 +1,18 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
+import { Suspense, useEffect, useMemo, useState, useCallback } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend, Line, ComposedChart,
+} from 'recharts'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SalesOrder {
   line: string
@@ -18,39 +25,94 @@ interface SalesOrder {
   totalCost: number
   pl: number
   shippedDate: string
+  requestedDate: string
   status: string
 }
 
 interface SalesData {
   orders: SalesOrder[]
-  summary: { totalRevenue: number; totalCosts: number; totalPL: number; avgMargin: number; orderCount: number }
+  summary: {
+    totalRevenue: number; totalCosts: number; totalPL: number; avgMargin: number
+    orderCount: number; shippedPL?: number; shippedCount?: number; forecastPL?: number; pendingCount?: number
+  }
 }
 
 interface MonthRow extends Record<string, unknown> {
   monthKey: string
   monthLabel: string
+  statusText: string
   orderCount: number
+  shippedCount: number
   totalQty: number
   revenue: number
   costs: number
+  shippedPL: number
+  forecastPL: number
+  pl: number
+  margin: number
+  orders: SalesOrder[]
+}
+
+interface MonthlyOrderRow extends Record<string, unknown> {
+  line: string
+  category: string
+  customer: string
+  partNumber: string
+  qty: number
+  unitPrice: number
+  contribution: number
+  variableCost: number
+  totalCost: number
+  salesTarget: number
+  profitPerPart: number
+  pl: number
+  revenue: number
+  shippedDate: string
+  requestedDate: string
+  status: string
+}
+
+interface CustomerBreakdownRow extends Record<string, unknown> {
+  customer: string
+  orderCount: number
+  totalQty: number
+  revenue: number
   pl: number
   margin: number
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+// ─── Formatters ──────────────────────────────────────────────────────────────
+
+function fmt(v: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v) }
+function fmtN(v: number) { return new Intl.NumberFormat('en-US').format(Math.round(v)) }
+function fmtPrice(v: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) }
+
+const CATEGORY_CLASSES: Record<string, string> = {
+  'Roll Tech': 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+  Molding: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+  'Snap Pad': 'bg-purple-500/20 text-purple-400 border-purple-500/50',
+  Other: 'bg-gray-500/20 text-gray-400 border-gray-500/50',
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-US').format(Math.round(value))
+// ─── Attribution date logic (matches V1 HTML) ────────────────────────────────
+// Shipped → use shippedDate. Not shipped → use requestedDate (forecast).
+
+function getAttributionDate(order: SalesOrder): string | null {
+  if (order.status === 'shipped') return order.shippedDate || null
+  return order.requestedDate || null
 }
 
 function getMonthKey(dateStr: string): string | null {
   if (!dateStr) return null
-  const parts = dateStr.split('/')
-  if (parts.length < 3) return null
-  const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2]
-  return `${year}-${parts[0].padStart(2, '0')}`
+  // Handle "M/D/YYYY" format
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/')
+    if (parts.length < 3) return null
+    const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2]
+    return `${year}-${parts[0].padStart(2, '0')}`
+  }
+  // Handle ISO "YYYY-MM-DD"
+  return dateStr.substring(0, 7)
 }
 
 function getMonthLabel(monthKey: string): string {
@@ -59,15 +121,195 @@ function getMonthLabel(monthKey: string): string {
   return `${months[parseInt(month, 10) - 1]} ${year}`
 }
 
-const MONTH_COLUMNS: ColumnDef<MonthRow>[] = [
-  { key: 'monthLabel', label: 'Month', sortable: true, filterable: true },
-  { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => formatNumber(v as number) },
-  { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => formatNumber(v as number) },
-  { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => formatCurrency(v as number) },
-  { key: 'costs', label: 'Total Costs', sortable: true, render: (v) => formatCurrency(v as number) },
-  { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{formatCurrency(v as number)}</span> },
-  { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{(v as number).toFixed(1)}%</span> },
-]
+// ─── Stat Card ───────────────────────────────────────────────────────────────
+
+function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="rounded-xl border bg-card p-4 flex items-start gap-3 shadow-sm">
+      <div className={`rounded-lg p-2.5 ${color || 'bg-primary/10 text-primary'}`}>{icon}</div>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+        <p className="text-xl font-bold mt-0.5">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Contribution Badge ──────────────────────────────────────────────────────
+
+function ContributionBadge({ margin }: { margin: number }) {
+  if (margin >= 20) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">HIGH</span>
+  if (margin >= 10) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">MEDIUM</span>
+  if (margin >= 0) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">LOW</span>
+  return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30">NEGATIVE</span>
+}
+
+// ─── Monthly Orders Table (Drilldown Level 1a) ──────────────────────────────
+
+function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; monthLabel: string }) {
+  const rows: MonthlyOrderRow[] = useMemo(() =>
+    orders.map((o) => {
+      const unitPrice = o.qty > 0 ? o.revenue / o.qty : 0
+      const profitPerPart = o.qty > 0 ? o.pl / o.qty : 0
+      const margin = o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0
+      return {
+        line: o.line,
+        category: o.category,
+        customer: o.customer,
+        partNumber: o.partNumber,
+        qty: o.qty,
+        unitPrice,
+        contribution: margin,
+        variableCost: o.variableCost,
+        totalCost: o.totalCost || o.variableCost,
+        salesTarget: unitPrice * 1.2,
+        profitPerPart,
+        pl: o.pl,
+        revenue: o.revenue,
+        shippedDate: o.shippedDate || '-',
+        requestedDate: o.requestedDate || '-',
+        status: o.status,
+      }
+    }),
+    [orders]
+  )
+
+  const ORDER_COLUMNS: ColumnDef<MonthlyOrderRow>[] = useMemo(() => [
+    { key: 'category', label: 'Category', sortable: true, filterable: true, render: (v) => <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${CATEGORY_CLASSES[v as string] || CATEGORY_CLASSES.Other}`}>{v as string}</span> },
+    { key: 'line', label: 'Line', sortable: true, filterable: true },
+    { key: 'status', label: 'Status', sortable: true, filterable: true, render: (v) => {
+      const s = v as string
+      const cls = s === 'shipped' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : s === 'staged' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+      return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{s}</span>
+    }},
+    { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+    { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+    { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
+    { key: 'contribution', label: 'Contribution', sortable: true, filterable: true, render: (v) => <ContributionBadge margin={v as number} /> },
+    { key: 'variableCost', label: 'Variable Cost', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'salesTarget', label: 'Sales Target (20%)', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'profitPerPart', label: 'Profit/Part', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmtPrice(v as number)}</span> },
+    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'shippedDate', label: 'Shipped Date', sortable: true, filterable: true },
+  ], [])
+
+  const storageKey = `sales_date_monthly_${monthLabel.replace(/\W/g, '_')}`
+  const table = useDataTable({ data: rows, columns: ORDER_COLUMNS, storageKey })
+
+  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} page={storageKey} />
+}
+
+// ─── Customer Breakdown Table (Drilldown Level 1b) ──────────────────────────
+
+function CustomerBreakdownTable({ orders, monthLabel }: { orders: SalesOrder[]; monthLabel: string }) {
+  const rows: CustomerBreakdownRow[] = useMemo(() => {
+    const byCustomer: Record<string, { orders: number; qty: number; revenue: number; pl: number }> = {}
+    for (const o of orders) {
+      const k = o.customer || 'Unknown'
+      if (!byCustomer[k]) byCustomer[k] = { orders: 0, qty: 0, revenue: 0, pl: 0 }
+      byCustomer[k].orders++
+      byCustomer[k].qty += o.qty
+      byCustomer[k].revenue += o.revenue
+      byCustomer[k].pl += o.pl
+    }
+    return Object.entries(byCustomer)
+      .map(([customer, s]) => ({
+        customer,
+        orderCount: s.orders,
+        totalQty: s.qty,
+        revenue: s.revenue,
+        pl: s.pl,
+        margin: s.revenue > 0 ? (s.pl / s.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+  }, [orders])
+
+  const CUSTOMER_COLUMNS: ColumnDef<CustomerBreakdownRow>[] = useMemo(() => [
+    { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+    { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
+  ], [])
+
+  const storageKey = `sales_date_customers_${monthLabel.replace(/\W/g, '_')}`
+  const table = useDataTable({ data: rows, columns: CUSTOMER_COLUMNS, storageKey })
+
+  return <DataTable table={table} data={rows} noun="customer" exportFilename={storageKey} page={storageKey} />
+}
+
+// ─── Month Drilldown Panel ───────────────────────────────────────────────────
+
+function MonthDrilldown({ monthRow, onClose }: { monthRow: MonthRow; onClose: () => void }) {
+  const totalQty = monthRow.totalQty
+  const totalRev = monthRow.revenue
+  const totalPL = monthRow.pl
+
+  return (
+    <div className="space-y-4 rounded-xl border bg-card/50 p-5 shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">Months › <span className="text-foreground font-medium">{monthRow.monthLabel}</span></p>
+          <h3 className="text-lg font-bold mt-0.5">Monthly Orders</h3>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}><X className="size-4 mr-1" /> Close</Button>
+      </div>
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={<Package className="size-4" />} label="Orders" value={String(monthRow.orderCount)} sub={`${monthRow.shippedCount}/${monthRow.orderCount} shipped`} color="bg-blue-500/10 text-blue-400" />
+        <StatCard icon={<CalendarDays className="size-4" />} label="Total Qty" value={fmtN(totalQty)} color="bg-violet-500/10 text-violet-400" />
+        <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totalRev)} color="bg-emerald-500/10 text-emerald-400" />
+        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalPL)} sub={`${monthRow.margin.toFixed(1)}% margin`} color={totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+      </div>
+
+      {/* Monthly Orders Table */}
+      <div>
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">All Orders</h4>
+        <MonthlyOrdersTable orders={monthRow.orders} monthLabel={monthRow.monthLabel} />
+      </div>
+
+      {/* Customer Breakdown */}
+      <div>
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Customer Breakdown</h4>
+        <CustomerBreakdownTable orders={monthRow.orders} monthLabel={monthRow.monthLabel} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Custom Tooltip for Chart ────────────────────────────────────────────────
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+  if (!active || !payload) return null
+  const shippedProfit = payload.find(p => p.name === 'Shipped Profit')?.value || 0
+  const shippedLoss = payload.find(p => p.name === 'Shipped Loss')?.value || 0
+  const forecastProfit = payload.find(p => p.name === 'Forecast Profit')?.value || 0
+  const forecastLoss = payload.find(p => p.name === 'Forecast Loss')?.value || 0
+  const revenue = payload.find(p => p.name === 'Revenue')?.value || 0
+  const totalPL = shippedProfit + shippedLoss + forecastProfit + forecastLoss
+
+  return (
+    <div className="rounded-xl border bg-popover p-3 shadow-lg text-sm space-y-1.5">
+      <p className="font-semibold">{label}</p>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue</span><span>{fmt(revenue)}</span></div>
+        <div className="flex justify-between gap-4"><span style={{ color: 'rgba(56,161,105,0.9)' }}>Shipped P/L</span><span>{fmt(shippedProfit + shippedLoss)}</span></div>
+        <div className="flex justify-between gap-4"><span style={{ color: 'rgba(56,161,105,0.5)' }}>Forecast P/L</span><span>{fmt(forecastProfit + forecastLoss)}</span></div>
+        <hr className="border-border" />
+        <div className="flex justify-between gap-4 font-semibold"><span>Total P/L</span><span className={totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmt(totalPL)}</span></div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function SalesDatesPage() {
   return <Suspense><SalesDatesContent /></Suspense>
@@ -77,93 +319,227 @@ function SalesDatesContent() {
   const [data, setData] = useState<SalesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch('/api/sales')
-        if (!res.ok) throw new Error('Failed to fetch sales data')
-        const salesData = await res.json()
-        setData(salesData)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load')
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
+    fetch('/api/sales')
+      .then((r) => (r.ok ? r.json() : Promise.reject('Failed')))
+      .then((d) => setData(d))
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false))
   }, [])
 
-  const monthRows = useMemo(() => {
-    if (!data) return [] as MonthRow[]
-    const byMonth: Record<string, MonthRow> = {}
+  // ─── Aggregate by month using attribution date ───
+  const monthRows: MonthRow[] = useMemo(() => {
+    if (!data) return []
+    const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedPL: number; forecastPL: number; costs: number }> = {}
 
     for (const order of data.orders) {
-      const monthKey = getMonthKey(order.shippedDate)
+      const dateStr = getAttributionDate(order)
+      const monthKey = dateStr ? getMonthKey(dateStr) : null
       if (!monthKey) continue
-      if (!byMonth[monthKey]) {
-        byMonth[monthKey] = {
-          monthKey,
-          monthLabel: getMonthLabel(monthKey),
-          orderCount: 0,
-          totalQty: 0,
-          revenue: 0,
-          costs: 0,
-          pl: 0,
-          margin: 0,
-        }
+
+      if (!byMonth[monthKey]) byMonth[monthKey] = { orders: [], shipped: 0, qty: 0, revenue: 0, shippedPL: 0, forecastPL: 0, costs: 0 }
+      const m = byMonth[monthKey]
+      m.orders.push(order)
+      m.qty += order.qty
+      m.revenue += order.revenue
+      m.costs += order.totalCost || order.variableCost
+      if (order.status === 'shipped') {
+        m.shipped++
+        m.shippedPL += order.pl
+      } else {
+        m.forecastPL += order.pl
       }
-      byMonth[monthKey].orderCount++
-      byMonth[monthKey].totalQty += order.qty
-      byMonth[monthKey].revenue += order.revenue
-      byMonth[monthKey].costs += order.totalCost || order.variableCost
-      byMonth[monthKey].pl += order.pl
     }
 
-    return Object.values(byMonth).map((m) => ({ ...m, margin: m.revenue > 0 ? (m.pl / m.revenue) * 100 : 0 }))
+    return Object.entries(byMonth)
+      .map(([monthKey, m]) => {
+        const pl = m.shippedPL + m.forecastPL
+        return {
+          monthKey,
+          monthLabel: getMonthLabel(monthKey),
+          statusText: `${m.shipped}/${m.orders.length} Shipped`,
+          orderCount: m.orders.length,
+          shippedCount: m.shipped,
+          totalQty: m.qty,
+          revenue: m.revenue,
+          costs: m.costs,
+          shippedPL: m.shippedPL,
+          forecastPL: m.forecastPL,
+          pl,
+          margin: m.revenue > 0 ? (pl / m.revenue) * 100 : 0,
+          orders: m.orders,
+        }
+      })
+      .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
   }, [data])
 
-  const chartData = useMemo(() => {
-    if (!monthRows.length) return []
-    return [...monthRows]
-      .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
-      .slice(-12)
-      .map((m) => ({ month: m.monthLabel.replace(/\s+\d{4}$/, ''), revenue: m.revenue, pl: m.pl, costs: m.costs }))
+  // ─── Totals ───
+  const totals = useMemo(() => {
+    const totalOrders = monthRows.reduce((s, m) => s + m.orderCount, 0)
+    const totalQty = monthRows.reduce((s, m) => s + m.totalQty, 0)
+    const totalRevenue = monthRows.reduce((s, m) => s + m.revenue, 0)
+    const totalPL = monthRows.reduce((s, m) => s + m.pl, 0)
+    const margin = totalRevenue > 0 ? (totalPL / totalRevenue) * 100 : 0
+    return { totalOrders, totalQty, totalRevenue, totalPL, margin, monthCount: monthRows.length }
   }, [monthRows])
 
+  // ─── Chart data (sorted chronologically) ───
+  const chartData = useMemo(() => {
+    return [...monthRows]
+      .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+      .map((m) => ({
+        month: m.monthLabel,
+        shippedProfit: Math.max(0, m.shippedPL),
+        shippedLoss: Math.min(0, m.shippedPL),
+        forecastProfit: Math.max(0, m.forecastPL),
+        forecastLoss: Math.min(0, m.forecastPL),
+        revenue: m.revenue,
+      }))
+  }, [monthRows])
+
+  // ─── Month columns ───
+  const MONTH_COLUMNS: ColumnDef<MonthRow>[] = useMemo(() => [
+    {
+      key: 'monthLabel',
+      label: 'Month',
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const r = row as MonthRow
+        const isExpanded = expandedMonth === r.monthKey
+        return (
+          <span className="flex items-center gap-1.5 font-semibold">
+            {isExpanded ? <ChevronDown className="size-3.5 text-primary" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
+            {v as string}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'statusText',
+      label: 'Status',
+      sortable: true,
+      filterable: true,
+      render: (v) => {
+        const text = v as string
+        const match = text.match(/^(\d+)\/(\d+)/)
+        if (match) {
+          const shipped = parseInt(match[1])
+          const total = parseInt(match[2])
+          const allShipped = shipped === total
+          const cls = allShipped ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+          return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{text}</span>
+        }
+        return <span>{text}</span>
+      },
+    },
+    { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{(v as number).toFixed(1)}%</span> },
+  ], [expandedMonth])
+
   const table = useDataTable({ data: monthRows, columns: MONTH_COLUMNS, storageKey: 'sales-by-date' })
+
+  // ─── Find expanded month row ───
+  const expandedMonthRow = useMemo(() => {
+    if (!expandedMonth) return null
+    return monthRows.find((m) => m.monthKey === expandedMonth) || null
+  }, [expandedMonth, monthRows])
 
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" /></div>
   if (error || !data) return <div className="p-6"><div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4"><p className="text-destructive">{error || 'Failed to load'}</p></div></div>
 
   return (
     <div className="p-4 md:p-6 space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">{t('page.salesByDate')}</h1>
-        <p className="text-sm text-muted-foreground">{t('page.salesByDateSubtitle')}</p>
+        <h1 className="text-2xl font-bold">P/L by Date</h1>
+        <p className="text-sm text-muted-foreground">Revenue and profit breakdown by month</p>
       </div>
 
-      <div className="rounded-xl border bg-card p-4">
-        <h3 className="text-sm font-semibold mb-4">{t('salesDates.monthlyRevenuePL')}</h3>
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={<Package className="size-4" />} label="Orders" value={fmtN(totals.totalOrders)} sub={`${fmtN(totals.totalQty)} units`} color="bg-blue-500/10 text-blue-400" />
+        <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totals.totalRevenue)} color="bg-emerald-500/10 text-emerald-400" />
+        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totals.totalPL)} sub={`Margin: ${totals.margin.toFixed(1)}%`} color={totals.totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${totals.margin.toFixed(1)}%`} sub={`${totals.monthCount} months`} color={totals.margin >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+      </div>
+
+      {/* Monthly P/L Breakdown Chart */}
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Monthly P/L Breakdown</h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(value) => formatCurrency(value as number)} contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
-              <Legend />
-              <Bar dataKey="revenue" fill="#38a169" name={t('table.revenue')} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="pl" fill="#3182ce" name="P/L" radius={[4, 4, 0, 0]} />
-            </BarChart>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} vertical={false} />
+              <XAxis
+                dataKey="month"
+                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+              />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend
+                wrapperStyle={{ fontSize: '11px' }}
+                iconType="square"
+              />
+              {/* Stacked bars for P/L */}
+              <Bar yAxisId="left" dataKey="shippedProfit" name="Shipped Profit" stackId="shipped" fill="rgba(16,185,129,0.8)" radius={[0, 0, 0, 0]} />
+              <Bar yAxisId="left" dataKey="shippedLoss" name="Shipped Loss" stackId="shipped" fill="rgba(239,68,68,0.8)" radius={[0, 0, 0, 0]} />
+              <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="rgba(16,185,129,0.35)" radius={[0, 0, 0, 0]} />
+              <Bar yAxisId="left" dataKey="forecastLoss" name="Forecast Loss" stackId="forecast" fill="rgba(239,68,68,0.35)" radius={[0, 0, 0, 0]} />
+              {/* Revenue line */}
+              <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3, fill: '#3b82f6' }} activeDot={{ r: 5 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <DataTable table={table} data={monthRows} noun="month" exportFilename="sales-by-date" page="sales-by-date" initialView={initialView} autoExport={autoExport} />
+      {/* Monthly Details Table */}
+      <div>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Monthly Details</h3>
+        <DataTable
+          table={table}
+          data={monthRows}
+          noun="month"
+          exportFilename="sales-by-date"
+          page="sales-by-date"
+          initialView={initialView}
+          autoExport={autoExport}
+          getRowKey={(row) => (row as MonthRow).monthKey}
+          expandedRowKey={expandedMonth}
+          onRowClick={(row) => {
+            const mk = (row as MonthRow).monthKey
+            setExpandedMonth((prev) => (prev === mk ? null : mk))
+          }}
+          renderExpandedContent={(row) => {
+            const r = row as MonthRow
+            return <MonthDrilldown monthRow={r} onClose={() => setExpandedMonth(null)} />
+          }}
+        />
+      </div>
     </div>
   )
 }

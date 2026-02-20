@@ -98,7 +98,7 @@ async function fetchSalesFromSheets() {
     if (label === 'p/l' || label === 'pl' || label.includes('p/l total') || label.includes('profit')) plCol = i
   }
 
-  const orders: Array<{ line: string; customer: string; partNumber: string; category: string; qty: number; revenue: number; variableCost: number; totalCost: number; pl: number; shippedDate: string; status: string }> = []
+  const orders: Array<{ line: string; customer: string; partNumber: string; category: string; qty: number; revenue: number; variableCost: number; totalCost: number; pl: number; shippedDate: string; requestedDate: string; status: string }> = []
   let totalRevenue = 0, totalCosts = 0, totalPL = 0
 
   for (const row of rows) {
@@ -119,7 +119,9 @@ async function fetchSalesFromSheets() {
       line, customer, partNumber: cellValue(row, COLS.partNumber),
       category: getCategory(cellValue(row, COLS.category)),
       qty: cellNumber(row, COLS.orderQty), revenue, variableCost, totalCost, pl,
-      shippedDate: cellDate(row, COLS.shippedDate), status,
+      shippedDate: cellDate(row, COLS.shippedDate),
+      requestedDate: cellDate(row, COLS.requestedDate),
+      status,
     })
     totalRevenue += revenue
     totalCosts += totalCost || variableCost
