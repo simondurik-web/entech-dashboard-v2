@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
@@ -12,6 +12,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -134,7 +135,13 @@ function filterByStatus(orders: Order[], activeStatuses: Set<StatusKey>): Order[
 }
 
 export default function OrdersPage() {
+  return <Suspense><OrdersPageContent /></Suspense>
+}
+
+function OrdersPageContent() {
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -417,6 +424,8 @@ export default function OrdersPage() {
           noun={t('orders.noun')}
           exportFilename="orders.csv"
           page="orders"
+          initialView={initialView}
+          autoExport={autoExport}
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
 import { RefreshCw, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 interface AllDataResponse {
   columns: string[]
@@ -13,7 +14,13 @@ interface AllDataResponse {
 }
 
 export default function AllDataPage() {
+  return <Suspense><AllDataPageContent /></Suspense>
+}
+
+function AllDataPageContent() {
   const [response, setResponse] = useState<AllDataResponse | null>(null)
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,6 +144,8 @@ export default function AllDataPage() {
         noun={t('allData.noun') || 'record'}
         exportFilename="all-data"
           page="all-data"
+          initialView={initialView}
+          autoExport={autoExport}
         getRowKey={(row, i) => String((row as Record<string, unknown>)['Line'] || i)}
       />
     </div>

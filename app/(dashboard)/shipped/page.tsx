@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { OrderCard } from '@/components/cards/OrderCard'
@@ -10,6 +10,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 type DateKey = 'all' | '7' | '30' | '90'
 type CategoryKey = 'all' | 'rolltech' | 'molding' | 'snappad'
@@ -48,7 +49,13 @@ function filterByCategory(orders: Order[], filter: CategoryKey): Order[] {
 }
 
 export default function ShippedPage() {
+  return <Suspense><ShippedPageContent /></Suspense>
+}
+
+function ShippedPageContent() {
   const [orders, setOrders] = useState<Order[]>([])
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -224,6 +231,8 @@ export default function ShippedPage() {
           noun="shipment"
           exportFilename="shipped.csv"
           page="shipped"
+          initialView={initialView}
+          autoExport={autoExport}
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

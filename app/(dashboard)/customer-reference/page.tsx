@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { getContributionColor, computeContributionLevel } from '@/lib/cost-config'
 import { useI18n } from '@/lib/i18n'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 interface Customer {
   id: string
@@ -84,7 +85,13 @@ const EMPTY_MAPPING: MappingFormData = {
 const PAGE_SIZE = 25
 
 export default function CustomerReferencePage() {
+  return <Suspense><CustomerReferencePageContent /></Suspense>
+}
+
+function CustomerReferencePageContent() {
   const [mappings, setMappings] = useState<PartMapping[]>([])
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -392,6 +399,8 @@ export default function CustomerReferencePage() {
           noun="mapping"
           exportFilename="customer-reference"
           page="customer-reference"
+          initialView={initialView}
+          autoExport={autoExport}
           getRowKey={(row) => (row as unknown as PartMapping).id}
           onRowClick={(row) => openEdit(row as unknown as PartMapping)}
         />

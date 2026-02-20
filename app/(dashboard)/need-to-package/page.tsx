@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
 import { OrderCard } from '@/components/cards/OrderCard'
@@ -9,6 +9,7 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { Order, InventoryItem } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useI18n } from '@/lib/i18n'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -184,7 +185,13 @@ function filterByCategory(orders: PackageOrder[], filter: FilterKey): PackageOrd
 }
 
 export default function NeedToPackagePage() {
+  return <Suspense><NeedToPackagePageContent /></Suspense>
+}
+
+function NeedToPackagePageContent() {
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [orders, setOrders] = useState<PackageOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -326,6 +333,8 @@ export default function NeedToPackagePage() {
           noun={t('needToPackage.noun')}
           exportFilename="need-to-package"
           page="need-to-package"
+          initialView={initialView}
+          autoExport={autoExport}
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

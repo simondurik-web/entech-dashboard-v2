@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -10,6 +10,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { useI18n } from '@/lib/i18n'
 import type { StagedRecord } from '@/lib/google-sheets'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'All' },
@@ -90,7 +91,13 @@ function filterByCategory(records: StagedRecord[], filter: CategoryKey): StagedR
 }
 
 export default function StagedRecordsPage() {
+  return <Suspense><StagedRecordsPageContent /></Suspense>
+}
+
+function StagedRecordsPageContent() {
   const [records, setRecords] = useState<StagedRecord[]>([])
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -212,6 +219,8 @@ export default function StagedRecordsPage() {
           noun="record"
           exportFilename="staged-records.csv"
           page="staged-records"
+          initialView={initialView}
+          autoExport={autoExport}
           cardClassName={() => 'border-l-4 border-l-blue-500'}
           renderCard={(row, i) => {
             const record = row as unknown as StagedRecord

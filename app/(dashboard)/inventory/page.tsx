@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { RefreshCw, X, ExternalLink } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets'
 import Link from 'next/link'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 // ─── Types ───
 
@@ -479,7 +480,13 @@ function HistoryModal({
 // ─── Main Page ───
 
 export default function InventoryPage() {
+  return <Suspense><InventoryPageContent /></Suspense>
+}
+
+function InventoryPageContent() {
   const [items, setItems] = useState<InventoryItem[]>([])
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [historyData, setHistoryData] = useState<InventoryHistoryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -759,6 +766,8 @@ export default function InventoryPage() {
           noun="item"
           exportFilename="inventory"
           page="inventory"
+          initialView={initialView}
+          autoExport={autoExport}
           getRowKey={(row) => row.partNumber}
           onRowClick={(row) => setHistoryPart(row.partNumber)}
           rowClassName={(row) => {

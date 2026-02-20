@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { DataTable } from '@/components/data-table'
@@ -11,6 +11,7 @@ import type { Order } from '@/lib/google-sheets'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useI18n } from '@/lib/i18n'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 type OrderRow = Order & Record<string, unknown>
@@ -50,7 +51,13 @@ function filterOrders(orders: Order[], filter: FilterKey, search: string): Order
 }
 
 export default function StagedPage() {
+  return <Suspense><StagedPageContent /></Suspense>
+}
+
+function StagedPageContent() {
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
   const [completedOrders, setCompletedOrders] = useState<Order[]>([])
   const [needToPackageOrders, setNeedToPackageOrders] = useState<Order[]>([])
@@ -287,6 +294,8 @@ export default function StagedPage() {
             noun={t('staged.noun')}
             exportFilename="staged-orders.csv"
           page="staged"
+          initialView={initialView}
+          autoExport={autoExport}
             getRowKey={(row) => getOrderKey(row as unknown as Order)}
             expandedRowKey={expandedOrderKey}
             onRowClick={(row) => toggleExpanded(row as unknown as Order)}

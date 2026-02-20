@@ -93,6 +93,8 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 
 ## Recent Activity
 
+2026-02-19: DataTable standard applied to ALL tables. Custom Views/Reports feature with Supabase backend. Photo lightbox zoom (3x default, 8x max). Reports page in sidebar with full DataTable, inline editable name/notes, direct CSV/Excel export.
+2026-02-19: Google OAuth fix, admin panel fixes, super admin hardcoded, photos merge (Sheets+Supabase), sales password removed, EN/ES translation expansion.
 2026-02-17: Supabase migration plan created. DB tables already syncing. Ready to start switching API routes.
 2026-02-08: Created CONTEXT.md (was missing)
 2026-02-07 20:51: Phase 3 complete — all 16 pages with auto-refresh + lightbox

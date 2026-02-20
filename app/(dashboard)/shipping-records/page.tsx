@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -10,6 +10,7 @@ import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { Search } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import type { ShippingRecord } from '@/lib/google-sheets'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'All' },
@@ -66,7 +67,13 @@ function getAllPhotos(r: ShippingRecord, filter: PhotoTypeKey): string[] {
 }
 
 export default function ShippingRecordsPage() {
+  return <Suspense><ShippingRecordsPageContent /></Suspense>
+}
+
+function ShippingRecordsPageContent() {
   const [records, setRecords] = useState<ShippingRow[]>([])
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -273,6 +280,8 @@ export default function ShippingRecordsPage() {
       {!loading && !error && (
         <DataTable table={table} data={filtered} noun="shipment" exportFilename="shipping-records.csv"
           page="shipping-records"
+          initialView={initialView}
+          autoExport={autoExport}
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const record = row as unknown as ShippingRow

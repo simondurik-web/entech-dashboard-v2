@@ -1,14 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 type FPRecord = Record<string, unknown>
 
 export default function FPReferencePage() {
+  return <Suspense><FPReferencePageContent /></Suspense>
+}
+
+function FPReferencePageContent() {
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [data, setData] = useState<FPRecord[]>([])
   const [columns, setColumns] = useState<ColumnDef<FPRecord>[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,6 +82,8 @@ export default function FPReferencePage() {
           noun="record"
           exportFilename="fp-reference.csv"
           page="fp-reference"
+          initialView={initialView}
+          autoExport={autoExport}
         />
       )}
     </div>

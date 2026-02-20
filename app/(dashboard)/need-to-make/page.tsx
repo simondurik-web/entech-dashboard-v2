@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { ProductionMakeItem } from '@/lib/google-sheets'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 // Product type filter keys
 const FILTER_KEYS = ['all', 'tire', 'hub', 'finished', 'bearing'] as const
@@ -57,7 +58,13 @@ function borderColor(item: ProductionMakeItem): string {
 }
 
 export default function NeedToMakePage() {
+  return <Suspense><NeedToMakePageContent /></Suspense>
+}
+
+function NeedToMakePageContent() {
   const { t } = useI18n()
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
   const [items, setItems] = useState<ProductionMakeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -192,6 +199,8 @@ export default function NeedToMakePage() {
           noun="part"
           exportFilename="need-to-make.csv"
           page="need-to-make"
+          initialView={initialView}
+          autoExport={autoExport}
           cardClassName={(row) => `border-l-4 ${borderColor(row as unknown as ProductionMakeItem)}`}
           renderCard={(row, i) => {
             const item = row as unknown as ProductionMakeItem
