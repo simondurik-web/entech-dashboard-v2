@@ -6,7 +6,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -134,17 +134,46 @@ function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
 
   if (chartData.length < 2) return null
 
+  // Determine price trend
+  const firstPrice = chartData[0].unitPrice
+  const lastPrice = chartData[chartData.length - 1].unitPrice
+  const priceChange = lastPrice - firstPrice
+  const pctChange = firstPrice > 0 ? (priceChange / firstPrice) * 100 : 0
+  const isUp = priceChange >= 0
+
+  // Colors
+  const lineColor = isUp ? '#10b981' : '#ef4444' // emerald-500 / red-500
+  const gradientId = `priceGradient_${orders[0]?.partNumber?.replace(/\W/g, '_') || 'default'}`
+
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Price History</h4>
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+    <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Price History</h4>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-muted-foreground">
+            {fmtPrice(firstPrice)} → {fmtPrice(lastPrice)}
+          </span>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${isUp ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+            {isUp ? '↑' : '↓'} {Math.abs(pctChange).toFixed(1)}%
+          </span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 10 }}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity={0.3} />
+              <stop offset="50%" stopColor={lineColor} stopOpacity={0.1} />
+              <stop offset="100%" stopColor={lineColor} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} vertical={false} />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
-            axisLine={{ stroke: 'hsl(var(--border))' }}
+            axisLine={false}
+            dy={8}
           />
           <YAxis
             tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
@@ -152,33 +181,38 @@ function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
             axisLine={false}
             tickFormatter={(v) => `$${v.toFixed(0)}`}
             width={55}
+            domain={['auto', 'auto']}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
+              backgroundColor: 'hsl(var(--popover))',
               border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-              fontSize: '12px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              padding: '10px 14px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
             }}
             formatter={(value: number | undefined) => [fmtPrice(value ?? 0), 'Unit Price']}
-            labelFormatter={(label) => `Date: ${label}`}
+            labelFormatter={(label) => label}
+            cursor={{ stroke: lineColor, strokeWidth: 1, strokeDasharray: '4 4', opacity: 0.5 }}
           />
           <ReferenceLine
             y={avgPrice}
             stroke="hsl(var(--muted-foreground))"
-            strokeDasharray="5 5"
-            opacity={0.5}
-            label={{ value: `Avg ${fmtPrice(avgPrice)}`, position: 'right', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            strokeDasharray="6 4"
+            opacity={0.4}
+            label={{ value: `Avg ${fmtPrice(avgPrice)}`, position: 'insideTopRight', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           />
-          <Line
+          <Area
             type="monotone"
             dataKey="unitPrice"
-            stroke="hsl(var(--primary))"
+            stroke={lineColor}
             strokeWidth={2.5}
-            dot={{ r: 4, fill: 'hsl(var(--primary))', strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-            activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--primary))', fill: 'hsl(var(--card))' }}
+            fill={`url(#${gradientId})`}
+            dot={{ r: 4, fill: lineColor, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+            activeDot={{ r: 7, strokeWidth: 3, stroke: lineColor, fill: 'hsl(var(--card))' }}
           />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   )
