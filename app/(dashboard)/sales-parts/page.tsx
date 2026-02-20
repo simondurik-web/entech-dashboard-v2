@@ -72,6 +72,10 @@ function downloadCSV(rows: Record<string, unknown>[], cols: { key: string; label
   a.download = `${filename}.csv`; a.click()
 }
 
+// Currency columns for Excel formatting
+const CURRENCY_KEYS = new Set(['revenue', 'totalCost', 'costs', 'variableCost', 'pl', 'Total Cost', 'Revenue', 'P/L'])
+const NUMBER_KEYS = new Set(['qty', 'totalQty', 'orderCount', 'Qty', 'Orders'])
+
 async function downloadExcel(rows: Record<string, unknown>[], cols: { key: string; label: string }[], filename: string) {
   const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Data')
@@ -84,7 +88,18 @@ async function downloadExcel(rows: Record<string, unknown>[], cols: { key: strin
   rows.forEach((r, i) => {
     const row = ws.addRow(cols.map(c => { const v = r[c.key]; return typeof v === 'number' ? v : v ?? '' }))
     row.height = 22; const bg = i % 2 === 0 ? 'FFF2F6FC' : 'FFFFFFFF'
-    row.eachCell(cell => { cell.font = { name: 'Aptos', size: 10 }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } } })
+    row.eachCell((cell, colNum) => {
+      cell.font = { name: 'Aptos', size: 10 }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+      // Apply number formatting
+      const colKey = cols[colNum - 1]?.key || ''
+      const colLabel = cols[colNum - 1]?.label || ''
+      if (CURRENCY_KEYS.has(colKey) || CURRENCY_KEYS.has(colLabel)) {
+        cell.numFmt = '$#,##0.00'
+      } else if (NUMBER_KEYS.has(colKey) || NUMBER_KEYS.has(colLabel)) {
+        cell.numFmt = '#,##0'
+      }
+    })
   })
   ws.columns.forEach(col => { col.width = 18 })
   ws.views = [{ state: 'frozen', ySplit: 1 }]
@@ -128,7 +143,38 @@ function SortIcon({ col, sortKey, sortDir }: { col: string; sortKey: string | nu
   return sortDir === 'asc' ? <ArrowUp className="h-3 w-3 inline ml-0.5" /> : <ArrowDown className="h-3 w-3 inline ml-0.5" />
 }
 
-// ── Customer sub-expand row ────────────────────────────
+// ── Order-level DataTable columns ──────────────────────
+const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
+  { key: 'line' as keyof OrderRow & string, label: 'Line', sortable: true, filterable: true },
+  { key: 'customer' as keyof OrderRow & string, label: 'Customer', sortable: true, filterable: true },
+  { key: 'qty' as keyof OrderRow & string, label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+  { key: 'revenue' as keyof OrderRow & string, label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+  { key: 'totalCost' as keyof OrderRow & string, label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
+  { key: 'pl' as keyof OrderRow & string, label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt(v as number)}</span> },
+  { key: 'shippedDate' as keyof OrderRow & string, label: 'Shipped', sortable: true, filterable: true },
+  { key: 'status' as keyof OrderRow & string, label: 'Status', sortable: true, filterable: true },
+]
+
+interface OrderRow extends Record<string, unknown> {
+  line: string; customer: string; qty: number; revenue: number; totalCost: number; pl: number; shippedDate: string; status: string
+}
+
+function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storageKey: string }) {
+  const rows: OrderRow[] = useMemo(() => orders.map(o => ({
+    line: o.line, customer: o.customer, qty: o.qty, revenue: o.revenue,
+    totalCost: o.totalCost || o.variableCost, pl: o.pl, shippedDate: o.shippedDate, status: o.status,
+  })), [orders])
+
+  const table = useDataTable({ data: rows, columns: ORDER_COLUMNS, storageKey })
+
+  return (
+    <div className="max-h-[400px] overflow-y-auto">
+      <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} getRowKey={(r) => `${(r as OrderRow).line}`} />
+    </div>
+  )
+}
+
+// ── Customer sub-expand row (uses DataTable inside) ────
 function CustomerExpandRow({ customer, orders, partNumber }: { customer: string; orders: SalesOrder[]; partNumber: string }) {
   const [expanded, setExpanded] = useState(false)
   const totalQty = orders.reduce((s, o) => s + o.qty, 0)
@@ -136,7 +182,6 @@ function CustomerExpandRow({ customer, orders, partNumber }: { customer: string;
   const costs = orders.reduce((s, o) => s + (o.totalCost || o.variableCost), 0)
   const pl = orders.reduce((s, o) => s + o.pl, 0)
   const margin = revenue > 0 ? (pl / revenue) * 100 : 0
-  const { sorted, sortKey, sortDir, toggle } = useSortable(orders, 'revenue')
 
   return (
     <>
@@ -153,39 +198,7 @@ function CustomerExpandRow({ customer, orders, partNumber }: { customer: string;
       {expanded && (
         <tr>
           <td colSpan={8} className="bg-muted/5 px-4 py-2">
-            <div className="space-y-1">
-              <div className="flex justify-end">
-                <ExportBtns rows={toExportRows(orders)} cols={EXP_COLS} filename={`${partNumber}_${customer.replace(/[^a-zA-Z0-9]/g, '_')}`} />
-              </div>
-              <div className="max-h-[300px] overflow-y-auto rounded border">
-                <table className="w-full text-[11px]">
-                  <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
-                    <tr className="text-muted-foreground">
-                      <th className="px-2 py-1 text-left cursor-pointer" onClick={() => toggle('line')}>Line <SortIcon col="line" sortKey={sortKey} sortDir={sortDir} /></th>
-                      <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('qty')}>Qty <SortIcon col="qty" sortKey={sortKey} sortDir={sortDir} /></th>
-                      <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('revenue')}>Revenue <SortIcon col="revenue" sortKey={sortKey} sortDir={sortDir} /></th>
-                      <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('totalCost')}>Cost <SortIcon col="totalCost" sortKey={sortKey} sortDir={sortDir} /></th>
-                      <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('pl')}>P/L <SortIcon col="pl" sortKey={sortKey} sortDir={sortDir} /></th>
-                      <th className="px-2 py-1 text-left cursor-pointer" onClick={() => toggle('shippedDate')}>Shipped <SortIcon col="shippedDate" sortKey={sortKey} sortDir={sortDir} /></th>
-                      <th className="px-2 py-1 text-left cursor-pointer" onClick={() => toggle('status')}>Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir} /></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((o, i) => (
-                      <tr key={`${o.line}-${i}`} className="border-t border-border/20 hover:bg-muted/10">
-                        <td className="px-2 py-1">{o.line}</td>
-                        <td className="px-2 py-1 text-right">{fmtN(o.qty)}</td>
-                        <td className="px-2 py-1 text-right">{fmt(o.revenue)}</td>
-                        <td className="px-2 py-1 text-right">{fmt(o.totalCost || o.variableCost)}</td>
-                        <td className={`px-2 py-1 text-right ${o.pl >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fmt(o.pl)}</td>
-                        <td className="px-2 py-1">{o.shippedDate}</td>
-                        <td className="px-2 py-1">{o.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <OrdersDataTable orders={orders} storageKey={`${partNumber}_${customer.replace(/\W/g, '_')}_orders`} />
           </td>
         </tr>
       )}
@@ -206,45 +219,14 @@ function PartExpandedSection({ part }: { part: PartRow }) {
 
   const hasMultipleCustomers = customerGroups.length > 1
 
-  // Single customer → show orders directly
+  // Single customer → show orders directly with full DataTable
   if (!hasMultipleCustomers) {
-    const { sorted, sortKey, sortDir, toggle } = useSortable(part.orders, 'revenue') // eslint-disable-line react-hooks/rules-of-hooks
     return (
-      <div className="px-4 py-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-muted-foreground">
-            {part.orders.length} orders for {customerGroups[0]?.[0] || 'Unknown'}
-          </p>
-          <ExportBtns rows={toExportRows(part.orders)} cols={EXP_COLS} filename={`${part.partNumber}_orders`} />
-        </div>
-        <div className="max-h-[400px] overflow-y-auto rounded border">
-          <table className="w-full text-[11px]">
-            <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
-              <tr className="text-muted-foreground">
-                <th className="px-2 py-1 text-left cursor-pointer" onClick={() => toggle('line')}>Line <SortIcon col="line" sortKey={sortKey} sortDir={sortDir} /></th>
-                <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('qty')}>Qty <SortIcon col="qty" sortKey={sortKey} sortDir={sortDir} /></th>
-                <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('revenue')}>Revenue <SortIcon col="revenue" sortKey={sortKey} sortDir={sortDir} /></th>
-                <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('totalCost')}>Cost <SortIcon col="totalCost" sortKey={sortKey} sortDir={sortDir} /></th>
-                <th className="px-2 py-1 text-right cursor-pointer" onClick={() => toggle('pl')}>P/L <SortIcon col="pl" sortKey={sortKey} sortDir={sortDir} /></th>
-                <th className="px-2 py-1 text-left cursor-pointer" onClick={() => toggle('shippedDate')}>Shipped <SortIcon col="shippedDate" sortKey={sortKey} sortDir={sortDir} /></th>
-                <th className="px-2 py-1 text-left cursor-pointer" onClick={() => toggle('status')}>Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir} /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((o, i) => (
-                <tr key={`${o.line}-${i}`} className="border-t border-border/20 hover:bg-muted/10">
-                  <td className="px-2 py-1">{o.line}</td>
-                  <td className="px-2 py-1 text-right">{fmtN(o.qty)}</td>
-                  <td className="px-2 py-1 text-right">{fmt(o.revenue)}</td>
-                  <td className="px-2 py-1 text-right">{fmt(o.totalCost || o.variableCost)}</td>
-                  <td className={`px-2 py-1 text-right ${o.pl >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fmt(o.pl)}</td>
-                  <td className="px-2 py-1">{o.shippedDate}</td>
-                  <td className="px-2 py-1">{o.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="px-4 py-3">
+        <p className="text-xs font-semibold text-muted-foreground mb-2">
+          {part.orders.length} orders for {customerGroups[0]?.[0] || 'Unknown'}
+        </p>
+        <OrdersDataTable orders={part.orders} storageKey={`${part.partNumber}_orders`} />
       </div>
     )
   }

@@ -59,7 +59,7 @@ export async function exportToExcel<T extends Record<string, unknown>>(
     const dataRow = ws.addRow(values)
     dataRow.height = 22
     const bgColor = ri % 2 === 0 ? 'FFF2F6FC' : 'FFFFFFFF'
-    dataRow.eachCell((cell) => {
+    dataRow.eachCell((cell, colNumber) => {
       cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF2D2D2D' } }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
       cell.alignment = { horizontal: 'left', vertical: 'middle' }
@@ -69,10 +69,19 @@ export async function exportToExcel<T extends Record<string, unknown>>(
         left: { style: 'thin', color: { argb: 'FFD6DCE4' } },
         right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
       }
-      // Center-align numbers
+      // Format numbers: currency columns get $, others get comma-separated
       if (typeof cell.value === 'number') {
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
-        cell.numFmt = '#,##0'
+        cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        const colLabel = columns[colNumber - 1]?.label?.toLowerCase() || ''
+        const colKey = columns[colNumber - 1]?.key?.toLowerCase() || ''
+        const isCurrency = ['revenue', 'cost', 'p/l', 'pl', 'price', 'profit', 'margin', 'total cost', 'variable cost', 'sales target', 'contribution'].some(
+          kw => colLabel.includes(kw) || colKey.includes(kw)
+        )
+        if (isCurrency) {
+          cell.numFmt = '$#,##0.00'
+        } else {
+          cell.numFmt = '#,##0'
+        }
       }
     })
   })
