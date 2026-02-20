@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
 import { OrderCard } from '@/components/cards/OrderCard'
@@ -10,6 +10,8 @@ import type { Order, InventoryItem } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
+import { PriorityOverride } from '@/components/PriorityOverride'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -51,7 +53,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -65,7 +67,34 @@ function getColumns(t: (key: string) => string): ColumnDef<PackageRow>[] {
       label: t('table.priority'),
       sortable: true,
       filterable: true,
-      render: (v, row) => <PriorityBadge level={v as number} urgent={(row as unknown as PackageOrder).urgentOverride} />,
+      render: (_v, row) => {
+        const order = row as unknown as PackageOrder
+        const effective = getEffectivePriority(order)
+        const isOverridden = !!order.priorityOverride
+        const badge = !effective
+          ? <span className="px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">-</span>
+          : effective === 'URGENT'
+            ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-600 text-white">URGENT</span>
+            : <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                effective === 'P1' ? 'bg-red-500/20 text-red-600' :
+                effective === 'P2' ? 'bg-orange-500/20 text-orange-600' :
+                effective === 'P3' ? 'bg-yellow-500/20 text-yellow-600' :
+                'bg-blue-500/20 text-blue-600'
+              }`}>{effective}</span>
+        return (
+          <span className="inline-flex items-center">
+            {badge}
+            {onPriorityUpdate && (
+              <PriorityOverride
+                line={order.line}
+                currentPriority={effective}
+                isOverridden={isOverridden}
+                onUpdate={onPriorityUpdate}
+              />
+            )}
+          </span>
+        )
+      },
     },
     { key: 'line', label: t('table.line'), sortable: true, filterable: true },
     { key: 'customer', label: t('table.customer'), sortable: true, filterable: true },
@@ -198,6 +227,13 @@ function NeedToPackagePageContent() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
+  const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
+    setOrders(prev => prev.map(o => {
+      if (o.line !== line) return o
+      return { ...o, priorityOverride: newPriority, priorityChangedAt: new Date().toISOString() }
+    }))
+  }, [])
+
   const FILTERS = useMemo(() => [
     { key: 'all' as const, label: t('category.all') },
     { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
@@ -205,7 +241,7 @@ function NeedToPackagePageContent() {
     { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
   ], [t])
 
-  const columns = useMemo(() => getColumns(t), [t])
+  const columns = useMemo(() => getColumns(t, handlePriorityUpdate), [t, handlePriorityUpdate])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -244,11 +280,14 @@ function NeedToPackagePageContent() {
             const catDiff = categoryOrder(a.category) - categoryOrder(b.category)
             if (catDiff !== 0) return catDiff
             // 2. Urgent always on top
-            if (a.urgentOverride && !b.urgentOverride) return -1
-            if (!a.urgentOverride && b.urgentOverride) return 1
-            // 3. Priority (lower number = higher priority, P1 before P4)
-            const aPri = a.priorityLevel || 99
-            const bPri = b.priorityLevel || 99
+            const aEff = getEffectivePriority(a)
+            const bEff = getEffectivePriority(b)
+            if (aEff === 'URGENT' && bEff !== 'URGENT') return -1
+            if (aEff !== 'URGENT' && bEff === 'URGENT') return 1
+            // 3. Priority (P1 before P4)
+            const priOrder: Record<string, number> = { P1: 1, P2: 2, P3: 3, P4: 4 }
+            const aPri = (aEff && priOrder[aEff]) || 99
+            const bPri = (bEff && priOrder[bEff]) || 99
             if (aPri !== bPri) return aPri - bPri
             // 4. Due date (earlier = higher)
             return (a.daysUntilDue ?? 999) - (b.daysUntilDue ?? 999)
