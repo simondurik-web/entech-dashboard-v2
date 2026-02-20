@@ -28,6 +28,7 @@ const ALL_MENU_PATHS = [
   '/bom', '/material-requirements', '/all-data',
   '/admin/users', '/admin/permissions',
   '/phil-assistant',
+  'manage_priority',
 ]
 
 export default function AdminUsersPage() {

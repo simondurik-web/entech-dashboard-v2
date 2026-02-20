@@ -133,6 +133,10 @@ export async function fetchOrdersFromDB(): Promise<Order[]> {
       daysUntilDue: num(row.days_until_promise) || null,
       shippedDate: str(row.shipped_date),
       assignedTo: str(row.assigned_to),
+      dailyCapacity: num(row.daily_capacity),
+      priorityOverride: row.priority_override ? str(row.priority_override) : null,
+      priorityChangedBy: row.priority_changed_by ? str(row.priority_changed_by) : null,
+      priorityChangedAt: row.priority_changed_at ? str(row.priority_changed_at) : null,
     }))
     .filter((o) => o.line && o.customer)
     .filter((o) => {

@@ -13,6 +13,8 @@ import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
+import { PriorityOverride } from '@/components/PriorityOverride'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -90,7 +92,8 @@ function statusColor(status: string): string {
 }
 
 function borderColor(order: Order): string {
-  if (order.urgentOverride || order.priorityLevel >= 3) return 'border-l-red-500'
+  const eff = getEffectivePriority(order)
+  if (eff === 'URGENT' || eff === 'P1') return 'border-l-red-500'
   if (order.daysUntilDue !== null && order.daysUntilDue < 0) return 'border-l-red-500'
   if (order.daysUntilDue !== null && order.daysUntilDue <= 3) return 'border-l-orange-500'
   if (order.internalStatus.toLowerCase() === 'shipped') return 'border-l-green-500'
@@ -152,6 +155,18 @@ function OrdersPageContent() {
   )
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
+  // Optimistic priority update handler
+  const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
+    setOrders(prev => prev.map(o => {
+      if (o.line !== line) return o
+      return {
+        ...o,
+        priorityOverride: newPriority,
+        priorityChangedAt: new Date().toISOString(),
+      }
+    }))
+  }, [])
+
   const ORDER_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
     { key: 'line', label: t('table.line'), sortable: true },
     { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
@@ -161,13 +176,50 @@ function OrdersPageContent() {
       label: t('table.priority'),
       sortable: true,
       filterable: true,
-      render: (v, row) => {
+      render: (_v, row) => {
         const order = row as unknown as Order
-        if (order.urgentOverride) {
-          return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">{t('priority.urgent')}</span>
+        const effective = getEffectivePriority(order)
+        const isOverridden = !!order.priorityOverride
+
+        if (!effective) {
+          return (
+            <span className="inline-flex items-center">
+              <span className="text-muted-foreground text-xs">-</span>
+              <PriorityOverride
+                line={order.line}
+                currentPriority={null}
+                isOverridden={false}
+                onUpdate={handlePriorityUpdate}
+              />
+            </span>
+          )
         }
-        const priority = v ? `P${v}` : 'P-'
-        return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
+
+        if (effective === 'URGENT') {
+          return (
+            <span className="inline-flex items-center">
+              <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">{t('priority.urgent')}</span>
+              <PriorityOverride
+                line={order.line}
+                currentPriority="URGENT"
+                isOverridden={isOverridden}
+                onUpdate={handlePriorityUpdate}
+              />
+            </span>
+          )
+        }
+
+        return (
+          <span className="inline-flex items-center">
+            <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(effective)}`}>{effective}</span>
+            <PriorityOverride
+              line={order.line}
+              currentPriority={effective}
+              isOverridden={isOverridden}
+              onUpdate={handlePriorityUpdate}
+            />
+          </span>
+        )
       },
     },
     {

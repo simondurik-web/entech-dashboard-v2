@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { OrderDetail } from '@/components/OrderDetail'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
+import { getEffectivePriority } from '@/lib/priority'
 
 /** Category-based color coding */
 function categoryStyle(category: string) {
@@ -15,18 +16,32 @@ function categoryStyle(category: string) {
 }
 
 function priorityBadge(order: Order) {
-  const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
-  if (isUrgent) return <span className="px-1.5 py-0.5 text-[10px] rounded font-bold bg-red-500 text-white">URGENT</span>
-  const p = order.priorityLevel
-  if (!p) return <span className="text-muted-foreground text-xs">-</span>
-  const colors: Record<number, string> = {
-    1: 'bg-red-500/20 text-red-600',
-    2: 'bg-orange-500/20 text-orange-600',
-    3: 'bg-yellow-500/20 text-yellow-600',
-    4: 'bg-blue-500/20 text-blue-600',
-    5: 'bg-muted text-muted-foreground',
+  const effective = getEffectivePriority(order)
+  const isOverridden = !!order.priorityOverride
+
+  if (!effective) return <span className="text-muted-foreground text-xs">-</span>
+
+  if (effective === 'URGENT') {
+    return (
+      <span className="inline-flex items-center gap-0.5">
+        <span className="px-1.5 py-0.5 text-[10px] rounded font-bold bg-red-500 text-white">URGENT</span>
+        {isOverridden && <span className="text-[8px] text-amber-500">📌</span>}
+      </span>
+    )
   }
-  return <span className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${colors[p] || colors[5]}`}>P{p}</span>
+
+  const colors: Record<string, string> = {
+    P1: 'bg-red-500/20 text-red-600',
+    P2: 'bg-orange-500/20 text-orange-600',
+    P3: 'bg-yellow-500/20 text-yellow-600',
+    P4: 'bg-blue-500/20 text-blue-600',
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <span className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${colors[effective] || 'bg-muted text-muted-foreground'}`}>{effective}</span>
+      {isOverridden && <span className="text-[8px] text-amber-500">📌</span>}
+    </span>
+  )
 }
 
 function statusBadge(status: string) {

@@ -24,6 +24,8 @@ const ALL_MENU_PATHS = [
   '/bom', '/material-requirements', '/all-data',
   '/admin/users', '/admin/permissions',
   '/phil-assistant',
+  // Feature permissions (not page paths)
+  'manage_priority',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -51,6 +53,7 @@ const PATH_LABELS: Record<string, string> = {
   '/admin/users': 'Admin: Users',
   '/admin/permissions': 'Admin: Permissions',
   '/phil-assistant': '🤖 Phil Assistant (AI)',
+  'manage_priority': '🎯 Manage Priority',
 }
 
 export default function AdminPermissionsPage() {

@@ -43,6 +43,13 @@ export interface Order {
   daysUntilDue: number | null
   assignedTo: string
   shippedDate: string
+  dailyCapacity: number
+  // Priority override (manual from dashboard)
+  priorityOverride: string | null
+  priorityChangedBy: string | null
+  priorityChangedAt: string | null
+  // Computed priority (set after fetch)
+  computedPriority?: string | null
   // Pallet calculator enrichment (from pallet records)
   palletWidth?: number
   palletLength?: number
@@ -78,6 +85,7 @@ const COLS = {
   bearings: 36,    // Column AK: "Bearings"
   shippedDate: 45, // Column AT: "Shipped Date"
   assignedTo: 47,  // Column AV: "Assigned to:"
+  dailyCapacity: 24, // Column Y: "Daily Capacity" (adjust if different)
 }
 
 function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): string {
@@ -151,6 +159,11 @@ export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
     daysUntilDue: cellNumber(row, COLS.daysUntilDue) || null,
     shippedDate: cellDate(row, COLS.shippedDate),
     assignedTo: cellValue(row, COLS.assignedTo),
+    dailyCapacity: cellNumber(row, COLS.dailyCapacity),
+    // Priority overrides come from Supabase only, not Sheets
+    priorityOverride: null,
+    priorityChangedBy: null,
+    priorityChangedAt: null,
   }
 }
 
@@ -233,6 +246,10 @@ export async function fetchOrders(): Promise<Order[]> {
         daysUntilDue: colNum(row, COLS.daysUntilDue) || null,
         shippedDate: colDate(row, COLS.shippedDate),
         assignedTo: col(row, COLS.assignedTo),
+        dailyCapacity: colNum(row, COLS.dailyCapacity),
+        priorityOverride: null,
+        priorityChangedBy: null,
+        priorityChangedAt: null,
       }
     })
     .filter((o) => o.line && o.customer)
