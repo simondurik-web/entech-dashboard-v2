@@ -6,7 +6,7 @@ const VALID_PRIORITIES = ["P1", "P2", "P3", "P4", "URGENT"]
 async function getUserProfile(userId: string) {
   const { data } = await supabaseAdmin
     .from("user_profiles")
-    .select("role, email, display_name, custom_permissions")
+    .select("role, email, full_name, custom_permissions")
     .eq("id", userId)
     .single()
   return data
@@ -60,7 +60,7 @@ export async function PUT(req: NextRequest) {
 
   const updateData: Record<string, unknown> = {
     priority_override: priority,
-    priority_changed_by: profile.display_name || profile.email || userId,
+    priority_changed_by: profile.full_name || profile.email || userId,
     priority_changed_at: new Date().toISOString(),
   }
 
