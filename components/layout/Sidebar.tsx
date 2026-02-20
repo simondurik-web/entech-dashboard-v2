@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import { useAuth } from "@/lib/auth-context"
@@ -36,12 +36,12 @@ import {
   Shield,
   Settings,
   FileBarChart,
+  ChevronRight,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
 
 type NavItem = {
-  /** Translation key — resolved via t() */
   tKey: string
   href: string
   icon: React.ReactNode
@@ -107,10 +107,37 @@ export function Sidebar({
   const { user, profile, signIn, signOut } = useAuth()
   const { canAccess } = usePermissions()
   const [mounted, setMounted] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const hoverTimeout = useRef<NodeJS.Timeout | null>(null)
+  const leaveTimeout = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     setMounted(true)
+    // Restore pin state
+    const stored = localStorage.getItem("sidebar-pinned")
+    if (stored === "true") setPinned(true)
   }, [])
+
+  const expanded = hovered || pinned
+
+  const handleMouseEnter = () => {
+    if (leaveTimeout.current) { clearTimeout(leaveTimeout.current); leaveTimeout.current = null }
+    hoverTimeout.current = setTimeout(() => setHovered(true), 80)
+  }
+
+  const handleMouseLeave = () => {
+    if (hoverTimeout.current) { clearTimeout(hoverTimeout.current); hoverTimeout.current = null }
+    leaveTimeout.current = setTimeout(() => setHovered(false), 300)
+  }
+
+  const togglePin = () => {
+    const next = !pinned
+    setPinned(next)
+    localStorage.setItem("sidebar-pinned", String(next))
+    // Notify layout of pin change
+    window.dispatchEvent(new CustomEvent("sidebar-pin-changed", { detail: { pinned: next } }))
+  }
 
   const filteredProduction = productionItems.filter((item) => canAccess(item.href))
   const filteredSales = salesItems.filter((item) => canAccess(item.href))
@@ -124,16 +151,23 @@ export function Sidebar({
         <Link
           href={item.href}
           onClick={onClose}
+          title={!expanded ? (useTranslation ? t(item.tKey) : item.tKey) : undefined}
           className={cn(
-            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-            item.sub && "ml-4 text-xs",
+            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
+            item.sub && expanded && "ml-4 text-xs",
+            item.sub && !expanded && "ml-0 text-xs",
             isActive
               ? "bg-white/20 font-medium text-white shadow-sm"
               : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
           )}
         >
-          {item.icon}
-          <span>{useTranslation ? t(item.tKey) : item.tKey}</span>
+          <span className="shrink-0">{item.icon}</span>
+          <span className={cn(
+            "transition-all duration-300",
+            expanded ? "opacity-100 w-auto" : "opacity-0 w-0"
+          )}>
+            {useTranslation ? t(item.tKey) : item.tKey}
+          </span>
         </Link>
       </li>
     )
@@ -149,13 +183,246 @@ export function Sidebar({
         />
       )}
 
+      {/* Desktop hover trigger zone — always visible thin strip */}
+      <div
+        className="fixed inset-y-0 left-0 z-40 hidden lg:block"
+        style={{ width: expanded ? "16rem" : "3.5rem" }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <aside
+          className={cn(
+            "h-full flex flex-col overflow-y-auto overflow-x-hidden",
+            "bg-gradient-to-b from-[#2b6cb0] to-[#2c5282] text-white",
+            "dark:from-[#0f1f38] dark:to-[#1a365d]",
+            "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+            expanded ? "w-64 shadow-2xl shadow-black/30" : "w-14",
+            !expanded && "opacity-60 hover:opacity-100",
+          )}
+        >
+          {/* Logo section */}
+          <div className="flex items-center justify-between px-3 py-5 min-h-[72px]">
+            <div className={cn("overflow-hidden transition-all duration-300", expanded ? "opacity-100" : "opacity-0 w-0")}>
+              <h1 className="text-lg font-bold tracking-wide whitespace-nowrap">Molding</h1>
+              <p className="text-xs text-white/70 whitespace-nowrap">Operations Dashboard</p>
+            </div>
+            {!expanded && (
+              <div className="mx-auto">
+                <ChevronRight className="size-4 text-white/50 animate-pulse" />
+              </div>
+            )}
+            {expanded && (
+              <button
+                onClick={togglePin}
+                className={cn(
+                  "rounded-md p-1.5 transition-colors",
+                  pinned ? "text-white bg-white/20" : "text-white/50 hover:bg-white/10 hover:text-white"
+                )}
+                title={pinned ? "Unpin sidebar" : "Pin sidebar open"}
+              >
+                <svg className="size-4" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="17" x2="12" y2="22" />
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* Toggle controls */}
+          <div className={cn(
+            "flex items-center gap-2 border-t border-white/10 px-3 py-3 overflow-hidden transition-all duration-300",
+            expanded ? "opacity-100 max-h-20" : "opacity-0 max-h-0 py-0 border-0"
+          )}>
+            <LanguageToggle />
+            {mounted && (
+              <button
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
+                aria-label="Toggle theme"
+              >
+                {theme === "dark" ? <><Sun className="size-3.5" /><span>Light</span></> : <><Moon className="size-3.5" /><span>Dark</span></>}
+              </button>
+            )}
+          </div>
+
+          <div className={cn(
+            "overflow-hidden transition-all duration-300",
+            expanded ? "opacity-100 max-h-20" : "opacity-0 max-h-0"
+          )}>
+            <ZoomControls />
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 px-2 py-4">
+            {filteredProduction.length > 0 && (
+              <>
+                <p className={cn(
+                  "mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
+                  !expanded && "text-center text-[8px] tracking-normal"
+                )}>
+                  {expanded ? t('nav.production') : "•••"}
+                </p>
+                <ul className="space-y-0.5">
+                  {filteredProduction.map((item) => renderNavItem(item))}
+                </ul>
+              </>
+            )}
+
+            {filteredSales.length > 0 && (
+              <>
+                <p className={cn(
+                  "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
+                  !expanded && "text-center text-[8px] tracking-normal"
+                )}>
+                  {expanded ? t('nav.salesFinance') : "•••"}
+                </p>
+                <ul className="space-y-0.5">
+                  {filteredSales.map((item) => renderNavItem(item))}
+                </ul>
+              </>
+            )}
+
+            {/* Reports */}
+            <p className={cn(
+              "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
+              !expanded && "text-center text-[8px] tracking-normal"
+            )}>
+              {expanded ? "REPORTS" : "•••"}
+            </p>
+            <ul className="space-y-0.5">
+              <li>
+                <Link
+                  href="/reports"
+                  onClick={onClose}
+                  title={!expanded ? "Custom Reports" : undefined}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
+                    pathname === "/reports"
+                      ? "bg-white/20 font-medium text-white shadow-sm"
+                      : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                  )}
+                >
+                  <span className="shrink-0"><FileBarChart className="size-4" /></span>
+                  <span className={cn("transition-all duration-300", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>Custom Reports</span>
+                </Link>
+              </li>
+            </ul>
+
+            {showAllData && (
+              <>
+                <p className={cn(
+                  "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
+                  !expanded && "text-center text-[8px] tracking-normal"
+                )}>
+                  {expanded ? t('nav.rawData') : "•••"}
+                </p>
+                <ul className="space-y-0.5">
+                  <li>
+                    <Link
+                      href="/all-data"
+                      onClick={onClose}
+                      title={!expanded ? "All Data" : undefined}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
+                        pathname === "/all-data"
+                          ? "bg-white/20 font-medium text-white shadow-sm"
+                          : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                      )}
+                    >
+                      <span className="shrink-0"><Database className="size-4" /></span>
+                      <span className={cn("transition-all duration-300", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>All Data</span>
+                    </Link>
+                  </li>
+                </ul>
+              </>
+            )}
+
+            {isAdmin && (
+              <>
+                <p className={cn(
+                  "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
+                  !expanded && "text-center text-[8px] tracking-normal"
+                )}>
+                  {expanded ? "ADMIN" : "•••"}
+                </p>
+                <ul className="space-y-0.5">
+                  {adminItems.map((item) => renderNavItem(item, false))}
+                </ul>
+              </>
+            )}
+          </nav>
+
+          {/* Phil Assistant */}
+          {canAccess('/phil-assistant') && (
+            <div className={cn(
+              "border-t border-white/10 px-2 py-3 overflow-hidden transition-all duration-300",
+              !expanded && "px-1"
+            )}>
+              <Link
+                href="/phil-assistant"
+                onClick={onClose}
+                className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white overflow-hidden"
+                title={!expanded ? t('nav.aiAssistant') : undefined}
+              >
+                <span className="shrink-0"><Bot className="size-4" /></span>
+                <span className={cn("transition-all duration-300 whitespace-nowrap", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>
+                  {t('nav.aiAssistant')}
+                </span>
+              </Link>
+            </div>
+          )}
+
+          {/* Auth section */}
+          <div className={cn(
+            "border-t border-white/10 px-2 py-3 transition-all duration-300",
+            !expanded && "px-1"
+          )}>
+            {user && profile ? (
+              <div className="flex items-center gap-2">
+                {profile.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" className="size-8 rounded-full shrink-0" />
+                ) : (
+                  <div className="flex size-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold shrink-0">
+                    {(profile.full_name || profile.email || "?")[0].toUpperCase()}
+                  </div>
+                )}
+                <div className={cn("min-w-0 flex-1 transition-all duration-300 overflow-hidden", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>
+                  <p className="truncate text-xs font-medium">{profile.full_name || profile.email}</p>
+                  <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-medium", ROLE_COLORS[profile.role] || ROLE_COLORS.visitor)}>
+                    {ROLE_LABELS[profile.role] || profile.role}
+                  </span>
+                </div>
+                {expanded && (
+                  <button
+                    onClick={signOut}
+                    className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white shrink-0"
+                    title="Sign out"
+                  >
+                    <LogOut className="size-4" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={signIn}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white overflow-hidden"
+                title={!expanded ? "Sign in" : undefined}
+              >
+                <span className="shrink-0"><LogIn className="size-4" /></span>
+                <span className={cn("transition-all duration-300 whitespace-nowrap", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>Sign in with Google</span>
+              </button>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* Mobile sidebar - standard overlay */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col overflow-y-auto",
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col overflow-y-auto lg:hidden",
           "bg-gradient-to-b from-[#2b6cb0] to-[#2c5282] text-white",
           "dark:from-[#0f1f38] dark:to-[#1a365d]",
           "transition-transform duration-300 ease-in-out",
-          "lg:translate-x-0 lg:z-30",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -167,79 +434,81 @@ export function Sidebar({
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+            className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
             aria-label="Close sidebar"
           >
             <PanelLeftClose className="size-5" />
           </button>
         </div>
 
-        {/* Toggle controls */}
         <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3">
           <LanguageToggle />
           {mounted && (
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
-              aria-label="Toggle theme"
             >
-              {theme === "dark" ? (
-                <>
-                  <Sun className="size-3.5" />
-                  <span>Light</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="size-3.5" />
-                  <span>Dark</span>
-                </>
-              )}
+              {theme === "dark" ? <><Sun className="size-3.5" /><span>Light</span></> : <><Moon className="size-3.5" /><span>Dark</span></>}
             </button>
           )}
         </div>
 
         <ZoomControls />
 
-        {/* Navigation */}
         <nav className="flex-1 px-3 py-4">
           {filteredProduction.length > 0 && (
             <>
-              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-                {t('nav.production')}
-              </p>
+              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.production')}</p>
               <ul className="space-y-0.5">
-                {filteredProduction.map((item) => renderNavItem(item))}
+                {filteredProduction.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        item.sub && "ml-4 text-xs",
+                        isActive ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                      )}>
+                        {item.icon}
+                        <span>{t(item.tKey)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             </>
           )}
 
           {filteredSales.length > 0 && (
             <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-                {t('nav.salesFinance')}
-              </p>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.salesFinance')}</p>
               <ul className="space-y-0.5">
-                {filteredSales.map((item) => renderNavItem(item))}
+                {filteredSales.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        item.sub && "ml-4 text-xs",
+                        isActive ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                      )}>
+                        {item.icon}
+                        <span>{t(item.tKey)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             </>
           )}
 
-          {/* Reports / Custom Views */}
-          <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-            REPORTS
-          </p>
+          <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">REPORTS</p>
           <ul className="space-y-0.5">
             <li>
-              <Link
-                href="/reports"
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                  pathname === "/reports"
-                    ? "bg-white/20 font-medium text-white shadow-sm"
-                    : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
-                )}
-              >
+              <Link href="/reports" onClick={onClose} className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                pathname === "/reports" ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+              )}>
                 <FileBarChart className="size-4" />
                 <span>Custom Reports</span>
               </Link>
@@ -248,21 +517,13 @@ export function Sidebar({
 
           {showAllData && (
             <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-                {t('nav.rawData')}
-              </p>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.rawData')}</p>
               <ul className="space-y-0.5">
                 <li>
-                  <Link
-                    href="/all-data"
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                      pathname === "/all-data"
-                        ? "bg-white/20 font-medium text-white shadow-sm"
-                        : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
-                    )}
-                  >
+                  <Link href="/all-data" onClick={onClose} className={cn(
+                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                    pathname === "/all-data" ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                  )}>
                     <Database className="size-4" />
                     <span>All Data</span>
                   </Link>
@@ -273,62 +534,58 @@ export function Sidebar({
 
           {isAdmin && (
             <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-                ADMIN
-              </p>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">ADMIN</p>
               <ul className="space-y-0.5">
-                {adminItems.map((item) => renderNavItem(item, false))}
+                {adminItems.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        isActive ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                      )}>
+                        {item.icon}
+                        <span>{item.tKey}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             </>
           )}
         </nav>
 
-        {/* Phil Assistant — gated by /phil-assistant permission */}
         {canAccess('/phil-assistant') && (
           <div className="border-t border-white/10 px-3 py-3">
-            <button className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
+            <Link href="/phil-assistant" onClick={onClose} className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
               <Bot className="size-4" />
               <span>{t('nav.aiAssistant')}</span>
-            </button>
+            </Link>
           </div>
         )}
 
-        {/* Auth section */}
         <div className="border-t border-white/10 px-3 py-3">
           {user && profile ? (
             <div className="flex items-center gap-3">
               {profile.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt=""
-                  className="size-8 rounded-full"
-                />
+                <img src={profile.avatar_url} alt="" className="size-8 rounded-full" />
               ) : (
                 <div className="flex size-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
                   {(profile.full_name || profile.email || "?")[0].toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">
-                  {profile.full_name || profile.email}
-                </p>
+                <p className="truncate text-xs font-medium">{profile.full_name || profile.email}</p>
                 <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-medium", ROLE_COLORS[profile.role] || ROLE_COLORS.visitor)}>
                   {ROLE_LABELS[profile.role] || profile.role}
                 </span>
               </div>
-              <button
-                onClick={signOut}
-                className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
-                title="Sign out"
-              >
+              <button onClick={signOut} className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white" title="Sign out">
                 <LogOut className="size-4" />
               </button>
             </div>
           ) : (
-            <button
-              onClick={signIn}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-            >
+            <button onClick={signIn} className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
               <LogIn className="size-4" />
               <span>Sign in with Google</span>
             </button>

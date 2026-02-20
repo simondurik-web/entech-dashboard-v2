@@ -13,6 +13,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarPinned, setSidebarPinned] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
 
   useEffect(() => {
@@ -26,15 +27,38 @@ export default function DashboardLayout({
       if (typeof zoom === "number") setZoomLevel(zoom)
     }
     window.addEventListener("zoom-changed", handler)
-    return () => window.removeEventListener("zoom-changed", handler)
+
+    // Listen for sidebar pin changes
+    const pinned = localStorage.getItem("sidebar-pinned") === "true"
+    setSidebarPinned(pinned)
+    const pinHandler = (e: Event) => {
+      const pin = (e as CustomEvent).detail?.pinned
+      setSidebarPinned(pin)
+    }
+    window.addEventListener("sidebar-pin-changed", pinHandler)
+
+    return () => {
+      window.removeEventListener("zoom-changed", handler)
+      window.removeEventListener("sidebar-pin-changed", pinHandler)
+    }
   }, [])
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main content area - offset on desktop for sidebar */}
-      <div className="lg:pl-64">
+      {/* Main content area - dynamic offset based on sidebar state */}
+      <div
+        className="transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+        style={{ paddingLeft: sidebarPinned ? "16rem" : "3.5rem" }}
+      >
+        {/* Remove padding on mobile where sidebar is overlay */}
+        <style>{`
+          @media (max-width: 1023px) {
+            .transition-all[style*="padding-left"] { padding-left: 0 !important; }
+          }
+        `}</style>
+        
         {/* Top header - mobile/tablet only on large screens sidebar replaces it */}
         <header className="sticky top-0 z-30 border-b bg-background">
           <div className="flex h-14 items-center gap-3 px-4">
