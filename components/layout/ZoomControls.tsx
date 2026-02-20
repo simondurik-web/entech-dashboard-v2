@@ -55,60 +55,62 @@ export function ZoomControls() {
   const displayPercent = Math.round(zoom * 100)
 
   return (
-    <div className="hidden items-center gap-1 border-t border-white/10 px-3 py-2 lg:flex">
-      <span className="mr-auto text-[10px] font-semibold uppercase tracking-widest text-white/50 shrink-0">
+    <div className="hidden items-center gap-1.5 border-t border-white/10 px-3 py-2.5 lg:flex">
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-white/50 shrink-0">
         Zoom
       </span>
-      <button
-        onClick={() => update(zoom - STEP)}
-        disabled={zoom <= MIN_ZOOM}
-        className="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 shrink-0"
-        aria-label="Zoom out"
-      >
-        <Minus className="size-3.5" />
-      </button>
-
-      {editing ? (
-        <input
-          ref={inputRef}
-          type="number"
-          min={MIN_ZOOM * 100}
-          max={MAX_ZOOM * 100}
-          step={1}
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitEdit()
-            if (e.key === "Escape") setEditing(false)
-          }}
-          className="w-12 rounded bg-white/20 px-1 py-0.5 text-center text-xs tabular-nums text-white outline-none focus:ring-1 focus:ring-white/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-      ) : (
+      <div className="ml-auto flex items-center gap-1">
         <button
-          onClick={startEditing}
-          className="min-w-[3ch] rounded px-1 py-0.5 text-center text-xs tabular-nums text-white/90 hover:bg-white/20 hover:text-white transition-colors cursor-text"
-          title="Click to type a custom zoom %"
+          onClick={() => update(zoom - STEP)}
+          disabled={zoom <= MIN_ZOOM}
+          className="flex items-center justify-center size-6 rounded bg-white/10 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-30 shrink-0"
+          aria-label="Zoom out"
         >
-          {displayPercent}%
+          <Minus className="size-3" />
         </button>
-      )}
 
-      <button
-        onClick={() => update(zoom + STEP)}
-        disabled={zoom >= MAX_ZOOM}
-        className="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 shrink-0"
-        aria-label="Zoom in"
-      >
-        <Plus className="size-3.5" />
-      </button>
-      <button
-        onClick={() => update(DEFAULT_ZOOM)}
-        className="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white shrink-0"
-        aria-label="Reset zoom"
-      >
-        <RotateCcw className="size-3" />
-      </button>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="number"
+            min={MIN_ZOOM * 100}
+            max={MAX_ZOOM * 100}
+            step={1}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit()
+              if (e.key === "Escape") setEditing(false)
+            }}
+            className="w-14 h-6 rounded bg-white/20 px-1.5 text-center text-xs tabular-nums text-white outline-none focus:ring-1 focus:ring-white/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+        ) : (
+          <button
+            onClick={startEditing}
+            className="w-14 h-6 rounded bg-white/10 text-center text-xs tabular-nums text-white/90 hover:bg-white/20 hover:text-white transition-colors cursor-text"
+            title="Click to type a custom zoom %"
+          >
+            {displayPercent}%
+          </button>
+        )}
+
+        <button
+          onClick={() => update(zoom + STEP)}
+          disabled={zoom >= MAX_ZOOM}
+          className="flex items-center justify-center size-6 rounded bg-white/10 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-30 shrink-0"
+          aria-label="Zoom in"
+        >
+          <Plus className="size-3" />
+        </button>
+        <button
+          onClick={() => update(DEFAULT_ZOOM)}
+          className="flex items-center justify-center size-6 rounded text-white/50 hover:bg-white/10 hover:text-white shrink-0"
+          aria-label="Reset zoom"
+        >
+          <RotateCcw className="size-3" />
+        </button>
+      </div>
     </div>
   )
 }
