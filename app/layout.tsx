@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/layout/theme-provider"
 import { I18nProvider } from "@/lib/i18n"
 import { AuthProvider } from "@/lib/auth-context"
+import { PWAProvider } from "@/components/PWAProvider"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -18,6 +19,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Entech Dashboard",
   description: "Molding Operations Dashboard",
+  manifest: "/manifest.json",
+  themeColor: "#2b6cb0",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Entech",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 }
 
 export default function RootLayout({
@@ -27,6 +38,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
@@ -38,7 +54,9 @@ export default function RootLayout({
         >
           <I18nProvider>
             <AuthProvider>
-              {children}
+              <PWAProvider>
+                {children}
+              </PWAProvider>
             </AuthProvider>
           </I18nProvider>
         </ThemeProvider>
