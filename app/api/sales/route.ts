@@ -52,10 +52,11 @@ function cellDate(row: { c: Array<{ v: unknown } | null> }, col: number): string
 }
 
 function getCategory(cat: string): string {
-  const lower = cat.toLowerCase()
+  const lower = cat.toLowerCase().trim()
   if (lower.includes('roll tech')) return 'Roll Tech'
   if (lower.includes('molding')) return 'Molding'
-  if (lower.includes('snap pad')) return 'Snap Pad'
+  if (lower.includes('snap pad') || lower.includes('snap-pad') || lower.includes('snappad')) return 'Snap Pad'
+  if (lower.includes('missing') || lower.includes('reference data')) return 'Roll Tech'
   return 'Other'
 }
 
@@ -73,7 +74,7 @@ const COLS = {
   line: 0, category: 1, dateOfRequest: 2, priorityLevel: 3, urgentOverride: 4,
   ifNumber: 5, ifStatus: 6, internalStatus: 7, poNumber: 8, customer: 9,
   partNumber: 11, orderQty: 15, requestedDate: 22, shippedDate: 45,
-  revenue: 36, variableCost: 37, totalCost: 38, pl: 39,
+  revenue: 44, variableCost: 39, totalCost: 40, pl: 43,
 }
 
 async function fetchSalesFromSheets() {

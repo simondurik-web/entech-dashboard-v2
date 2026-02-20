@@ -52,7 +52,10 @@ function str(v: unknown): string {
 
 function num(v: unknown): number {
   if (v === null || v === undefined) return 0
-  const n = Number(v)
+  // Strip $, commas, spaces, and handle parenthetical negatives like ($1,234.56)
+  let s = String(v).replace(/[$,\s]/g, '')
+  if (s.startsWith('(') && s.endsWith(')')) s = '-' + s.slice(1, -1)
+  const n = Number(s)
   return isNaN(n) ? 0 : n
 }
 
@@ -63,10 +66,12 @@ function bool(v: unknown): boolean {
 }
 
 function getCategory(cat: string): string {
-  const lower = cat.toLowerCase()
+  const lower = cat.toLowerCase().trim()
   if (lower.includes('roll tech')) return 'Roll Tech'
   if (lower.includes('molding')) return 'Molding'
-  if (lower.includes('snap pad')) return 'Snap Pad'
+  if (lower.includes('snap pad') || lower.includes('snap-pad') || lower.includes('snappad')) return 'Snap Pad'
+  // "Part number missing..." rows are mostly Roll Tech parts
+  if (lower.includes('missing') || lower.includes('reference data')) return 'Roll Tech'
   return 'Other'
 }
 
