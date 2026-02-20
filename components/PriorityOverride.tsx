@@ -6,7 +6,7 @@ import { usePermissions } from '@/lib/use-permissions'
 import { supabase } from '@/lib/supabase'
 import type { PriorityValue } from '@/lib/priority'
 
-const PRIORITY_OPTIONS: { value: PriorityValue | 'RESET'; label: string; color: string }[] = [
+const PRIORITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: 'P1', label: 'P1', color: 'bg-red-500/20 text-red-600 hover:bg-red-500/30' },
   { value: 'P2', label: 'P2', color: 'bg-orange-500/20 text-orange-600 hover:bg-orange-500/30' },
   { value: 'P3', label: 'P3', color: 'bg-yellow-500/20 text-yellow-600 hover:bg-yellow-500/30' },
@@ -27,6 +27,7 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
   const { canAccess } = usePermissions()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   // Check permission: admin always, or manage_priority in role/custom permissions
@@ -42,23 +43,36 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  // Clear error after 3s
+  useEffect(() => {
+    if (!error) return
+    const t = setTimeout(() => setError(null), 3000)
+    return () => clearTimeout(t)
+  }, [error])
+
   if (!canManage) return null
 
-  const handleSelect = async (value: PriorityValue | 'RESET') => {
+  const handleSelect = async (value: string) => {
     setLoading(true)
     setOpen(false)
+    setError(null)
 
     const newPriority = value === 'RESET' ? null : value
 
     try {
-      // Get current session for auth header
+      if (!user?.id) {
+        setError('Not logged in')
+        setLoading(false)
+        return
+      }
+
       const { data: { session } } = await supabase.auth.getSession()
       
       const res = await fetch('/api/orders/priority', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': user?.id || '',
+          'x-user-id': user.id,
           ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         },
         body: JSON.stringify({ line, priority: newPriority }),
@@ -68,9 +82,11 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
         onUpdate(line, newPriority as PriorityValue)
       } else {
         const err = await res.json()
-        console.error('Priority update failed:', err.error)
+        setError(err.error || 'Failed')
+        console.error('Priority update failed:', err)
       }
     } catch (err) {
+      setError('Network error')
       console.error('Priority update error:', err)
     } finally {
       setLoading(false)
@@ -82,6 +98,7 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
       <button
         onClick={(e) => {
           e.stopPropagation()
+          e.preventDefault()
           setOpen(!open)
         }}
         disabled={loading}
@@ -104,16 +121,26 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
         <span className="ml-0.5 text-[8px] text-amber-500" title="Manually overridden">📌</span>
       )}
 
+      {error && (
+        <span className="absolute z-50 top-full left-0 mt-1 px-2 py-1 text-[10px] bg-red-500 text-white rounded shadow whitespace-nowrap">
+          {error}
+        </span>
+      )}
+
       {open && (
         <div
           className="absolute z-50 top-full left-0 mt-1 bg-background border rounded-lg shadow-lg p-1 min-w-[100px]"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); e.preventDefault() }}
         >
           {PRIORITY_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => handleSelect(opt.value)}
-              className={`w-full text-left px-2 py-1 text-xs rounded transition-colors ${opt.color} ${
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                handleSelect(opt.value)
+              }}
+              className={`w-full text-left px-2 py-1.5 text-xs rounded transition-colors mb-0.5 ${opt.color} ${
                 currentPriority === opt.value ? 'ring-1 ring-primary' : ''
               }`}
             >

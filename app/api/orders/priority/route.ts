@@ -71,16 +71,22 @@ export async function PUT(req: NextRequest) {
     updateData.priority_changed_at = null
   }
 
+  // line could be string or number in DB — try both
+  const lineStr = String(line)
+  
   const { data, error } = await supabaseAdmin
     .from("dashboard_orders")
     .update(updateData)
-    .eq("line", line)
+    .eq("line", lineStr)
     .select("line, priority_override, priority_changed_by, priority_changed_at")
-    .single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, order: data })
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: `No order found with line ${lineStr}` }, { status: 404 })
+  }
+
+  return NextResponse.json({ success: true, order: data[0] })
 }
