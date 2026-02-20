@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import ReactDOM from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Trash2, ExternalLink, Pencil, FileDown, FileText, FileSpreadsheet, Check, X, ExternalLinkIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -107,43 +108,76 @@ function EditableCell({ value, onSave, editable }: { value: string; onSave: (v: 
 
 function ExportDropdown({ viewId, route }: { viewId: string; route: string }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    const handler = (e: MouseEvent) => {
+      if (
+        btnRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return
+      setOpen(false)
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
   function triggerExport(format: 'csv' | 'xlsx') {
-    // Open page in hidden iframe with autoExport param — it will trigger download automatically
     const url = `${route}?viewId=${viewId}&autoExport=${format}`
     const iframe = document.createElement('iframe')
     iframe.style.display = 'none'
     iframe.src = url
     document.body.appendChild(iframe)
-    // Clean up after 30s
     setTimeout(() => { try { document.body.removeChild(iframe) } catch {} }, 30000)
     setOpen(false)
   }
 
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setPos({ top: rect.bottom + 4, left: rect.right })
+    }
+    setOpen(!open)
+  }
+
   return (
-    <div ref={ref} className="relative">
-      <Button variant="ghost" size="sm" onClick={() => setOpen(!open)} title="Export report data">
+    <>
+      <Button ref={btnRef} variant="ghost" size="sm" onClick={handleToggle} title="Export report data">
         <FileDown className="size-3.5 mr-1" /> Export
       </Button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg min-w-[130px] py-1">
-          <button onClick={() => triggerExport('csv')} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
+      {open && pos && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div
+          ref={dropRef}
+          className="fixed z-[9999] bg-popover border rounded-md shadow-lg min-w-[130px] py-1"
+          style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={(e) => { e.stopPropagation(); triggerExport('csv') }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
             <FileText className="size-4" /> CSV
           </button>
-          <button onClick={() => triggerExport('xlsx')} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
+          <button onClick={(e) => { e.stopPropagation(); triggerExport('xlsx') }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors">
             <FileSpreadsheet className="size-4" /> Excel
           </button>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
 

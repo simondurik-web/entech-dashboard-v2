@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { exportToCSV, exportToExcel } from '@/lib/export-utils'
@@ -17,34 +18,70 @@ export function ExportMenu<T extends Record<string, unknown>>({
   filename = 'export',
 }: ExportMenuProps<T>) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
+
+  const updatePos = useCallback(() => {
+    if (!btnRef.current) return
+    const rect = btnRef.current.getBoundingClientRect()
+    setPos({ top: rect.bottom + 4, left: rect.right })
+  }, [])
 
   // Close on outside click
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        btnRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  // Close on scroll/resize
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!open) updatePos()
+    setOpen(!open)
+  }
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <Button
+        ref={btnRef}
         variant="outline"
         size="sm"
-        onClick={() => setOpen(!open)}
+        onClick={handleToggle}
         disabled={data.length === 0}
       >
         <Download className="size-4" />
         <span className="hidden sm:inline">Export</span>
       </Button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg min-w-[140px] py-1">
+      {open && pos && createPortal(
+        <div
+          ref={dropRef}
+          className="fixed z-[9999] bg-popover border rounded-md shadow-lg min-w-[140px] py-1"
+          style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}
+        >
           <button
             className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               exportToCSV(data, columns, filename)
               setOpen(false)
             }}
@@ -54,7 +91,8 @@ export function ExportMenu<T extends Record<string, unknown>>({
           </button>
           <button
             className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-            onClick={async () => {
+            onClick={async (e) => {
+              e.stopPropagation()
               await exportToExcel(data, columns, filename)
               setOpen(false)
             }}
@@ -62,8 +100,9 @@ export function ExportMenu<T extends Record<string, unknown>>({
             <FileSpreadsheet className="size-4" />
             Excel
           </button>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
