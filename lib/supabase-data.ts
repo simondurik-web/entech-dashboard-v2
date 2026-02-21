@@ -29,6 +29,15 @@ export interface SalesOrder {
   shippedDate: string
   requestedDate: string
   status: string
+  dateOfRequest: string
+  ifNumber: string
+  ifStatus: string
+  internalStatus: string
+  poNumber: string
+  shippingCost: number
+  unitPrice: number
+  salesTarget: number
+  profitPerPart: number
 }
 
 export interface SalesSummary {
@@ -371,12 +380,18 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
 
     if (revenue === 0 && pl === 0) continue
 
+    const qty = num(row.order_qty)
+    const unitPrice = num(row.unit_price)
+    const salesTarget = num(row.sales_target_20)
+    const profitPerPart = num(row.profit_per_part)
+    const shippingCost = num(row.shipping_cost)
+
     orders.push({
       line,
       customer,
       partNumber: str(row.part_number),
       category: getCategory(str(row.category)),
-      qty: num(row.order_qty),
+      qty,
       revenue,
       variableCost,
       totalCost,
@@ -384,6 +399,12 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
       shippedDate: str(row.shipped_date),
       requestedDate: str(row.requested_completion_date),
       status,
+      dateOfRequest: str(row.date_of_request),
+      ifNumber: str(row.if_number),
+      ifStatus: str(row.if_status_fusion),
+      internalStatus: str(row.work_order_status),
+      poNumber: str(row.po_number),
+      shippingCost, unitPrice, salesTarget, profitPerPart,
     })
 
     totalRevenue += revenue

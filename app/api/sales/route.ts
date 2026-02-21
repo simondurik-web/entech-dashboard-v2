@@ -75,6 +75,8 @@ const COLS = {
   ifNumber: 5, ifStatus: 6, internalStatus: 7, poNumber: 8, customer: 9,
   partNumber: 11, orderQty: 15, requestedDate: 22, shippedDate: 45,
   revenue: 44, variableCost: 39, totalCost: 40, pl: 43,
+  unitPrice: 37, contributionLevel: 38, salesTarget: 41, profitPerPart: 42,
+  shippingCost: 55,
 }
 
 async function fetchSalesFromSheets() {
@@ -98,7 +100,7 @@ async function fetchSalesFromSheets() {
     if (label === 'p/l' || label === 'pl' || label.includes('p/l total') || label.includes('profit')) plCol = i
   }
 
-  const orders: Array<{ line: string; customer: string; partNumber: string; category: string; qty: number; revenue: number; variableCost: number; totalCost: number; pl: number; shippedDate: string; requestedDate: string; status: string }> = []
+  const orders: Array<{ line: string; customer: string; partNumber: string; category: string; qty: number; revenue: number; variableCost: number; totalCost: number; pl: number; shippedDate: string; requestedDate: string; status: string; dateOfRequest: string; ifNumber: string; ifStatus: string; internalStatus: string; poNumber: string; shippingCost: number; unitPrice: number; salesTarget: number; profitPerPart: number }> = []
   let totalRevenue = 0, totalCosts = 0, totalPL = 0
 
   for (const row of rows) {
@@ -115,13 +117,25 @@ async function fetchSalesFromSheets() {
     const pl = cellNumber(row, plCol)
     if (revenue === 0 && pl === 0) continue
 
+    const qty = cellNumber(row, COLS.orderQty)
+    const unitPrice = cellNumber(row, COLS.unitPrice)
+    const salesTarget = cellNumber(row, COLS.salesTarget)
+    const profitPerPart = cellNumber(row, COLS.profitPerPart)
+    const shippingCost = cellNumber(row, COLS.shippingCost)
+
     orders.push({
       line, customer, partNumber: cellValue(row, COLS.partNumber),
       category: getCategory(cellValue(row, COLS.category)),
-      qty: cellNumber(row, COLS.orderQty), revenue, variableCost, totalCost, pl,
+      qty, revenue, variableCost, totalCost, pl,
       shippedDate: cellDate(row, COLS.shippedDate),
       requestedDate: cellDate(row, COLS.requestedDate),
       status,
+      dateOfRequest: cellDate(row, COLS.dateOfRequest),
+      ifNumber: cellValue(row, COLS.ifNumber),
+      ifStatus: cellValue(row, COLS.ifStatus),
+      internalStatus: cellValue(row, COLS.internalStatus),
+      poNumber: cellValue(row, COLS.poNumber),
+      shippingCost, unitPrice, salesTarget, profitPerPart,
     })
     totalRevenue += revenue
     totalCosts += totalCost || variableCost

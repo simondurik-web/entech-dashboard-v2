@@ -28,6 +28,15 @@ interface SalesOrder {
   shippedDate: string
   requestedDate: string
   status: string
+  dateOfRequest: string
+  ifNumber: string
+  ifStatus: string
+  internalStatus: string
+  poNumber: string
+  shippingCost: number
+  unitPrice: number
+  salesTarget: number
+  profitPerPart: number
 }
 
 interface SalesData {
@@ -55,11 +64,16 @@ interface MonthRow extends Record<string, unknown> {
 }
 
 interface MonthlyOrderRow extends Record<string, unknown> {
-  line: string
   category: string
+  dateOfRequest: string
+  ifNumber: string
+  ifStatus: string
+  internalStatus: string
+  poNumber: string
   customer: string
   partNumber: string
   qty: number
+  requestedDate: string
   unitPrice: number
   contribution: number
   variableCost: number
@@ -69,7 +83,8 @@ interface MonthlyOrderRow extends Record<string, unknown> {
   pl: number
   revenue: number
   shippedDate: string
-  requestedDate: string
+  shippingCost: number
+  line: string
   status: string
 }
 
@@ -151,25 +166,32 @@ function ContributionBadge({ margin }: { margin: number }) {
 function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; monthLabel: string }) {
   const rows: MonthlyOrderRow[] = useMemo(() =>
     orders.map((o) => {
-      const unitPrice = o.qty > 0 ? o.revenue / o.qty : 0
-      const profitPerPart = o.qty > 0 ? o.pl / o.qty : 0
+      const unitPrice = o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0)
+      const profitPerPart = o.profitPerPart || (o.qty > 0 ? o.pl / o.qty : 0)
       const margin = o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0
+      const salesTarget = o.salesTarget || unitPrice * 1.2
       return {
-        line: o.line,
         category: o.category,
+        dateOfRequest: o.dateOfRequest || '-',
+        ifNumber: o.ifNumber || '-',
+        ifStatus: o.ifStatus || '-',
+        internalStatus: o.internalStatus || '-',
+        poNumber: o.poNumber || '-',
         customer: o.customer,
         partNumber: o.partNumber,
         qty: o.qty,
+        requestedDate: o.requestedDate || '-',
         unitPrice,
         contribution: margin,
         variableCost: o.variableCost,
         totalCost: o.totalCost || o.variableCost,
-        salesTarget: unitPrice * 1.2,
+        salesTarget,
         profitPerPart,
         pl: o.pl,
         revenue: o.revenue,
         shippedDate: o.shippedDate || '-',
-        requestedDate: o.requestedDate || '-',
+        shippingCost: o.shippingCost || 0,
+        line: o.line,
         status: o.status,
       }
     }),
@@ -178,17 +200,21 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
 
   const ORDER_COLUMNS: ColumnDef<MonthlyOrderRow>[] = useMemo(() => [
     { key: 'category', label: 'Category', sortable: true, filterable: true, render: (v) => <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${CATEGORY_CLASSES[v as string] || CATEGORY_CLASSES.Other}`}>{v as string}</span> },
-    { key: 'line', label: 'Line', sortable: true, filterable: true },
-    { key: 'status', label: 'Status', sortable: true, filterable: true, render: (v) => {
-      const s = v as string
-      const cls = s === 'shipped' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : s === 'staged' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
-      return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{s}</span>
+    { key: 'dateOfRequest', label: 'Date of Request', sortable: true, filterable: true },
+    { key: 'ifNumber', label: 'IF #', sortable: true, filterable: true },
+    { key: 'ifStatus', label: 'IF Status in Fusion', sortable: true, filterable: true },
+    { key: 'internalStatus', label: 'Internal Status', sortable: true, filterable: true, render: (v) => {
+      const s = (v as string).toLowerCase()
+      const cls = s.includes('ship') ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : s.includes('staged') ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : s.includes('progress') || s.includes('wip') ? 'bg-orange-500/15 text-orange-400 border-orange-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+      return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{v as string}</span>
     }},
+    { key: 'poNumber', label: 'PO #', sortable: true, filterable: true },
     { key: 'customer', label: 'Customer', sortable: true, filterable: true },
     { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
-    { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'qty', label: 'Order Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'requestedDate', label: 'Requested Date', sortable: true, filterable: true },
     { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
-    { key: 'contribution', label: 'Contribution', sortable: true, filterable: true, render: (v) => <ContributionBadge margin={v as number} /> },
+    { key: 'contribution', label: 'Contribution Level', sortable: true, filterable: true, render: (v) => <ContributionBadge margin={v as number} /> },
     { key: 'variableCost', label: 'Variable Cost', sortable: true, render: (v) => fmt(v as number) },
     { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
     { key: 'salesTarget', label: 'Sales Target (20%)', sortable: true, render: (v) => fmt(v as number) },
@@ -196,6 +222,7 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
     { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'shippedDate', label: 'Shipped Date', sortable: true, filterable: true },
+    { key: 'shippingCost', label: 'Shipping Cost', sortable: true, render: (v) => fmt(v as number) },
   ], [])
 
   const storageKey = `sales_date_monthly_${monthLabel.replace(/\W/g, '_')}`
