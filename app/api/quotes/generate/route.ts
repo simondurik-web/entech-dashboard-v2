@@ -6,8 +6,9 @@ import { ENTECH_LOGO_BASE64 } from '@/lib/entech-logo'
 
 const styles = StyleSheet.create({
   page: { padding: 36, fontFamily: 'Helvetica', fontSize: 9, color: '#333' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottom: '3px solid #c82333', paddingBottom: 12, marginBottom: 16 },
-  logo: { height: 40, width: 'auto' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 14, marginBottom: 0 },
+  redLine: { height: 3, backgroundColor: '#c82333', marginBottom: 20 },
+  logo: { height: 45, width: 'auto' },
   logoText: { fontSize: 28, fontWeight: 'bold', color: '#c82333' },
   companyName: { fontWeight: 'bold', fontSize: 11, textTransform: 'uppercase' },
   companyDetails: { fontSize: 8, color: '#555', textAlign: 'right' },
@@ -34,6 +35,9 @@ const styles = StyleSheet.create({
   termsSection: { marginTop: 32, borderTop: '2px solid #eee', paddingTop: 12 },
   termsTitle: { fontWeight: 'bold', textTransform: 'uppercase', fontSize: 9, marginBottom: 6 },
   termItem: { fontSize: 8, color: '#444', marginBottom: 3, paddingLeft: 12 },
+  importantBox: { backgroundColor: '#FFF8DC', border: '1px solid #DAA520', borderRadius: 4, padding: 16, marginTop: 24, marginHorizontal: 30, textAlign: 'center' },
+  importantTitle: { fontWeight: 'bold', fontSize: 9, color: '#333', marginBottom: 4 },
+  importantText: { fontSize: 8, color: '#555' },
   thankYou: { textAlign: 'center', marginTop: 24, color: '#666', fontSize: 9 },
   tierLine: { marginBottom: 2 },
 })
@@ -88,6 +92,8 @@ function QuotePDF({ data, quoteNumber, dateIssued, validUntil }: {
           React.createElement(Text, { style: styles.companyDetails }, 'www.4entech.com'),
         )
       ),
+      // Red line
+      React.createElement(View, { style: styles.redLine }),
       // Title
       React.createElement(Text, { style: styles.title }, 'QUOTATION'),
       // Info grid
@@ -183,6 +189,11 @@ function QuotePDF({ data, quoteNumber, dateIssued, validUntil }: {
         React.createElement(Text, { style: styles.termItem }, '• Minimum order quantities may apply'),
         React.createElement(Text, { style: styles.termItem }, '• Shipping costs not included unless specified'),
         React.createElement(Text, { style: styles.termItem }, "• All sales subject to Entech's standard terms"),
+      ),
+      // Important notice
+      React.createElement(View, { style: styles.importantBox, wrap: false },
+        React.createElement(Text, { style: styles.importantTitle }, 'IMPORTANT: PLEASE REFERENCE THIS QUOTE NUMBER ON YOUR PURCHASE ORDER'),
+        React.createElement(Text, { style: styles.importantText }, `Include quote number ${quoteNumber} on all POs related to this quotation to ensure accurate order processing.`),
       ),
       // Thank you
       React.createElement(View, { style: styles.thankYou },
