@@ -6,6 +6,29 @@ Created: 2026-02-07
 
 ---
 
+## ⚠️ DEPLOYMENT WORKFLOW (MANDATORY — Simon's Requirement 2026-02-21)
+
+**TWO branches. TWO environments. ALWAYS ask before pushing.**
+
+| Branch | URL | Purpose |
+|--------|-----|---------|
+| `staging` | `entech-dashboard-v2-git-staging-*.vercel.app` | **TEST** — all new features go here first |
+| `main` | `entech-dashboard-v2.vercel.app` | **PRODUCTION** — employees use this daily |
+
+### Rules:
+1. **ALL new features → `staging` branch first**
+2. **Test and verify on staging URL before merging to main**
+3. **Always ask Simon:** "Push to TEST or PRODUCTION?" before any deployment
+4. **If risky or complex:** Always default to TEST
+5. **To promote:** `git checkout main && git merge staging && git push origin main`
+6. **Never push directly to `main`** without Simon's explicit approval
+
+### Vercel Setup:
+- Vercel auto-deploys both branches
+- `main` = Production deployment
+- `staging` = Preview deployment (gets a unique URL)
+- Both share the same env vars and API
+
 ## Scope
 
 Modern Next.js replacement for the Molding Operations Dashboard. Migrating from static HTML/Google Sheets to:
