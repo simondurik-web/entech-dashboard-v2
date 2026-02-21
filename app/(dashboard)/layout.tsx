@@ -1,7 +1,7 @@
 "use client"
 
 import { Sidebar } from "@/components/layout/Sidebar"
-import { BottomNav } from "@/components/layout/bottom-nav"
+// Bottom nav removed — sidebar handles all navigation
 import { VersionBadge } from "@/components/layout/VersionBadge"
 import { AccessGuard } from "@/components/layout/AccessGuard"
 import { PanelLeft } from "lucide-react"
@@ -76,13 +76,12 @@ export default function DashboardLayout({
         </header>
 
         {/* Main content - pad bottom on mobile for nav bar */}
-        <main className="pb-20 md:pb-0" style={{ zoom: zoomLevel }}>
+        <main className="pb-4" style={{ zoom: zoomLevel }}>
           <AccessGuard>{children}</AccessGuard>
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <BottomNav />
+      {/* Bottom nav removed */}
       <VersionBadge />
     </div>
   )

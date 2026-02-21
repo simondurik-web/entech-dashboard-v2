@@ -565,23 +565,29 @@ export function Sidebar({
         )}
 
         <div className="border-t border-white/10 px-3 py-3">
-          {user && profile ? (
-            <div className="flex items-center gap-3">
-              {profile.avatar_url ? (
-                <img src={profile.avatar_url} alt="" className="size-8 rounded-full" />
-              ) : (
-                <div className="flex size-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
-                  {(profile.full_name || profile.email || "?")[0].toUpperCase()}
+          {user && profile && profile.role !== 'visitor' ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                {profile.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" className="size-8 rounded-full" />
+                ) : (
+                  <div className="flex size-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+                    {(profile.full_name || profile.email || "?")[0].toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{profile.full_name || profile.email}</p>
+                  <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-medium", ROLE_COLORS[profile.role] || ROLE_COLORS.visitor)}>
+                    {ROLE_LABELS[profile.role] || profile.role}
+                  </span>
                 </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{profile.full_name || profile.email}</p>
-                <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-medium", ROLE_COLORS[profile.role] || ROLE_COLORS.visitor)}>
-                  {ROLE_LABELS[profile.role] || profile.role}
-                </span>
               </div>
-              <button onClick={signOut} className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white" title="Sign out">
+              <button
+                onClick={signOut}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-300 transition-colors hover:bg-red-500/30 hover:text-red-200"
+              >
                 <LogOut className="size-4" />
+                <span>Sign Out</span>
               </button>
             </div>
           ) : (
