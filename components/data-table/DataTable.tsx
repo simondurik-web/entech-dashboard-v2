@@ -32,6 +32,8 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   initialView?: DataTableViewConfig | null
   /** Auto-export format — triggers download once data is ready */
   autoExport?: 'csv' | 'xlsx' | null
+  /** Custom Excel export function — overrides default exportToExcel */
+  onExcelExport?: (data: T[], columns: { key: keyof T & string; label: string }[], filename: string) => Promise<void>
 }
 
 function SortIcon({ columnKey, sortKey, sortDir }: {
@@ -58,6 +60,7 @@ export function DataTable<T extends Record<string, unknown>>({
   page,
   initialView,
   autoExport,
+  onExcelExport,
 }: DataTableProps<T>) {
   const { t } = useI18n()
   const {
@@ -101,12 +104,14 @@ export function DataTable<T extends Record<string, unknown>>({
       const exportData = processedData as Record<string, unknown>[]
       if (autoExport === 'csv') {
         exportToCSV(exportData, cols, exportFilename || 'export')
+      } else if (onExcelExport) {
+        onExcelExport(exportData as T[], visibleColumns, exportFilename || 'export')
       } else {
         exportToExcel(exportData, cols, exportFilename || 'export')
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [autoExport, processedData, visibleColumns, exportFilename])
+  }, [autoExport, processedData, visibleColumns, exportFilename, onExcelExport])
 
   const hasActiveFilters = filters.size > 0 || searchTerm.trim() !== ''
 
@@ -177,7 +182,7 @@ export function DataTable<T extends Record<string, unknown>>({
           )}
 
           <ColumnToggle columns={columns} hiddenColumns={hiddenColumns} onToggle={toggleColumn} />
-          <ExportMenu data={processedData} columns={visibleColumns} filename={exportFilename} />
+          <ExportMenu data={processedData} columns={visibleColumns} filename={exportFilename} onExcelExport={onExcelExport} />
         </div>
       </div>
 

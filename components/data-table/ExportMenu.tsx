@@ -10,12 +10,14 @@ interface ExportMenuProps<T extends Record<string, unknown>> {
   data: T[]
   columns: { key: keyof T & string; label: string }[]
   filename?: string
+  onExcelExport?: (data: T[], columns: { key: keyof T & string; label: string }[], filename: string) => Promise<void>
 }
 
 export function ExportMenu<T extends Record<string, unknown>>({
   data,
   columns,
   filename = 'export',
+  onExcelExport,
 }: ExportMenuProps<T>) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
@@ -93,7 +95,11 @@ export function ExportMenu<T extends Record<string, unknown>>({
             className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
             onClick={async (e) => {
               e.stopPropagation()
-              await exportToExcel(data, columns, filename)
+              if (onExcelExport) {
+                await onExcelExport(data, columns, filename)
+              } else {
+                await exportToExcel(data, columns, filename)
+              }
               setOpen(false)
             }}
           >

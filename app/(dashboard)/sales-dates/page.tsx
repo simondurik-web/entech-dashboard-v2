@@ -10,6 +10,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { exportSalesDateExcel } from '@/lib/export-sales-dates'
 import { Button } from '@/components/ui/button'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 
@@ -228,7 +229,7 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
   const storageKey = `sales_date_monthly_${monthLabel.replace(/\W/g, '_')}`
   const table = useDataTable({ data: rows, columns: ORDER_COLUMNS, storageKey })
 
-  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} page={storageKey} />
+  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} page={storageKey} onExcelExport={exportSalesDateExcel} />
 }
 
 // ─── Customer Breakdown Table (Drilldown Level 1b) ──────────────────────────
