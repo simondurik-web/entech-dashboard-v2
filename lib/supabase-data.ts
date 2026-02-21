@@ -232,23 +232,20 @@ export async function fetchAllDataFromDB(): Promise<Record<string, string>[]> {
 // ─── Inventory (inventory + production_totals tables) ───
 
 export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
-  const [inventoryRes, productionRes] = await Promise.all([
-    supabase.from('inventory').select('*'),
-    supabase.from('production_totals').select('*'),
+  const [inventoryData, productionData] = await Promise.all([
+    fetchAllRows('inventory'),
+    fetchAllRows('production_totals'),
   ])
-
-  if (inventoryRes.error) throw new Error(`Supabase inventory error: ${inventoryRes.error.message}`)
-  if (productionRes.error) throw new Error(`Supabase production error: ${productionRes.error.message}`)
 
   // Build Fusion map: partNumber -> qty
   const fusionMap = new Map<string, number>()
-  for (const row of inventoryRes.data || []) {
+  for (const row of inventoryData) {
     const part = str(row.item_number).trim()
     if (part) fusionMap.set(part.toUpperCase(), num(row.real_number_value))
   }
 
   const items: InventoryItem[] = []
-  for (const row of productionRes.data || []) {
+  for (const row of productionData) {
     const partNumber = str(row.part_number).trim()
     if (!partNumber) continue
 
@@ -304,22 +301,19 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
 // ─── Production Make ───
 
 export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]> {
-  const [inventoryRes, productionRes] = await Promise.all([
-    supabase.from('inventory').select('*'),
-    supabase.from('production_totals').select('*'),
+  const [inventoryData, productionData] = await Promise.all([
+    fetchAllRows('inventory'),
+    fetchAllRows('production_totals'),
   ])
 
-  if (inventoryRes.error) throw new Error(`Supabase inventory error: ${inventoryRes.error.message}`)
-  if (productionRes.error) throw new Error(`Supabase production error: ${productionRes.error.message}`)
-
   const fusionMap = new Map<string, number>()
-  for (const row of inventoryRes.data || []) {
+  for (const row of inventoryData) {
     const part = str(row.item_number).trim()
     if (part) fusionMap.set(part.toUpperCase(), num(row.real_number_value))
   }
 
   const items: ProductionMakeItem[] = []
-  for (const row of productionRes.data || []) {
+  for (const row of productionData) {
     const partNumber = str(row.part_number).trim()
     if (!partNumber) continue
 
@@ -428,12 +422,7 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
 // ─── Drawings ───
 
 export async function fetchDrawingsFromDB(): Promise<Drawing[]> {
-  const { data, error } = await supabase
-    .from('production_totals')
-    .select('part_number, product, mold_type, drawing_1_url, drawing_2_url')
-
-  if (error) throw new Error(`Supabase drawings error: ${error.message}`)
-  if (!data) return []
+  const data = await fetchAllRows('production_totals')
 
   const drawings: Drawing[] = []
   for (const row of data) {
