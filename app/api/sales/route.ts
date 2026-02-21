@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server'
+import { fetchSalesFromDB } from '@/lib/supabase-data'
 
-// 2026-02-21: Switched to Google Sheets primary (Supabase had stale data, no sync job)
-
+// Keep old imports for fallback
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 const MAIN_DATA_GID = '290032634'
 
 export async function GET() {
   try {
-    return await fetchSalesFromSheets()
+    // Primary: Supabase
+    try {
+      const salesData = await fetchSalesFromDB()
+      return NextResponse.json(salesData)
+    } catch (dbError) {
+      console.warn('Supabase failed, falling back to Google Sheets:', dbError)
+      // Fallback: Google Sheets (original implementation)
+      return await fetchSalesFromSheets()
+    }
   } catch (error) {
     console.error('Failed to fetch sales data:', error)
     return NextResponse.json(
@@ -17,7 +25,7 @@ export async function GET() {
   }
 }
 
-// ─── Google Sheets implementation ───
+// ─── Google Sheets fallback ───
 
 function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): string {
   const cell = row.c?.[col]
