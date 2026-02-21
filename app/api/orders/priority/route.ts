@@ -13,13 +13,9 @@ async function getUserProfile(userId: string) {
 }
 
 async function hasManagePriority(profile: { role: string; custom_permissions?: Record<string, boolean> | null }): Promise<boolean> {
-  // Admin always has access
   if (profile.role === "admin") return true
-
-  // Check custom_permissions first
   if (profile.custom_permissions?.manage_priority) return true
 
-  // Check role-based permissions
   const { data: rolePerm } = await supabaseAdmin
     .from("role_permissions")
     .select("menu_access")
@@ -53,40 +49,60 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Missing line" }, { status: 400 })
   }
 
-  // priority = null means "reset to calculated"
   if (priority !== null && !VALID_PRIORITIES.includes(priority)) {
-    return NextResponse.json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}, or null to reset` }, { status: 400 })
+    return NextResponse.json(
+      { error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}, or null to reset` },
+      { status: 400 }
+    )
   }
 
-  const updateData: Record<string, unknown> = {
-    priority_override: priority,
-    priority_changed_by: profile.full_name || profile.email || userId,
-    priority_changed_at: new Date().toISOString(),
-  }
-
-  // If resetting, clear the override fields
-  if (priority === null) {
-    updateData.priority_override = null
-    updateData.priority_changed_by = null
-    updateData.priority_changed_at = null
-  }
-
-  // line could be string or number in DB — try both
   const lineStr = String(line)
-  
+
+  if (priority === null) {
+    // Reset: delete the override row
+    const { error } = await supabaseAdmin
+      .from("priority_overrides")
+      .delete()
+      .eq("line", lineStr)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      order: { line: lineStr, priority_override: null, priority_changed_by: null, priority_changed_at: null },
+    })
+  }
+
+  // Upsert the priority override
+  const changedBy = profile.full_name || profile.email || userId
+  const changedAt = new Date().toISOString()
+
   const { data, error } = await supabaseAdmin
-    .from("dashboard_orders")
-    .update(updateData)
-    .eq("line", lineStr)
-    .select("line, priority_override, priority_changed_by, priority_changed_at")
+    .from("priority_overrides")
+    .upsert(
+      {
+        line: lineStr,
+        priority_override: priority,
+        changed_by: changedBy,
+        changed_at: changedAt,
+      },
+      { onConflict: "line" }
+    )
+    .select("line, priority_override, changed_by, changed_at")
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  if (!data || data.length === 0) {
-    return NextResponse.json({ error: `No order found with line ${lineStr}` }, { status: 404 })
-  }
-
-  return NextResponse.json({ success: true, order: data[0] })
+  return NextResponse.json({
+    success: true,
+    order: {
+      line: lineStr,
+      priority_override: priority,
+      priority_changed_by: changedBy,
+      priority_changed_at: changedAt,
+    },
+  })
 }
