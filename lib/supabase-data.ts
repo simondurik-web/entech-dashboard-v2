@@ -245,10 +245,14 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
   }
 
   const items: InventoryItem[] = []
+  const seenParts = new Set<string>()
+
+  // First pass: Production data totals (primary source)
   for (const row of productionData) {
     const partNumber = str(row.part_number).trim()
     if (!partNumber) continue
 
+    seenParts.add(partNumber.toUpperCase())
     const product = str(row.product).trim()
     const minimum = num(row.minimums) || num(row.quantity_needed)
     const target = num(row.manual_target)
@@ -292,6 +296,22 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
       projectionRate: dailyUsage,
       usage7: null, usage30: null,
       daysToMin, daysToZero,
+    })
+  }
+
+  // Second pass: Fusion items not in Production data totals (union merge)
+  for (const row of inventoryData) {
+    const partNumber = str(row.item_number).trim()
+    if (!partNumber) continue
+    if (seenParts.has(partNumber.toUpperCase())) continue
+
+    const stock = num(row.real_number_value)
+    items.push({
+      partNumber, product: '', inStock: stock, minimum: 0, target: 0, moldType: '', lastUpdate: '',
+      itemType: '', isManufactured: false,
+      projectionRate: null,
+      usage7: null, usage30: null,
+      daysToMin: null, daysToZero: null,
     })
   }
 
