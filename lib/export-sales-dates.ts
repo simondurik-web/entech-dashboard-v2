@@ -1,38 +1,26 @@
 /**
  * Custom Excel export for Sales by Date — Monthly Orders breakdown.
- * Matches the formatted spreadsheet Simon designed (Feb 2026).
- * Each column header has a specific color.
+ * Matches Simon's Excel template (Feb 2026).
+ * 
+ * Key differences from generic export:
+ * - Contribution Level formatted as percentage (0.0%)
+ * - Specific number formats per column
+ * - Header: dark blue FF1F3864, white bold text (Aptos 11)
+ * - Alternating rows: FFF2F6FC / FFFFFFFF
  */
 
-// Header colors per column (ARGB format) — matches Simon's Excel template
-const HEADER_COLORS: Record<string, string> = {
-  category: 'FF548235',        // green
-  dateOfRequest: 'FFED7D31',   // orange
-  ifNumber: 'FF4472C4',        // blue/teal
-  ifStatus: 'FF548235',        // green
-  internalStatus: 'FFED7D31',  // orange/amber
-  poNumber: 'FFFF0000',        // red
-  customer: 'FFFFC000',        // yellow/gold
-  partNumber: 'FF70AD47',      // light green
-  qty: 'FF4472C4',             // blue
-  requestedDate: 'FF548235',   // green
-  unitPrice: 'FFFFC000',       // yellow/gold
-  contribution: 'FFED7D31',    // orange
-  variableCost: 'FFFF0000',    // red
-  totalCost: 'FFC00000',       // dark red/maroon
-  salesTarget: 'FF548235',     // green
-  profitPerPart: 'FF4472C4',   // blue
-  pl: 'FF548235',              // green
-  revenue: 'FFFFC000',         // gold/yellow
-  shippedDate: 'FFED7D31',     // orange
-  shippingCost: 'FFFF0000',    // red
-}
-
-// Font color: white for dark backgrounds, black for light backgrounds
-function getHeaderFontColor(bgColor: string): string {
-  // Yellow/gold headers need dark text
-  if (bgColor === 'FFFFC000') return 'FF000000'
-  return 'FFFFFFFF'
+// Column-specific number formats
+const NUM_FORMATS: Record<string, string> = {
+  qty: '#,##0',
+  unitPrice: '$#,##0.00',
+  contribution: '0.0%',
+  variableCost: '$#,##0.00',
+  totalCost: '$#,##0.00',
+  salesTarget: '$#,##0.00',
+  profitPerPart: '$#,##0.00',
+  pl: '$#,##0.00',
+  revenue: '$#,##0.00',
+  shippingCost: '$#,##0.00',
 }
 
 export async function exportSalesDateExcel<T extends Record<string, unknown>>(
@@ -46,20 +34,15 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('Monthly Orders')
 
-  // Header row — each column gets its own color
+  // Header row — uniform dark blue
   const headerRow = ws.addRow(columns.map((c) => c.label))
-  headerRow.height = 30
-  headerRow.eachCell((cell, colNumber) => {
-    const colKey = columns[colNumber - 1]?.key || ''
-    const bgColor = HEADER_COLORS[colKey] || 'FF1F3864'
-    const fontColor = getHeaderFontColor(bgColor)
-
-    cell.font = { name: 'Aptos', size: 11, bold: true, color: { argb: fontColor } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
+  headerRow.height = 28
+  headerRow.eachCell((cell) => {
+    cell.font = { name: 'Aptos', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } }
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
     cell.border = {
-      top: { style: 'thin', color: { argb: 'FFD6DCE4' } },
-      bottom: { style: 'medium', color: { argb: 'FF333333' } },
+      bottom: { style: 'medium', color: { argb: 'FF0D1B3E' } },
       left: { style: 'thin', color: { argb: 'FFD6DCE4' } },
       right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
     }
@@ -70,6 +53,8 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     const values = columns.map((c) => {
       const val = row[c.key]
       if (val === null || val === undefined) return ''
+      // For contribution (margin %), convert from 0-100 to 0-1 for Excel percentage format
+      if (c.key === 'contribution' && typeof val === 'number') return val / 100
       if (typeof val === 'number') return val
       const str = String(val)
       const num = Number(str)
@@ -77,32 +62,25 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
       return str
     })
     const dataRow = ws.addRow(values)
-    dataRow.height = 20
-    const bgColor = ri % 2 === 0 ? 'FFFFFFFF' : 'FFF2F6FC'
+    dataRow.height = 22
+    const bgColor = ri % 2 === 0 ? 'FFF2F6FC' : 'FFFFFFFF'
     dataRow.eachCell((cell, colNumber) => {
       cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF2D2D2D' } }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
       cell.alignment = { horizontal: 'left', vertical: 'middle' }
       cell.border = {
-        top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-        bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-        left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-        right: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+        top: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+        bottom: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+        left: { style: 'thin', color: { argb: 'FFD6DCE4' } },
+        right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
       }
 
-      // Number formatting
-      if (typeof cell.value === 'number') {
+      // Apply column-specific number format
+      const colKey = String(columns[colNumber - 1]?.key || '')
+      const numFmt = NUM_FORMATS[colKey]
+      if (numFmt && typeof cell.value === 'number') {
+        cell.numFmt = numFmt
         cell.alignment = { horizontal: 'right', vertical: 'middle' }
-        const colLabel = columns[colNumber - 1]?.label?.toLowerCase() || ''
-        const colKey = columns[colNumber - 1]?.key?.toLowerCase() || ''
-        const isCurrency = ['revenue', 'cost', 'p/l', 'pl', 'price', 'profit', 'target', 'shipping'].some(
-          kw => colLabel.includes(kw) || colKey.includes(kw)
-        )
-        if (isCurrency) {
-          cell.numFmt = '$#,##0.00'
-        } else {
-          cell.numFmt = '#,##0'
-        }
       }
     })
   })
@@ -115,7 +93,7 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
       const len = String(data[r][col.key] ?? '').length
       if (len > maxLen) maxLen = len
     }
-    ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 4, 10), 40)
+    ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 4, 10), 35)
   })
 
   // Freeze header + auto filter
