@@ -229,28 +229,22 @@ export function Sidebar({
           </div>
 
           {/* Toggle controls */}
-          <div className={cn(
-            "flex items-center gap-2 border-t border-white/10 px-3 py-3 overflow-hidden transition-all duration-300",
-            expanded ? "opacity-100 max-h-20" : "opacity-0 max-h-0 py-0 border-0"
-          )}>
-            <LanguageToggle />
-            {mounted && (
-              <button
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
-                aria-label="Toggle theme"
-              >
-                {theme === "dark" ? <><Sun className="size-3.5" /><span>Light</span></> : <><Moon className="size-3.5" /><span>Dark</span></>}
-              </button>
-            )}
-          </div>
+          {expanded && (
+            <div className="flex items-center gap-2 border-t border-white/10 px-3 py-3">
+              <LanguageToggle />
+              {mounted && (
+                <button
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
+                  aria-label="Toggle theme"
+                >
+                  {theme === "dark" ? <><Sun className="size-3.5" /><span>Light</span></> : <><Moon className="size-3.5" /><span>Dark</span></>}
+                </button>
+              )}
+            </div>
+          )}
 
-          <div className={cn(
-            "overflow-hidden transition-all duration-300",
-            expanded ? "opacity-100 max-h-20" : "opacity-0 max-h-0"
-          )}>
-            <ZoomControls />
-          </div>
+          {expanded && <ZoomControls />}
 
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4">
