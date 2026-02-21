@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { fetchAllDataFromDB } from '@/lib/supabase-data'
 import { fetchSheetData, GIDS } from '@/lib/google-sheets'
+
+// 2026-02-21: Switched to Google Sheets primary (Supabase had stale data, no sync job)
 
 function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): string {
   const cell = row.c?.[col]
@@ -21,27 +22,19 @@ function wrapResponse(data: Record<string, string>[]) {
 
 export async function GET() {
   try {
-    // Primary: Supabase
-    try {
-      const data = await fetchAllDataFromDB()
-      return NextResponse.json(wrapResponse(data))
-    } catch (dbError) {
-      console.warn('Supabase failed, falling back to Google Sheets:', dbError)
-      // Fallback: Google Sheets
-      const { cols, rows } = await fetchSheetData(GIDS.orders)
-      const data = rows.map((row) => {
-        const obj: Record<string, string> = {}
-        cols.forEach((colName, i) => {
-          const key = colName || `Col${String.fromCharCode(65 + (i % 26))}`
-          obj[key] = cellValue(row, i)
-        })
-        return obj
-      }).filter((row) => {
-        const line = row['Line'] || row['Col A'] || ''
-        return line !== '' && line !== 'Line'
+    const { cols, rows } = await fetchSheetData(GIDS.orders)
+    const data = rows.map((row) => {
+      const obj: Record<string, string> = {}
+      cols.forEach((colName, i) => {
+        const key = colName || `Col${String.fromCharCode(65 + (i % 26))}`
+        obj[key] = cellValue(row, i)
       })
-      return NextResponse.json(wrapResponse(data))
-    }
+      return obj
+    }).filter((row) => {
+      const line = row['Line'] || row['Col A'] || ''
+      return line !== '' && line !== 'Line'
+    })
+    return NextResponse.json(wrapResponse(data))
   } catch (error) {
     console.error('Failed to fetch all data:', error)
     return NextResponse.json(
