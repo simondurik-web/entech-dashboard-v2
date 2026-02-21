@@ -1,18 +1,19 @@
 /**
  * Custom Excel export for Sales by Date — Monthly Orders breakdown.
- * Matches Simon's Excel template (Feb 2026).
- * 
- * Features:
- * - Header: dark blue FF1F3864, white bold text (Aptos 11)
- * - Alternating rows: FFF2F6FC / FFFFFFFF
- * - Contribution Level formatted as percentage (26.3%)
- * - Currency columns with $#,##0.00
- * - Green data bars on P/L and Revenue columns
- * - Conditional formatting: green positive / red negative on P/L, Profit/Part
- * - Category column with light tan background
+ * Reverse-engineered from Simon's actual Excel template (Feb 2026).
+ *
+ * Formatting:
+ * - Header: dark blue FF1F3864, white bold Aptos 11, bottom medium border
+ * - Alternating rows: FFF2F6FC (blue tint) / FFFFFFFF (white)
+ * - Contribution Level: 0.0% with green text FF1A7A2E + 3-color scale (red→white→green)
+ * - P/L: green bold (positive) / red bold (negative) + 3-color scale
+ * - Profit/Part: green bold (positive) / red bold (negative)
+ * - Revenue: $#,##0.00 + blue data bar FF4472C4
+ * - Order Qty: #,##0 + light blue data bar FF8FAADC
+ * - Currency cols: $#,##0.00
  */
 
-// Column-specific number formats
+// Column key → number format
 const NUM_FORMATS: Record<string, string> = {
   qty: '#,##0',
   unitPrice: '$#,##0.00',
@@ -26,11 +27,10 @@ const NUM_FORMATS: Record<string, string> = {
   shippingCost: '$#,##0.00',
 }
 
-// Columns that should get green data bars
-const DATA_BAR_COLS = new Set(['pl', 'revenue'])
-
-// Columns that should get green/red conditional formatting
-const CONDITIONAL_COLS = new Set(['pl', 'profitPerPart'])
+// Columns with green/red conditional font
+const GREEN_RED_COLS = new Set(['pl', 'profitPerPart'])
+// Contribution gets green font always (no red)
+const GREEN_ONLY_COLS = new Set(['contribution'])
 
 export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   data: T[],
@@ -43,7 +43,11 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('Monthly Orders')
 
-  // Header row — uniform dark blue
+  // Build column index map
+  const colIndexByKey = new Map<string, number>()
+  columns.forEach((c, i) => colIndexByKey.set(String(c.key), i + 1))
+
+  // --- Header row ---
   const headerRow = ws.addRow(columns.map((c) => c.label))
   headerRow.height = 28
   headerRow.eachCell((cell) => {
@@ -57,35 +61,28 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     }
   })
 
-  // Build column index maps
-  const colIndexByKey = new Map<string, number>()
-  columns.forEach((c, i) => colIndexByKey.set(String(c.key), i + 1))
-
-  // Find category column index for tan background
-  const categoryColIdx = colIndexByKey.get('category')
-
-  // Data rows
+  // --- Data rows ---
   data.forEach((row, ri) => {
     const values = columns.map((c) => {
       const val = row[c.key]
       if (val === null || val === undefined) return ''
-      // For contribution (margin %), convert from 0-100 to 0-1 for Excel percentage format
       if (c.key === 'contribution' && typeof val === 'number') return val / 100
       if (typeof val === 'number') return val
-      const str = String(val)
-      const num = Number(str)
-      if (!isNaN(num) && str.trim() !== '' && !/^0\d/.test(str.trim())) return num
-      return str
+      const s = String(val)
+      const n = Number(s)
+      if (!isNaN(n) && s.trim() !== '' && !/^0\d/.test(s.trim())) return n
+      return s
     })
     const dataRow = ws.addRow(values)
     dataRow.height = 22
-    const isEven = ri % 2 === 0
-    const bgColor = isEven ? 'FFF2F6FC' : 'FFFFFFFF'
+    const bgColor = ri % 2 === 0 ? 'FFF2F6FC' : 'FFFFFFFF'
 
     dataRow.eachCell((cell, colNumber) => {
       const colKey = String(columns[colNumber - 1]?.key || '')
-      
+
+      // Default styling
       cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF2D2D2D' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
       cell.alignment = { horizontal: 'left', vertical: 'middle' }
       cell.border = {
         top: { style: 'thin', color: { argb: 'FFD6DCE4' } },
@@ -94,74 +91,170 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
         right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
       }
 
-      // Category column gets light tan/beige background
-      if (colNumber === categoryColIdx) {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E7' } }
-      } else {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
-      }
-
-      // Apply column-specific number format
+      // Number format
       const numFmt = NUM_FORMATS[colKey]
       if (numFmt && typeof cell.value === 'number') {
         cell.numFmt = numFmt
         cell.alignment = { horizontal: 'right', vertical: 'middle' }
       }
 
-      // Green/red font color for conditional columns
-      if (CONDITIONAL_COLS.has(colKey) && typeof cell.value === 'number') {
+      // Green/red conditional font for P/L and Profit/Part
+      if (GREEN_RED_COLS.has(colKey) && typeof cell.value === 'number') {
         if (cell.value > 0) {
-          cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF1D7044' }, bold: true }
+          cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF1A7A2E' }, bold: true }
         } else if (cell.value < 0) {
-          cell.font = { name: 'Aptos', size: 10, color: { argb: 'FFC00000' }, bold: true }
+          cell.font = { name: 'Aptos', size: 10, color: { argb: 'FFCC0000' }, bold: true }
         }
+      }
+
+      // Contribution Level: always green text
+      if (GREEN_ONLY_COLS.has(colKey) && typeof cell.value === 'number') {
+        cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF1A7A2E' } }
       }
     })
   })
 
-  // Add conditional data bars for P/L and Revenue columns
-  for (const colKey of DATA_BAR_COLS) {
-    const colIdx = colIndexByKey.get(colKey)
-    if (!colIdx) continue
-    const colLetter = getColLetter(colIdx)
-    const lastRow = data.length + 1 // +1 for header
+  const lastDataRow = data.length + 1
 
-    // ExcelJS supports conditional formatting with data bars
+  // --- Conditional Formatting: 3-color scales ---
+  // Contribution Level column
+  const contribCol = colIndexByKey.get('contribution')
+  if (contribCol) {
+    const colLetter = getColLetter(contribCol)
     ws.addConditionalFormatting({
-      ref: `${colLetter}2:${colLetter}${lastRow}`,
+      ref: `${colLetter}2:${colLetter}${lastDataRow}`,
+      rules: [
+        {
+          type: 'colorScale',
+          priority: 1,
+          cfvo: [
+            { type: 'min' },
+            { type: 'num', value: 0 },
+            { type: 'max' },
+          ],
+          color: [
+            { argb: 'FFF4CCCC' },
+            { argb: 'FFFFFFFF' },
+            { argb: 'FFD9EAD3' },
+          ],
+        } as any,
+      ],
+    })
+  }
+
+  // P/L column: 3-color scale
+  const plCol = colIndexByKey.get('pl')
+  if (plCol) {
+    const colLetter = getColLetter(plCol)
+    ws.addConditionalFormatting({
+      ref: `${colLetter}2:${colLetter}${lastDataRow}`,
+      rules: [
+        {
+          type: 'colorScale',
+          priority: 2,
+          cfvo: [
+            { type: 'min' },
+            { type: 'num', value: 0 },
+            { type: 'max' },
+          ],
+          color: [
+            { argb: 'FFF4CCCC' },
+            { argb: 'FFFFFFFF' },
+            { argb: 'FFD9EAD3' },
+          ],
+        } as any,
+      ],
+    })
+  }
+
+  // Revenue column: blue data bar
+  const revCol = colIndexByKey.get('revenue')
+  if (revCol) {
+    const colLetter = getColLetter(revCol)
+    ws.addConditionalFormatting({
+      ref: `${colLetter}2:${colLetter}${lastDataRow}`,
       rules: [
         {
           type: 'dataBar',
-          priority: 1,
+          priority: 3,
           cfvo: [{ type: 'min' }, { type: 'max' }],
-          color: { argb: 'FF63BE7B' }, // Green
+          color: { argb: 'FF4472C4' },
           showValue: true,
         } as any,
       ],
     })
   }
 
-  // Auto column widths
+  // Order Qty column: light blue data bar
+  const qtyCol = colIndexByKey.get('qty')
+  if (qtyCol) {
+    const colLetter = getColLetter(qtyCol)
+    ws.addConditionalFormatting({
+      ref: `${colLetter}2:${colLetter}${lastDataRow}`,
+      rules: [
+        {
+          type: 'dataBar',
+          priority: 4,
+          cfvo: [{ type: 'min' }, { type: 'max' }],
+          color: { argb: 'FF8FAADC' },
+          showValue: true,
+        } as any,
+      ],
+    })
+  }
+
+  // --- Column widths (from template) ---
+  const TEMPLATE_WIDTHS: Record<string, number> = {
+    category: 12.1,
+    dateOfRequest: 15,
+    ifNumber: 13.6,
+    ifStatusFusion: 16.4,
+    internalStatus: 15.7,
+    poNumber: 22.1,
+    customer: 30,
+    partNumber: 18.6,
+    qty: 11.4,
+    requestedDate: 15,
+    unitPrice: 12.1,
+    contribution: 15,
+    variableCost: 13.6,
+    totalCost: 12.1,
+    salesTarget: 15,
+    profitPerPart: 12.9,
+    pl: 14.3,
+    revenue: 14.3,
+    shippedDate: 14.3,
+    shippingCost: 14.3,
+  }
+
   columns.forEach((col, i) => {
-    let maxLen = col.label.length
-    const sampleSize = Math.min(data.length, 200)
-    for (let r = 0; r < sampleSize; r++) {
-      const len = String(data[r][col.key] ?? '').length
-      if (len > maxLen) maxLen = len
+    const templateWidth = TEMPLATE_WIDTHS[String(col.key)]
+    if (templateWidth) {
+      ws.getColumn(i + 1).width = templateWidth
+    } else {
+      // Fallback: auto-size
+      let maxLen = col.label.length
+      const sampleSize = Math.min(data.length, 200)
+      for (let r = 0; r < sampleSize; r++) {
+        const len = String(data[r][col.key] ?? '').length
+        if (len > maxLen) maxLen = len
+      }
+      ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 4, 10), 35)
     }
-    ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 4, 10), 35)
   })
 
   // Freeze header + auto filter
   ws.views = [{ state: 'frozen', ySplit: 1 }]
   ws.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: data.length + 1, column: columns.length },
+    to: { row: lastDataRow, column: columns.length },
   }
 
   // Generate and download
   const buffer = await wb.xlsx.writeBuffer()
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
