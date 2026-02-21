@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
@@ -33,18 +33,59 @@ function formatCurrency(v: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(v)
 }
 
-function statusBadge(s: string) {
-  const colors: Record<string, string> = {
-    draft: 'bg-zinc-700 text-zinc-300',
-    sent: 'bg-blue-900/50 text-blue-400',
-    accepted: 'bg-green-900/50 text-green-400',
-    declined: 'bg-red-900/50 text-red-400',
-    expired: 'bg-amber-900/50 text-amber-400',
-  }
+const STATUS_OPTIONS = ['draft', 'sent', 'accepted', 'declined', 'expired'] as const
+const STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-zinc-700 text-zinc-300',
+  sent: 'bg-blue-900/50 text-blue-400',
+  accepted: 'bg-green-900/50 text-green-400',
+  declined: 'bg-red-900/50 text-red-400',
+  expired: 'bg-amber-900/50 text-amber-400',
+}
+
+function StatusDropdown({ value, quoteId, onUpdate }: { value: string; quoteId: string; onUpdate: (id: string, status: string) => void }) {
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[s] || colors.draft}`}>
-      {s}
-    </span>
+    <select
+      value={value || 'draft'}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => { e.stopPropagation(); onUpdate(quoteId, e.target.value) }}
+      className={`px-2 py-0.5 rounded text-xs font-medium border-0 cursor-pointer appearance-none pr-5 ${STATUS_COLORS[value] || STATUS_COLORS.draft}`}
+      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 4px center' }}
+    >
+      {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+    </select>
+  )
+}
+
+function EditableNotes({ value, quoteId, onUpdate }: { value: string | null; quoteId: string; onUpdate: (id: string, notes: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(value || '')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setText(value || '') }, [value])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  if (!editing) {
+    return (
+      <span
+        className="text-xs text-zinc-400 cursor-pointer hover:text-zinc-200 min-w-[60px] inline-block"
+        onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+        title="Click to edit"
+      >
+        {text || '—'}
+      </span>
+    )
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      value={text}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => { setEditing(false); if (text !== (value || '')) onUpdate(quoteId, text) }}
+      onKeyDown={(e) => { if (e.key === 'Enter') { setEditing(false); if (text !== (value || '')) onUpdate(quoteId, text) } if (e.key === 'Escape') { setEditing(false); setText(value || '') } }}
+      className="bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-xs text-white w-full min-w-[120px]"
+    />
   )
 }
 
@@ -72,6 +113,28 @@ function QuotesContent() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
+
+  const updateQuote = useCallback(async (id: string, field: 'status' | 'notes', value: string) => {
+    try {
+      const res = await fetch('/api/quotes/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, [field]: value }),
+      })
+      if (!res.ok) throw new Error('Update failed')
+      setData((prev) => prev.map((q) => q.id === id ? { ...q, [field]: value } : q))
+    } catch (err) {
+      console.error('Failed to update quote:', err)
+    }
+  }, [])
+
+  const handleStatusUpdate = useCallback((id: string, status: string) => {
+    updateQuote(id, 'status', status)
+  }, [updateQuote])
+
+  const handleNotesUpdate = useCallback((id: string, notes: string) => {
+    updateQuote(id, 'notes', notes)
+  }, [updateQuote])
 
   const handleRowClick = useCallback((row: Quote) => {
     if (row.pdf_url) {
@@ -119,11 +182,18 @@ function QuotesContent() {
     { key: 'quoted_items', label: 'Items', sortable: true },
     { key: 'payment_terms', label: 'Payment Terms', sortable: true, filterable: true },
     {
+      key: 'notes',
+      label: 'Comments',
+      sortable: true,
+      filterable: true,
+      render: (v, row) => <EditableNotes value={v as string | null} quoteId={(row as unknown as Quote).id} onUpdate={handleNotesUpdate} />,
+    },
+    {
       key: 'status',
       label: 'Status',
       sortable: true,
       filterable: true,
-      render: (v) => statusBadge(String(v || 'draft')),
+      render: (v, row) => <StatusDropdown value={String(v || 'draft')} quoteId={(row as unknown as Quote).id} onUpdate={handleStatusUpdate} />,
     },
   ]
 
