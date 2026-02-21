@@ -257,8 +257,8 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     ws.getColumn(i + 1).width = w || Math.min(Math.max(String(col.label).length + 4, 10), 35)
   })
 
-  // Freeze header + auto filter (data range only, not totals)
-  ws.views = [{ state: 'frozen', ySplit: 1 }]
+  // Freeze header + auto filter (data range only, not totals) + hide gridlines
+  ws.views = [{ state: 'frozen', ySplit: 1, showGridLines: false }]
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: lastDataRow, column: columns.length } }
 
   // ═══════════════════════════════════════════════════
@@ -392,8 +392,8 @@ function buildDashboardTab<T extends Record<string, unknown>>(
   for (let i = 2; i <= 6; i++) ds.getColumn(i).width = 16
   for (let i = 7; i <= 18; i++) ds.getColumn(i).width = 12
 
-  // Freeze title
-  ds.views = [{ state: 'frozen', ySplit: 2 }]
+  // Freeze title + hide gridlines
+  ds.views = [{ state: 'frozen', ySplit: 2, showGridLines: false }]
 }
 
 function aggregate<T extends Record<string, unknown>>(data: T[], groupKey: string): SummaryRow[] {
