@@ -8,6 +8,9 @@ import { OrderDetail } from '@/components/OrderDetail'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
+import { useCountUp } from '@/lib/use-count-up'
+import { SpotlightCard } from '@/components/spotlight-card'
+import { ScrollReveal } from '@/components/scroll-reveal'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
@@ -149,6 +152,8 @@ function ShippedPageContent() {
   // Stats
   const totalShipped = filtered.length
   const totalUnits = filtered.reduce((sum, o) => sum + o.orderQty, 0)
+  const animTotalShipped = useCountUp(totalShipped)
+  const animTotalUnits = useCountUp(totalUnits)
 
   return (
     <div className="p-4 pb-20">
@@ -166,16 +171,18 @@ function ShippedPageContent() {
       <p className="text-muted-foreground text-sm mb-4">{t('page.shippedSubtitle')}</p>
 
       {/* Stats row */}
+      <ScrollReveal>
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-green-500/10 rounded-lg p-3">
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.totalShipments')}</p>
-          <p className="text-xl font-bold text-green-600">{totalShipped}</p>
-        </div>
-        <div className="bg-muted rounded-lg p-3">
+          <p className="text-xl font-bold text-green-600">{animTotalShipped}</p>
+        </SpotlightCard>
+        <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
           <p className="text-xs text-muted-foreground">{t('stats.totalUnitsLabel')}</p>
-          <p className="text-xl font-bold">{totalUnits.toLocaleString()}</p>
-        </div>
+          <p className="text-xl font-bold">{animTotalUnits.toLocaleString()}</p>
+        </SpotlightCard>
       </div>
+      </ScrollReveal>
 
       {/* Date range filter */}
       <div className="flex gap-2 mb-3 overflow-x-auto pb-1">

@@ -10,6 +10,9 @@ import type { Order, InventoryItem } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { useCountUp } from '@/lib/use-count-up'
+import { SpotlightCard } from '@/components/spotlight-card'
+import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { PriorityOverride } from '@/components/PriorityOverride'
 
@@ -313,30 +316,37 @@ function NeedToPackagePageContent() {
   const missingCount = filtered.filter((o) => !o.canPackage).length
   const urgentReady = filtered.filter((o) => o.urgentOverride || (o.canPackage && o.daysUntilDue !== null && o.daysUntilDue <= 3)).length
 
+  const animTotalOrders = useCountUp(totalOrders)
+  const animReadyCount = useCountUp(readyCount)
+  const animMissingCount = useCountUp(missingCount)
+  const animUrgentReady = useCountUp(urgentReady)
+
   return (
     <div className="p-4 pb-20">
       <h1 className="text-2xl font-bold mb-2">📦 {t('page.needToPackage')}</h1>
       <p className="text-muted-foreground text-sm mb-4">{t('page.needToPackageSubtitle')}</p>
 
       {/* Stats row */}
+      <ScrollReveal>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <div className="bg-muted rounded-lg p-3">
+        <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
           <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
-          <p className="text-xl font-bold">{totalOrders}</p>
-        </div>
-        <div className="bg-green-500/10 rounded-lg p-3">
+          <p className="text-xl font-bold">{animTotalOrders}</p>
+        </SpotlightCard>
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.readyToPackage')}</p>
-          <p className="text-xl font-bold text-green-600">{readyCount}</p>
-        </div>
-        <div className="bg-red-500/10 rounded-lg p-3">
+          <p className="text-xl font-bold text-green-600">{animReadyCount}</p>
+        </SpotlightCard>
+        <SpotlightCard className="bg-red-500/10 rounded-lg p-3" spotlightColor="239,68,68">
           <p className="text-xs text-red-500">{t('stats.missingStock')}</p>
-          <p className="text-xl font-bold text-red-500">{missingCount}</p>
-        </div>
-        <div className="bg-orange-500/10 rounded-lg p-3">
+          <p className="text-xl font-bold text-red-500">{animMissingCount}</p>
+        </SpotlightCard>
+        <SpotlightCard className="bg-orange-500/10 rounded-lg p-3" spotlightColor="249,115,22">
           <p className="text-xs text-orange-500">{t('stats.urgentReady')}</p>
-          <p className="text-xl font-bold text-orange-500">{urgentReady}</p>
-        </div>
+          <p className="text-xl font-bold text-orange-500">{animUrgentReady}</p>
+        </SpotlightCard>
       </div>
+      </ScrollReveal>
 
       {/* Category filter chips */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">

@@ -7,6 +7,8 @@ import {
   LineChart, Line, CartesianGrid
 } from 'recharts'
 import { useI18n } from '@/lib/i18n'
+import { SpotlightCard } from '@/components/spotlight-card'
+import { ScrollReveal } from '@/components/scroll-reveal'
 
 interface SalesOrder {
   line: string
@@ -162,34 +164,36 @@ export default function SalesOverviewPage() {
       </div>
 
       {/* Summary Cards — matches HTML dashboard layout */}
+      <ScrollReveal>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
+        <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="34,197,94">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('stats.totalRevenue')}</p>
           <p className="text-2xl font-bold text-success mt-1">{formatCurrency(summary.totalRevenue)}</p>
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.orderCount)} orders</p>
-        </div>
-        <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
+        </SpotlightCard>
+        <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="59,130,246">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.totalPL')}</p>
           <p className={`text-2xl font-bold mt-1 ${summary.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>
             {formatCurrency(summary.totalPL)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">Margin: {summary.avgMargin.toFixed(2)}%</p>
-        </div>
-        <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
+        </SpotlightCard>
+        <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="16,185,129">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Shipped P/L</p>
           <p className={`text-2xl font-bold mt-1 ${(summary.shippedPL ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
             {formatCurrency(summary.shippedPL ?? 0)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.shippedCount ?? 0)} shipped</p>
-        </div>
-        <div className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent">
+        </SpotlightCard>
+        <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="139,92,246">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Forecasted P/L</p>
           <p className={`text-2xl font-bold mt-1 ${(summary.forecastPL ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
             {formatCurrency(summary.forecastPL ?? 0)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.pendingCount ?? 0)} pending</p>
-        </div>
+        </SpotlightCard>
       </div>
+      </ScrollReveal>
 
       {/* Charts Row */}
       <div className="grid md:grid-cols-2 gap-6">
