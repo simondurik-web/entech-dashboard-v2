@@ -2,11 +2,14 @@
  * Custom Excel export for Sales by Date — Monthly Orders breakdown.
  * Matches Simon's Excel template (Feb 2026).
  * 
- * Key differences from generic export:
- * - Contribution Level formatted as percentage (0.0%)
- * - Specific number formats per column
+ * Features:
  * - Header: dark blue FF1F3864, white bold text (Aptos 11)
  * - Alternating rows: FFF2F6FC / FFFFFFFF
+ * - Contribution Level formatted as percentage (26.3%)
+ * - Currency columns with $#,##0.00
+ * - Green data bars on P/L and Revenue columns
+ * - Conditional formatting: green positive / red negative on P/L, Profit/Part
+ * - Category column with light tan background
  */
 
 // Column-specific number formats
@@ -22,6 +25,12 @@ const NUM_FORMATS: Record<string, string> = {
   revenue: '$#,##0.00',
   shippingCost: '$#,##0.00',
 }
+
+// Columns that should get green data bars
+const DATA_BAR_COLS = new Set(['pl', 'revenue'])
+
+// Columns that should get green/red conditional formatting
+const CONDITIONAL_COLS = new Set(['pl', 'profitPerPart'])
 
 export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   data: T[],
@@ -48,6 +57,13 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     }
   })
 
+  // Build column index maps
+  const colIndexByKey = new Map<string, number>()
+  columns.forEach((c, i) => colIndexByKey.set(String(c.key), i + 1))
+
+  // Find category column index for tan background
+  const categoryColIdx = colIndexByKey.get('category')
+
   // Data rows
   data.forEach((row, ri) => {
     const values = columns.map((c) => {
@@ -63,10 +79,13 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     })
     const dataRow = ws.addRow(values)
     dataRow.height = 22
-    const bgColor = ri % 2 === 0 ? 'FFF2F6FC' : 'FFFFFFFF'
+    const isEven = ri % 2 === 0
+    const bgColor = isEven ? 'FFF2F6FC' : 'FFFFFFFF'
+
     dataRow.eachCell((cell, colNumber) => {
+      const colKey = String(columns[colNumber - 1]?.key || '')
+      
       cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF2D2D2D' } }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
       cell.alignment = { horizontal: 'left', vertical: 'middle' }
       cell.border = {
         top: { style: 'thin', color: { argb: 'FFD6DCE4' } },
@@ -75,15 +94,52 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
         right: { style: 'thin', color: { argb: 'FFD6DCE4' } },
       }
 
+      // Category column gets light tan/beige background
+      if (colNumber === categoryColIdx) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E7' } }
+      } else {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } }
+      }
+
       // Apply column-specific number format
-      const colKey = String(columns[colNumber - 1]?.key || '')
       const numFmt = NUM_FORMATS[colKey]
       if (numFmt && typeof cell.value === 'number') {
         cell.numFmt = numFmt
         cell.alignment = { horizontal: 'right', vertical: 'middle' }
       }
+
+      // Green/red font color for conditional columns
+      if (CONDITIONAL_COLS.has(colKey) && typeof cell.value === 'number') {
+        if (cell.value > 0) {
+          cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF1D7044' }, bold: true }
+        } else if (cell.value < 0) {
+          cell.font = { name: 'Aptos', size: 10, color: { argb: 'FFC00000' }, bold: true }
+        }
+      }
     })
   })
+
+  // Add conditional data bars for P/L and Revenue columns
+  for (const colKey of DATA_BAR_COLS) {
+    const colIdx = colIndexByKey.get(colKey)
+    if (!colIdx) continue
+    const colLetter = getColLetter(colIdx)
+    const lastRow = data.length + 1 // +1 for header
+
+    // ExcelJS supports conditional formatting with data bars
+    ws.addConditionalFormatting({
+      ref: `${colLetter}2:${colLetter}${lastRow}`,
+      rules: [
+        {
+          type: 'dataBar',
+          priority: 1,
+          cfvo: [{ type: 'min' }, { type: 'max' }],
+          color: { argb: 'FF63BE7B' }, // Green
+          showValue: true,
+        } as any,
+      ],
+    })
+  }
 
   // Auto column widths
   columns.forEach((col, i) => {
@@ -112,4 +168,15 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   link.download = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function getColLetter(colNum: number): string {
+  let letter = ''
+  let n = colNum
+  while (n > 0) {
+    n--
+    letter = String.fromCharCode(65 + (n % 26)) + letter
+    n = Math.floor(n / 26)
+  }
+  return letter
 }
