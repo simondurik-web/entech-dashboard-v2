@@ -142,7 +142,7 @@ function getMonthLabel(monthKey: string): string {
 
 function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="rounded-xl border bg-card p-4 flex items-start gap-3 shadow-sm">
+    <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 flex items-start gap-3 shadow-lg transition-all duration-200 ease-out hover:shadow-xl hover:border-white/[0.1] hover:bg-white/[0.04]">
       <div className={`rounded-lg p-2.5 ${color || 'bg-primary/10 text-primary'}`}>{icon}</div>
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
@@ -512,7 +512,7 @@ function SalesDatesContent() {
       </div>
 
       {/* Monthly P/L Breakdown Chart */}
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-5 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Monthly P/L Breakdown</h3>
           <div className="flex items-center gap-4 text-[10px] text-muted-foreground">

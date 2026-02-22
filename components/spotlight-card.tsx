@@ -26,7 +26,7 @@ export function SpotlightCard({ children, className = "", spotlightColor = "255,
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`relative overflow-hidden ${className}`}
+      className={`relative overflow-hidden backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] shadow-lg transition-all duration-200 ease-out hover:shadow-xl hover:border-white/[0.1] hover:bg-white/[0.04] ${className}`}
       style={style}
     >
       {isHovered && (

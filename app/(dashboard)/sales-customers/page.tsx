@@ -98,7 +98,7 @@ const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
 
 function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="rounded-xl border bg-card p-4 flex items-start gap-3 shadow-sm">
+    <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 flex items-start gap-3 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
       <div className={`rounded-lg p-2.5 ${color || 'bg-primary/10 text-primary'}`}>
         {icon}
       </div>
@@ -147,7 +147,7 @@ function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
   const gradientId = `priceGradient_${orders[0]?.partNumber?.replace(/\W/g, '_') || 'default'}`
 
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm">
+    <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-5 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Price History</h4>
         <div className="flex items-center gap-3 text-sm">

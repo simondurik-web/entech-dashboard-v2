@@ -175,3 +175,9 @@ The "Views" button (currently shows "Soon") should allow:
 - Sales by Part: customer-level table (when multiple customers for a part) is still a raw HTML table
 - Needs conversion to full DataTable component with all features
 - The order-level tables ARE DataTables already
+
+## Future: Custom Report Builder (tabled 2026-02-21)
+- Idea: dedicated Reports page with saved presets (Monthly Sales, Inventory, Full Export)
+- Each preset generates a multi-tab Excel with custom formatting, totals, dashboard tab
+- Options discussed: per-section buttons, global report page, templates, scheduled emails
+- Simon picked Option 3 (templates) as best approach — to be built later

@@ -198,7 +198,7 @@ export default function SalesOverviewPage() {
       {/* Charts Row */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* Revenue by Category Pie Chart */}
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
           <h3 className="text-sm font-semibold mb-4">{t('salesOverview.revenueByCategory')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -233,7 +233,7 @@ export default function SalesOverviewPage() {
         </div>
 
         {/* Top Customers Bar Chart */}
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
           <h3 className="text-sm font-semibold mb-4">{t('salesOverview.topCustomers')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -249,7 +249,7 @@ export default function SalesOverviewPage() {
       </div>
 
       {/* Monthly P/L Trend */}
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
         <h3 className="text-sm font-semibold mb-4">{t('salesOverview.monthlyPLTrend')}</h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
