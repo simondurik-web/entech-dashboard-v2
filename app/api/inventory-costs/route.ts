@@ -47,12 +47,12 @@ export async function GET() {
     const sheets = google.sheets({ version: 'v4', auth })
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `'${TAB}'!A1:AD733`,
+      range: `'${TAB}'!A:AD`,
     })
 
     const rows = res.data.values
     if (!rows || rows.length < 2) {
-      return NextResponse.json({ costs: {} })
+      return NextResponse.json({ costs: {}, debug: { rowCount: rows?.length ?? 0, hasEnv: !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON } })
     }
 
     const costs: Record<string, {
