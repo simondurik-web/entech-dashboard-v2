@@ -554,14 +554,14 @@ function InventoryPageContent() {
     setSearch('')
   }
 
-  const fetchData = useCallback(async (isRefresh = false) => {
+  const fetchData = useCallback(async (isRefresh = false, fetchCosts = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true)
     setError(null)
     try {
       const [invRes, histRes, costRes] = await Promise.all([
         fetch('/api/inventory'),
         fetch('/api/inventory-history'),
-        showCosts ? fetch('/api/inventory-costs') : Promise.resolve(null),
+        fetchCosts ? fetch('/api/inventory-costs') : Promise.resolve(null),
       ])
       if (!invRes.ok) throw new Error('Failed to fetch inventory')
       const invData: InventoryItem[] = await invRes.json()
@@ -582,7 +582,7 @@ function InventoryPageContent() {
     }
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData, showCosts])
+  useEffect(() => { fetchData(false, showCosts) }, [fetchData, showCosts])
 
   // Build rows with calculated usage stats
   const rows: InventoryRow[] = useMemo(() => {
@@ -726,7 +726,7 @@ function InventoryPageContent() {
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold">📦 {t('page.inventory')}</h1>
         <button
-          onClick={() => fetchData(true)}
+          onClick={() => fetchData(true, showCosts)}
           disabled={refreshing}
           className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
         >
