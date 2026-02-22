@@ -40,6 +40,7 @@ import {
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
+import { CollapsibleNavSection } from "@/components/ui/collapsible-nav"
 
 type NavItem = {
   tKey: string
@@ -157,8 +158,8 @@ export function Sidebar({
             item.sub && expanded && "ml-4 text-xs",
             item.sub && !expanded && "ml-0 text-xs",
             isActive
-              ? "bg-white/20 font-medium text-white shadow-sm"
-              : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+              ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70"
+              : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
           )}
         >
           <span className="shrink-0">{item.icon}</span>
@@ -196,8 +197,8 @@ export function Sidebar({
             "bg-gradient-to-b from-[#2b6cb0] to-[#2c5282] text-white",
             "dark:from-[#0f1f38] dark:to-[#1a365d]",
             "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-            expanded ? "w-64 shadow-2xl shadow-black/30" : "w-14",
-            !expanded && "opacity-60 hover:opacity-100",
+            expanded ? "w-64 shadow-2xl shadow-blue-900/40" : "w-14",
+            !expanded && "opacity-50 hover:opacity-100",
           )}
         >
           {/* Logo section */}
@@ -249,100 +250,42 @@ export function Sidebar({
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4">
             {filteredProduction.length > 0 && (
-              <>
-                <p className={cn(
-                  "mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
-                  !expanded && "text-center text-[8px] tracking-normal"
-                )}>
-                  {expanded ? t('nav.production') : "•••"}
-                </p>
+              <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
                 <ul className="space-y-0.5">
                   {filteredProduction.map((item) => renderNavItem(item))}
                 </ul>
-              </>
+              </CollapsibleNavSection>
             )}
 
             {filteredSales.length > 0 && (
-              <>
-                <p className={cn(
-                  "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
-                  !expanded && "text-center text-[8px] tracking-normal"
-                )}>
-                  {expanded ? t('nav.salesFinance') : "•••"}
-                </p>
-                <ul className="space-y-0.5">
+              <CollapsibleNavSection label={t('nav.salesFinance')} expanded={expanded} storageKey="sales" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
                   {filteredSales.map((item) => renderNavItem(item))}
                 </ul>
-              </>
+              </CollapsibleNavSection>
             )}
 
             {/* Reports */}
-            <p className={cn(
-              "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
-              !expanded && "text-center text-[8px] tracking-normal"
-            )}>
-              {expanded ? "REPORTS" : "•••"}
-            </p>
-            <ul className="space-y-0.5">
-              <li>
-                <Link
-                  href="/reports"
-                  onClick={onClose}
-                  title={!expanded ? "Custom Reports" : undefined}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
-                    pathname === "/reports"
-                      ? "bg-white/20 font-medium text-white shadow-sm"
-                      : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
-                  )}
-                >
-                  <span className="shrink-0"><FileBarChart className="size-4" /></span>
-                  <span className={cn("transition-all duration-300", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>Custom Reports</span>
-                </Link>
-              </li>
+            <CollapsibleNavSection label="REPORTS" expanded={expanded} storageKey="reports" defaultOpen={true}>
+            <ul className="space-y-0.5 mt-1">
+              {renderNavItem({ tKey: "Custom Reports", href: "/reports", icon: <FileBarChart className="size-4" /> }, false)}
             </ul>
+            </CollapsibleNavSection>
 
             {showAllData && (
-              <>
-                <p className={cn(
-                  "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
-                  !expanded && "text-center text-[8px] tracking-normal"
-                )}>
-                  {expanded ? t('nav.rawData') : "•••"}
-                </p>
-                <ul className="space-y-0.5">
-                  <li>
-                    <Link
-                      href="/all-data"
-                      onClick={onClose}
-                      title={!expanded ? "All Data" : undefined}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
-                        pathname === "/all-data"
-                          ? "bg-white/20 font-medium text-white shadow-sm"
-                          : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
-                      )}
-                    >
-                      <span className="shrink-0"><Database className="size-4" /></span>
-                      <span className={cn("transition-all duration-300", expanded ? "opacity-100 w-auto" : "opacity-0 w-0")}>All Data</span>
-                    </Link>
-                  </li>
+              <CollapsibleNavSection label={t('nav.rawData')} expanded={expanded} storageKey="raw-data" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
+                  {renderNavItem({ tKey: "All Data", href: "/all-data", icon: <Database className="size-4" /> }, false)}
                 </ul>
-              </>
+              </CollapsibleNavSection>
             )}
 
             {isAdmin && (
-              <>
-                <p className={cn(
-                  "mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50 transition-all duration-300 whitespace-nowrap",
-                  !expanded && "text-center text-[8px] tracking-normal"
-                )}>
-                  {expanded ? "ADMIN" : "•••"}
-                </p>
-                <ul className="space-y-0.5">
+              <CollapsibleNavSection label="ADMIN" expanded={expanded} storageKey="admin" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
                   {adminItems.map((item) => renderNavItem(item, false))}
                 </ul>
-              </>
+              </CollapsibleNavSection>
             )}
           </nav>
 
@@ -461,7 +404,7 @@ export function Sidebar({
                       <Link href={item.href} onClick={onClose} className={cn(
                         "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
                         item.sub && "ml-4 text-xs",
-                        isActive ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
                       )}>
                         {item.icon}
                         <span>{t(item.tKey)}</span>
@@ -484,7 +427,7 @@ export function Sidebar({
                       <Link href={item.href} onClick={onClose} className={cn(
                         "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
                         item.sub && "ml-4 text-xs",
-                        isActive ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
                       )}>
                         {item.icon}
                         <span>{t(item.tKey)}</span>
@@ -501,7 +444,7 @@ export function Sidebar({
             <li>
               <Link href="/reports" onClick={onClose} className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                pathname === "/reports" ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                pathname === "/reports" ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
               )}>
                 <FileBarChart className="size-4" />
                 <span>Custom Reports</span>
@@ -516,7 +459,7 @@ export function Sidebar({
                 <li>
                   <Link href="/all-data" onClick={onClose} className={cn(
                     "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                    pathname === "/all-data" ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                    pathname === "/all-data" ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
                   )}>
                     <Database className="size-4" />
                     <span>All Data</span>
@@ -536,7 +479,7 @@ export function Sidebar({
                     <li key={item.href}>
                       <Link href={item.href} onClick={onClose} className={cn(
                         "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                        isActive ? "bg-white/20 font-medium text-white shadow-sm" : "text-white/80 hover:translate-x-0.5 hover:bg-white/10 hover:text-white"
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
                       )}>
                         {item.icon}
                         <span>{item.tKey}</span>

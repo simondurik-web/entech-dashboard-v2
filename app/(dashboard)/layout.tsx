@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/Sidebar"
 // Bottom nav removed — sidebar handles all navigation
 import { VersionBadge } from "@/components/layout/VersionBadge"
 import { AccessGuard } from "@/components/layout/AccessGuard"
+import { PageTransition } from "@/components/ui/page-transition"
 import { PanelLeft } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -77,7 +78,9 @@ export default function DashboardLayout({
 
         {/* Main content - pad bottom on mobile for nav bar */}
         <main className="pb-4" style={{ zoom: zoomLevel }}>
-          <AccessGuard>{children}</AccessGuard>
+          <AccessGuard>
+            <PageTransition>{children}</PageTransition>
+          </AccessGuard>
         </main>
       </div>
 
