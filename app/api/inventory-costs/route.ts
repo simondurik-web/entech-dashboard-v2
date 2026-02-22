@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 
 const SHEET_ID = '1yASi9Ot4GLBw2iQLfODAvOFHBWrNE8qqYfzvUTjhrz8'
-const TAB = 'Current inventory'
+const TAB = 'Current inventory export'
 
 // Column indices (0-based)
 const COL_FUSION_ID = 0      // A
