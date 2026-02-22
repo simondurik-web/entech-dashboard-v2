@@ -21,10 +21,18 @@ function parseCurrency(val: string | undefined | null): number | null {
 }
 
 function getAuth() {
-  // Try env var first (Vercel), then file path (local dev)
+  // Try base64 env var first (most reliable for Vercel)
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_BASE64) {
+    const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_BASE64, 'base64').toString())
+    return new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    })
+  }
+
+  // Try JSON env var (fallback)
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-    // Fix escaped newlines in private key (common Vercel issue)
     if (credentials.private_key) {
       credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
     }
