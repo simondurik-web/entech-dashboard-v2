@@ -56,6 +56,15 @@ interface CostEntry {
   subDepartment: string
 }
 
+type DeptFilterKey = 'all' | 'molding' | 'rubber' | 'melt'
+
+const DEPT_FILTERS: { key: DeptFilterKey; label: string; emoji: string }[] = [
+  { key: 'all', label: 'All', emoji: '📋' },
+  { key: 'molding', label: 'Molding', emoji: '🏭' },
+  { key: 'rubber', label: 'Rubber', emoji: '♻️' },
+  { key: 'melt', label: 'Melt Line', emoji: '🔥' },
+]
+
 type StockFilterKey = 'all' | 'low' | 'production' | 'running-low'
 type TypeFilterKey = 'manufactured' | 'purchased' | 'com'
 
@@ -535,6 +544,7 @@ function InventoryPageContent() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deptFilter, setDeptFilter] = useState<DeptFilterKey>('all')
   const [stockFilter, setStockFilter] = useState<StockFilterKey>('all')
   const [typeFilters, setTypeFilters] = useState<Set<TypeFilterKey>>(new Set())
   const [search, setSearch] = useState('')
@@ -550,6 +560,7 @@ function InventoryPageContent() {
   }
 
   const clearFilters = () => {
+    setDeptFilter('all')
     setStockFilter('all')
     setTypeFilters(new Set())
     setSearch('')
@@ -667,6 +678,19 @@ function InventoryPageContent() {
   const filtered = useMemo(() => {
     let result = rows
 
+    // Department filter
+    if (deptFilter !== 'all') {
+      result = result.filter(r => {
+        const dept = r.department.toLowerCase()
+        switch (deptFilter) {
+          case 'molding': return dept.includes('molding') || dept.includes('compression')
+          case 'rubber': return dept.includes('rubber')
+          case 'melt': return dept.includes('melt')
+          default: return true
+        }
+      })
+    }
+
     // Stock filter
     switch (stockFilter) {
       case 'low':
@@ -700,7 +724,7 @@ function InventoryPageContent() {
     }
 
     return result
-  }, [rows, stockFilter, typeFilters, search])
+  }, [rows, deptFilter, stockFilter, typeFilters, search])
 
   // Stats
   const totalItems = rows.length
@@ -777,6 +801,23 @@ function InventoryPageContent() {
       </div>
       </ScrollReveal>
 
+      {/* Department Filter */}
+      <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+        {DEPT_FILTERS.map(f => (
+          <button
+            key={f.key}
+            onClick={() => setDeptFilter(f.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              deptFilter === f.key
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted hover:bg-muted/80'
+            }`}
+          >
+            {f.emoji} {f.label}
+          </button>
+        ))}
+      </div>
+
       {/* Filter Bar */}
       <div className="space-y-2 mb-4">
         {/* Search */}
@@ -822,7 +863,7 @@ function InventoryPageContent() {
           ))}
 
           {/* Clear + Material Requirements */}
-          {(stockFilter !== 'all' || typeFilters.size > 0 || search) && (
+          {(deptFilter !== 'all' || stockFilter !== 'all' || typeFilters.size > 0 || search) && (
             <button onClick={clearFilters} className="px-3 py-1 rounded-full text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 whitespace-nowrap">
               ✕ {t('inventory.clearFilters')}
             </button>
