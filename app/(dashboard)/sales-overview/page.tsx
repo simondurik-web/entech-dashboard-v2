@@ -11,6 +11,7 @@ import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { AnimatedNumber } from "@/components/ui/animated-number"
+import { StaggeredGrid } from "@/components/ui/staggered-grid"
 
 interface SalesOrder {
   line: string
@@ -161,8 +162,7 @@ export default function SalesOverviewPage() {
       </div>
 
       {/* Summary Cards — matches HTML dashboard layout */}
-      <ScrollReveal>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <StaggeredGrid className="grid grid-cols-2 md:grid-cols-4 gap-4" stagger={100}>
         <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="34,197,94">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('stats.totalRevenue')}</p>
           <p className="text-2xl font-bold text-success mt-1"><AnimatedNumber value={formatCurrency(summary.totalRevenue)} /></p>
@@ -189,10 +189,10 @@ export default function SalesOverviewPage() {
           </p>
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.pendingCount ?? 0)} pending</p>
         </SpotlightCard>
-      </div>
-      </ScrollReveal>
+      </StaggeredGrid>
 
       {/* Charts Row */}
+      <ScrollReveal delay={100}>
       <div className="grid md:grid-cols-2 gap-6">
         {/* Revenue by Category Pie Chart */}
         <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
@@ -210,12 +210,15 @@ export default function SalesOverviewPage() {
                   dataKey="value"
                   label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                   labelLine={false}
+                  animationBegin={200}
+                  animationDuration={800}
+                  animationEasing="ease-out"
                 >
                   {categoryData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                <Tooltip formatter={(value) => formatCurrency(value as number)} contentStyle={{ backgroundColor: "hsl(var(--card) / 0.8)", backdropFilter: "blur(12px)", border: "1px solid hsl(var(--border))", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -237,15 +240,17 @@ export default function SalesOverviewPage() {
               <BarChart data={topCustomers} layout="vertical" margin={{ left: 0 }}>
                 <XAxis type="number" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                 <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(value) => formatCurrency(value as number)} />
-                <Bar dataKey="revenue" fill="#3182ce" radius={[0, 4, 4, 0]} />
+                <Tooltip formatter={(value) => formatCurrency(value as number)} contentStyle={{ backgroundColor: "hsl(var(--card) / 0.8)", backdropFilter: "blur(12px)", border: "1px solid hsl(var(--border))", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }} />
+                <Bar dataKey="revenue" fill="#3182ce" radius={[0, 4, 4, 0]} animationBegin={300} animationDuration={800} animationEasing="ease-out" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
+      </ScrollReveal>
 
       {/* Monthly P/L Trend */}
+      <ScrollReveal delay={200}>
       <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
         <h3 className="text-sm font-semibold mb-4">{t('salesOverview.monthlyPLTrend')}</h3>
         <div className="h-80">
@@ -254,14 +259,15 @@ export default function SalesOverviewPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(value) => formatCurrency(value as number)} />
+              <Tooltip formatter={(value) => formatCurrency(value as number)} contentStyle={{ backgroundColor: "hsl(var(--card) / 0.8)", backdropFilter: "blur(12px)", border: "1px solid hsl(var(--border))", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }} />
               <Legend />
-              <Line type="monotone" dataKey="revenue" stroke="#38a169" strokeWidth={2} name="Revenue" dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="pl" stroke="#3182ce" strokeWidth={2} name="P/L" dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="revenue" stroke="#38a169" strokeWidth={2} name="Revenue" dot={{ r: 3 }} animationBegin={200} animationDuration={1000} animationEasing="ease-out" />
+              <Line type="monotone" dataKey="pl" stroke="#3182ce" strokeWidth={2} name="P/L" dot={{ r: 3 }} animationBegin={400} animationDuration={1000} animationEasing="ease-out" />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
+      </ScrollReveal>
     </div>
   )
 }

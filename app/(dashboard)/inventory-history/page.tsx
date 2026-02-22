@@ -338,9 +338,11 @@ export default function InventoryHistoryPage() {
                     <YAxis className="text-xs" tick={{ fontSize: 11 }} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: 'hsl(var(--background))',
+                        backgroundColor: 'hsl(var(--card) / 0.8)',
+                        backdropFilter: 'blur(12px)',
                         border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
+                        borderRadius: '10px',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
                         fontSize: '12px',
                       }}
                     />
@@ -353,6 +355,9 @@ export default function InventoryHistoryPage() {
                         stroke={COLORS[idx]}
                         strokeWidth={2}
                         dot={false}
+                        animationBegin={200 + idx * 150}
+                        animationDuration={800}
+                        animationEasing="ease-out"
                       />
                     ))}
                   </LineChart>

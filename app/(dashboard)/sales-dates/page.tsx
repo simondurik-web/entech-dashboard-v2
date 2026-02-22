@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { AnimatedNumber } from "@/components/ui/animated-number"
+import { ScrollReveal } from "@/components/scroll-reveal"
+import { StaggeredGrid } from "@/components/ui/staggered-grid"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -506,14 +508,15 @@ function SalesDatesContent() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <StaggeredGrid className="grid grid-cols-2 lg:grid-cols-4 gap-3" stagger={100}>
         <StatCard icon={<Package className="size-4" />} label="Orders" value={fmtN(totals.totalOrders)} sub={`${fmtN(totals.totalQty)} units`} color="bg-blue-500/10 text-blue-400" />
         <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totals.totalRevenue)} color="bg-emerald-500/10 text-emerald-400" />
         <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totals.totalPL)} sub={`Margin: ${totals.margin.toFixed(1)}%`} color={totals.totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
         <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${totals.margin.toFixed(1)}%`} sub={`${totals.monthCount} months`} color={totals.margin >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
-      </div>
+      </StaggeredGrid>
 
       {/* Monthly P/L Breakdown Chart */}
+      <ScrollReveal delay={150}>
       <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] p-5 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-white/[0.1]">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Monthly P/L Breakdown</h3>
@@ -576,17 +579,18 @@ function SalesDatesContent() {
               />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15, radius: 6 }} />
               {/* Stacked bars — shipped stack */}
-              <Bar yAxisId="left" dataKey="shippedProfit" name="Shipped Profit" stackId="shipped" fill="url(#shippedProfitGrad)" radius={[6, 6, 0, 0]} />
-              <Bar yAxisId="left" dataKey="shippedLoss" name="Shipped Loss" stackId="shipped" fill="url(#shippedLossGrad)" radius={[0, 0, 6, 6]} />
+              <Bar yAxisId="left" dataKey="shippedProfit" name="Shipped Profit" stackId="shipped" fill="url(#shippedProfitGrad)" radius={[6, 6, 0, 0]} animationBegin={200} animationDuration={800} animationEasing="ease-out" />
+              <Bar yAxisId="left" dataKey="shippedLoss" name="Shipped Loss" stackId="shipped" fill="url(#shippedLossGrad)" radius={[0, 0, 6, 6]} animationBegin={200} animationDuration={800} animationEasing="ease-out" />
               {/* Stacked bars — forecast stack */}
-              <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="url(#forecastProfitGrad)" radius={[6, 6, 0, 0]} />
-              <Bar yAxisId="left" dataKey="forecastLoss" name="Forecast Loss" stackId="forecast" fill="url(#forecastLossGrad)" radius={[0, 0, 6, 6]} />
+              <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="url(#forecastProfitGrad)" radius={[6, 6, 0, 0]} animationBegin={400} animationDuration={800} animationEasing="ease-out" />
+              <Bar yAxisId="left" dataKey="forecastLoss" name="Forecast Loss" stackId="forecast" fill="url(#forecastLossGrad)" radius={[0, 0, 6, 6]} animationBegin={400} animationDuration={800} animationEasing="ease-out" />
               {/* Revenue line */}
-              <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 3.5, fill: '#60a5fa', strokeWidth: 2, stroke: 'hsl(var(--card))' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#60a5fa', fill: 'hsl(var(--card))' }} />
+              <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 3.5, fill: '#60a5fa', strokeWidth: 2, stroke: 'hsl(var(--card))' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#60a5fa', fill: 'hsl(var(--card))' }} animationBegin={600} animationDuration={1000} animationEasing="ease-out" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
+      </ScrollReveal>
 
       {/* Monthly Details Table */}
       <div>
