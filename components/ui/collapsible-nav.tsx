@@ -57,7 +57,7 @@ export function CollapsibleNavSection({
       <div
         className={cn(
           "overflow-hidden transition-all duration-200 ease-out",
-          isOpen || !expanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+          isOpen || !expanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
         )}
       >
         {children}
