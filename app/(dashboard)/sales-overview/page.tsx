@@ -9,6 +9,8 @@ import {
 import { useI18n } from '@/lib/i18n'
 import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { AnimatedNumber } from "@/components/ui/animated-number"
 
 interface SalesOrder {
   line: string
@@ -135,12 +137,7 @@ export default function SalesOverviewPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">{t('ui.loading')}</p>
-        </div>
-      </div>
+      <TableSkeleton rows={8} />
     )
   }
 
@@ -168,7 +165,7 @@ export default function SalesOverviewPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="34,197,94">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('stats.totalRevenue')}</p>
-          <p className="text-2xl font-bold text-success mt-1">{formatCurrency(summary.totalRevenue)}</p>
+          <p className="text-2xl font-bold text-success mt-1"><AnimatedNumber value={formatCurrency(summary.totalRevenue)} /></p>
           <p className="text-xs text-muted-foreground mt-1">{formatNumber(summary.orderCount)} orders</p>
         </SpotlightCard>
         <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="59,130,246">

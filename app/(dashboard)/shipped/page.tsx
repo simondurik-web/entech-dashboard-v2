@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { RefreshCw } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { OrderCard } from '@/components/cards/OrderCard'
@@ -220,9 +221,7 @@ function ShippedPageContent() {
 
       {/* Loading state */}
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <TableSkeleton rows={8} />
       )}
 
       {/* Error state */}

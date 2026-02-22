@@ -10,6 +10,7 @@ import { useAuth, isSuperAdmin } from '@/lib/auth-context'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { exportToCSV, exportToExcel } from '@/lib/export-utils'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 
 interface SavedView {
   id: string
@@ -346,9 +347,7 @@ function ReportsContent() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <TableSkeleton rows={8} />
       ) : rows.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <p className="text-lg mb-2">No saved reports yet</p>

@@ -8,6 +8,7 @@ import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -495,7 +496,7 @@ function SalesCustomersContent() {
 
   const table = useDataTable({ data: customerRows, columns: CUSTOMER_COLUMNS, storageKey: 'sales-by-customer' })
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" /></div>
+  if (loading) return <TableSkeleton rows={8} />
   if (error || !data) return <div className="p-6"><div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4"><p className="text-destructive">{error || 'Failed to load'}</p></div></div>
 
   return (

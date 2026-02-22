@@ -13,6 +13,8 @@ import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, Ch
 import { exportSalesDateExcel } from '@/lib/export-sales-dates'
 import { Button } from '@/components/ui/button'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { AnimatedNumber } from "@/components/ui/animated-number"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -146,7 +148,7 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
       <div className={`rounded-lg p-2.5 ${color || 'bg-primary/10 text-primary'}`}>{icon}</div>
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-        <p className="text-xl font-bold mt-0.5">{value}</p>
+        <p className="text-xl font-bold mt-0.5"><AnimatedNumber value={value} /></p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
     </div>
@@ -489,7 +491,7 @@ function SalesDatesContent() {
     return monthRows.find((m) => m.monthKey === expandedMonth) || null
   }, [expandedMonth, monthRows])
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" /></div>
+  if (loading) return <TableSkeleton rows={8} />
   if (error || !data) return <div className="p-6"><div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4"><p className="text-destructive">{error || 'Failed to load'}</p></div></div>
 
   return (

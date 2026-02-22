@@ -11,6 +11,7 @@ import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 
 // ─── Types ───
 
@@ -388,9 +389,7 @@ function HistoryModal({
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-          </div>
+          <TableSkeleton rows={8} />
         ) : !historyData ? (
           <p className="text-center text-muted-foreground py-10">{t('inventory.noHistoryData')} {partNumber}</p>
         ) : (
@@ -760,9 +759,7 @@ function InventoryPageContent() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <TableSkeleton rows={8} />
       )}
 
       {/* Error */}

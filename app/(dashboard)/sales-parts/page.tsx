@@ -6,6 +6,7 @@ import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/componen
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 
 interface SalesOrder {
   line: string
@@ -221,7 +222,7 @@ function SalesPartsContent() {
 
   const table = useDataTable({ data: partSummaries, columns: PART_COLUMNS, storageKey: 'sales-by-part' })
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" /></div>
+  if (loading) return <TableSkeleton rows={8} />
   if (error || !data) return <div className="p-6"><div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4"><p className="text-destructive">{error || 'Failed'}</p></div></div>
 
   return (

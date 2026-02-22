@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { Card, CardContent } from '@/components/ui/card'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import type { Drawing } from '@/lib/google-sheets'
@@ -326,9 +327,7 @@ export default function DrawingsPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <TableSkeleton rows={8} />
       )}
 
       {error && <p className="text-center text-destructive py-10">{error}</p>}

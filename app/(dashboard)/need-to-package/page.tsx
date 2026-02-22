@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { DataTable } from '@/components/data-table'
 import { OrderDetail } from '@/components/OrderDetail'
 import { OrderCard } from '@/components/cards/OrderCard'
@@ -366,9 +367,7 @@ function NeedToPackagePageContent() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <TableSkeleton rows={8} />
       )}
 
       {error && (

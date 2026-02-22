@@ -8,6 +8,7 @@ import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { OrderCard } from '@/components/cards/OrderCard'
+import { PageSkeleton } from '@/components/ui/skeleton-loader'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets'
@@ -467,11 +468,9 @@ function OrdersPageContent() {
         ))}
       </div>
 
-      {/* Loading state */}
+      {/* Loading state — shimmer skeletons */}
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <PageSkeleton statCards={0} tableRows={10} />
       )}
 
       {/* Error state */}

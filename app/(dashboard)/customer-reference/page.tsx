@@ -30,6 +30,7 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { getContributionColor, computeContributionLevel } from '@/lib/cost-config'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
 
 interface Customer {
   id: string
@@ -389,9 +390,7 @@ function CustomerReferencePageContent() {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <TableSkeleton rows={8} />
       ) : (
         <DataTable
           table={table}
