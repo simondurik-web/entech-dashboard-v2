@@ -10,13 +10,16 @@ interface LightboxProps {
   initialIndex: number
   onClose: () => void
   context?: { ifNumber?: string; lineNumber?: string; photoType?: string }
+  /** Bounding rect of the clicked thumbnail for expand-from-origin animation */
+  originRect?: DOMRect | null
 }
 
-export function Lightbox({ images, initialIndex, onClose, context }: LightboxProps) {
+export function Lightbox({ images, initialIndex, onClose, context, originRect }: LightboxProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [hoveredThumb, setHoveredThumb] = useState<number | null>(null)
   const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null)
   const animRef = useRef<number>(0)
+  const [entered, setEntered] = useState(!originRect) // skip animation if no origin
 
   // Zoom state
   const [zoom, setZoom] = useState(1)
@@ -61,6 +64,15 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
     if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(z + 0.5, 8))
     if (e.key === '-') { setZoom((z) => { const next = Math.max(z - 0.5, 1); if (next === 1) setPan({ x: 0, y: 0 }); return next }) }
   }, [onClose, goNext, goPrev, isZoomed])
+
+  // Trigger enter animation after mount
+  useEffect(() => {
+    if (originRect && !entered) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setEntered(true))
+      })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
@@ -174,7 +186,8 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
       `}</style>
 
       <div
-        className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+        className="fixed inset-0 z-[100] flex items-center justify-center transition-colors duration-300"
+        style={{ backgroundColor: entered ? 'rgba(0,0,0,0.95)' : 'rgba(0,0,0,0)' }}
         onClick={isZoomed ? undefined : onClose}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -243,7 +256,7 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
           </>
         )}
 
-        {/* Image with zoom + pan */}
+        {/* Image with zoom + pan + origin expand */}
         <div
           ref={imgContainerRef}
           className="max-w-[90vw] max-h-[85vh] flex items-center justify-center overflow-hidden"
@@ -253,6 +266,17 @@ export function Lightbox({ images, initialIndex, onClose, context }: LightboxPro
           style={{
             ...slideStyle,
             cursor: isZoomed ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
+            ...(originRect && !entered ? {
+              position: 'fixed' as const,
+              left: originRect.left,
+              top: originRect.top,
+              width: originRect.width,
+              height: originRect.height,
+              transform: 'scale(1)',
+              transition: 'none',
+            } : originRect ? {
+              transition: 'all 350ms cubic-bezier(0.32, 0.72, 0, 1)',
+            } : {}),
           }}
           key={currentIndex}
         >

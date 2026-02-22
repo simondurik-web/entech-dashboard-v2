@@ -16,6 +16,7 @@ interface PhotoGridProps {
 export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: PhotoGridProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [originRect, setOriginRect] = useState<DOMRect | null>(null)
 
   if (!photos || photos.length === 0) {
     return (
@@ -31,7 +32,11 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: Phot
 
   const baseSize = { sm: 40, md: 56, lg: 80 }[size]
 
-  const openLightbox = (index: number) => {
+  const openLightbox = (index: number, e?: React.MouseEvent) => {
+    if (e) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      setOriginRect(rect)
+    }
     setCurrentIndex(index)
     setLightboxOpen(true)
   }
@@ -54,7 +59,7 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: Phot
           return (
             <button
               key={i}
-              onClick={() => openLightbox(i)}
+              onClick={(e) => openLightbox(i, e)}
               onMouseEnter={() => setHoveredIdx(i)}
               className="rounded-lg overflow-hidden border-2 border-transparent hover:border-primary cursor-pointer bg-muted shrink-0"
               style={{
@@ -92,8 +97,9 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: Phot
         <Lightbox
           images={photos}
           initialIndex={currentIndex}
-          onClose={() => setLightboxOpen(false)}
+          onClose={() => { setLightboxOpen(false); setOriginRect(null) }}
           context={context}
+          originRect={originRect}
         />
       )}
     </>

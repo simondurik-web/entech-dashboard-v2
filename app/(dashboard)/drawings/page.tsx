@@ -22,16 +22,25 @@ function CarouselLightbox({
   urls,
   partNumber,
   onClose,
+  originRect,
 }: {
   urls: string[]
   partNumber: string
   onClose: () => void
+  originRect?: DOMRect
 }) {
   const { t } = useI18n()
   const [idx, setIdx] = useState(0)
   const [direction, setDirection] = useState<'left' | 'right'>('right')
   const [animating, setAnimating] = useState(false)
   const total = urls.length
+  const [entered, setEntered] = useState(!originRect)
+
+  useEffect(() => {
+    if (originRect && !entered) {
+      requestAnimationFrame(() => requestAnimationFrame(() => setEntered(true)))
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const goNext = () => {
     if (animating || total <= 1) return
@@ -78,7 +87,8 @@ function CarouselLightbox({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center transition-colors duration-300"
+      style={{ backgroundColor: entered ? 'rgba(0,0,0,0.9)' : 'rgba(0,0,0,0)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <button
@@ -211,7 +221,7 @@ export default function DrawingsPage() {
   const [typeFilter, setTypeFilter] = useState<TypeKey>('all')
 
   // Lightbox
-  const [lightbox, setLightbox] = useState<{ urls: string[]; partNumber: string } | null>(null)
+  const [lightbox, setLightbox] = useState<{ urls: string[]; partNumber: string; originRect?: DOMRect } | null>(null)
 
   // Compare mode
   const [compareMode, setCompareMode] = useState(false)
@@ -256,13 +266,14 @@ export default function DrawingsPage() {
     })
   }, [])
 
-  const handleCardClick = (drawing: Drawing) => {
+  const handleCardClick = (drawing: Drawing, e?: React.MouseEvent) => {
     if (compareMode) {
       toggleSelect(drawing)
     } else {
       const urls = getDrawingUrls(drawing)
       if (urls.length > 0) {
-        setLightbox({ urls, partNumber: drawing.partNumber })
+        const rect = e ? (e.currentTarget as HTMLElement).getBoundingClientRect() : undefined
+        setLightbox({ urls, partNumber: drawing.partNumber, originRect: rect })
       }
     }
   }
@@ -344,7 +355,7 @@ export default function DrawingsPage() {
                 className={`overflow-hidden cursor-pointer transition-transform duration-200 hover:scale-105 hover:shadow-lg hover:z-10 relative ${
                   compareMode && isSelected(drawing) ? 'ring-2 ring-primary' : ''
                 }`}
-                onClick={() => handleCardClick(drawing)}
+                onClick={(e) => handleCardClick(drawing, e)}
               >
                 {compareMode && (
                   <div className={`absolute top-1.5 left-1.5 z-10 w-5 h-5 rounded border-2 flex items-center justify-center text-xs ${
@@ -431,6 +442,7 @@ export default function DrawingsPage() {
           urls={lightbox.urls}
           partNumber={lightbox.partNumber}
           onClose={() => setLightbox(null)}
+          originRect={lightbox.originRect}
         />
       )}
 
