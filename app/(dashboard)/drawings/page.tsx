@@ -34,12 +34,10 @@ function CarouselLightbox({
   const [direction, setDirection] = useState<'left' | 'right'>('right')
   const [animating, setAnimating] = useState(false)
   const total = urls.length
-  const [entered, setEntered] = useState(!originRect)
+  const [entered, setEntered] = useState(false)
 
   useEffect(() => {
-    if (originRect && !entered) {
-      requestAnimationFrame(() => requestAnimationFrame(() => setEntered(true)))
-    }
+    requestAnimationFrame(() => requestAnimationFrame(() => setEntered(true)))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const goNext = () => {
@@ -98,7 +96,14 @@ function CarouselLightbox({
         <span className="text-2xl leading-none">&times;</span>
       </button>
 
-      <div className="relative flex items-center w-full max-w-4xl px-12">
+      <div
+        className="relative flex items-center w-full max-w-4xl px-12"
+        style={{
+          opacity: entered ? 1 : 0,
+          transform: entered ? 'scale(1)' : 'scale(0.85)',
+          transition: 'opacity 300ms ease-out, transform 300ms cubic-bezier(0.32, 0.72, 0, 1)',
+        }}
+      >
         {total > 1 && (
           <button
             onClick={goPrev}

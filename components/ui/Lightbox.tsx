@@ -19,7 +19,7 @@ export function Lightbox({ images, initialIndex, onClose, context, originRect }:
   const [hoveredThumb, setHoveredThumb] = useState<number | null>(null)
   const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null)
   const animRef = useRef<number>(0)
-  const [entered, setEntered] = useState(!originRect) // skip animation if no origin
+  const [entered, setEntered] = useState(false)
 
   // Zoom state
   const [zoom, setZoom] = useState(1)
@@ -67,11 +67,9 @@ export function Lightbox({ images, initialIndex, onClose, context, originRect }:
 
   // Trigger enter animation after mount
   useEffect(() => {
-    if (originRect && !entered) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setEntered(true))
-      })
-    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setEntered(true))
+    })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -256,7 +254,7 @@ export function Lightbox({ images, initialIndex, onClose, context, originRect }:
           </>
         )}
 
-        {/* Image with zoom + pan + origin expand */}
+        {/* Image with zoom + pan + enter animation */}
         <div
           ref={imgContainerRef}
           className="max-w-[90vw] max-h-[85vh] flex items-center justify-center overflow-hidden"
@@ -266,17 +264,9 @@ export function Lightbox({ images, initialIndex, onClose, context, originRect }:
           style={{
             ...slideStyle,
             cursor: isZoomed ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
-            ...(originRect && !entered ? {
-              position: 'fixed' as const,
-              left: originRect.left,
-              top: originRect.top,
-              width: originRect.width,
-              height: originRect.height,
-              transform: 'scale(1)',
-              transition: 'none',
-            } : originRect ? {
-              transition: 'all 350ms cubic-bezier(0.32, 0.72, 0, 1)',
-            } : {}),
+            opacity: entered ? 1 : 0,
+            transform: entered ? 'scale(1)' : 'scale(0.85)',
+            transition: 'opacity 300ms ease-out, transform 300ms cubic-bezier(0.32, 0.72, 0, 1)',
           }}
           key={currentIndex}
         >
