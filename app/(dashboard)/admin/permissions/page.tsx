@@ -26,6 +26,7 @@ const ALL_MENU_PATHS = [
   '/phil-assistant',
   // Feature permissions (not page paths)
   'manage_priority',
+  'view_inventory_values',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -54,6 +55,7 @@ const PATH_LABELS: Record<string, string> = {
   '/admin/permissions': 'Admin: Permissions',
   '/phil-assistant': '🤖 Phil Assistant (AI)',
   'manage_priority': '🎯 Manage Priority',
+  'view_inventory_values': '💰 Inventory Values',
 }
 
 export default function AdminPermissionsPage() {

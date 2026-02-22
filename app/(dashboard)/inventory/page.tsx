@@ -7,6 +7,7 @@ import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets'
 import Link from 'next/link'
+import { usePermissions } from '@/lib/use-permissions'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -32,6 +33,8 @@ interface InventoryRow extends Record<string, unknown> {
   status: string
   itemType: string
   isManufactured: boolean
+  unitCost: number | null
+  totalValue: number | null
   // raw fields for filtering
   _raw: InventoryItem
 }
@@ -39,6 +42,16 @@ interface InventoryRow extends Record<string, unknown> {
 interface HistoryData {
   dates: string[]
   dataByDate: Record<string, number>
+}
+
+interface CostEntry {
+  fusionId: string
+  description: string
+  netsuiteId: string
+  cost: number | null
+  lowerCost: number | null
+  department: string
+  subDepartment: string
 }
 
 type StockFilterKey = 'all' | 'low' | 'production' | 'running-low'
@@ -155,8 +168,8 @@ const TYPE_FILTERS: { key: TypeFilterKey; labelKey: string; emoji: string }[] = 
 
 // ─── Column Definitions ───
 
-function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string): ColumnDef<InventoryRow>[] {
-  return [
+function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean): ColumnDef<InventoryRow>[] {
+  const cols: ColumnDef<InventoryRow>[] = [
     { key: 'product', label: t('inventory.colProduct'), sortable: true, filterable: true },
     {
       key: 'partNumber', label: t('inventory.colPartNumber'), sortable: true, filterable: true,
@@ -232,6 +245,31 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
       },
     },
   ]
+
+  if (showCosts) {
+    cols.push(
+      {
+        key: 'unitCost',
+        label: '💰 Unit Cost',
+        sortable: true,
+        render: (v) => {
+          if (v == null) return <span className="text-muted-foreground">-</span>
+          return <span className="text-emerald-400 font-medium">${Number(v).toFixed(2)}</span>
+        },
+      },
+      {
+        key: 'totalValue',
+        label: '💰 Total Value',
+        sortable: true,
+        render: (v) => {
+          if (v == null) return <span className="text-muted-foreground">-</span>
+          return <span className="text-emerald-400 font-semibold">${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        },
+      },
+    )
+  }
+
+  return cols
 }
 
 // ─── History Modal ───
@@ -490,6 +528,9 @@ function InventoryPageContent() {
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [historyData, setHistoryData] = useState<InventoryHistoryData | null>(null)
+  const [costData, setCostData] = useState<Record<string, CostEntry>>({})
+  const { canAccess } = usePermissions()
+  const showCosts = canAccess('view_inventory_values')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -517,9 +558,10 @@ function InventoryPageContent() {
     if (isRefresh) setRefreshing(true); else setLoading(true)
     setError(null)
     try {
-      const [invRes, histRes] = await Promise.all([
+      const [invRes, histRes, costRes] = await Promise.all([
         fetch('/api/inventory'),
         fetch('/api/inventory-history'),
+        showCosts ? fetch('/api/inventory-costs') : Promise.resolve(null),
       ])
       if (!invRes.ok) throw new Error('Failed to fetch inventory')
       const invData: InventoryItem[] = await invRes.json()
@@ -527,6 +569,10 @@ function InventoryPageContent() {
       if (histRes.ok) {
         const hd: InventoryHistoryData = await histRes.json()
         setHistoryData(hd)
+      }
+      if (costRes?.ok) {
+        const cd = await costRes.json()
+        setCostData(cd.costs ?? {})
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')
@@ -536,7 +582,7 @@ function InventoryPageContent() {
     }
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData, showCosts])
 
   // Build rows with calculated usage stats
   const rows: InventoryRow[] = useMemo(() => {
@@ -593,10 +639,20 @@ function InventoryPageContent() {
         status,
         itemType: item.itemType,
         isManufactured: item.isManufactured,
+        unitCost: (() => {
+          // Try matching by partNumber (which is the Fusion ID)
+          const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+          return costEntry?.lowerCost ?? costEntry?.cost ?? null
+        })(),
+        totalValue: (() => {
+          const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+          const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
+          return uc != null ? fusionQty * uc : null
+        })(),
         _raw: item,
       }
     })
-  }, [items, historyData])
+  }, [items, historyData, costData])
 
   // Apply filters
   const filtered = useMemo(() => {
@@ -643,13 +699,17 @@ function InventoryPageContent() {
   const lowStock = rows.filter(r => r.fusionQty < r.minimum && r.minimum > 0).length
   const needsProduction = rows.filter(r => r.partsToBeMade > 0).length
   const adequateStock = rows.filter(r => r.fusionQty >= r.minimum || r.minimum === 0).length
+  const totalInventoryValue = useMemo(() => {
+    if (!showCosts) return 0
+    return rows.reduce((sum, r) => sum + (r.totalValue ?? 0), 0)
+  }, [rows, showCosts])
 
   const animTotalItems = useCountUp(totalItems)
   const animLowStock = useCountUp(lowStock)
   const animNeedsProduction = useCountUp(needsProduction)
   const animAdequateStock = useCountUp(adequateStock)
 
-  const columns = useMemo(() => makeColumns(setHistoryPart, t), [t])
+  const columns = useMemo(() => makeColumns(setHistoryPart, t, showCosts), [t, showCosts])
 
   const table = useDataTable({
     data: filtered,
@@ -695,6 +755,15 @@ function InventoryPageContent() {
           <p className="text-xs text-green-400">{t('inventory.adequateStock')}</p>
           <p className="text-xl font-bold text-green-400">{animAdequateStock}</p>
         </SpotlightCard>
+        {showCosts && (
+          <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/20 col-span-2 sm:col-span-4" spotlightColor="16,185,129">
+            <p className="text-xs text-emerald-400">💰 Total Inventory Value</p>
+            <p className="text-2xl font-bold text-emerald-400">
+              ${totalInventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-[10px] text-muted-foreground">Based on Lower of Cost or Market</p>
+          </SpotlightCard>
+        )}
       </div>
       </ScrollReveal>
 
