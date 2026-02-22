@@ -33,6 +33,8 @@ interface InventoryRow extends Record<string, unknown> {
   status: string
   itemType: string
   isManufactured: boolean
+  department: string
+  subDepartment: string
   unitCost: number | null
   totalValue: number | null
   // raw fields for filtering
@@ -170,6 +172,8 @@ const TYPE_FILTERS: { key: TypeFilterKey; labelKey: string; emoji: string }[] = 
 
 function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean): ColumnDef<InventoryRow>[] {
   const cols: ColumnDef<InventoryRow>[] = [
+    { key: 'department', label: 'Department', sortable: true, filterable: true },
+    { key: 'subDepartment', label: 'Sub Department', sortable: true, filterable: true },
     { key: 'product', label: t('inventory.colProduct'), sortable: true, filterable: true },
     {
       key: 'partNumber', label: t('inventory.colPartNumber'), sortable: true, filterable: true,
@@ -636,6 +640,14 @@ function InventoryPageContent() {
         status,
         itemType: item.itemType,
         isManufactured: item.isManufactured,
+        department: (() => {
+          const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+          return costEntry?.department || ''
+        })(),
+        subDepartment: (() => {
+          const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+          return costEntry?.subDepartment || ''
+        })(),
         unitCost: (() => {
           // Try matching by partNumber (which is the Fusion ID)
           const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
