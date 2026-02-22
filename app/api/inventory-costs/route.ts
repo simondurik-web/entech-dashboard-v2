@@ -24,6 +24,10 @@ function getAuth() {
   // Try env var first (Vercel), then file path (local dev)
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+    // Fix escaped newlines in private key (common Vercel issue)
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
+    }
     return new google.auth.GoogleAuth({
       credentials,
       scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
@@ -87,9 +91,10 @@ export async function GET() {
       }
     )
   } catch (error) {
-    console.error('Failed to fetch inventory costs:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('Failed to fetch inventory costs:', msg)
     return NextResponse.json(
-      { error: 'Failed to fetch inventory costs' },
+      { error: 'Failed to fetch inventory costs', detail: msg },
       { status: 500 }
     )
   }
