@@ -9,7 +9,7 @@ import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets'
 import Link from 'next/link'
 import { usePermissions } from '@/lib/use-permissions'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
-import { useCountUp } from '@/lib/use-count-up'
+import { useCountUp, useCountUpDecimal } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
@@ -178,6 +178,26 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
       ),
     },
     { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    ...(showCosts ? [
+      {
+        key: 'unitCost' as const,
+        label: '💰 Unit Cost',
+        sortable: true,
+        render: (v: unknown) => {
+          if (v == null) return <span className="text-muted-foreground">-</span>
+          return <span className="text-emerald-400 font-medium">${Number(v).toFixed(2)}</span>
+        },
+      },
+      {
+        key: 'totalValue' as const,
+        label: '💰 Total Value',
+        sortable: true,
+        render: (v: unknown) => {
+          if (v == null) return <span className="text-muted-foreground">-</span>
+          return <span className="text-emerald-400 font-semibold">${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        },
+      },
+    ] as ColumnDef<InventoryRow>[] : []),
     { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true, render: (v) => Number(v).toLocaleString() },
@@ -245,29 +265,6 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
       },
     },
   ]
-
-  if (showCosts) {
-    cols.push(
-      {
-        key: 'unitCost',
-        label: '💰 Unit Cost',
-        sortable: true,
-        render: (v) => {
-          if (v == null) return <span className="text-muted-foreground">-</span>
-          return <span className="text-emerald-400 font-medium">${Number(v).toFixed(2)}</span>
-        },
-      },
-      {
-        key: 'totalValue',
-        label: '💰 Total Value',
-        sortable: true,
-        render: (v) => {
-          if (v == null) return <span className="text-muted-foreground">-</span>
-          return <span className="text-emerald-400 font-semibold">${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        },
-      },
-    )
-  }
 
   return cols
 }
@@ -708,6 +705,7 @@ function InventoryPageContent() {
   const animLowStock = useCountUp(lowStock)
   const animNeedsProduction = useCountUp(needsProduction)
   const animAdequateStock = useCountUp(adequateStock)
+  const animInventoryValue = useCountUpDecimal(totalInventoryValue)
 
   const columns = useMemo(() => makeColumns(setHistoryPart, t, showCosts), [t, showCosts])
 
@@ -759,7 +757,7 @@ function InventoryPageContent() {
           <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/20 col-span-2 sm:col-span-4" spotlightColor="16,185,129">
             <p className="text-xs text-emerald-400">💰 Total Inventory Value</p>
             <p className="text-2xl font-bold text-emerald-400">
-              ${totalInventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${animInventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <p className="text-[10px] text-muted-foreground">Based on Lower of Cost or Market</p>
           </SpotlightCard>
