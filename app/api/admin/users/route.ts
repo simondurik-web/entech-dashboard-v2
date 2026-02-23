@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const enriched = users?.map((u) => ({
     ...u,
-    last_sign_in: authMap.get(u.id)?.last_sign_in_at || null,
+    last_login: authMap.get(u.id)?.last_sign_in_at || null,
   }))
 
   // Count users per role
