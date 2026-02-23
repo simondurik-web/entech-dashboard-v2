@@ -61,7 +61,7 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
-      key: 'dateOfRequest',
+      key: 'requestedDate',
       label: t('table.dueDate'),
       sortable: true,
       render: (v) => String(v || '-'),
