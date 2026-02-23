@@ -99,15 +99,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing email or role" }, { status: 400 })
   }
 
-  // Check if email already exists in profiles
+  // Check if email already exists in profiles (case-insensitive)
   const { data: existing } = await supabaseAdmin
     .from("user_profiles")
-    .select("id")
-    .eq("email", email)
+    .select("id, email, role")
+    .ilike("email", email)
     .single()
 
   if (existing) {
-    return NextResponse.json({ error: "User with this email already exists" }, { status: 409 })
+    // User exists — update their role instead of erroring
+    const { data: updated, error: updateErr } = await supabaseAdmin
+      .from("user_profiles")
+      .update({ role, is_active: true, updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .select()
+      .single()
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    return NextResponse.json({ user: updated })
   }
 
   // Use Supabase Auth admin to create an invited user — this creates a real auth.users entry
@@ -126,7 +134,7 @@ export async function POST(req: NextRequest) {
       if (found) {
         const { data, error } = await supabaseAdmin
           .from("user_profiles")
-          .insert({ id: found.id, email, role, full_name: full_name || null, is_active: true })
+          .upsert({ id: found.id, email, role, full_name: full_name || null, is_active: true }, { onConflict: 'id' })
           .select()
           .single()
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
