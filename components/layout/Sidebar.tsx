@@ -37,6 +37,7 @@ import {
   Settings,
   FileBarChart,
   ChevronRight,
+  Bell,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -77,6 +78,7 @@ const salesItems: NavItem[] = [
 const adminItems: NavItem[] = [
   { tKey: "User Management", href: "/admin/users", icon: <Users className="size-4" /> },
   { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
+  { tKey: "Notifications", href: "/admin/notifications", icon: <Bell className="size-4" /> },
 ]
 
 const ROLE_LABELS: Record<string, string> = {

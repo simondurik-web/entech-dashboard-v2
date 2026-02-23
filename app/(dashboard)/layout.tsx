@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar"
 import { VersionBadge } from "@/components/layout/VersionBadge"
 import { AccessGuard } from "@/components/layout/AccessGuard"
 import { PageTransition } from "@/components/ui/page-transition"
+import { NotificationBell } from "@/components/NotificationBell"
 import { PanelLeft } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -73,8 +74,16 @@ export default function DashboardLayout({
             <span className="text-lg font-semibold">
               Entech Dashboard
             </span>
+            <div className="ml-auto">
+              <NotificationBell />
+            </div>
           </div>
         </header>
+
+        {/* Desktop notification bell — fixed top right */}
+        <div className="hidden lg:block fixed top-2 right-4 z-40">
+          <NotificationBell />
+        </div>
 
         {/* Main content - pad bottom on mobile for nav bar */}
         <main className="pb-4" style={{ zoom: zoomLevel }}>
