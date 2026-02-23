@@ -78,6 +78,28 @@ const PAGE_ROUTES: Record<string, string> = {
   'drawings': '/drawings',
   'material-requirements': '/material-requirements',
   'staged-records': '/staged-records',
+  'sales-overview': '/sales-overview',
+  'sales-dates': '/sales-dates',
+  'sales-parts': '/sales-parts',
+  'sales-customers': '/sales-customers',
+}
+
+// Try to resolve a page key to a route, handling edge cases
+function resolveRoute(page: string): string {
+  if (PAGE_ROUTES[page]) return PAGE_ROUTES[page]
+  // Try with underscores → hyphens
+  const hyphenated = page.replace(/_/g, '-')
+  if (PAGE_ROUTES[hyphenated]) return PAGE_ROUTES[hyphenated]
+  // Try matching a known route that starts with the page key
+  for (const [key, route] of Object.entries(PAGE_ROUTES)) {
+    if (page.startsWith(key) || page.includes(key)) return route
+    if (hyphenated.startsWith(key) || hyphenated.includes(key)) return route
+  }
+  // Check if it looks like a sales page
+  if (page.includes('sales') && page.includes('date')) return '/sales-dates'
+  if (page.includes('sales') && page.includes('part')) return '/sales-parts'
+  if (page.includes('sales') && page.includes('customer')) return '/sales-customers'
+  return `/${page}`
 }
 
 // Inline editable cell
@@ -228,7 +250,7 @@ function ReportsContent() {
   }
 
   function openReport(view: SavedView) {
-    const route = PAGE_ROUTES[view.page] || `/${view.page}`
+    const route = resolveRoute(view.page)
     router.push(`${route}?viewId=${view.id}`)
   }
 
@@ -314,7 +336,7 @@ function ReportsContent() {
         const r = row as ReportRow
         const canDelete = r.isOwn || isAdmin
         const view = views.find((v) => v.id === r.id)
-        const route = view ? (PAGE_ROUTES[view.page] || `/${view.page}`) : '#'
+        const route = view ? resolveRoute(view.page) : '#'
         return (
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <Button variant="ghost" size="sm" onClick={() => view && openReport(view)} title="Open report">
