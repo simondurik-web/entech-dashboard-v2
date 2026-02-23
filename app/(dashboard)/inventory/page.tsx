@@ -38,6 +38,7 @@ interface InventoryRow extends Record<string, unknown> {
   unitCost: number | null
   totalValue: number | null
   monthValueChange: number | null
+  monthQtyChange: number | null
   // raw fields for filtering
   _raw: InventoryItem
 }
@@ -196,7 +197,6 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
         <span className="font-bold text-xs">{String(v)}</span>
       ),
     },
-    { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs">{Number(v).toLocaleString()}</span> },
     ...(showCosts ? [
       {
         key: 'unitCost' as const,
@@ -204,7 +204,7 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
         sortable: true,
         render: (v: unknown) => {
           if (v == null) return <span className="text-muted-foreground">-</span>
-          return <span className="text-emerald-400 font-medium">${Number(v).toFixed(2)}</span>
+          return <span className="text-emerald-400 font-medium text-xs">${Number(v).toFixed(2)}</span>
         },
       },
       {
@@ -213,23 +213,34 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
         sortable: true,
         render: (v: unknown) => {
           if (v == null) return <span className="text-muted-foreground">-</span>
-          return <span className="text-emerald-400 font-semibold">${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          return <span className="text-emerald-400 font-semibold text-xs">${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         },
       },
       {
         key: 'monthValueChange' as const,
-        label: '📅 Month Δ',
+        label: '📅 Month $Δ',
         sortable: true,
         render: (v: unknown) => {
           if (v == null) return <span className="text-muted-foreground">-</span>
           const n = Number(v)
-          if (Math.abs(n) < 0.01) return <span className="text-muted-foreground">—</span>
+          if (Math.abs(n) < 0.01) return <span className="text-muted-foreground text-xs">—</span>
           const color = n >= 0 ? 'text-green-400' : 'text-red-400'
           const arrow = n >= 0 ? '↑' : '↓'
-          return <span className={`${color} font-medium`}>{arrow} ${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          return <span className={`${color} font-medium text-xs`}>{arrow} ${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
         },
       },
     ] as ColumnDef<InventoryRow>[] : []),
+    {
+      key: 'monthQtyChange', label: '📅 Month Δ Qty', sortable: true,
+      render: (v) => {
+        if (v == null) return <span className="text-muted-foreground">-</span>
+        const n = Number(v)
+        if (n === 0) return <span className="text-muted-foreground text-xs">—</span>
+        const color = n >= 0 ? 'text-green-400' : 'text-red-400'
+        return <span className={`${color} font-medium text-xs`}>{n >= 0 ? '↑' : '↓'} {Math.abs(n).toLocaleString()}</span>
+      },
+    },
+    { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs font-semibold">{Number(v).toLocaleString()}</span> },
     { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true, render: (v) => Number(v).toLocaleString() },
@@ -722,6 +733,12 @@ function InventoryPageContent() {
           const startQty = partHist?.dataByDate[monthStartDate] ?? fusionQty
           return (fusionQty - startQty) * uc
         })(),
+        monthQtyChange: (() => {
+          if (!monthStartDate) return null
+          const partHist = historyData?.parts.find(p => p.partNumber.toUpperCase() === item.partNumber.toUpperCase())
+          const startQty = partHist?.dataByDate[monthStartDate] ?? fusionQty
+          return fusionQty - startQty
+        })(),
         _raw: item,
       }
     })
@@ -947,11 +964,16 @@ function InventoryPageContent() {
                 {moversExpand === 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1">
                     {allMonthChanges.slice(0, 10).map(r => (
-                      <div key={r.partNumber} className="flex items-center justify-between text-xs">
-                        <span className="truncate mr-2 text-muted-foreground">{r.partNumber}</span>
+                      <div key={r.partNumber} className="flex items-center justify-between text-xs gap-1">
+                        <span className="truncate text-muted-foreground">{r.partNumber}</span>
                         <span className={`font-semibold whitespace-nowrap ${r.monthValueChange! >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {r.monthValueChange! >= 0 ? '↑' : '↓'}${Math.abs(r.monthValueChange!).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
+                        {r.monthQtyChange != null && r.monthQtyChange !== 0 && (
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            ({r.monthQtyChange > 0 ? '+' : ''}{r.monthQtyChange.toLocaleString()} pcs)
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -975,7 +997,11 @@ function InventoryPageContent() {
                               className="flex items-center gap-2 text-xs group hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
                               style={{ animationDelay: `${i * 30}ms` }}
                             >
-                              <span className="w-[120px] truncate text-muted-foreground font-medium flex-shrink-0">{r.partNumber}</span>
+                              <span className="w-[110px] truncate text-muted-foreground font-medium flex-shrink-0">{r.partNumber}</span>
+                              {/* Start → Current qty */}
+                              <span className="w-[80px] text-[10px] text-muted-foreground flex-shrink-0 text-center">
+                                {r.monthQtyChange != null ? (r.fusionQty - r.monthQtyChange).toLocaleString() : '?'} → {r.fusionQty.toLocaleString()}
+                              </span>
                               <div className="flex-1 h-5 bg-muted/30 rounded-full overflow-hidden relative">
                                 <div
                                   className={`h-full rounded-full transition-all duration-1000 ease-out ${
@@ -991,6 +1017,9 @@ function InventoryPageContent() {
                               </div>
                               <span className={`w-[90px] text-right font-semibold flex-shrink-0 ${isUp ? 'text-green-400' : 'text-red-400'}`}>
                                 {isUp ? '↑' : '↓'} ${Math.abs(val).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </span>
+                              <span className={`w-[60px] text-right text-[10px] flex-shrink-0 ${isUp ? 'text-green-400/70' : 'text-red-400/70'}`}>
+                                {r.monthQtyChange != null && r.monthQtyChange !== 0 ? `${r.monthQtyChange > 0 ? '+' : ''}${r.monthQtyChange.toLocaleString()}` : ''}
                               </span>
                             </div>
                           )
