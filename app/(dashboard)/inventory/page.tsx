@@ -37,6 +37,7 @@ interface InventoryRow extends Record<string, unknown> {
   subDepartment: string
   unitCost: number | null
   totalValue: number | null
+  monthValueChange: number | null
   // raw fields for filtering
   _raw: InventoryItem
 }
@@ -213,6 +214,19 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
         render: (v: unknown) => {
           if (v == null) return <span className="text-muted-foreground">-</span>
           return <span className="text-emerald-400 font-semibold">${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        },
+      },
+      {
+        key: 'monthValueChange' as const,
+        label: '📅 Month Δ',
+        sortable: true,
+        render: (v: unknown) => {
+          if (v == null) return <span className="text-muted-foreground">-</span>
+          const n = Number(v)
+          if (Math.abs(n) < 0.01) return <span className="text-muted-foreground">—</span>
+          const color = n >= 0 ? 'text-green-400' : 'text-red-400'
+          const arrow = n >= 0 ? '↑' : '↓'
+          return <span className={`${color} font-medium`}>{arrow} ${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         },
       },
     ] as ColumnDef<InventoryRow>[] : []),
@@ -609,6 +623,22 @@ function InventoryPageContent() {
 
   useEffect(() => { fetchData(false, showCosts) }, [fetchData, showCosts])
 
+  // Find closest history date to start of current month
+  const monthStartDate = useMemo(() => {
+    if (!historyData?.dates.length) return null
+    const now = new Date()
+    const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    let closest: string | null = null
+    let minDiff = Infinity
+    for (const d of historyData.dates) {
+      const ms = parseUsDate(d)?.getTime()
+      if (ms == null) continue
+      const diff = Math.abs(ms - monthStartMs)
+      if (diff < minDiff) { minDiff = diff; closest = d }
+    }
+    return minDiff <= 7 * 86400000 ? closest : null
+  }, [historyData])
+
   // Build rows with calculated usage stats
   const rows: InventoryRow[] = useMemo(() => {
     return items.map(item => {
@@ -682,10 +712,19 @@ function InventoryPageContent() {
           const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
           return uc != null ? fusionQty * uc : null
         })(),
+        monthValueChange: (() => {
+          if (!monthStartDate) return null
+          const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+          const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
+          if (uc == null) return null
+          const partHist = historyData?.parts.find(p => p.partNumber.toUpperCase() === item.partNumber.toUpperCase())
+          const startQty = partHist?.dataByDate[monthStartDate] ?? fusionQty
+          return (fusionQty - startQty) * uc
+        })(),
         _raw: item,
       }
     })
-  }, [items, historyData, costData])
+  }, [items, historyData, costData, monthStartDate])
 
   // Apply filters
   const filtered = useMemo(() => {
@@ -788,6 +827,15 @@ function InventoryPageContent() {
   const monthChange = monthStartValue != null ? totalInventoryValue - monthStartValue : null
   const monthChangePct = monthStartValue != null && monthStartValue > 0 ? ((monthChange ?? 0) / monthStartValue) * 100 : null
 
+  // Top 10 biggest absolute $ changes this month
+  const top10Changes = useMemo(() => {
+    if (!showCosts) return []
+    return [...filtered]
+      .filter(r => r.monthValueChange != null && Math.abs(r.monthValueChange!) > 0.01)
+      .sort((a, b) => Math.abs(b.monthValueChange!) - Math.abs(a.monthValueChange!))
+      .slice(0, 10)
+  }, [filtered, showCosts])
+
   const animTotalItems = useCountUp(totalItems)
   const animLowStock = useCountUp(lowStock)
   const animNeedsProduction = useCountUp(needsProduction)
@@ -866,6 +914,22 @@ function InventoryPageContent() {
                 </div>
               )}
             </div>
+            {/* Top 10 changes */}
+            {top10Changes.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-emerald-500/20">
+                <p className="text-[10px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Top 10 Changes This Month</p>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1">
+                  {top10Changes.map(r => (
+                    <div key={r.partNumber} className="flex items-center justify-between text-xs">
+                      <span className="truncate mr-2 text-muted-foreground">{r.partNumber}</span>
+                      <span className={`font-semibold whitespace-nowrap ${r.monthValueChange! >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {r.monthValueChange! >= 0 ? '↑' : '↓'}${Math.abs(r.monthValueChange!).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </SpotlightCard>
         )}
       </div>
