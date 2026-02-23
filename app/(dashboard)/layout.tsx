@@ -60,17 +60,17 @@ export default function DashboardLayout({
           }
         `}</style>
         
-        {/* Top header - mobile/tablet only on large screens sidebar replaces it */}
-        <header className="sticky top-0 z-30 border-b bg-background">
+        {/* Top header - mobile/tablet only (sidebar handles nav on desktop) */}
+        <header className="sticky top-0 z-30 border-b bg-background lg:hidden">
           <div className="flex h-14 items-center gap-3 px-4">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label="Open sidebar"
             >
               <PanelLeft className="size-5" />
             </button>
-            <span className="text-lg font-semibold lg:hidden">
+            <span className="text-lg font-semibold">
               Entech Dashboard
             </span>
           </div>
