@@ -66,10 +66,20 @@ function toDateInputValue(date: string): string {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
 }
 
-function isMonthStart(dateStr: string): boolean {
-  const parsed = parseUsDate(dateStr)
-  if (!parsed) return false
-  return parsed.getDate() <= 2 // 1st or 2nd (in case data doesn't land exactly on 1st)
+/** Return one date per month — the earliest date in that month from the dataset */
+function getMonthStartDates(dates: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const d of dates) {
+    const parsed = parseUsDate(d)
+    if (!parsed) continue
+    const key = `${parsed.getFullYear()}-${parsed.getMonth()}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push(d)
+    }
+  }
+  return result
 }
 
 // Custom gradient area chart with animation
@@ -308,9 +318,9 @@ export default function InventoryHistoryPage() {
     })
   }, [rangeDates, filteredParts, costData, showCosts])
 
-  // Month-start dates for dots
+  // Month-start dates for dots (one per month — earliest date in each month)
   const monthStartDates = useMemo(() => {
-    return rangeDates.filter(isMonthStart)
+    return getMonthStartDates(rangeDates)
   }, [rangeDates])
 
   // Current total value for animated counter
