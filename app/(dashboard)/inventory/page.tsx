@@ -56,10 +56,15 @@ interface CostEntry {
   subDepartment: string
 }
 
-type DeptFilterKey = 'all' | 'molding' | 'rubber' | 'melt'
+function parseUsDate(date: string): Date | null {
+  const match = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!match) return null
+  return new Date(Number(match[3]), Number(match[1]) - 1, Number(match[2]))
+}
+
+type DeptFilterKey = 'molding' | 'rubber' | 'melt'
 
 const DEPT_FILTERS: { key: DeptFilterKey; label: string; emoji: string }[] = [
-  { key: 'all', label: 'All', emoji: '📋' },
   { key: 'molding', label: 'Molding', emoji: '🏭' },
   { key: 'rubber', label: 'Rubber', emoji: '♻️' },
   { key: 'melt', label: 'Melt Line', emoji: '🔥' },
@@ -544,12 +549,20 @@ function InventoryPageContent() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [deptFilter, setDeptFilter] = useState<DeptFilterKey>('all')
+  const [deptFilters, setDeptFilters] = useState<Set<DeptFilterKey>>(new Set())
   const [stockFilter, setStockFilter] = useState<StockFilterKey>('all')
   const [typeFilters, setTypeFilters] = useState<Set<TypeFilterKey>>(new Set())
   const [search, setSearch] = useState('')
   const [historyPart, setHistoryPart] = useState<string | null>(null)
   const { t } = useI18n()
+
+  const toggleDeptFilter = (key: DeptFilterKey) => {
+    setDeptFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
 
   const toggleTypeFilter = (key: TypeFilterKey) => {
     setTypeFilters(prev => {
@@ -560,7 +573,7 @@ function InventoryPageContent() {
   }
 
   const clearFilters = () => {
-    setDeptFilter('all')
+    setDeptFilters(new Set())
     setStockFilter('all')
     setTypeFilters(new Set())
     setSearch('')
@@ -678,16 +691,14 @@ function InventoryPageContent() {
   const filtered = useMemo(() => {
     let result = rows
 
-    // Department filter
-    if (deptFilter !== 'all') {
+    // Department filter (multi-select — empty = all)
+    if (deptFilters.size > 0) {
       result = result.filter(r => {
         const dept = r.department.toLowerCase()
-        switch (deptFilter) {
-          case 'molding': return dept.includes('molding') || dept.includes('compression')
-          case 'rubber': return dept.includes('rubber')
-          case 'melt': return dept.includes('melt')
-          default: return true
-        }
+        if (deptFilters.has('molding') && (dept.includes('molding') || dept.includes('compression'))) return true
+        if (deptFilters.has('rubber') && dept.includes('rubber')) return true
+        if (deptFilters.has('melt') && dept.includes('melt')) return true
+        return false
       })
     }
 
@@ -724,10 +735,10 @@ function InventoryPageContent() {
     }
 
     return result
-  }, [rows, deptFilter, stockFilter, typeFilters, search])
+  }, [rows, deptFilters, stockFilter, typeFilters, search])
 
   // Stats
-  const deptLabel = deptFilter === 'all' ? '' : ` — ${DEPT_FILTERS.find(f => f.key === deptFilter)?.label ?? ''}`
+  const deptLabel = deptFilters.size === 0 ? '' : ` — ${[...deptFilters].map(k => DEPT_FILTERS.find(f => f.key === k)?.label).filter(Boolean).join(', ')}`
 
   const totalItems = filtered.length
   const productTypes = new Set(filtered.map(r => r.product)).size
@@ -738,6 +749,44 @@ function InventoryPageContent() {
     if (!showCosts) return 0
     return filtered.reduce((sum, r) => sum + (r.totalValue ?? 0), 0)
   }, [filtered, showCosts])
+
+  // Month-start inventory value comparison
+  const monthStartValue = useMemo(() => {
+    if (!showCosts || !historyData) return null
+    const now = new Date()
+    const monthStart = `${now.getMonth() + 1}/1/${now.getFullYear()}`
+    // Find closest date to month start
+    const sortedDates = [...(historyData.dates || [])].sort((a, b) => {
+      const da = parseUsDate(a)?.getTime() ?? 0
+      const db = parseUsDate(b)?.getTime() ?? 0
+      return da - db
+    })
+    const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    let closestDate: string | null = null
+    let minDiff = Infinity
+    for (const d of sortedDates) {
+      const ms = parseUsDate(d)?.getTime()
+      if (ms == null) continue
+      const diff = Math.abs(ms - monthStartMs)
+      if (diff < minDiff) { minDiff = diff; closestDate = d }
+    }
+    if (!closestDate || minDiff > 7 * 86400000) return null // only if within 7 days
+
+    // Calculate month-start total value for filtered items
+    let startTotal = 0
+    for (const row of filtered) {
+      const costEntry = costData[row.partNumber] || costData[row.partNumber.replace(/^0+/, '')]
+      const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
+      if (uc == null) continue
+      const partHist = historyData.parts.find(p => p.partNumber.toUpperCase() === row.partNumber.toUpperCase())
+      const startQty = partHist?.dataByDate[closestDate!] ?? row.fusionQty
+      startTotal += startQty * uc
+    }
+    return startTotal
+  }, [filtered, historyData, costData, showCosts])
+
+  const monthChange = monthStartValue != null ? totalInventoryValue - monthStartValue : null
+  const monthChangePct = monthStartValue != null && monthStartValue > 0 ? ((monthChange ?? 0) / monthStartValue) * 100 : null
 
   const animTotalItems = useCountUp(totalItems)
   const animLowStock = useCountUp(lowStock)
@@ -793,26 +842,55 @@ function InventoryPageContent() {
         </SpotlightCard>
         {showCosts && (
           <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/20 col-span-2 sm:col-span-4" spotlightColor="16,185,129">
-            <p className="text-xs text-emerald-400">💰 Total Inventory Value{deptLabel}</p>
-            <p className="text-2xl font-bold text-emerald-400">
-              ${animInventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-[10px] text-muted-foreground">Based on Lower of Cost or Market</p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs text-emerald-400">💰 Total Inventory Value{deptLabel}</p>
+                <p className="text-2xl font-bold text-emerald-400">
+                  ${animInventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-[10px] text-muted-foreground">Based on Lower of Cost or Market</p>
+              </div>
+              {monthStartValue != null && monthChange != null && (
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground">Month Start</p>
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    ${monthStartValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className={`text-sm font-bold ${monthChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {monthChange >= 0 ? '↑' : '↓'} ${Math.abs(monthChange).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {monthChangePct != null && (
+                      <span className="text-xs ml-1">({monthChangePct >= 0 ? '+' : ''}{monthChangePct.toFixed(1)}%)</span>
+                    )}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Change this month</p>
+                </div>
+              )}
+            </div>
           </SpotlightCard>
         )}
       </div>
       </ScrollReveal>
 
-      {/* Department Filter */}
+      {/* Department Filter (multi-select — none selected = all) */}
       <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+        <button
+          onClick={() => setDeptFilters(new Set())}
+          className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            deptFilters.size === 0
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted hover:bg-muted/80'
+          }`}
+        >
+          📋 All
+        </button>
         {DEPT_FILTERS.map(f => (
           <button
             key={f.key}
-            onClick={() => setDeptFilter(f.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              deptFilter === f.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80'
+            onClick={() => toggleDeptFilter(f.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors border ${
+              deptFilters.has(f.key)
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted hover:bg-muted/80 border-transparent'
             }`}
           >
             {f.emoji} {f.label}
@@ -865,7 +943,7 @@ function InventoryPageContent() {
           ))}
 
           {/* Clear + Material Requirements */}
-          {(deptFilter !== 'all' || stockFilter !== 'all' || typeFilters.size > 0 || search) && (
+          {(deptFilters.size > 0 || stockFilter !== 'all' || typeFilters.size > 0 || search) && (
             <button onClick={clearFilters} className="px-3 py-1 rounded-full text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 whitespace-nowrap">
               ✕ {t('inventory.clearFilters')}
             </button>

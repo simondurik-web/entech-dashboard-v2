@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -12,9 +12,14 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  Area,
+  AreaChart,
+  ReferenceDot,
 } from 'recharts'
 import type { InventoryItem } from '@/lib/google-sheets'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { useCountUpDecimal } from '@/lib/use-count-up'
+import { usePermissions } from '@/lib/use-permissions'
 
 interface InventoryHistoryPart {
   partNumber: string
@@ -26,10 +31,28 @@ interface InventoryHistoryResponse {
   parts: InventoryHistoryPart[]
 }
 
+interface CostEntry {
+  fusionId: string
+  description: string
+  netsuiteId: string
+  cost: number | null
+  lowerCost: number | null
+  department: string
+  subDepartment: string
+}
+
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 const PRODUCT_TYPES = ['All', 'Tire', 'Hub', 'Bearing', 'Finished Part', 'Roll Tech Finished Product', 'Entech/Rubber', 'Molding Feedstock']
 const ITEM_TYPES = ['All', 'Manufactured', 'Purchased', 'COM']
+
+type DeptFilterKey = 'molding' | 'rubber' | 'melt'
+
+const DEPT_FILTERS: { key: DeptFilterKey; label: string; emoji: string }[] = [
+  { key: 'molding', label: 'Molding', emoji: '🏭' },
+  { key: 'rubber', label: 'Rubber', emoji: '♻️' },
+  { key: 'melt', label: 'Melt Line', emoji: '🔥' },
+]
 
 function parseUsDate(date: string): Date | null {
   const match = date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
@@ -43,10 +66,106 @@ function toDateInputValue(date: string): string {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
 }
 
+function isMonthStart(dateStr: string): boolean {
+  const parsed = parseUsDate(dateStr)
+  if (!parsed) return false
+  return parsed.getDate() <= 2 // 1st or 2nd (in case data doesn't land exactly on 1st)
+}
+
+// Custom gradient area chart with animation
+function ValueChart({
+  data,
+  monthStartDates,
+  animationActive,
+}: {
+  data: { date: string; value: number }[]
+  monthStartDates: string[]
+  animationActive: boolean
+}) {
+  const gradientId = useRef(`value-gradient-${Math.random().toString(36).slice(2)}`).current
+  const strokeId = useRef(`value-stroke-${Math.random().toString(36).slice(2)}`).current
+
+  if (!data.length) return null
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+            <stop offset="50%" stopColor="#3b82f6" stopOpacity={0.15} />
+            <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.02} />
+          </linearGradient>
+          <linearGradient id={strokeId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#10b981" />
+            <stop offset="50%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#8b5cf6" />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" strokeOpacity={0.3} />
+        <XAxis
+          dataKey="date"
+          tick={{ fontSize: 10, fill: '#6b7280' }}
+          tickLine={false}
+          axisLine={false}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: '#6b7280' }}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+        />
+        <Tooltip
+          contentStyle={{
+            backgroundColor: 'rgba(15,23,42,0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(148,163,184,0.2)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            fontSize: '12px',
+            color: '#e2e8f0',
+          }}
+          formatter={(value: number | undefined) => [`$${(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Inventory Value']}
+          labelFormatter={(label: unknown) => `📅 ${label}`}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={`url(#${strokeId})`}
+          strokeWidth={2.5}
+          fill={`url(#${gradientId})`}
+          animationBegin={0}
+          animationDuration={animationActive ? 2000 : 0}
+          animationEasing="ease-out"
+          dot={false}
+        />
+        {/* Month-start dots */}
+        {monthStartDates.map((date) => {
+          const point = data.find(d => d.date === date)
+          if (!point) return null
+          return (
+            <ReferenceDot
+              key={date}
+              x={date}
+              y={point.value}
+              r={5}
+              fill="#f59e0b"
+              stroke="#fff"
+              strokeWidth={2}
+            />
+          )
+        })}
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
 export default function InventoryHistoryPage() {
   const { t } = useI18n()
   const [history, setHistory] = useState<InventoryHistoryResponse>({ dates: [], parts: [] })
   const [inventoryMap, setInventoryMap] = useState<Map<string, InventoryItem>>(new Map())
+  const [costData, setCostData] = useState<Record<string, CostEntry>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedParts, setSelectedParts] = useState<string[]>([])
@@ -55,6 +174,10 @@ export default function InventoryHistoryPage() {
   const [endDate, setEndDate] = useState('')
   const [productTypes, setProductTypes] = useState<Set<string>>(new Set(['All']))
   const [itemTypes, setItemTypes] = useState<Set<string>>(new Set(['All']))
+  const [deptFilters, setDeptFilters] = useState<Set<DeptFilterKey>>(new Set())
+  const [chartAnimated, setChartAnimated] = useState(false)
+  const { canAccess } = usePermissions()
+  const showCosts = canAccess('view_inventory_values')
 
   useEffect(() => {
     Promise.all([
@@ -66,8 +189,9 @@ export default function InventoryHistoryPage() {
         if (!r.ok) throw new Error('Failed to fetch inventory')
         return r.json() as Promise<InventoryItem[]>
       }),
+      showCosts ? fetch('/api/inventory-costs').then(r => r.ok ? r.json() : { costs: {} }) : Promise.resolve({ costs: {} }),
     ])
-      .then(([histData, invData]) => {
+      .then(([histData, invData, costRes]) => {
         const sortedDates = [...histData.dates].sort((a, b) => {
           const da = parseUsDate(a)?.getTime() ?? 0
           const db = parseUsDate(b)?.getTime() ?? 0
@@ -78,7 +202,6 @@ export default function InventoryHistoryPage() {
           (a, b) => (b.dataByDate[latestDate] ?? 0) - (a.dataByDate[latestDate] ?? 0)
         )
         setHistory({ dates: sortedDates, parts: sortedParts })
-        // Start with no parts selected — user picks what they want
         if (sortedDates.length > 0) {
           setStartDate(toDateInputValue(sortedDates[0]))
           setEndDate(toDateInputValue(sortedDates[sortedDates.length - 1]))
@@ -87,9 +210,22 @@ export default function InventoryHistoryPage() {
         const map = new Map<string, InventoryItem>()
         for (const item of invData) map.set(item.partNumber, item)
         setInventoryMap(map)
+
+        setCostData(costRes.costs ?? {})
+
+        // Trigger chart animation after data loads
+        requestAnimationFrame(() => setChartAnimated(true))
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
+  }, [showCosts])
+
+  const toggleDeptFilter = useCallback((key: DeptFilterKey) => {
+    setDeptFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
   }, [])
 
   const toggleProductType = useCallback((pt: string) => {
@@ -97,12 +233,8 @@ export default function InventoryHistoryPage() {
       const next = new Set(prev)
       if (pt === 'All') return new Set(['All'])
       next.delete('All')
-      if (next.has(pt)) {
-        next.delete(pt)
-        if (next.size === 0) return new Set(['All'])
-      } else {
-        next.add(pt)
-      }
+      if (next.has(pt)) { next.delete(pt); if (next.size === 0) return new Set(['All']) }
+      else next.add(pt)
       return next
     })
   }, [])
@@ -112,21 +244,30 @@ export default function InventoryHistoryPage() {
       const next = new Set(prev)
       if (it === 'All') return new Set(['All'])
       next.delete('All')
-      if (next.has(it)) {
-        next.delete(it)
-        if (next.size === 0) return new Set(['All'])
-      } else {
-        next.add(it)
-      }
+      if (next.has(it)) { next.delete(it); if (next.size === 0) return new Set(['All']) }
+      else next.add(it)
       return next
     })
   }, [])
 
+  // Filter parts by department, product type, item type, search
   const filteredParts = useMemo(() => {
     const term = searchTerm.toLowerCase()
     return history.parts.filter((p) => {
       if (term && !p.partNumber.toLowerCase().includes(term)) return false
       const inv = inventoryMap.get(p.partNumber)
+
+      // Department filter
+      if (deptFilters.size > 0) {
+        const costEntry = costData[p.partNumber] || costData[p.partNumber.replace(/^0+/, '')]
+        const dept = (costEntry?.department || '').toLowerCase()
+        let match = false
+        if (deptFilters.has('molding') && (dept.includes('molding') || dept.includes('compression'))) match = true
+        if (deptFilters.has('rubber') && dept.includes('rubber')) match = true
+        if (deptFilters.has('melt') && dept.includes('melt')) match = true
+        if (!match) return false
+      }
+
       if (!productTypes.has('All')) {
         if (!inv || !productTypes.has(inv.product)) return false
       }
@@ -135,7 +276,7 @@ export default function InventoryHistoryPage() {
       }
       return true
     })
-  }, [history.parts, searchTerm, productTypes, itemTypes, inventoryMap])
+  }, [history.parts, searchTerm, productTypes, itemTypes, inventoryMap, deptFilters, costData])
 
   const selectedItems = useMemo(
     () => history.parts.filter((p) => selectedParts.includes(p.partNumber)),
@@ -152,15 +293,45 @@ export default function InventoryHistoryPage() {
     })
   }, [history.dates, startDate, endDate])
 
-  const chartData = useMemo(() => {
+  // Overview chart: total $ value over time for filtered parts
+  const overviewChartData = useMemo(() => {
+    if (!showCosts) return []
+    return rangeDates.map(date => {
+      let total = 0
+      for (const part of filteredParts) {
+        const qty = part.dataByDate[date] ?? 0
+        const costEntry = costData[part.partNumber] || costData[part.partNumber.replace(/^0+/, '')]
+        const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
+        if (uc != null) total += qty * uc
+      }
+      return { date, value: Math.round(total * 100) / 100 }
+    })
+  }, [rangeDates, filteredParts, costData, showCosts])
+
+  // Month-start dates for dots
+  const monthStartDates = useMemo(() => {
+    return rangeDates.filter(isMonthStart)
+  }, [rangeDates])
+
+  // Current total value for animated counter
+  const currentTotalValue = overviewChartData.length ? overviewChartData[overviewChartData.length - 1].value : 0
+  const animatedTotalValue = useCountUpDecimal(currentTotalValue)
+
+  // Per-item chart data (qty + $ value)
+  const itemChartData = useMemo(() => {
     return rangeDates.map((date) => {
       const row: Record<string, string | number> = { date }
       for (const item of selectedItems) {
-        row[item.partNumber] = item.dataByDate[date] ?? 0
+        const qty = item.dataByDate[date] ?? 0
+        row[item.partNumber] = qty
+        // Also add value line
+        const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+        const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
+        row[`${item.partNumber}_value`] = uc != null ? Math.round(qty * uc * 100) / 100 : 0
       }
       return row
     })
-  }, [rangeDates, selectedItems])
+  }, [rangeDates, selectedItems, costData])
 
   const statsByPart = useMemo(() => {
     return selectedItems.map((item) => {
@@ -170,6 +341,8 @@ export default function InventoryHistoryPage() {
       const change = current - first
       const changePct = first !== 0 ? ((change / first) * 100) : 0
       const inv = inventoryMap.get(item.partNumber)
+      const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+      const uc = costEntry?.lowerCost ?? costEntry?.cost ?? null
       return {
         partNumber: item.partNumber,
         current,
@@ -178,9 +351,11 @@ export default function InventoryHistoryPage() {
         inStock: inv?.inStock ?? current,
         minimum: inv?.minimum ?? 0,
         target: inv?.target ?? 0,
+        unitCost: uc,
+        totalValue: uc != null ? current * uc : null,
       }
     })
-  }, [selectedItems, rangeDates, inventoryMap])
+  }, [selectedItems, rangeDates, inventoryMap, costData])
 
   const togglePart = useCallback((partNumber: string) => {
     setSelectedParts((prev) =>
@@ -192,15 +367,8 @@ export default function InventoryHistoryPage() {
     )
   }, [])
 
-  if (loading) {
-    return (
-      <TableSkeleton rows={8} />
-    )
-  }
-
-  if (error) {
-    return <p className="text-center text-destructive py-10">{error}</p>
-  }
+  if (loading) return <TableSkeleton rows={8} />
+  if (error) return <p className="text-center text-destructive py-10">{error}</p>
 
   return (
     <div className="p-4 pb-20 space-y-4">
@@ -209,9 +377,61 @@ export default function InventoryHistoryPage() {
         <p className="text-muted-foreground text-sm">{t('inventoryHistory.trackStock')}</p>
       </div>
 
+      {/* Department Filter (multi-select) */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => setDeptFilters(new Set())}
+          className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            deptFilters.size === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
+          }`}
+        >
+          📋 All
+        </button>
+        {DEPT_FILTERS.map(f => (
+          <button
+            key={f.key}
+            onClick={() => toggleDeptFilter(f.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors border ${
+              deptFilters.has(f.key)
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted hover:bg-muted/80 border-transparent'
+            }`}
+          >
+            {f.emoji} {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Overview Value Chart */}
+      {showCosts && overviewChartData.length > 0 && (
+        <Card className="overflow-hidden">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs text-muted-foreground">💰 Total Inventory Value{deptFilters.size > 0 ? ` — ${[...deptFilters].map(k => DEPT_FILTERS.find(f => f.key === k)?.label).filter(Boolean).join(', ')}` : ''}</p>
+                <p className="text-2xl font-bold text-emerald-400">
+                  ${animatedTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Month start
+                </span>
+              </div>
+            </div>
+            <div className="h-[220px]">
+              <ValueChart
+                data={overviewChartData}
+                monthStartDates={monthStartDates}
+                animationActive={chartAnimated}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Product Type chips (multi-select) */}
         <div className="flex flex-wrap gap-1">
           {PRODUCT_TYPES.map((pt) => (
             <button
@@ -227,10 +447,7 @@ export default function InventoryHistoryPage() {
             </button>
           ))}
         </div>
-
         <div className="w-px h-6 bg-border" />
-
-        {/* Item Type chips (multi-select) */}
         <div className="flex flex-wrap gap-1">
           {ITEM_TYPES.map((it) => (
             <button
@@ -246,10 +463,7 @@ export default function InventoryHistoryPage() {
             </button>
           ))}
         </div>
-
         <div className="w-px h-6 bg-border" />
-
-        {/* Date range */}
         <div className="flex items-center gap-1.5">
           <input
             type="date"
@@ -296,29 +510,19 @@ export default function InventoryHistoryPage() {
                     key={item.partNumber}
                     onClick={() => togglePart(item.partNumber)}
                     className={`w-full text-left px-2 py-1.5 text-xs rounded transition-colors flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'hover:bg-muted'
+                      isSelected ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
                     }`}
                   >
                     {isSelected && (
-                      <span
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: COLORS[colorIdx] }}
-                      />
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[colorIdx] }} />
                     )}
                     <span className="truncate">{item.partNumber}</span>
-                    {inv && (
-                      <span className="text-[10px] text-muted-foreground truncate ml-1">
-                        {inv.product}
-                      </span>
-                    )}
-                    <span className="ml-auto text-[10px] text-muted-foreground flex-shrink-0">{latestQty}</span>
+                    {inv && <span className="text-[10px] text-muted-foreground truncate ml-1">{inv.product}</span>}
+                    <span className="ml-auto text-[10px] text-muted-foreground flex-shrink-0">{latestQty.toLocaleString()}</span>
                   </button>
                 )
               })}
             </div>
-            {/* All parts shown — just scroll */}
           </CardContent>
         </Card>
 
@@ -330,38 +534,97 @@ export default function InventoryHistoryPage() {
                 ← {t('inventoryHistory.selectParts')}
               </div>
             ) : (
-              <div className="h-[500px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="date" className="text-xs" tick={{ fontSize: 11 }} />
-                    <YAxis className="text-xs" tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card) / 0.8)',
-                        backdropFilter: 'blur(12px)',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '10px',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-                        fontSize: '12px',
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: '12px' }} />
-                    {selectedParts.map((part, idx) => (
-                      <Line
-                        key={part}
-                        type="monotone"
-                        dataKey={part}
-                        stroke={COLORS[idx]}
-                        strokeWidth={2}
-                        dot={false}
-                        animationBegin={200 + idx * 150}
-                        animationDuration={800}
-                        animationEasing="ease-out"
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="space-y-4">
+                {/* Quantity chart */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">📊 Quantity Over Time</p>
+                  <div className="h-[240px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={itemChartData}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" strokeOpacity={0.3} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                        <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'rgba(15,23,42,0.95)',
+                            backdropFilter: 'blur(12px)',
+                            border: '1px solid rgba(148,163,184,0.2)',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            color: '#e2e8f0',
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: '12px' }} />
+                        {selectedParts.map((part, idx) => (
+                          <Line
+                            key={part}
+                            type="monotone"
+                            dataKey={part}
+                            name={`${part} (qty)`}
+                            stroke={COLORS[idx]}
+                            strokeWidth={2}
+                            dot={false}
+                            animationBegin={200 + idx * 150}
+                            animationDuration={800}
+                            animationEasing="ease-out"
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Value chart */}
+                {showCosts && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">💰 Dollar Value Over Time</p>
+                    <div className="h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={itemChartData}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" strokeOpacity={0.3} />
+                          <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                          <YAxis
+                            tick={{ fontSize: 10 }}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'rgba(15,23,42,0.95)',
+                              backdropFilter: 'blur(12px)',
+                              border: '1px solid rgba(148,163,184,0.2)',
+                              borderRadius: '10px',
+                              fontSize: '12px',
+                              color: '#e2e8f0',
+                            }}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            formatter={(value: any, name: any) => [
+                              `$${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                              String(name || '').replace('_value', ''),
+                            ]}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '12px' }} />
+                          {selectedParts.map((part, idx) => (
+                            <Line
+                              key={`${part}_value`}
+                              type="monotone"
+                              dataKey={`${part}_value`}
+                              name={`${part} ($)`}
+                              stroke={COLORS[idx]}
+                              strokeWidth={2}
+                              strokeDasharray="6 3"
+                              dot={false}
+                              animationBegin={200 + idx * 150}
+                              animationDuration={800}
+                              animationEasing="ease-out"
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -372,11 +635,7 @@ export default function InventoryHistoryPage() {
       {statsByPart.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {statsByPart.map((item, idx) => (
-            <Card
-              key={item.partNumber}
-              className="border-l-4"
-              style={{ borderLeftColor: COLORS[idx] }}
-            >
+            <Card key={item.partNumber} className="border-l-4" style={{ borderLeftColor: COLORS[idx] }}>
               <CardContent className="p-3">
                 <p className="text-xs text-muted-foreground truncate font-medium">{item.partNumber}</p>
                 <p className="text-xl font-bold mt-1">{item.inStock.toLocaleString()}</p>
@@ -401,6 +660,14 @@ export default function InventoryHistoryPage() {
                     <span className="text-muted-foreground">{t('inventoryHistory.manualTarget')}</span>
                     <span className="font-medium">{item.target > 0 ? item.target.toLocaleString() : '—'}</span>
                   </div>
+                  {showCosts && item.totalValue != null && (
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-muted-foreground">💰 Value</span>
+                      <span className="font-medium text-emerald-400">
+                        ${item.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
