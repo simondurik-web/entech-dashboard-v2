@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { RefreshCw, X, ExternalLink } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table/DataTable'
@@ -457,8 +458,8 @@ function HistoryModal({
     }
   }, [historyData, currentQty, minimum, target, isMfg])
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[95vw] max-w-4xl max-h-[90vh] overflow-auto p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -553,7 +554,8 @@ function HistoryModal({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
