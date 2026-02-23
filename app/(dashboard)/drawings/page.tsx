@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { Card, CardContent } from '@/components/ui/card'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
@@ -441,20 +442,21 @@ export default function DrawingsPage() {
         </div>
       )}
 
-      {/* Carousel Lightbox */}
-      {lightbox && (
+      {/* Carousel Lightbox — portal to body so fixed positioning works inside transformed parents */}
+      {lightbox && createPortal(
         <CarouselLightbox
           urls={lightbox.urls}
           partNumber={lightbox.partNumber}
           onClose={() => setLightbox(null)}
           originRect={lightbox.originRect}
-        />
+        />,
+        document.body
       )}
 
-      {/* Comparison Modal */}
-      {showCompare && (
+      {/* Comparison Modal — portal to body */}
+      {showCompare && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-4"
+          className="fixed inset-0 z-[100] bg-black/85 flex flex-col items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowCompare(false) }}
         >
           <button
@@ -479,7 +481,8 @@ export default function DrawingsPage() {
               )
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

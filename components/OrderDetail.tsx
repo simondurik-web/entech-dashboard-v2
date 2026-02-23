@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
@@ -195,17 +196,18 @@ export function OrderDetail({
 
   return (
     <>
-      {/* Lightbox */}
-      {lightboxUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxUrl(null)}>
-          <div className="relative max-h-[90vh] max-w-[90vw]">
+      {/* Lightbox — portal to body so fixed positioning works even inside transformed parents */}
+      {lightboxUrl && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxUrl(null)}>
+          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setLightboxUrl(null)} className="absolute -top-10 right-0 text-white hover:text-gray-300">
               <X className="h-6 w-6" />
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={lightboxUrl} alt="Drawing" className="max-h-[85vh] max-w-full rounded-lg object-contain" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <div className="rounded-lg border bg-card/80 backdrop-blur-sm p-3 animate-in slide-in-from-top-2 duration-200">
