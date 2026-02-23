@@ -568,6 +568,7 @@ function InventoryPageContent() {
   const [typeFilters, setTypeFilters] = useState<Set<TypeFilterKey>>(new Set())
   const [search, setSearch] = useState('')
   const [historyPart, setHistoryPart] = useState<string | null>(null)
+  const [moversExpand, setMoversExpand] = useState<0 | 1 | 2>(0) // 0=top10, 1=top30 with chart, 2=collapsed
   const { t } = useI18n()
 
   const toggleDeptFilter = (key: DeptFilterKey) => {
@@ -827,13 +828,12 @@ function InventoryPageContent() {
   const monthChange = monthStartValue != null ? totalInventoryValue - monthStartValue : null
   const monthChangePct = monthStartValue != null && monthStartValue > 0 ? ((monthChange ?? 0) / monthStartValue) * 100 : null
 
-  // Top 10 biggest absolute $ changes this month
-  const top10Changes = useMemo(() => {
+  // All items with month changes, sorted by absolute magnitude
+  const allMonthChanges = useMemo(() => {
     if (!showCosts) return []
     return [...filtered]
       .filter(r => r.monthValueChange != null && Math.abs(r.monthValueChange!) > 0.01)
       .sort((a, b) => Math.abs(b.monthValueChange!) - Math.abs(a.monthValueChange!))
-      .slice(0, 10)
   }, [filtered, showCosts])
 
   const animTotalItems = useCountUp(totalItems)
@@ -855,6 +855,15 @@ function InventoryPageContent() {
 
   return (
     <div className="p-4 pb-20">
+      {/* Bar animation keyframes */}
+      <style>{`
+        ${Array.from({ length: 30 }, (_, i) => `
+          @keyframes bar-grow-${i} {
+            from { width: 0%; opacity: 0; }
+            to { opacity: 1; }
+          }
+        `).join('')}
+      `}</style>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold">📦 {t('page.inventory')}</h1>
@@ -914,20 +923,99 @@ function InventoryPageContent() {
                 </div>
               )}
             </div>
-            {/* Top 10 changes */}
-            {top10Changes.length > 0 && (
+            {/* Top movers — expandable */}
+            {allMonthChanges.length > 0 && (
               <div className="mt-3 pt-3 border-t border-emerald-500/20">
-                <p className="text-[10px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Top 10 Changes This Month</p>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1">
-                  {top10Changes.map(r => (
-                    <div key={r.partNumber} className="flex items-center justify-between text-xs">
-                      <span className="truncate mr-2 text-muted-foreground">{r.partNumber}</span>
-                      <span className={`font-semibold whitespace-nowrap ${r.monthValueChange! >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {r.monthValueChange! >= 0 ? '↑' : '↓'}${Math.abs(r.monthValueChange!).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+                    Top {moversExpand === 1 ? 30 : 10} Changes This Month
+                  </p>
+                  <button
+                    onClick={() => setMoversExpand(prev => prev === 0 ? 1 : 0)}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                  >
+                    {moversExpand === 1 ? '← Show Less' : 'More Data →'}
+                  </button>
                 </div>
+
+                {/* Compact list view (top 10) */}
+                {moversExpand === 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1">
+                    {allMonthChanges.slice(0, 10).map(r => (
+                      <div key={r.partNumber} className="flex items-center justify-between text-xs">
+                        <span className="truncate mr-2 text-muted-foreground">{r.partNumber}</span>
+                        <span className={`font-semibold whitespace-nowrap ${r.monthValueChange! >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {r.monthValueChange! >= 0 ? '↑' : '↓'}${Math.abs(r.monthValueChange!).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Expanded view with horizontal bar chart */}
+                {moversExpand === 1 && (() => {
+                  const top30 = allMonthChanges.slice(0, 30)
+                  const maxAbs = Math.max(...top30.map(r => Math.abs(r.monthValueChange!)))
+                  return (
+                    <div className="space-y-4 animate-in slide-in-from-top-2 fade-in duration-500">
+                      {/* Bar chart */}
+                      <div className="space-y-1">
+                        {top30.map((r, i) => {
+                          const val = r.monthValueChange!
+                          const pct = maxAbs > 0 ? (Math.abs(val) / maxAbs) * 100 : 0
+                          const isUp = val >= 0
+                          return (
+                            <div
+                              key={r.partNumber}
+                              className="flex items-center gap-2 text-xs group hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
+                              style={{ animationDelay: `${i * 30}ms` }}
+                            >
+                              <span className="w-[120px] truncate text-muted-foreground font-medium flex-shrink-0">{r.partNumber}</span>
+                              <div className="flex-1 h-5 bg-muted/30 rounded-full overflow-hidden relative">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                                    isUp
+                                      ? 'bg-gradient-to-r from-green-500/60 to-green-400'
+                                      : 'bg-gradient-to-r from-red-500/60 to-red-400'
+                                  }`}
+                                  style={{
+                                    width: `${pct}%`,
+                                    animation: `bar-grow-${i} 800ms ease-out ${i * 30}ms both`,
+                                  }}
+                                />
+                              </div>
+                              <span className={`w-[90px] text-right font-semibold flex-shrink-0 ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                                {isUp ? '↑' : '↓'} ${Math.abs(val).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Summary stats */}
+                      <div className="grid grid-cols-3 gap-3 pt-2 border-t border-emerald-500/10">
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-green-400">
+                            {top30.filter(r => r.monthValueChange! > 0).length}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">Items Up</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-red-400">
+                            {top30.filter(r => r.monthValueChange! < 0).length}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">Items Down</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-emerald-400">
+                            ${Math.abs(top30.reduce((sum, r) => sum + r.monthValueChange!, 0)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">Net Change (Top 30)</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </SpotlightCard>
