@@ -187,16 +187,16 @@ const TYPE_FILTERS: { key: TypeFilterKey; labelKey: string; emoji: string }[] = 
 
 function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean): ColumnDef<InventoryRow>[] {
   const cols: ColumnDef<InventoryRow>[] = [
-    { key: 'department', label: 'Department', sortable: true, filterable: true },
-    { key: 'subDepartment', label: 'Sub Department', sortable: true, filterable: true },
-    { key: 'product', label: t('inventory.colProduct'), sortable: true, filterable: true },
+    { key: 'department', label: 'Dept', sortable: true, filterable: true, render: (v) => <span className="text-[11px] text-muted-foreground">{String(v)}</span> },
+    { key: 'subDepartment', label: 'Sub Dept', sortable: true, filterable: true, render: (v) => <span className="text-[11px] text-muted-foreground">{String(v)}</span> },
+    { key: 'product', label: t('inventory.colProduct'), sortable: true, filterable: true, render: (v) => <span className="text-[11px]">{String(v)}</span> },
     {
       key: 'partNumber', label: t('inventory.colPartNumber'), sortable: true, filterable: true,
       render: (v) => (
-        <span className="font-bold">{String(v)}</span>
+        <span className="font-bold text-xs">{String(v)}</span>
       ),
     },
-    { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs">{Number(v).toLocaleString()}</span> },
     ...(showCosts ? [
       {
         key: 'unitCost' as const,
@@ -855,7 +855,7 @@ function InventoryPageContent() {
 
   return (
     <div className="p-4 pb-20">
-      {/* Bar animation keyframes */}
+      {/* Bar animation keyframes + compact table */}
       <style>{`
         ${Array.from({ length: 30 }, (_, i) => `
           @keyframes bar-grow-${i} {
@@ -863,6 +863,11 @@ function InventoryPageContent() {
             to { opacity: 1; }
           }
         `).join('')}
+        .inventory-compact-table td,
+        .inventory-compact-table th {
+          padding: 4px 6px !important;
+          font-size: 12px;
+        }
       `}</style>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
@@ -1013,6 +1018,15 @@ function InventoryPageContent() {
                           <p className="text-[10px] text-muted-foreground">Net Change (Top 30)</p>
                         </div>
                       </div>
+                      {/* Bottom collapse button */}
+                      <div className="flex justify-center pt-2">
+                        <button
+                          onClick={() => setMoversExpand(0)}
+                          className="text-xs px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                        >
+                          ← Collapse
+                        </button>
+                      </div>
                     </div>
                   )
                 })()}
@@ -1119,6 +1133,7 @@ function InventoryPageContent() {
 
       {/* DataTable */}
       {!loading && !error && (
+        <div className="inventory-compact-table">
         <DataTable
           table={table}
           data={filtered}
@@ -1135,6 +1150,7 @@ function InventoryPageContent() {
             return ''
           }}
         />
+        </div>
       )}
 
       {/* History Modal */}
