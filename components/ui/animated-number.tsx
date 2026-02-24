@@ -13,8 +13,9 @@ interface AnimatedNumberProps {
  * Handles currency ($), percentages (%), commas, and decimals.
  */
 export function AnimatedNumber({ value, duration = 600, className }: AnimatedNumberProps) {
-  const [display, setDisplay] = useState(value)
-  const prevValue = useRef(value)
+  const [display, setDisplay] = useState("0")
+  const prevValue = useRef("0")
+  const isFirstRender = useRef(true)
   const rafRef = useRef<number>(0)
 
   useEffect(() => {
