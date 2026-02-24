@@ -383,9 +383,10 @@ export default function PalletLoadCalculator({
   }
 
   // ── SVG Diagram (horizontal: x=length, y=width) ──────
-  const svgWidth = 800
+  const doorLabelSpace = 60 // extra space for "DOOR →" label on the right
+  const svgWidth = 800 + doorLabelSpace
   const margin = 40
-  const scale = (svgWidth - margin * 2) / trailer.length
+  const scale = (800 - margin * 2) / trailer.length
   const svgTrailerW = trailer.length * scale
   const svgTrailerH = trailer.width * scale
   const svgH = svgTrailerH + margin * 2 + (packResult.overflow > 0 ? 60 : 0)
@@ -873,9 +874,14 @@ export default function PalletLoadCalculator({
       td { font-size: 12px; }
       tr:nth-child(even) { background: #f2f6fc; }
       .diagram { margin: 20px 0; }
-      .diagram svg { width: 100%; max-height: 300px; }
+      .diagram svg { width: 100%; max-height: 400px; color: #333; }
+      .diagram svg text { fill: #333; }
+      .diagram svg rect[stroke] { stroke: #333; }
+      .diagram svg line { stroke: #666; }
+      .diagram svg marker path { fill: #666; }
       .status-ok { color: #16a34a; } .status-warn { color: #d97706; } .status-bad { color: #dc2626; }
       @media print { body { margin: 10px; } .no-print { display: none; } }
+      @page { size: landscape; margin: 10mm; }
     </style></head><body>
     <h1>🚚 Pallet Load Report</h1>
     <div class="meta">${trailerLabel} · ${new Date().toLocaleDateString()} · Max Payload: ${maxPayload.toLocaleString()} lbs</div>
