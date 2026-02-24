@@ -274,11 +274,6 @@ export function Sidebar({
             </ul>
             </CollapsibleNavSection>
 
-            {/* Notifications */}
-            <ul className="space-y-0.5 mt-1">
-              {renderNavItem({ tKey: "Notifications", href: "/notifications", icon: <Bell className="size-4" /> }, false)}
-            </ul>
-
             {showAllData && (
               <CollapsibleNavSection label={t('nav.rawData')} expanded={expanded} storageKey="raw-data" defaultOpen={true}>
                 <ul className="space-y-0.5 mt-1">
