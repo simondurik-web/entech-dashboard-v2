@@ -15,6 +15,7 @@ import { ScrollReveal } from '@/components/scroll-reveal'
 import type { Order } from '@/lib/google-sheets'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 
 type DateKey = 'all' | '7' | '30' | '90'
 type CategoryKey = 'all' | 'rolltech' | 'molding' | 'snappad'
@@ -100,6 +101,11 @@ function ShippedPageContent() {
     { key: 'line', label: t('table.line'), sortable: true },
     { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
     { key: 'poNumber', label: t('table.poNumber') },
+    // Extra columns — hidden by default
+    ...getExtraOrderColumns<Order & Record<string, unknown>>(new Set([
+      'shippedDate', 'customer', 'partNumber', 'category', 'orderQty',
+      'line', 'ifNumber', 'poNumber',
+    ])),
   ], [t])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`

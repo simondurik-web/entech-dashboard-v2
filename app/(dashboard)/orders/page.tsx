@@ -19,6 +19,7 @@ import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { PriorityOverride } from '@/components/PriorityOverride'
+import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -170,6 +171,12 @@ function OrdersPageContent() {
       }
     }))
   }, [])
+
+  const defaultColumnKeys = useMemo(() => new Set([
+    'line', 'ifNumber', 'poNumber', 'priorityLevel', 'dateOfRequest', 'requestedDate',
+    'daysUntilDue', 'customer', 'partNumber', 'orderQty', 'tire', 'hub', 'bearings',
+    'internalStatus', 'category', 'assignedTo',
+  ]), [])
 
   const ORDER_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
     { key: 'line', label: t('table.line'), sortable: true },
@@ -341,15 +348,8 @@ function OrdersPageContent() {
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     { key: 'assignedTo', label: t('table.assignedTo'), filterable: true },
     // Extra columns — hidden by default, available via Columns picker
-    { key: 'packaging', label: 'Packaging', sortable: true, filterable: true, defaultHidden: true },
-    { key: 'partsPerPackage', label: 'Parts/Package', sortable: true, defaultHidden: true, render: (v) => v ? (v as number).toLocaleString() : '-' },
-    { key: 'numPackages', label: '# Packages', sortable: true, defaultHidden: true, render: (v) => v ? (v as number).toLocaleString() : '-' },
-    { key: 'fusionInventory', label: 'Fusion Inventory', sortable: true, defaultHidden: true, render: (v) => (v as number).toLocaleString() },
-    { key: 'hubMold', label: 'Hub Mold', sortable: true, filterable: true, defaultHidden: true },
-    { key: 'ifStatus', label: 'IF Status', sortable: true, filterable: true, defaultHidden: true },
-    { key: 'dailyCapacity', label: 'Daily Capacity', sortable: true, defaultHidden: true, render: (v) => v ? (v as number).toLocaleString() : '-' },
-    { key: 'shippedDate', label: 'Shipped Date', sortable: true, defaultHidden: true, render: (v) => { const d = v as string; return d || '-' } },
-  ], [t])
+    ...getExtraOrderColumns<OrderRow>(defaultColumnKeys),
+  ], [t, defaultColumnKeys])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)

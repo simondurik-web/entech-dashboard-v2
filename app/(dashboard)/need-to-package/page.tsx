@@ -16,6 +16,7 @@ import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { PriorityOverride } from '@/components/PriorityOverride'
+import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -201,6 +202,13 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
         return `${days}d`
       },
     },
+    // Extra columns — hidden by default
+    ...getExtraOrderColumns<PackageRow>(new Set([
+      'category', 'requestedDate', 'priorityLevel', 'line', 'customer', 'ifNumber',
+      'partNumber', 'numPackages', 'packaging', 'partsPerPackage', 'orderQty',
+      'fusionInventory', 'tire', 'hub', 'hubMold', 'bearings', 'assignedTo',
+      'internalStatus', 'daysUntilDue',
+    ])),
   ]
 }
 

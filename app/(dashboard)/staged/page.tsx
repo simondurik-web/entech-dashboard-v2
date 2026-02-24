@@ -13,6 +13,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { normalizeStatus } from '@/lib/google-sheets'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 type OrderRow = Order & Record<string, unknown>
@@ -146,6 +147,11 @@ function StagedPageContent() {
       },
     },
     { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
+    // Extra columns — hidden by default
+    ...getExtraOrderColumns<Order & Record<string, unknown>>(new Set([
+      'line', 'ifNumber', 'poNumber', 'priorityLevel', 'daysUntilDue',
+      'customer', 'partNumber', 'orderQty', 'tire', 'hub', 'bearings',
+    ])),
   ], [t])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
