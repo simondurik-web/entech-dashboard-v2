@@ -127,8 +127,8 @@ async function sendNotificationsForEvent(
   // Log it
   await supabaseAdmin.from('notification_log').insert({
     title, body,
-    sent_by: 'system:cron',
-    target_role: null,
+    sent_by: null,
+    target_role: 'auto',
     target_user_id: null,
     sent_count: sent,
   })
