@@ -497,8 +497,8 @@ function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: 
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
     { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
-    { key: 'revMoM', label: 'Rev MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
-    { key: 'revYoY', label: 'Rev YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'revMoM', label: 'Revenue MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'revYoY', label: 'Revenue YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
     { key: 'plMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
   ], [expandedCustomer])
 
@@ -605,7 +605,7 @@ function MonthDrilldown({ monthRow, allMonthRows, onClose }: { monthRow: MonthRo
 
 // ─── Custom Tooltip for Chart ────────────────────────────────────────────────
 
-function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string; payload?: Record<string, unknown> }>; label?: string }) {
   if (!active || !payload) return null
   const shippedProfit = payload.find(p => p.name === 'Shipped Profit')?.value || 0
   const shippedLoss = payload.find(p => p.name === 'Shipped Loss')?.value || 0
@@ -613,9 +613,21 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   const forecastLoss = payload.find(p => p.name === 'Forecast Loss')?.value || 0
   const revenue = payload.find(p => p.name === 'Revenue')?.value || 0
   const totalPL = shippedProfit + shippedLoss + forecastProfit + forecastLoss
+  const data = payload[0]?.payload as Record<string, unknown> | undefined
+  const revMoM = data?.revMoM as number | null
+  const revYoY = data?.revYoY as number | null
+  const plMoM = data?.plMoM as number | null
+  const plYoY = data?.plYoY as number | null
+
+  const changeText = (val: number | null, suffix = '%') => {
+    if (val === null) return <span className="text-muted-foreground">-</span>
+    const color = val >= 0 ? 'text-emerald-400' : 'text-red-400'
+    const arrow = val >= 0 ? '↑' : '↓'
+    return <span className={color}>{arrow} {suffix === '%' ? `${val >= 0 ? '+' : ''}${val.toFixed(1)}%` : fmt(val)}</span>
+  }
 
   return (
-    <div className="rounded-xl border bg-popover p-3 shadow-lg text-sm space-y-1.5">
+    <div className="rounded-xl border bg-popover p-3 shadow-lg text-sm space-y-1.5 min-w-[220px]">
       <p className="font-semibold">{label}</p>
       <div className="space-y-1 text-xs">
         <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue</span><span>{fmt(revenue)}</span></div>
@@ -623,6 +635,11 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
         <div className="flex justify-between gap-4"><span style={{ color: 'rgba(56,161,105,0.5)' }}>Forecast P/L</span><span>{fmt(forecastProfit + forecastLoss)}</span></div>
         <hr className="border-border" />
         <div className="flex justify-between gap-4 font-semibold"><span>Total P/L</span><span className={totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmt(totalPL)}</span></div>
+        <hr className="border-border" />
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue MoM</span>{changeText(revMoM)}</div>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue YoY</span>{changeText(revYoY)}</div>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">P/L MoM</span>{changeText(plMoM, '$')}</div>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">P/L YoY</span>{changeText(plYoY, '$')}</div>
       </div>
     </div>
   )
@@ -735,18 +752,33 @@ function SalesDatesContent() {
   }, [monthRows])
 
   // ─── Chart data (sorted chronologically) ───
+  const monthLookupForChart = useMemo(() => {
+    const map: Record<string, MonthRow> = {}
+    for (const m of monthRows) map[m.monthKey] = m
+    return map
+  }, [monthRows])
+
   const chartData = useMemo(() => {
     return [...monthRows]
       .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
-      .map((m) => ({
-        month: m.monthLabel,
-        shippedProfit: Math.max(0, m.shippedPL),
-        shippedLoss: Math.min(0, m.shippedPL),
-        forecastProfit: Math.max(0, m.forecastPL),
-        forecastLoss: Math.min(0, m.forecastPL),
-        revenue: m.revenue,
-      }))
-  }, [monthRows])
+      .map((m) => {
+        const prevMonth = monthLookupForChart[getPrevMonthKey(m.monthKey)]
+        const prevYear = monthLookupForChart[getPrevYearMonthKey(m.monthKey)]
+        const revMoM = prevMonth ? ((m.revenue - prevMonth.revenue) / (prevMonth.revenue || 1)) * 100 : null
+        const revYoY = prevYear ? ((m.revenue - prevYear.revenue) / (prevYear.revenue || 1)) * 100 : null
+        const plMoM = prevMonth ? m.pl - prevMonth.pl : null
+        const plYoY = prevYear ? m.pl - prevYear.pl : null
+        return {
+          month: m.monthLabel,
+          shippedProfit: Math.max(0, m.shippedPL),
+          shippedLoss: Math.min(0, m.shippedPL),
+          forecastProfit: Math.max(0, m.forecastPL),
+          forecastLoss: Math.min(0, m.forecastPL),
+          revenue: m.revenue,
+          revMoM, revYoY, plMoM, plYoY,
+        }
+      })
+  }, [monthRows, monthLookupForChart])
 
   // ─── Month columns ───
   const MONTH_COLUMNS: ColumnDef<MonthRow>[] = useMemo(() => [
@@ -789,8 +821,8 @@ function SalesDatesContent() {
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
     { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{(v as number).toFixed(1)}%</span> },
-    { key: 'revMoM', label: 'Rev MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
-    { key: 'revYoY', label: 'Rev YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'revMoM', label: 'Revenue MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'revYoY', label: 'Revenue YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
     { key: 'plMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
     { key: 'plYoY', label: 'P/L YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
     { key: 'marginMoM', label: 'Margin MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
