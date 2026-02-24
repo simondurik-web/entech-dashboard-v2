@@ -3,13 +3,13 @@
 import { Suspense, useEffect, useMemo, useState, useCallback } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, Line, ComposedChart,
+  CartesianGrid, Legend, Line, ComposedChart, AreaChart, Area,
 } from 'recharts'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
-import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { CalendarDays, Package, DollarSign, TrendingUp, Percent, ChevronDown, ChevronRight, X, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { exportSalesDateExcel } from '@/lib/export-sales-dates'
 import { Button } from '@/components/ui/button'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
@@ -66,6 +66,12 @@ interface MonthRow extends Record<string, unknown> {
   pl: number
   margin: number
   orders: SalesOrder[]
+  revMoM: number | null
+  revYoY: number | null
+  plMoM: number | null
+  plYoY: number | null
+  marginMoM: number | null
+  marginYoY: number | null
 }
 
 interface MonthlyOrderRow extends Record<string, unknown> {
@@ -100,6 +106,25 @@ interface CustomerBreakdownRow extends Record<string, unknown> {
   revenue: number
   pl: number
   margin: number
+  revMoM: number | null
+  revYoY: number | null
+  plMoM: number | null
+}
+
+interface CustomerOrderRow extends Record<string, unknown> {
+  partNumber: string
+  qty: number
+  unitPrice: number
+  revenue: number
+  pl: number
+  margin: number
+  status: string
+  shippedDate: string
+}
+
+interface CustomerMonthlyPoint {
+  month: string
+  revenue: number
 }
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -140,6 +165,38 @@ function getMonthLabel(monthKey: string): string {
   const [year, month] = monthKey.split('-')
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   return `${months[parseInt(month, 10) - 1]} ${year}`
+}
+
+// ─── Month key arithmetic ────────────────────────────────────────────────────
+
+function getPrevMonthKey(monthKey: string): string {
+  const [y, m] = monthKey.split('-').map(Number)
+  if (m === 1) return `${y - 1}-12`
+  return `${y}-${String(m - 1).padStart(2, '0')}`
+}
+
+function getPrevYearMonthKey(monthKey: string): string {
+  const [y, m] = monthKey.split('-')
+  return `${Number(y) - 1}-${m}`
+}
+
+// ─── Change indicator renderer ───────────────────────────────────────────────
+
+function ChangeIndicator({ value, format }: { value: number | null; format: 'pct' | 'dollar' | 'pp' }) {
+  if (value === null) return <span className="text-muted-foreground">-</span>
+  if (value === 0) return <span className="text-muted-foreground">0{format === 'pct' ? '%' : format === 'pp' ? 'pp' : ''}</span>
+  const positive = value > 0
+  const cls = positive ? 'text-emerald-400' : 'text-red-400'
+  const arrow = positive ? '↑' : '↓'
+  let formatted: string
+  if (format === 'pct') {
+    formatted = `${positive ? '+' : ''}${value.toFixed(1)}%`
+  } else if (format === 'pp') {
+    formatted = `${positive ? '+' : ''}${value.toFixed(1)}pp`
+  } else {
+    formatted = fmt(value)
+  }
+  return <span className={`${cls} font-medium whitespace-nowrap`}>{arrow} {formatted}</span>
 }
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
@@ -236,9 +293,162 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
   return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} page={storageKey} onExcelExport={exportSalesDateExcel} />
 }
 
+// ─── Customer Order Sub-Table (Drilldown Level 2) ───────────────────────────
+
+function CustomerOrderSubTable({ orders, customer }: { orders: SalesOrder[]; customer: string }) {
+  const rows: CustomerOrderRow[] = useMemo(() =>
+    orders.filter(o => (o.customer || 'Unknown') === customer).map(o => ({
+      partNumber: o.partNumber,
+      qty: o.qty,
+      unitPrice: o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0),
+      revenue: o.revenue,
+      pl: o.pl,
+      margin: o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0,
+      status: o.status,
+      shippedDate: o.shippedDate || '-',
+    })),
+    [orders, customer]
+  )
+
+  const COLS: ColumnDef<CustomerOrderRow>[] = useMemo(() => [
+    { key: 'partNumber', label: 'Part #', sortable: true, filterable: true },
+    { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+    { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
+    { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
+    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
+    { key: 'status', label: 'Status', sortable: true, filterable: true, render: (v) => {
+      const s = (v as string).toLowerCase()
+      const cls = s === 'shipped' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+      return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{v as string}</span>
+    }},
+    { key: 'shippedDate', label: 'Shipped Date', sortable: true },
+  ], [])
+
+  const storageKey = `sales_customer_orders_${customer.replace(/\W/g, '_')}`
+  const table = useDataTable({ data: rows, columns: COLS, storageKey })
+
+  return <DataTable table={table} data={rows} noun="order" exportFilename={storageKey} page={storageKey} />
+}
+
+// ─── Customer Drilldown Panel ────────────────────────────────────────────────
+
+function CustomerDrilldown({ customer, orders, allMonthRows, onClose }: {
+  customer: string
+  orders: SalesOrder[]
+  allMonthRows: MonthRow[]
+  onClose: () => void
+}) {
+  const customerOrders = useMemo(() => orders.filter(o => (o.customer || 'Unknown') === customer), [orders, customer])
+  const totalRev = customerOrders.reduce((s, o) => s + o.revenue, 0)
+  const totalPL = customerOrders.reduce((s, o) => s + o.pl, 0)
+  const margin = totalRev > 0 ? (totalPL / totalRev) * 100 : 0
+
+  // Sparkline: this customer's monthly revenue for the last 12 months
+  const sparkData: CustomerMonthlyPoint[] = useMemo(() => {
+    const sorted = [...allMonthRows].sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+    const last12 = sorted.slice(-12)
+    return last12.map(m => {
+      const custRev = m.orders
+        .filter(o => (o.customer || 'Unknown') === customer)
+        .reduce((s, o) => s + o.revenue, 0)
+      return { month: m.monthLabel, revenue: custRev }
+    })
+  }, [allMonthRows, customer])
+
+  return (
+    <div className="space-y-4 rounded-xl border bg-card/50 p-4 shadow-sm ml-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">Customer › <span className="text-foreground font-medium">{customer}</span></p>
+          <h4 className="text-base font-bold mt-0.5">Customer Orders</h4>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}><X className="size-4 mr-1" /> Close</Button>
+      </div>
+
+      {/* Mini summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={<Package className="size-4" />} label="Orders" value={String(customerOrders.length)} color="bg-blue-500/10 text-blue-400" />
+        <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totalRev)} color="bg-emerald-500/10 text-emerald-400" />
+        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalPL)} color={totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${margin.toFixed(1)}%`} color={margin >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+      </div>
+
+      {/* Sparkline chart */}
+      {sparkData.length > 1 && (
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Monthly Revenue (Last 12 Months)</h5>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={sparkData}>
+                <defs>
+                  <linearGradient id={`custAreaGrad-${customer.replace(/\W/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.15} vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={50} />
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                  formatter={(v) => [fmt(v as number), 'Revenue']}
+                />
+                <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fill={`url(#custAreaGrad-${customer.replace(/\W/g, '')})`} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Orders table */}
+      <div>
+        <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Orders</h5>
+        <CustomerOrderSubTable orders={orders} customer={customer} />
+      </div>
+    </div>
+  )
+}
+
 // ─── Customer Breakdown Table (Drilldown Level 1b) ──────────────────────────
 
-function CustomerBreakdownTable({ orders, monthLabel }: { orders: SalesOrder[]; monthLabel: string }) {
+function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: {
+  orders: SalesOrder[]
+  monthLabel: string
+  monthKey: string
+  allMonthRows: MonthRow[]
+}) {
+  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
+
+  // Build lookup for previous month and previous year customer aggregates
+  const prevMonthCustomerMap = useMemo(() => {
+    const prevKey = getPrevMonthKey(monthKey)
+    const prevRow = allMonthRows.find(m => m.monthKey === prevKey)
+    if (!prevRow) return null
+    const map: Record<string, { revenue: number; pl: number }> = {}
+    for (const o of prevRow.orders) {
+      const k = o.customer || 'Unknown'
+      if (!map[k]) map[k] = { revenue: 0, pl: 0 }
+      map[k].revenue += o.revenue
+      map[k].pl += o.pl
+    }
+    return map
+  }, [monthKey, allMonthRows])
+
+  const prevYearCustomerMap = useMemo(() => {
+    const prevKey = getPrevYearMonthKey(monthKey)
+    const prevRow = allMonthRows.find(m => m.monthKey === prevKey)
+    if (!prevRow) return null
+    const map: Record<string, { revenue: number; pl: number }> = {}
+    for (const o of prevRow.orders) {
+      const k = o.customer || 'Unknown'
+      if (!map[k]) map[k] = { revenue: 0, pl: 0 }
+      map[k].revenue += o.revenue
+      map[k].pl += o.pl
+    }
+    return map
+  }, [monthKey, allMonthRows])
+
   const rows: CustomerBreakdownRow[] = useMemo(() => {
     const byCustomer: Record<string, { orders: number; qty: number; revenue: number; pl: number }> = {}
     for (const o of orders) {
@@ -250,38 +460,100 @@ function CustomerBreakdownTable({ orders, monthLabel }: { orders: SalesOrder[]; 
       byCustomer[k].pl += o.pl
     }
     return Object.entries(byCustomer)
-      .map(([customer, s]) => ({
-        customer,
-        orderCount: s.orders,
-        totalQty: s.qty,
-        revenue: s.revenue,
-        pl: s.pl,
-        margin: s.revenue > 0 ? (s.pl / s.revenue) * 100 : 0,
-      }))
+      .map(([customer, s]) => {
+        const prevM = prevMonthCustomerMap?.[customer]
+        const prevY = prevYearCustomerMap?.[customer]
+        return {
+          customer,
+          orderCount: s.orders,
+          totalQty: s.qty,
+          revenue: s.revenue,
+          pl: s.pl,
+          margin: s.revenue > 0 ? (s.pl / s.revenue) * 100 : 0,
+          revMoM: prevM ? (prevM.revenue > 0 ? ((s.revenue - prevM.revenue) / prevM.revenue) * 100 : (s.revenue > 0 ? 100 : 0)) : null,
+          revYoY: prevY ? (prevY.revenue > 0 ? ((s.revenue - prevY.revenue) / prevY.revenue) * 100 : (s.revenue > 0 ? 100 : 0)) : null,
+          plMoM: prevM ? s.pl - prevM.pl : null,
+        }
+      })
       .sort((a, b) => b.revenue - a.revenue)
-  }, [orders])
+  }, [orders, prevMonthCustomerMap, prevYearCustomerMap])
 
   const CUSTOMER_COLUMNS: ColumnDef<CustomerBreakdownRow>[] = useMemo(() => [
-    { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+    {
+      key: 'customer', label: 'Customer', sortable: true, filterable: true,
+      render: (v, row) => {
+        const r = row as CustomerBreakdownRow
+        const isExpanded = expandedCustomer === r.customer
+        return (
+          <span className="flex items-center gap-1.5 font-semibold">
+            {isExpanded ? <ChevronDown className="size-3.5 text-primary" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
+            {v as string}
+          </span>
+        )
+      },
+    },
     { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
     { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
-  ], [])
+    { key: 'revMoM', label: 'Rev MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'revYoY', label: 'Rev YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'plMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
+  ], [expandedCustomer])
 
   const storageKey = `sales_date_customers_${monthLabel.replace(/\W/g, '_')}`
   const table = useDataTable({ data: rows, columns: CUSTOMER_COLUMNS, storageKey })
 
-  return <DataTable table={table} data={rows} noun="customer" exportFilename={storageKey} page={storageKey} />
+  return (
+    <DataTable
+      table={table}
+      data={rows}
+      noun="customer"
+      exportFilename={storageKey}
+      page={storageKey}
+      getRowKey={(row) => (row as CustomerBreakdownRow).customer}
+      expandedRowKey={expandedCustomer}
+      onRowClick={(row) => {
+        const c = (row as CustomerBreakdownRow).customer
+        setExpandedCustomer(prev => prev === c ? null : c)
+      }}
+      renderExpandedContent={(row) => {
+        const r = row as CustomerBreakdownRow
+        return (
+          <CustomerDrilldown
+            customer={r.customer}
+            orders={orders}
+            allMonthRows={allMonthRows}
+            onClose={() => setExpandedCustomer(null)}
+          />
+        )
+      }}
+    />
+  )
 }
 
 // ─── Month Drilldown Panel ───────────────────────────────────────────────────
 
-function MonthDrilldown({ monthRow, onClose }: { monthRow: MonthRow; onClose: () => void }) {
+function MonthDrilldown({ monthRow, allMonthRows, onClose }: { monthRow: MonthRow; allMonthRows: MonthRow[]; onClose: () => void }) {
   const totalQty = monthRow.totalQty
   const totalRev = monthRow.revenue
   const totalPL = monthRow.pl
+
+  // MoM / YoY revenue comparisons for stat cards
+  const monthLookup = useMemo(() => {
+    const map: Record<string, MonthRow> = {}
+    for (const m of allMonthRows) map[m.monthKey] = m
+    return map
+  }, [allMonthRows])
+
+  const prevMonthRow = monthLookup[getPrevMonthKey(monthRow.monthKey)]
+  const prevYearRow = monthLookup[getPrevYearMonthKey(monthRow.monthKey)]
+
+  const momRevDelta = prevMonthRow ? totalRev - prevMonthRow.revenue : null
+  const momRevPct = prevMonthRow && prevMonthRow.revenue > 0 ? ((totalRev - prevMonthRow.revenue) / prevMonthRow.revenue) * 100 : (prevMonthRow ? (totalRev > 0 ? 100 : 0) : null)
+  const yoyRevDelta = prevYearRow ? totalRev - prevYearRow.revenue : null
+  const yoyRevPct = prevYearRow && prevYearRow.revenue > 0 ? ((totalRev - prevYearRow.revenue) / prevYearRow.revenue) * 100 : (prevYearRow ? (totalRev > 0 ? 100 : 0) : null)
 
   return (
     <div className="space-y-4 rounded-xl border bg-card/50 p-5 shadow-sm">
@@ -295,11 +567,25 @@ function MonthDrilldown({ monthRow, onClose }: { monthRow: MonthRow; onClose: ()
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatCard icon={<Package className="size-4" />} label="Orders" value={String(monthRow.orderCount)} sub={`${monthRow.shippedCount}/${monthRow.orderCount} shipped`} color="bg-blue-500/10 text-blue-400" />
         <StatCard icon={<CalendarDays className="size-4" />} label="Total Qty" value={fmtN(totalQty)} color="bg-violet-500/10 text-violet-400" />
         <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totalRev)} color="bg-emerald-500/10 text-emerald-400" />
         <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalPL)} sub={`${monthRow.margin.toFixed(1)}% margin`} color={totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard
+          icon={<ArrowUpRight className="size-4" />}
+          label="MoM Change"
+          value={momRevDelta !== null ? fmt(momRevDelta) : '-'}
+          sub={momRevPct !== null ? `${momRevPct >= 0 ? '+' : ''}${momRevPct.toFixed(1)}% vs prev month` : 'No prior month data'}
+          color={momRevDelta !== null ? (momRevDelta >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400') : 'bg-gray-500/10 text-gray-400'}
+        />
+        <StatCard
+          icon={<ArrowDownRight className="size-4" />}
+          label="YoY Change"
+          value={yoyRevDelta !== null ? fmt(yoyRevDelta) : '-'}
+          sub={yoyRevPct !== null ? `${yoyRevPct >= 0 ? '+' : ''}${yoyRevPct.toFixed(1)}% vs same month LY` : 'No prior year data'}
+          color={yoyRevDelta !== null ? (yoyRevDelta >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400') : 'bg-gray-500/10 text-gray-400'}
+        />
       </div>
 
       {/* Monthly Orders Table */}
@@ -311,7 +597,7 @@ function MonthDrilldown({ monthRow, onClose }: { monthRow: MonthRow; onClose: ()
       {/* Customer Breakdown */}
       <div>
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Customer Breakdown</h4>
-        <CustomerBreakdownTable orders={monthRow.orders} monthLabel={monthRow.monthLabel} />
+        <CustomerBreakdownTable orders={monthRow.orders} monthLabel={monthRow.monthLabel} monthKey={monthRow.monthKey} allMonthRows={allMonthRows} />
       </div>
     </div>
   )
@@ -373,7 +659,7 @@ function SalesDatesContent() {
   }, [data, categoryFilter])
 
   // ─── Aggregate by month using attribution date ───
-  const monthRows: MonthRow[] = useMemo(() => {
+  const monthRowsRaw = useMemo(() => {
     if (!filteredOrders.length && !data) return []
     const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedPL: number; forecastPL: number; costs: number }> = {}
 
@@ -417,6 +703,26 @@ function SalesDatesContent() {
       })
       .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
   }, [filteredOrders, data])
+
+  // ─── Build lookup and compute MoM/YoY fields ───
+  const monthRows: MonthRow[] = useMemo(() => {
+    const lookup: Record<string, typeof monthRowsRaw[number]> = {}
+    for (const m of monthRowsRaw) lookup[m.monthKey] = m
+
+    return monthRowsRaw.map(m => {
+      const prevM = lookup[getPrevMonthKey(m.monthKey)]
+      const prevY = lookup[getPrevYearMonthKey(m.monthKey)]
+
+      const revMoM = prevM ? (prevM.revenue > 0 ? ((m.revenue - prevM.revenue) / prevM.revenue) * 100 : (m.revenue > 0 ? 100 : 0)) : null
+      const revYoY = prevY ? (prevY.revenue > 0 ? ((m.revenue - prevY.revenue) / prevY.revenue) * 100 : (m.revenue > 0 ? 100 : 0)) : null
+      const plMoM = prevM ? m.pl - prevM.pl : null
+      const plYoY = prevY ? m.pl - prevY.pl : null
+      const marginMoM = prevM ? m.margin - prevM.margin : null
+      const marginYoY = prevY ? m.margin - prevY.margin : null
+
+      return { ...m, revMoM, revYoY, plMoM, plYoY, marginMoM, marginYoY }
+    })
+  }, [monthRowsRaw])
 
   // ─── Totals ───
   const totals = useMemo(() => {
@@ -483,6 +789,12 @@ function SalesDatesContent() {
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
     { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{(v as number).toFixed(1)}%</span> },
+    { key: 'revMoM', label: 'Rev MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'revYoY', label: 'Rev YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
+    { key: 'plMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
+    { key: 'plYoY', label: 'P/L YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
+    { key: 'marginMoM', label: 'Margin MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
+    { key: 'marginYoY', label: 'Margin YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
   ], [expandedMonth])
 
   const table = useDataTable({ data: monthRows, columns: MONTH_COLUMNS, storageKey: 'sales-by-date' })
@@ -611,7 +923,7 @@ function SalesDatesContent() {
           }}
           renderExpandedContent={(row) => {
             const r = row as MonthRow
-            return <MonthDrilldown monthRow={r} onClose={() => setExpandedMonth(null)} />
+            return <MonthDrilldown monthRow={r} allMonthRows={monthRows} onClose={() => setExpandedMonth(null)} />
           }}
         />
       </div>
