@@ -227,6 +227,26 @@ function OrdersPageContent() {
       },
     },
     {
+      key: 'dateOfRequest',
+      label: 'Requested',
+      sortable: true,
+      render: (v) => {
+        const d = v as string
+        if (!d) return '-'
+        return <span className="text-xs whitespace-nowrap">{d}</span>
+      },
+    },
+    {
+      key: 'requestedDate',
+      label: 'Due Date',
+      sortable: true,
+      render: (v) => {
+        const d = v as string
+        if (!d) return '-'
+        return <span className="text-xs whitespace-nowrap">{d}</span>
+      },
+    },
+    {
       key: 'daysUntilDue',
       label: t('table.daysUntil'),
       sortable: true,
