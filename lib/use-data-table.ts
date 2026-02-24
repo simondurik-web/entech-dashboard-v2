@@ -9,6 +9,8 @@ export interface ColumnDef<T> {
   label: string
   sortable?: boolean
   filterable?: boolean
+  /** If true, column is hidden by default but can be toggled on via Columns picker */
+  defaultHidden?: boolean
   render?: (value: T[keyof T], row: T) => React.ReactNode
 }
 
@@ -56,6 +58,12 @@ export function useDataTable<T extends Record<string, unknown>>({
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>(null)
   const [filters, setFilters] = useState<Map<string, Set<string>>>(() => new Map())
+  const defaultHiddenSet = useMemo(
+    () => new Set(columns.filter((c) => c.defaultHidden).map((c) => c.key)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [] // only compute once on mount
+  )
+
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
     if (storageKey && typeof window !== 'undefined') {
       try {
@@ -63,7 +71,7 @@ export function useDataTable<T extends Record<string, unknown>>({
         if (stored) return new Set(JSON.parse(stored))
       } catch { /* ignore */ }
     }
-    return new Set()
+    return new Set(defaultHiddenSet)
   })
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     if (storageKey && typeof window !== 'undefined') {
@@ -164,7 +172,7 @@ export function useDataTable<T extends Record<string, unknown>>({
   }, [])
 
   const resetView = useCallback(() => {
-    setHiddenColumns(new Set())
+    setHiddenColumns(new Set(columns.filter((c) => c.defaultHidden).map((c) => c.key)))
     setColumnOrder(columns.map((c) => c.key))
     setFilters(new Map())
     setSearchTerm('')
