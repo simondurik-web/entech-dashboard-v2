@@ -181,3 +181,13 @@ The "Views" button (currently shows "Soon") should allow:
 - Each preset generates a multi-tab Excel with custom formatting, totals, dashboard tab
 - Options discussed: per-section buttons, global report page, templates, scheduled emails
 - Simon picked Option 3 (templates) as best approach — to be built later
+
+2026-02-24 [AUTO-SUMMARY]: Entech Dashboard V2 major feature day
+- Automatic Notifications system: Supabase tables + cron endpoint + admin UI, OpenClaw cron every 5 min for urgent/staged order change detection with push notifications
+- Requested Date & Due Date columns added to Orders page
+- Extra Columns Toggle (`defaultHidden` pattern) added across all order pages: Orders, Need to Package, Staged, Shipped — with shared column registry
+- Pallet Load Calculator: SVG viewBox DOOR label cutoff fix + landscape PDF export with forced light colors
+- Sales by Date MoM/YoY: 6 comparison columns (Revenue MoM/YoY, P/L MoM/YoY, Margin MoM/YoY), expandable customer rows with sparkline charts, chart tooltip with MoM/YoY data
+- Count-up animations fixed on stat cards (AnimatedNumber component now starts from 0 on mount, 2.5s duration)
+- Column labels renamed: "Rev MoM" → "Revenue MoM", "Rev YoY" → "Revenue YoY"
+- All features deployed to both staging and production

@@ -68,7 +68,7 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
       render: (v) => String(v || '-'),
     },
     {
-      key: 'priorityLevel',
+      key: 'effectivePriority' as keyof PackageRow & string,
       label: t('table.priority'),
       sortable: true,
       filterable: true,
@@ -204,7 +204,7 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
     },
     // Extra columns — hidden by default
     ...getExtraOrderColumns<PackageRow>(new Set([
-      'category', 'requestedDate', 'priorityLevel', 'line', 'customer', 'ifNumber',
+      'category', 'requestedDate', 'effectivePriority', 'line', 'customer', 'ifNumber',
       'partNumber', 'numPackages', 'packaging', 'partsPerPackage', 'orderQty',
       'fusionInventory', 'tire', 'hub', 'hubMold', 'bearings', 'assignedTo',
       'internalStatus', 'daysUntilDue',
@@ -311,7 +311,13 @@ function NeedToPackagePageContent() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = filterByCategory(orders, filter) as PackageRow[]
+  const filtered = useMemo(() =>
+    (filterByCategory(orders, filter) as PackageRow[]).map(o => ({
+      ...o,
+      effectivePriority: getEffectivePriority(o as unknown as Order) || '-',
+    })),
+    [orders, filter]
+  )
 
   const table = useDataTable({
     data: filtered,

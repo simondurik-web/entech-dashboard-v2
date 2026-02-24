@@ -14,6 +14,7 @@ import { normalizeStatus } from '@/lib/google-sheets'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
+import { getEffectivePriority } from '@/lib/priority'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 type OrderRow = Order & Record<string, unknown>
@@ -83,7 +84,7 @@ function StagedPageContent() {
     { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
     { key: 'poNumber', label: t('table.po'), sortable: true },
     {
-      key: 'priorityLevel',
+      key: 'effectivePriority' as keyof (Order & Record<string, unknown>) & string,
       label: t('table.priority'),
       sortable: true,
       filterable: true,
@@ -149,7 +150,7 @@ function StagedPageContent() {
     { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
     // Extra columns — hidden by default
     ...getExtraOrderColumns<Order & Record<string, unknown>>(new Set([
-      'line', 'ifNumber', 'poNumber', 'priorityLevel', 'daysUntilDue',
+      'line', 'ifNumber', 'poNumber', 'effectivePriority', 'daysUntilDue',
       'customer', 'partNumber', 'orderQty', 'tire', 'hub', 'bearings',
     ])),
   ], [t])
@@ -232,7 +233,13 @@ function StagedPageContent() {
     fetchData()
   }, [fetchData])
 
-  const filtered = filterOrders(orders, filter, search) as OrderRow[]
+  const filtered = useMemo(() =>
+    (filterOrders(orders, filter, search) as OrderRow[]).map(o => ({
+      ...o,
+      effectivePriority: getEffectivePriority(o as unknown as Order) || '-',
+    })),
+    [orders, filter, search]
+  )
 
   const table = useDataTable({
     data: filtered,

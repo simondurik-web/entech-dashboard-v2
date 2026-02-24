@@ -173,7 +173,7 @@ function OrdersPageContent() {
   }, [])
 
   const defaultColumnKeys = useMemo(() => new Set([
-    'line', 'ifNumber', 'poNumber', 'priorityLevel', 'dateOfRequest', 'requestedDate',
+    'line', 'ifNumber', 'poNumber', 'effectivePriority', 'dateOfRequest', 'requestedDate',
     'daysUntilDue', 'customer', 'partNumber', 'orderQty', 'tire', 'hub', 'bearings',
     'internalStatus', 'category', 'assignedTo',
   ]), [])
@@ -183,7 +183,7 @@ function OrdersPageContent() {
     { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
     { key: 'poNumber', label: t('table.po'), sortable: true },
     {
-      key: 'priorityLevel',
+      key: 'effectivePriority' as keyof OrderRow & string,
       label: t('table.priority'),
       sortable: true,
       filterable: true,
@@ -398,7 +398,13 @@ function OrdersPageContent() {
     setExpandedOrderKey((prev) => (prev === key ? null : key))
   }
 
-  const filtered = filterByStatus(filterByCategory(orders, categoryFilter), activeStatuses) as OrderRow[]
+  const filtered = useMemo(() =>
+    (filterByStatus(filterByCategory(orders, categoryFilter), activeStatuses) as OrderRow[]).map(o => ({
+      ...o,
+      effectivePriority: getEffectivePriority(o as unknown as Order) || '-',
+    })),
+    [orders, categoryFilter, activeStatuses]
+  )
 
   const table = useDataTable({
     data: filtered,
