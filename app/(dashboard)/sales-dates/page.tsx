@@ -207,7 +207,7 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
       <div className={`rounded-lg p-2.5 ${color || 'bg-primary/10 text-primary'}`}>{icon}</div>
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-        <p className="text-xl font-bold mt-0.5"><AnimatedNumber value={value} /></p>
+        <p className="text-xl font-bold mt-0.5"><AnimatedNumber value={value} duration={2500} /></p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
     </div>
