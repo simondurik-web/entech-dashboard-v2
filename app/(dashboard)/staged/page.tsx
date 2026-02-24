@@ -210,7 +210,7 @@ function StagedPageContent() {
       const staged = data.filter(
         (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'staged'
       ).map(enrich)
-      setOrders(staged)
+      setOrders(staged.map(o => ({ ...o, effectivePriority: getEffectivePriority(o) || '-' })) as typeof staged)
       // Also store completed and need-to-package for pallet calculator planning
       setCompletedOrders(data.filter(
         (o) => normalizeStatus(o.internalStatus, o.ifStatus) === 'completed'
@@ -233,13 +233,7 @@ function StagedPageContent() {
     fetchData()
   }, [fetchData])
 
-  const filtered = useMemo(() =>
-    (filterOrders(orders, filter, search) as OrderRow[]).map(o => ({
-      ...o,
-      effectivePriority: getEffectivePriority(o as unknown as Order) || '-',
-    })),
-    [orders, filter, search]
-  )
+  const filtered = filterOrders(orders, filter, search) as OrderRow[]
 
   const table = useDataTable({
     data: filtered,

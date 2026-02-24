@@ -164,11 +164,12 @@ function OrdersPageContent() {
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
     setOrders(prev => prev.map(o => {
       if (o.line !== line) return o
-      return {
+      const updated = {
         ...o,
         priorityOverride: newPriority,
         priorityChangedAt: new Date().toISOString(),
       }
+      return { ...updated, effectivePriority: getEffectivePriority(updated) || '-' }
     }))
   }, [])
 
@@ -359,8 +360,10 @@ function OrdersPageContent() {
     try {
       const res = await fetch('/api/sheets')
       if (!res.ok) throw new Error('Failed to fetch orders')
-      const data = await res.json()
-      setOrders(data)
+      const data: Order[] = await res.json()
+      // Add effectivePriority for filtering/display
+      const enriched = data.map(o => ({ ...o, effectivePriority: getEffectivePriority(o) || '-' }))
+      setOrders(enriched as Order[])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')
     } finally {
@@ -398,13 +401,7 @@ function OrdersPageContent() {
     setExpandedOrderKey((prev) => (prev === key ? null : key))
   }
 
-  const filtered = useMemo(() =>
-    (filterByStatus(filterByCategory(orders, categoryFilter), activeStatuses) as OrderRow[]).map(o => ({
-      ...o,
-      effectivePriority: getEffectivePriority(o as unknown as Order) || '-',
-    })),
-    [orders, categoryFilter, activeStatuses]
-  )
+  const filtered = filterByStatus(filterByCategory(orders, categoryFilter), activeStatuses) as OrderRow[]
 
   const table = useDataTable({
     data: filtered,

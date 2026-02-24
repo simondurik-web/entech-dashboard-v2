@@ -305,19 +305,13 @@ function NeedToPackagePageContent() {
             return (a.daysUntilDue ?? 999) - (b.daysUntilDue ?? 999)
           })
 
-        setOrders(needToPackage)
+        setOrders(needToPackage.map(o => ({ ...o, effectivePriority: getEffectivePriority(o as unknown as Order) || '-' })) as typeof needToPackage)
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = useMemo(() =>
-    (filterByCategory(orders, filter) as PackageRow[]).map(o => ({
-      ...o,
-      effectivePriority: getEffectivePriority(o as unknown as Order) || '-',
-    })),
-    [orders, filter]
-  )
+  const filtered = filterByCategory(orders, filter) as PackageRow[]
 
   const table = useDataTable({
     data: filtered,
