@@ -771,52 +771,65 @@ export default function PalletLoadCalculator({
                   opacity={0.85}
                 />
                 {/* Pallet label */}
+                {/* Customer name */}
                 {pw > 25 && ph > 14 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 - 8}
+                    y={py + ph / 2 - 12}
                     textAnchor="middle"
                     fill="white"
-                    fontSize={Math.min(9, pw / 6)}
+                    fontSize={Math.min(8, pw / 8)}
                     fontWeight="600"
                   >
-                    {p.label.slice(0, 8)}
+                    {p.label.length > pw / 5 ? p.label.slice(0, Math.floor(pw / 5)) : p.label}
                   </text>
                 )}
-                {/* Pallet dimensions W×L text */}
+                {/* Pallet dimensions W×L */}
                 {pw > 25 && ph > 18 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 + 2}
+                    y={py + ph / 2 - 2}
                     textAnchor="middle"
                     fill="rgba(255,255,255,0.8)"
-                    fontSize={Math.min(8, pw / 7)}
+                    fontSize={Math.min(7, pw / 9)}
                   >
                     {p.across}×{p.along}
                   </text>
                 )}
                 {/* Weight */}
-                {pw > 30 && ph > 28 && (
+                {pw > 25 && ph > 28 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 + 12}
+                    y={py + ph / 2 + 8}
                     textAnchor="middle"
                     fill="rgba(255,255,255,0.7)"
-                    fontSize={Math.min(7, pw / 8)}
+                    fontSize={Math.min(6.5, pw / 9)}
                   >
                     {p.weightEach.toLocaleString()} lbs
                   </text>
                 )}
-                {/* Parts count & name */}
-                {pw > 40 && ph > 36 && p.numParts > 0 && (
+                {/* Parts count */}
+                {pw > 25 && ph > 36 && p.numParts > 0 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 + 21}
+                    y={py + ph / 2 + 17}
                     textAnchor="middle"
                     fill="rgba(255,255,255,0.6)"
-                    fontSize={Math.min(6, pw / 9)}
+                    fontSize={Math.min(5.5, pw / 10)}
                   >
-                    {p.numParts} pcs · {p.partName.slice(0, 12)}
+                    {p.numParts} pcs
+                  </text>
+                )}
+                {/* Part name */}
+                {pw > 25 && ph > 42 && p.partName && (
+                  <text
+                    x={px + pw / 2}
+                    y={py + ph / 2 + 25}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.5)"
+                    fontSize={Math.min(5, pw / 11)}
+                  >
+                    {p.partName.length > pw / 4.5 ? p.partName.slice(0, Math.floor(pw / 4.5)) : p.partName}
                   </text>
                 )}
                 {/* W×L dimension arrows on every pallet */}
