@@ -200,7 +200,7 @@ The "Views" button (currently shows "Soon") should allow:
 1. Plan the spec (grep files, identify lines)
 2. Show Simon the spec
 3. Spawn agent via `spawn-agent.sh` OR make the edit directly
-4. **Run `review-pr.sh` with at least 2 reviewers (codex + gemini)**
+4. **Run `review-pr.sh` with ALL 3 reviewers (codex + gemini + claude-code)**
 5. Show Simon the review summary
 6. Push to **staging only**
 7. Wait for Simon's approval before production
