@@ -176,15 +176,16 @@ function StagedPageContent() {
       const data: Order[] = await res.json()
 
       // Build pallet dimension/weight lookup by line number
-      interface PalletRec { lineNumber: string; weight: string; dimensions: string }
+      interface PalletRec { lineNumber: string; orderNumber?: string; weight: string; dimensions: string }
       const palletRecs: PalletRec[] = palletRes.ok ? await palletRes.json() : []
       const palletByLine = new Map<string, { avgWeight: number; w: number; l: number }>()
       const grouped = new Map<string, PalletRec[]>()
       for (const pr of palletRecs) {
-        if (!pr.lineNumber) continue
-        const arr = grouped.get(pr.lineNumber) || []
+        const key = pr.lineNumber || pr.orderNumber
+        if (!key) continue
+        const arr = grouped.get(key) || []
         arr.push(pr)
-        grouped.set(pr.lineNumber, arr)
+        grouped.set(key, arr)
       }
       for (const [line, recs] of grouped) {
         const totalW = recs.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0)
