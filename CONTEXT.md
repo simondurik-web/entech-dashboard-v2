@@ -216,3 +216,15 @@ The "Views" button (currently shows "Soon") should allow:
 - Creates audit trail
 - Safer for production (employees use this daily)
 - Simon explicitly requested this on 2026-02-25
+
+### Git Workflow (Corrected 2026-02-25):
+1. Create feature branch: `git checkout -b feat/description`
+2. Make changes and commit
+3. Push feature branch: `git push origin feat/description`
+4. Create PR: `gh pr create --base staging --fill`
+5. Run review: `review-pr.sh --pr <NUMBER> --reviewers codex,gemini`
+6. Show Simon the review summary
+7. Merge PR to staging (after review passes)
+8. Simon tests on staging URL
+9. Simon approves → merge staging to main
+10. **NEVER push directly to staging or main**
