@@ -361,6 +361,22 @@ function HistoryModal({
     return () => { cancelled = true }
   }, [partNumber])
 
+  // Stats calculations (must be above chart rendering so stats is available)
+  const stats = useMemo(() => {
+    if (!historyData) return null
+    const values = historyData.dates.map(d => historyData.dataByDate[d] ?? 0).filter(v => v > 0)
+    const max = values.length ? Math.max(...values) : 0
+    const avg = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
+
+    if (isMfg) {
+      const { prod7, prod30, daysToTarget, trend, trendLabel, trendColor } = calculateProductionStats(currentQty, target || minimum, historyData.dates, historyData.dataByDate)
+      return { max, avg, prod7, prod30, daysToTarget, trend, trendLabel, trendColor, isMfg: true }
+    } else {
+      const { usage7, usage30, projectionRate, daysToZero, daysToMin, trend, trendLabel, trendColor } = calculateUsageStats(currentQty, minimum, historyData.dates, historyData.dataByDate)
+      return { max, avg, usage7, usage30, projectionRate, daysToZero, daysToMin, trend, trendLabel, trendColor, isMfg: false }
+    }
+  }, [historyData, currentQty, minimum, target, isMfg])
+
   // Chart rendering
   useEffect(() => {
     if (!historyData || !canvasRef.current) return
@@ -373,6 +389,29 @@ function HistoryModal({
     if (endDate) dates = dates.filter(d => new Date(d) <= new Date(endDate))
 
     const values = dates.map(d => dataByDate[d] ?? 0)
+
+    // Build projection data for non-manufactured items
+    const projectionLabels: string[] = []
+    const projectionValues: (number | null)[] = Array(dates.length).fill(null)
+    const showProjection = !isMfg && stats?.projectionRate && stats.projectionRate > 0 && (stats.daysToZero ?? 0) > 0
+
+    if (showProjection && dates.length > 0) {
+      const projectionDays = Math.min((stats!.daysToZero ?? 0) + 5, 90)
+      const lastDate = new Date(dates[dates.length - 1])
+      const lastVal = values[values.length - 1] ?? currentQty
+      // Connect to last real data point
+      projectionValues[projectionValues.length - 1] = lastVal
+      for (let d = 1; d <= projectionDays; d++) {
+        const date = new Date(lastDate)
+        date.setDate(date.getDate() + d)
+        projectionLabels.push(date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }))
+        projectionValues.push(Math.max(0, lastVal - stats!.projectionRate! * d))
+      }
+    }
+
+    const allLabels = [...dates, ...projectionLabels]
+    const extendedValues = [...values, ...Array(projectionLabels.length).fill(null)]
+    const extendedMinimum = Array(allLabels.length).fill(minimum)
 
     // Dynamic import chart.js
     Promise.all([
@@ -397,11 +436,11 @@ function HistoryModal({
       chartRef.current = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: dates,
+          labels: allLabels,
           datasets: [
             {
               label: 'Inventory',
-              data: values,
+              data: extendedValues,
               borderColor: '#3b82f6',
               backgroundColor: gradient,
               fill: true,
@@ -411,11 +450,41 @@ function HistoryModal({
             },
             ...(minimum > 0 ? [{
               label: 'Minimum',
-              data: Array(dates.length).fill(minimum),
+              data: extendedMinimum,
               borderColor: '#ef4444',
               borderDash: [5, 5],
               pointRadius: 0,
               fill: false,
+            }] : []),
+            // Projection line
+            ...(showProjection ? [{
+              label: 'Projection',
+              data: projectionValues,
+              borderColor: '#f59e0b',
+              borderDash: [4, 4],
+              borderWidth: 2,
+              pointRadius: 0,
+              fill: false,
+              tension: 0,
+              spanGaps: true,
+            }] : []),
+            // Days to Minimum marker
+            ...(showProjection && stats?.daysToMin != null && stats.daysToMin > 0 ? [{
+              label: `Min in ${stats.daysToMin}d`,
+              data: [...Array(dates.length + stats.daysToMin - 1).fill(null), minimum],
+              borderColor: '#ef4444',
+              pointRadius: 6,
+              pointBackgroundColor: '#ef4444',
+              showLine: false,
+            }] : []),
+            // Days to Zero marker
+            ...(showProjection && stats?.daysToZero != null && stats.daysToZero > 0 ? [{
+              label: `Zero in ${stats.daysToZero}d`,
+              data: [...Array(dates.length + stats.daysToZero - 1).fill(null), 0],
+              borderColor: '#dc2626',
+              pointRadius: 6,
+              pointBackgroundColor: '#dc2626',
+              showLine: false,
             }] : []),
           ],
         },
@@ -440,23 +509,7 @@ function HistoryModal({
         chartRef.current = null
       }
     }
-  }, [historyData, startDate, endDate, minimum])
-
-  // Stats calculations
-  const stats = useMemo(() => {
-    if (!historyData) return null
-    const values = historyData.dates.map(d => historyData.dataByDate[d] ?? 0).filter(v => v > 0)
-    const max = values.length ? Math.max(...values) : 0
-    const avg = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
-
-    if (isMfg) {
-      const { prod7, prod30, daysToTarget, trend, trendLabel, trendColor } = calculateProductionStats(currentQty, target || minimum, historyData.dates, historyData.dataByDate)
-      return { max, avg, prod7, prod30, daysToTarget, trend, trendLabel, trendColor, isMfg: true }
-    } else {
-      const { usage7, usage30, daysToZero, daysToMin, trend, trendLabel, trendColor } = calculateUsageStats(currentQty, minimum, historyData.dates, historyData.dataByDate)
-      return { max, avg, usage7, usage30, daysToZero, daysToMin, trend, trendLabel, trendColor, isMfg: false }
-    }
-  }, [historyData, currentQty, minimum, target, isMfg])
+  }, [historyData, startDate, endDate, minimum, isMfg, stats, currentQty])
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
