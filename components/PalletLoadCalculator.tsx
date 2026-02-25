@@ -968,6 +968,20 @@ export default function PalletLoadCalculator({
       <tbody>${rows}</tbody>
     </table>
     <div class="diagram">${svgMarkup}</div>
+    <h2 style="font-size:16px;margin:20px 0 8px;">📋 Pallet Details</h2>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Customer / Label</th><th>Dimensions</th><th>Weight</th><th>Parts</th><th>Part Number</th>
+      </tr></thead>
+      <tbody>${packResult.placed.map((p, i) => `<tr>
+        <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${i + 1}</td>
+        <td style="padding:5px 8px;border:1px solid #ddd;">${p.label}</td>
+        <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${p.across}"×${p.along}"</td>
+        <td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">${p.weightEach.toLocaleString()} lbs</td>
+        <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${p.numParts > 0 ? p.numParts + ' pcs' : '—'}</td>
+        <td style="padding:5px 8px;border:1px solid #ddd;">${p.partName || '—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
     <div class="no-print" style="margin-top:20px;text-align:center;">
       <button onclick="window.print()" style="padding:10px 24px;background:#1F3864;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨️ Print / Save as PDF</button>
     </div>
