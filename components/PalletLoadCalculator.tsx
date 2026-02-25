@@ -108,6 +108,9 @@ interface PlacedPallet {
   typeId: string
   colorIdx: number
   label: string
+  weightEach: number
+  numParts: number
+  partName: string
 }
 
 interface PackResult {
@@ -141,7 +144,7 @@ function defaultPalletType(index: number): PalletType {
 }
 
 // ── Packing Algorithm ──────────────────────────────────────
-function packPallets(types: PalletType[], trailer: { length: number; width: number }): PackResult {
+function packPallets(types: PalletType[], trailer: { length: number; width: number }, typeInfo: Map<string, { numParts: number; partName: string }>): PackResult {
   interface Spot {
     across: number
     along: number
@@ -150,6 +153,9 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
     typeId: string
     colorIdx: number
     label: string
+    weightEach: number
+    numParts: number
+    partName: string
   }
 
   const spots: Spot[] = []
@@ -182,6 +188,7 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
     }
 
     const count = t.doubleStack ? Math.ceil(t.qty / 2) : t.qty
+    const info = typeInfo.get(t.id)
     for (let i = 0; i < count; i++) {
       spots.push({
         across, along,
@@ -190,6 +197,9 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
         typeId: t.id,
         colorIdx: t.colorIdx,
         label: t.label,
+        weightEach: t.weightEach,
+        numParts: info?.numParts ?? 0,
+        partName: info?.partName ?? '',
       })
     }
   }
@@ -222,6 +232,9 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
           typeId: s.typeId,
           colorIdx: s.colorIdx,
           label: s.label,
+          weightEach: s.weightEach,
+          numParts: s.numParts,
+          partName: s.partName,
         })
         cursorX += s.across
         rowH = Math.max(rowH, s.along)
@@ -273,7 +286,27 @@ export default function PalletLoadCalculator({
     return map
   }, [palletTypes])
 
-  const packResult = useMemo(() => packPallets(palletTypes, trailer), [palletTypes, trailer])
+  // Build per-type parts info from linked orders
+  const allOrders = useMemo(() => [...stagedOrders, ...completedOrders, ...needToPackageOrders], [stagedOrders, completedOrders, needToPackageOrders])
+  const orderMap = useMemo(() => {
+    const m = new Map<string, Order>()
+    allOrders.forEach(o => m.set(getOrderKey(o), o))
+    return m
+  }, [allOrders])
+
+  const typeInfo = useMemo(() => {
+    const m = new Map<string, { numParts: number; partName: string }>()
+    palletTypes.forEach(pt => {
+      const linkedOrders = pt.linkedOrderKeys.map(k => orderMap.get(k)).filter(Boolean) as Order[]
+      const partNames = [...new Set(linkedOrders.map(o => o.partNumber).filter(Boolean))]
+      const totalParts = linkedOrders.reduce((sum, o) => sum + (o.orderQty || 0), 0)
+      const partsPerPallet = pt.qty > 0 ? Math.round(totalParts / pt.qty) : totalParts
+      m.set(pt.id, { numParts: partsPerPallet, partName: partNames.join(', ') })
+    })
+    return m
+  }, [palletTypes, orderMap])
+
+  const packResult = useMemo(() => packPallets(palletTypes, trailer, typeInfo), [palletTypes, trailer, typeInfo])
 
   const totalPallets = palletTypes.reduce((s, p) => s + p.qty, 0)
   const totalWeight = palletTypes.reduce((s, p) => s + p.qty * p.weightEach, 0)
@@ -741,7 +774,7 @@ export default function PalletLoadCalculator({
                 {pw > 25 && ph > 14 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 - 2}
+                    y={py + ph / 2 - 8}
                     textAnchor="middle"
                     fill="white"
                     fontSize={Math.min(9, pw / 6)}
@@ -754,12 +787,36 @@ export default function PalletLoadCalculator({
                 {pw > 25 && ph > 18 && (
                   <text
                     x={px + pw / 2}
-                    y={py + ph / 2 + 10}
+                    y={py + ph / 2 + 2}
                     textAnchor="middle"
                     fill="rgba(255,255,255,0.8)"
                     fontSize={Math.min(8, pw / 7)}
                   >
                     {p.across}×{p.along}
+                  </text>
+                )}
+                {/* Weight */}
+                {pw > 30 && ph > 28 && (
+                  <text
+                    x={px + pw / 2}
+                    y={py + ph / 2 + 12}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.7)"
+                    fontSize={Math.min(7, pw / 8)}
+                  >
+                    {p.weightEach.toLocaleString()} lbs
+                  </text>
+                )}
+                {/* Parts count & name */}
+                {pw > 40 && ph > 36 && p.numParts > 0 && (
+                  <text
+                    x={px + pw / 2}
+                    y={py + ph / 2 + 21}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.6)"
+                    fontSize={Math.min(6, pw / 9)}
+                  >
+                    {p.numParts} pcs · {p.partName.slice(0, 12)}
                   </text>
                 )}
                 {/* W×L dimension arrows on every pallet */}
