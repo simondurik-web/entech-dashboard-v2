@@ -181,7 +181,7 @@ function StagedPageContent() {
       const palletByLine = new Map<string, { avgWeight: number; w: number; l: number }>()
       const grouped = new Map<string, PalletRec[]>()
       for (const pr of palletRecs) {
-        const key = pr.lineNumber || pr.orderNumber
+        const key = (pr.lineNumber || '').trim() || (pr.orderNumber || '').trim()
         if (!key) continue
         const arr = grouped.get(key) || []
         arr.push(pr)
@@ -201,7 +201,7 @@ function StagedPageContent() {
 
       // Enrich orders with pallet data
       const enrich = (o: Order): Order => {
-        const pd = palletByLine.get(o.line)
+        const pd = palletByLine.get((o.line || '').trim()) || palletByLine.get((o.ifNumber || '').trim())
         if (pd) {
           return { ...o, palletWidth: pd.w, palletLength: pd.l, palletWeightEach: pd.avgWeight }
         }
