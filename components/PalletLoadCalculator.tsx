@@ -932,34 +932,42 @@ export default function PalletLoadCalculator({
 
     const html = `<!DOCTYPE html><html><head><title>Load Report</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 20px; color: #1a1a2e; }
-      h1 { font-size: 22px; margin-bottom: 4px; }
-      .meta { color: #666; font-size: 13px; margin-bottom: 16px; }
-      .stats { display: flex; gap: 20px; margin-bottom: 16px; }
-      .stat { background: #f0f4f8; border-radius: 8px; padding: 10px 16px; }
-      .stat-label { font-size: 11px; color: #666; }
-      .stat-value { font-size: 18px; font-weight: 700; }
-      table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-      th { background: #1F3864; color: white; padding: 8px 10px; text-align: left; font-size: 12px; }
-      td { font-size: 12px; }
+      body { font-family: Arial, sans-serif; margin: 8px 12px; color: #1a1a2e; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+      .header-left h1 { font-size: 16px; margin: 0 0 2px; }
+      .header-left .meta { color: #666; font-size: 10px; }
+      .stats { display: flex; gap: 10px; }
+      .stat { background: #f0f4f8; border-radius: 6px; padding: 4px 10px; text-align: center; }
+      .stat-label { font-size: 8px; color: #666; }
+      .stat-value { font-size: 13px; font-weight: 700; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 6px; }
+      th { background: #1F3864; color: white; padding: 3px 6px; text-align: left; font-size: 9px; }
+      td { font-size: 9px; padding: 2px 6px; border: 1px solid #ddd; }
       tr:nth-child(even) { background: #f2f6fc; }
-      .diagram { margin: 20px 0; }
-      .diagram svg { width: 100%; max-height: 400px; color: #333; }
+      .diagram { margin: 4px 0; }
+      .diagram svg { width: 100%; max-height: 260px; color: #333; }
       .diagram svg text { fill: #333; }
       .diagram svg rect[stroke] { stroke: #333; }
       .diagram svg line { stroke: #666; }
       .diagram svg marker path { fill: #666; }
       .status-ok { color: #16a34a; } .status-warn { color: #d97706; } .status-bad { color: #dc2626; }
-      @media print { body { margin: 10px; } .no-print { display: none; } }
-      @page { size: landscape; margin: 10mm; }
+      h2 { font-size: 11px; margin: 6px 0 3px; }
+      .two-tables { display: flex; gap: 10px; }
+      .two-tables > div { flex: 1; }
+      @media print { body { margin: 5px 8px; } .no-print { display: none; } }
+      @page { size: landscape; margin: 6mm; }
     </style></head><body>
-    <h1>🚚 Pallet Load Report</h1>
-    <div class="meta">${trailerLabel} · ${new Date().toLocaleDateString()} · Max Payload: ${maxPayload.toLocaleString()} lbs</div>
-    <div class="stats">
-      <div class="stat"><div class="stat-label">Total Pallets</div><div class="stat-value">${totalPallets}</div></div>
-      <div class="stat"><div class="stat-label">Total Weight</div><div class="stat-value">${totalWeight.toLocaleString()} lbs</div></div>
-      <div class="stat"><div class="stat-label">Space Used</div><div class="stat-value">${spaceUsedPct}%</div></div>
-      <div class="stat"><div class="stat-label">Load Status</div><div class="stat-value ${isOverweight ? 'status-bad' : hasOverflow ? 'status-warn' : 'status-ok'}">${loadStatus}</div></div>
+    <div class="header">
+      <div class="header-left">
+        <h1>🚚 Pallet Load Report</h1>
+        <div class="meta">${trailerLabel} · ${new Date().toLocaleDateString()} · Max Payload: ${maxPayload.toLocaleString()} lbs</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Pallets</div><div class="stat-value">${totalPallets}</div></div>
+        <div class="stat"><div class="stat-label">Weight</div><div class="stat-value">${totalWeight.toLocaleString()} lbs</div></div>
+        <div class="stat"><div class="stat-label">Space</div><div class="stat-value">${spaceUsedPct}%</div></div>
+        <div class="stat"><div class="stat-label">Status</div><div class="stat-value ${isOverweight ? 'status-bad' : hasOverflow ? 'status-warn' : 'status-ok'}">${loadStatus}</div></div>
+      </div>
     </div>
     <table>
       <thead><tr>
@@ -968,20 +976,26 @@ export default function PalletLoadCalculator({
       <tbody>${rows}</tbody>
     </table>
     <div class="diagram">${svgMarkup}</div>
-    <h2 style="font-size:16px;margin:20px 0 8px;">📋 Pallet Details</h2>
-    <table>
-      <thead><tr>
-        <th>#</th><th>Customer / Label</th><th>Dimensions</th><th>Weight</th><th>Parts</th><th>Part Number</th>
-      </tr></thead>
-      <tbody>${packResult.placed.map((p, i) => `<tr>
-        <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${i + 1}</td>
-        <td style="padding:5px 8px;border:1px solid #ddd;">${p.label}</td>
-        <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${p.across}"×${p.along}"</td>
-        <td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">${p.weightEach.toLocaleString()} lbs</td>
-        <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${p.numParts > 0 ? p.numParts + ' pcs' : '—'}</td>
-        <td style="padding:5px 8px;border:1px solid #ddd;">${p.partName || '—'}</td>
-      </tr>`).join('')}</tbody>
-    </table>
+    <h2>📋 Pallet Details</h2>
+    ${(() => {
+      const placed = packResult.placed
+      const mid = Math.ceil(placed.length / 2)
+      const left = placed.slice(0, mid)
+      const right = placed.slice(mid)
+      const renderRows = (arr: typeof placed, startIdx: number) => arr.map((p, i) => `<tr>
+        <td style="text-align:center;">${startIdx + i + 1}</td>
+        <td>${p.label}</td>
+        <td style="text-align:center;">${p.across}"×${p.along}"</td>
+        <td style="text-align:right;">${p.weightEach.toLocaleString()} lbs</td>
+        <td style="text-align:center;">${p.numParts > 0 ? p.numParts + ' pcs' : '—'}</td>
+        <td>${p.partName || '—'}</td>
+      </tr>`).join('')
+      const tableHead = `<thead><tr><th>#</th><th>Customer</th><th>Dims</th><th>Weight</th><th>Parts</th><th>Part #</th></tr></thead>`
+      return `<div class="two-tables">
+        <div><table>${tableHead}<tbody>${renderRows(left, 0)}</tbody></table></div>
+        <div><table>${tableHead}<tbody>${renderRows(right, mid)}</tbody></table></div>
+      </div>`
+    })()}
     <div class="no-print" style="margin-top:20px;text-align:center;">
       <button onclick="window.print()" style="padding:10px 24px;background:#1F3864;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨️ Print / Save as PDF</button>
     </div>
