@@ -191,3 +191,28 @@ The "Views" button (currently shows "Soon") should allow:
 - Count-up animations fixed on stat cards (AnimatedNumber component now starts from 0 on mount, 2.5s duration)
 - Column labels renamed: "Rev MoM" → "Revenue MoM", "Rev YoY" → "Revenue YoY"
 - All features deployed to both staging and production
+
+## ⚠️ CODE REVIEW RULE (MANDATORY — Simon's Requirement 2026-02-25)
+
+**ALL code changes must go through the agent fleet review pipeline before pushing.**
+
+### Workflow:
+1. Plan the spec (grep files, identify lines)
+2. Show Simon the spec
+3. Spawn agent via `spawn-agent.sh` OR make the edit directly
+4. **Run `review-pr.sh` with at least 2 reviewers (codex + gemini)**
+5. Show Simon the review summary
+6. Push to **staging only**
+7. Wait for Simon's approval before production
+
+### No exceptions. Even for:
+- Small fixes (< 20 lines)
+- CSS/formatting changes
+- Adding table rows or text
+- "Obviously correct" changes
+
+### Why:
+- Catches rounding bugs, edge cases, pre-existing issues
+- Creates audit trail
+- Safer for production (employees use this daily)
+- Simon explicitly requested this on 2026-02-25
