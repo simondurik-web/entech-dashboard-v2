@@ -1001,8 +1001,9 @@ export default function PalletLoadCalculator({
     </div>
     </body></html>`
 
-    const win = window.open('', '_blank', 'noopener,noreferrer')
+    const win = window.open('', '_blank')
     if (win) {
+      win.opener = null
       win.document.write(html)
       win.document.close()
     }
