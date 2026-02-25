@@ -912,16 +912,16 @@ export default function PalletLoadCalculator({
       // Find linked orders
       const linkedOrders = [...new Set(pt.linkedOrderKeys.map(k => {
         const [ifNum] = k.split('||')
-        return ifNum
-      }))]
+        return ifNum.trim()
+      }).filter(Boolean))]
       return `<tr>
-        <td style="padding:6px 10px;border:1px solid #ddd;">${pt.label}</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;">${linkedOrders.join(', ') || '—'}</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${pt.width}"</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${pt.length}"</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${pt.qty}</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${(pt.qty * pt.weightEach).toLocaleString()} lbs</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${orientLabel}</td>
+        <td>${pt.label}</td>
+        <td>${linkedOrders.join(', ') || '—'}</td>
+        <td style="text-align:center;">${pt.width}"</td>
+        <td style="text-align:center;">${pt.length}"</td>
+        <td style="text-align:center;">${pt.qty}</td>
+        <td style="text-align:right;">${(pt.qty * pt.weightEach).toLocaleString()} lbs</td>
+        <td style="text-align:center;">${orientLabel}</td>
       </tr>`
     }).join('')
 
@@ -1001,7 +1001,7 @@ export default function PalletLoadCalculator({
     </div>
     </body></html>`
 
-    const win = window.open('', '_blank')
+    const win = window.open('', '_blank', 'noopener,noreferrer')
     if (win) {
       win.document.write(html)
       win.document.close()
