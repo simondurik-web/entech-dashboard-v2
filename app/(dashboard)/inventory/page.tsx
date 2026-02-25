@@ -468,19 +468,19 @@ function HistoryModal({
               tension: 0,
               spanGaps: true,
             }] : []),
-            // Days to Minimum marker
-            ...(showProjection && stats?.daysToMin != null && stats.daysToMin > 0 ? [{
+            // Days to Minimum marker (only if within projection horizon)
+            ...(showProjection && stats?.daysToMin != null && stats.daysToMin > 0 && stats.daysToMin <= Math.min((stats.daysToZero ?? 0) + 5, 90) ? [{
               label: `Min in ${stats.daysToMin}d`,
-              data: [...Array(dates.length + stats.daysToMin - 1).fill(null), minimum],
+              data: (() => { const arr = Array(allLabels.length).fill(null); const idx = dates.length + stats.daysToMin! - 1; if (idx < arr.length) arr[idx] = minimum; return arr })(),
               borderColor: '#ef4444',
               pointRadius: 6,
               pointBackgroundColor: '#ef4444',
               showLine: false,
             }] : []),
-            // Days to Zero marker
-            ...(showProjection && stats?.daysToZero != null && stats.daysToZero > 0 ? [{
+            // Days to Zero marker (only if within projection horizon)
+            ...(showProjection && stats?.daysToZero != null && stats.daysToZero > 0 && stats.daysToZero <= Math.min((stats.daysToZero ?? 0) + 5, 90) ? [{
               label: `Zero in ${stats.daysToZero}d`,
-              data: [...Array(dates.length + stats.daysToZero - 1).fill(null), 0],
+              data: (() => { const arr = Array(allLabels.length).fill(null); const idx = dates.length + stats.daysToZero! - 1; if (idx < arr.length) arr[idx] = 0; return arr })(),
               borderColor: '#dc2626',
               pointRadius: 6,
               pointBackgroundColor: '#dc2626',
