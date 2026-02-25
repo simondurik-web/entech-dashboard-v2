@@ -910,10 +910,10 @@ export default function PalletLoadCalculator({
     const rows = palletTypes.filter(pt => pt.qty > 0).map((pt) => {
       const orientLabel = pt.orientation === 'widthwise' ? 'Width Across' : pt.orientation === 'lengthwise' ? 'Length Across' : 'Auto'
       // Find linked orders
-      const linkedOrders = pt.linkedOrderKeys.map(k => {
-        const [ifNum] = k.split('::')
+      const linkedOrders = [...new Set(pt.linkedOrderKeys.map(k => {
+        const [ifNum] = k.split('||')
         return ifNum
-      })
+      }))]
       return `<tr>
         <td style="padding:6px 10px;border:1px solid #ddd;">${pt.label}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;">${linkedOrders.join(', ') || '—'}</td>
