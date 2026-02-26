@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Search, Package, TrendingUp, TrendingDown, Minus, ExternalLink, X, AlertTriangle } from 'lucide-react'
-import type { InventoryItem } from '@/lib/google-sheets'
+import type { InventoryItem } from '@/lib/google-sheets-shared'
 import { useI18n } from '@/lib/i18n'
 import Link from 'next/link'
 

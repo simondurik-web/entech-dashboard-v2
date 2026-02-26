@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useRef } from 'react'
-import type { Order } from '@/lib/google-sheets'
+import type { Order } from '@/lib/google-sheets-shared'
 
 // ── Constants ──────────────────────────────────────────────
 const PLC_TRAILERS = {

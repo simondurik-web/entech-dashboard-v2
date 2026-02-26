@@ -36,12 +36,8 @@ function getCategory(cat: string): string {
 }
 
 async function fetchCurrentOrders() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${MAIN_DATA_GID}`
-  const res = await fetch(url, { cache: 'no-store' })
-  const text = await res.text()
-  const jsonStr = text.replace(/^[^(]*\(/, '').replace(/\);?\s*$/, '')
-  const data = JSON.parse(jsonStr)
-  const rows = data.table.rows as Array<{ c: Array<{ v: unknown } | null> }>
+  const { fetchSheetData, GIDS } = await import('@/lib/google-sheets')
+  const { rows } = await fetchSheetData(GIDS.orders)
 
   const orders: Array<{
     line: string; urgent: boolean; status: string;

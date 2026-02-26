@@ -5,7 +5,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
-import type { ProductionMakeItem } from '@/lib/google-sheets'
+import type { ProductionMakeItem } from '@/lib/google-sheets-shared'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'

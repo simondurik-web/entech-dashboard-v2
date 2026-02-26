@@ -2,8 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { OrderDetail } from '@/components/OrderDetail'
-import type { Order } from '@/lib/google-sheets'
-import { normalizeStatus } from '@/lib/google-sheets'
+import type { Order } from '@/lib/google-sheets-shared'
+import { normalizeStatus } from '@/lib/google-sheets-shared'
 import { getEffectivePriority } from '@/lib/priority'
 
 /** Category-based color coding */

@@ -23,23 +23,9 @@ export async function GET() {
 }
 
 async function fetchFromSheets() {
-  const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
-  const GID = '1279128282'
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}`
-  const res = await fetch(url, { next: { revalidate: 60 } })
-  const text = await res.text()
-  const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?$/)
-  if (!match) throw new Error('Failed to parse sheet')
-  const json = JSON.parse(match[1])
-  const cols = json.table.cols as { label: string }[]
-  const rows = json.table.rows as { c: ({ v: unknown } | null)[] }[]
-  let headers = cols.map((c: { label: string }, i: number) => c.label || `col${i}`)
-  if (headers.every((h: string) => h.startsWith('col')) && rows.length > 0) {
-    headers = rows[0].c.map((cell: { v: unknown } | null, i: number) =>
-      cell?.v != null ? String(cell.v) : `col${i}`
-    )
-    rows.shift()
-  }
+  const { fetchSheetData, GIDS } = await import('@/lib/google-sheets')
+  const { cols, rows } = await fetchSheetData(GIDS.quotesRegistry)
+  const headers = cols.map((c, i) => c || `col${i}`)
   const data = rows.map((row) => {
     const obj: Record<string, unknown> = {}
     headers.forEach((h: string, i: number) => {

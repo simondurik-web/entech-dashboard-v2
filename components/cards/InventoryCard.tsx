@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { InventoryItem } from '@/lib/google-sheets'
+import type { InventoryItem } from '@/lib/google-sheets-shared'
 
 function stockStatus(item: InventoryItem): 'ok' | 'low' | 'critical' {
   if (item.minimum <= 0) return 'ok'

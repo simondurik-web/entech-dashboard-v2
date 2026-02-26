@@ -16,7 +16,7 @@ import {
   AreaChart,
   ReferenceDot,
 } from 'recharts'
-import type { InventoryItem } from '@/lib/google-sheets'
+import type { InventoryItem } from '@/lib/google-sheets-shared'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { useCountUpDecimal } from '@/lib/use-count-up'
 import { usePermissions } from '@/lib/use-permissions'

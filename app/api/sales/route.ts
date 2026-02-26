@@ -80,14 +80,9 @@ const COLS = {
 }
 
 async function fetchSalesFromSheets() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${MAIN_DATA_GID}`
-  const res = await fetch(url, { next: { revalidate: 60 } })
-  const text = await res.text()
-  const jsonStr = text.replace(/^[^(]*\(/, '').replace(/\);?\s*$/, '')
-  const data = JSON.parse(jsonStr)
-
-  const rows = data.table.rows as Array<{ c: Array<{ v: unknown } | null> }>
-  const cols = data.table.cols as Array<{ label: string }>
+  const { fetchSheetData, GIDS } = await import('@/lib/google-sheets')
+  const { cols: colLabels, rows } = await fetchSheetData(GIDS.orders)
+  const cols = colLabels.map((label) => ({ label }))
 
   let revenueCol = COLS.revenue, variableCostCol = COLS.variableCost
   let totalCostCol = COLS.totalCost, plCol = COLS.pl
