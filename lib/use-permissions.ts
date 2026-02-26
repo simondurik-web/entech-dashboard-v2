@@ -35,8 +35,8 @@ export function usePermissions() {
     (path: string): boolean => {
       if (!profile) return false
 
-      // Admin always has access
-      if (profile.role === "admin") return true
+      // Admin / Super Admin always has access
+      if (profile.role === "admin" || profile.role === "super_admin") return true
 
       // Check custom_permissions first (manager overrides)
       if (profile.custom_permissions && path in profile.custom_permissions) {

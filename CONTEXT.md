@@ -228,3 +228,11 @@ The "Views" button (currently shows "Soon") should allow:
 8. Simon tests on staging URL
 9. Simon approves → merge staging to main
 10. **NEVER push directly to staging or main**
+2026-02-25 [AUTO-SUMMARY]: Migrated all Google Sheets access from public gviz to authenticated API v4 (PR #6)
+- Critical bug found by Codex review: header row included as data — fixed in `toGvizShape`
+- Gemini review found 4 more gviz routes (sales, quotes, cron) — all migrated to centralized `fetchSheetData`
+- Root cause: Simon removed public link sharing, breaking gviz endpoint; fix uses service account auth
+- TypeScript compiles clean; PR #6 ready for Vercel preview → staging → production
+- Claude Code OAuth expired — fell back to Codex + Gemini for reviews
+- Exec policy changed to "full" — production deploys now gated by conversation approval
+- Deployment approval rule established: must message Simon and get explicit "yes" before pushing to main
