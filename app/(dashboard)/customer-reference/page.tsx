@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select'
 import {
   Search, Plus, Copy, Pencil, Trash2, Users, AlertTriangle, TrendingUp, Target,
-  RefreshCw,
+  RefreshCw, ChevronDown,
 } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -107,6 +107,7 @@ function CustomerReferencePageContent() {
   const [showMappingDialog, setShowMappingDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showBomDropdown, setShowBomDropdown] = useState(false)
+  const [showAllBomPartNumbers, setShowAllBomPartNumbers] = useState(false)
   const [editingMapping, setEditingMapping] = useState<PartMapping | null>(null)
   const [formData, setFormData] = useState<MappingFormData>(EMPTY_MAPPING)
   const [customerForm, setCustomerForm] = useState({ name: '', payment_terms: 'Net 30', notes: '' })
@@ -270,6 +271,7 @@ function CustomerReferencePageContent() {
   const openEdit = (m: PartMapping) => {
     setEditingMapping(m)
     setShowBomDropdown(false)
+    setShowAllBomPartNumbers(false)
     setFormData({
       customer_id: m.customer_id,
       customer_part_number: m.customer_part_number || '',
@@ -290,6 +292,7 @@ function CustomerReferencePageContent() {
   const openNew = () => {
     setEditingMapping(null)
     setShowBomDropdown(false)
+    setShowAllBomPartNumbers(false)
     setFormData(EMPTY_MAPPING)
     setShowMappingDialog(true)
   }
@@ -312,6 +315,7 @@ function CustomerReferencePageContent() {
   const filteredBomPartNumbers = bomPartNumbers
     .filter((pn) => !normalizedInternalPartNumber || pn.toLowerCase().includes(normalizedInternalPartNumber.toLowerCase()))
     .slice(0, 20)
+  const visibleBomPartNumbers = showAllBomPartNumbers ? bomPartNumbers : filteredBomPartNumbers
 
   return (
     <div className="p-4 pb-20">
@@ -474,6 +478,7 @@ function CustomerReferencePageContent() {
         if (!open) {
           setEditingMapping(null)
           setShowBomDropdown(false)
+          setShowAllBomPartNumbers(false)
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -503,16 +508,36 @@ function CustomerReferencePageContent() {
             </div>
             <div className="relative" ref={bomDropdownRef}>
               <Label>Internal Part Number *</Label>
-              <Input
-                value={formData.internal_part_number}
-                onChange={(e) => {
-                  setFormData({ ...formData, internal_part_number: e.target.value })
-                  setShowBomDropdown(true)
-                }}
-                onFocus={() => setShowBomDropdown(true)}
-                placeholder="Search or select part number..."
-                className={!hasInternalPartNumber ? '' : hasBomMatch ? 'border-green-500 focus-visible:ring-green-500/40' : 'border-amber-500 focus-visible:ring-amber-500/40'}
-              />
+              <div className="relative">
+                <Input
+                  value={formData.internal_part_number}
+                  onChange={(e) => {
+                    setFormData({ ...formData, internal_part_number: e.target.value })
+                    setShowAllBomPartNumbers(false)
+                    setShowBomDropdown(true)
+                  }}
+                  onFocus={() => {
+                    setShowAllBomPartNumbers(false)
+                    setShowBomDropdown(true)
+                  }}
+                  placeholder="Search or select part number..."
+                  className={`pr-8 ${!hasInternalPartNumber ? '' : hasBomMatch ? 'border-green-500 focus-visible:ring-green-500/40' : 'border-amber-500 focus-visible:ring-amber-500/40'}`}
+                />
+                <button
+                  type="button"
+                  aria-label="Toggle part number dropdown"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => {
+                    setShowBomDropdown((prev) => {
+                      const next = !prev
+                      setShowAllBomPartNumbers(next)
+                      return next
+                    })
+                  }}
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showBomDropdown ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
               {hasInternalPartNumber && (
                 <p className={`mt-1 text-xs ${hasBomMatch ? 'text-green-500' : 'text-amber-500'}`}>
                   {hasBomMatch ? '✓ BOM found for this part number' : '⚠️ No BOM found for this part number'}
@@ -520,8 +545,8 @@ function CustomerReferencePageContent() {
               )}
               {showBomDropdown && (
                 <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-md shadow-lg max-h-56 overflow-y-auto">
-                  {filteredBomPartNumbers.length > 0 ? (
-                    filteredBomPartNumbers.map((pn) => (
+                  {visibleBomPartNumbers.length > 0 ? (
+                    visibleBomPartNumbers.map((pn) => (
                       <button
                         key={pn}
                         type="button"
