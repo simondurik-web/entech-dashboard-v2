@@ -1,3 +1,5 @@
+import { getSheetsClient } from './google-auth'
+
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 
 export const GIDS = {
@@ -15,6 +17,74 @@ export const GIDS = {
   customerReference: '336333220',
   quotesRegistry: '1279128282',
 } as const
+
+const API_CACHE_TTL_MS = 60_000
+
+type GvizRow = { c: Array<{ v: unknown } | null> }
+type GvizSheetData = { cols: string[]; rows: GvizRow[] }
+
+const gidToTitleCache = new Map<string, string>()
+const sheetDataCache = new Map<string, { expiresAt: number; data: GvizSheetData }>()
+
+function quoteSheetTitle(title: string): string {
+  return `'${title.replace(/'/g, "''")}'`
+}
+
+async function getSheetTitleByGid(gid: string): Promise<string> {
+  const cachedTitle = gidToTitleCache.get(gid)
+  if (cachedTitle) return cachedTitle
+
+  const sheetId = Number(gid)
+  if (!Number.isFinite(sheetId)) {
+    throw new Error(`Invalid sheet gid: ${gid}`)
+  }
+
+  const sheets = getSheetsClient()
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: SHEET_ID,
+    fields: 'sheets(properties(sheetId,title))',
+  })
+
+  for (const sheet of meta.data.sheets ?? []) {
+    const props = sheet.properties
+    if (!props?.title || props.sheetId === undefined) continue
+    gidToTitleCache.set(String(props.sheetId), props.title)
+  }
+
+  const title = gidToTitleCache.get(gid)
+  if (!title) {
+    throw new Error(`Sheet title not found for gid: ${gid}`)
+  }
+  return title
+}
+
+function toGvizShape(values: string[][]): GvizSheetData {
+  const rows = values.map((valueRow) => ({
+    c: valueRow.map((cell) => (cell === '' ? null : { v: cell })),
+  }))
+
+  const cols = values[0] ? [...values[0]] : []
+  return { cols, rows }
+}
+
+async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
+  const now = Date.now()
+  const cached = sheetDataCache.get(gid)
+  if (cached && cached.expiresAt > now) return cached.data
+
+  const title = await getSheetTitleByGid(gid)
+  const sheets = getSheetsClient()
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: quoteSheetTitle(title),
+    valueRenderOption: 'FORMATTED_VALUE',
+  })
+
+  const values = (response.data.values ?? []) as string[][]
+  const data = toGvizShape(values)
+  sheetDataCache.set(gid, { data, expiresAt: now + API_CACHE_TTL_MS })
+  return data
+}
 
 export interface Order {
   line: string
@@ -106,7 +176,18 @@ function cellDate(row: { c: Array<{ v: unknown } | null> }, col: number): string
 function cellNumber(row: { c: Array<{ v: unknown } | null> }, col: number): number {
   const cell = row.c[col]
   if (!cell || cell.v === null || cell.v === undefined) return 0
-  return Number(cell.v) || 0
+  const raw = String(cell.v).trim()
+  if (!raw) return 0
+  let clean = raw.replace(/[$,\s]/g, '')
+  if (clean.startsWith('(') && clean.endsWith(')')) {
+    clean = `-${clean.slice(1, -1)}`
+  }
+  if (clean.endsWith('%')) {
+    const percentNum = Number(clean.slice(0, -1))
+    return Number.isFinite(percentNum) ? percentNum / 100 : 0
+  }
+  const num = Number(clean)
+  return Number.isFinite(num) ? num : 0
 }
 
 // Normalize internal status to standard categories
@@ -168,36 +249,16 @@ export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
 }
 
 export async function fetchSheetData(gid: string): Promise<{ cols: string[]; rows: Array<{ c: Array<{ v: unknown } | null> }> }> {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`
-  const res = await fetch(url, { next: { revalidate: 60 } })
-  const text = await res.text()
-
-  // Google wraps JSON in: /*O_o*/ google.visualization.Query.setResponse({...});
-  const jsonStr = text.replace(/^[^(]*\(/, '').replace(/\);?\s*$/, '')
-  const data = JSON.parse(jsonStr)
-
-  const cols: string[] = data.table.cols.map((c: { label: string }) => c.label)
-  const rows = data.table.rows as Array<{ c: Array<{ v: unknown } | null> }>
-
-  return { cols, rows }
+  return fetchSheetDataFromApi(gid)
 }
 
 export async function fetchOrders(): Promise<Order[]> {
-  // Use CSV export instead of gviz — gviz silently truncates columns beyond Z (26)
-  // CSV returns ALL columns reliably
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GIDS.orders}`
-  const res = await fetch(url, { next: { revalidate: 60 } })
-  const csvText = await res.text()
-  const rows = parseCSVRows(csvText)
+  const { rows } = await fetchSheetDataFromApi(GIDS.orders)
+  const parsedRows = rows.map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
   
-  if (rows.length < 2) return []
+  if (parsedRows.length < 2) return []
   
-  const headers = rows[0]
-  const dataRows = rows.slice(1)
-  
-  // Build header index map for reliable column lookup
-  const headerIndex = new Map<string, number>()
-  headers.forEach((h, i) => headerIndex.set(h.trim(), i))
+  const dataRows = parsedRows.slice(1)
   
   function col(row: string[], index: number): string {
     return (index >= 0 && index < row.length) ? row[index].trim() : ''
@@ -279,58 +340,11 @@ function parseSheetNumber(value: string): number {
   return Number.parseFloat(clean) || 0
 }
 
-function parseCSVRows(csv: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let cell = ''
-  let inQuotes = false
-
-  for (let i = 0; i < csv.length; i++) {
-    const char = csv[i]
-    const next = csv[i + 1]
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        cell += '"'
-        i++
-      } else {
-        inQuotes = !inQuotes
-      }
-      continue
-    }
-
-    if (char === ',' && !inQuotes) {
-      row.push(cell)
-      cell = ''
-      continue
-    }
-
-    if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (char === '\r' && next === '\n') i++
-      row.push(cell)
-      rows.push(row)
-      row = []
-      cell = ''
-      continue
-    }
-
-    cell += char
-  }
-
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell)
-    rows.push(row)
-  }
-
-  return rows
-}
-
 export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GIDS.inventoryHistory}`
-  const res = await fetch(url, { next: { revalidate: 60 } })
-  const csvText = await res.text()
-
-  const rows = parseCSVRows(csvText).filter((row) =>
+  const { rows: gvizRows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
+  const rows = gvizRows
+    .map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
+    .filter((row) =>
     row.some((cell) => cell.trim() !== '')
   )
   if (rows.length === 0) return { dates: [], parts: [] }
