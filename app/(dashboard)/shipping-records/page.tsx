@@ -10,7 +10,7 @@ import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
 import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { Search } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
-import type { ShippingRecord } from '@/lib/google-sheets'
+import type { ShippingRecord } from '@/lib/google-sheets-shared'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 
 const CATEGORY_FILTERS = [

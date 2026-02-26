@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { Card, CardContent } from '@/components/ui/card'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
-import type { Drawing } from '@/lib/google-sheets'
+import type { Drawing } from '@/lib/google-sheets-shared'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 

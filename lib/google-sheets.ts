@@ -1,4 +1,10 @@
-import { getSheetsClient } from './google-auth'
+// Re-export types so API routes can still import from this file
+export type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
+export { normalizeStatus } from './google-sheets-shared'
+
+// Local imports for internal use
+import type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
+import { normalizeStatus } from './google-sheets-shared'
 
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 
@@ -39,6 +45,7 @@ async function getSheetTitleByGid(gid: string): Promise<string> {
     throw new Error(`Invalid sheet gid: ${gid}`)
   }
 
+  const { getSheetsClient } = await import('./google-auth')
   const sheets = getSheetsClient()
   const meta = await sheets.spreadsheets.get({
     spreadsheetId: SHEET_ID,
@@ -73,6 +80,7 @@ async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
   if (cached && cached.expiresAt > now) return cached.data
 
   const title = await getSheetTitleByGid(gid)
+  const { getSheetsClient } = await import('./google-auth')
   const sheets = getSheetsClient()
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
@@ -86,45 +94,6 @@ async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
   return data
 }
 
-export interface Order {
-  line: string
-  category: string
-  dateOfRequest: string
-  priorityLevel: number
-  urgentOverride: boolean
-  ifNumber: string
-  ifStatus: string
-  internalStatus: string
-  poNumber: string
-  customer: string
-  partNumber: string
-  orderQty: number
-  packaging: string
-  partsPerPackage: number
-  numPackages: number
-  fusionInventory: number
-  hubMold: string
-  tire: string
-  hasTire: boolean
-  hub: string
-  hasHub: boolean
-  bearings: string
-  requestedDate: string
-  daysUntilDue: number | null
-  assignedTo: string
-  shippedDate: string
-  dailyCapacity: number
-  // Priority override (manual from dashboard)
-  priorityOverride: string | null
-  priorityChangedBy: string | null
-  priorityChangedAt: string | null
-  // Computed priority (set after fetch)
-  computedPriority?: string | null
-  // Pallet calculator enrichment (from pallet records)
-  palletWidth?: number
-  palletLength?: number
-  palletWeightEach?: number
-}
 
 // Column indices: A=0..Z=25, AA=26..AV=47
 // Verified from Google Sheets Main Data columns (2026-02-07)
@@ -191,23 +160,6 @@ function cellNumber(row: { c: Array<{ v: unknown } | null> }, col: number): numb
 }
 
 // Normalize internal status to standard categories
-export function normalizeStatus(status: string, ifStatus: string): string {
-  const s = (status || ifStatus || '').toLowerCase()
-  
-  // Canceled/cancelled orders - explicit check
-  if (s.includes('cancel')) return 'cancelled'
-  if (s.includes('closed') || s.includes('void')) return 'cancelled'
-  
-  // Standard statuses (order matters — check more specific first)
-  if (s.includes('pending') || s.includes('approved') || s.includes('released')) return 'pending'
-  if (s.includes('completed')) return 'completed'
-  if (s.includes('staged')) return 'staged'
-  if (s.includes('work in progress') || s.includes('wip') || s.includes('in production')) return 'wip'
-  if (s.includes('shipped') || s.includes('invoiced') || s.includes('to bill')) return 'shipped'
-  
-  // If no match, return the original (lowercased) or 'unknown'
-  return s || 'unknown'
-}
 
 export function parseOrder(row: { c: Array<{ v: unknown } | null> }): Order {
   const internalStatus = cellValue(row, COLS.internalStatus)
@@ -321,15 +273,7 @@ export async function fetchOrders(): Promise<Order[]> {
     })
 }
 
-export interface InventoryHistoryPart {
-  partNumber: string
-  dataByDate: Record<string, number>
-}
 
-export interface InventoryHistoryData {
-  dates: string[]
-  parts: InventoryHistoryPart[]
-}
 
 function parseSheetNumber(value: string): number {
   if (!value || value === '') return 0
@@ -381,22 +325,6 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
 
 // --- Inventory ---
 
-export interface InventoryItem {
-  partNumber: string
-  product: string
-  inStock: number
-  minimum: number
-  target: number
-  moldType: string
-  lastUpdate: string
-  itemType: string          // "Manufactured" | "Purchased" | "COM" | ""
-  isManufactured: boolean
-  projectionRate: number | null  // avg daily usage/production rate
-  usage7: number | null     // 7-day usage
-  usage30: number | null    // 30-day usage
-  daysToMin: number | null  // days until stock hits minimum
-  daysToZero: number | null // days until stock hits zero
-}
 
 // Fusion Export columns (GID 1805754553) — row 0 is header
 // A=partNumber, B=qty
@@ -492,15 +420,6 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
 
 // --- Production Make (parts to manufacture) ---
 
-export interface ProductionMakeItem {
-  partNumber: string
-  product: string
-  moldType: string
-  fusionInventory: number
-  minimums: number
-  partsToBeMade: number
-  drawingUrl: string
-}
 
 export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
   const [fusion, production] = await Promise.all([
@@ -563,19 +482,6 @@ export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
 
 // --- Pallet Records ---
 
-export interface PalletRecord {
-  timestamp: string
-  orderNumber: string
-  lineNumber: string
-  palletNumber: string
-  customer: string
-  ifNumber: string
-  category: string
-  weight: string
-  dimensions: string
-  partsPerPallet: string
-  photos: string[]
-}
 
 function findColumnValue(
   row: { c: Array<{ v: unknown } | null> },
@@ -638,20 +544,6 @@ export async function fetchPalletRecords(): Promise<PalletRecord[]> {
 
 // --- Shipping Records ---
 
-export interface ShippingRecord {
-  timestamp: string
-  shipDate: string
-  customer: string
-  ifNumber: string
-  category: string
-  carrier: string
-  bol: string
-  palletCount: number
-  photos: string[]
-  shipmentPhotos: string[]
-  paperworkPhotos: string[]
-  closeUpPhotos: string[]
-}
 
 export async function fetchShippingRecords(): Promise<ShippingRecord[]> {
   const { cols, rows } = await fetchSheetData(GIDS.shippingRecords)
@@ -707,17 +599,6 @@ export async function fetchShippingRecords(): Promise<ShippingRecord[]> {
 
 // --- Staged Records ---
 
-export interface StagedRecord {
-  timestamp: string
-  ifNumber: string
-  customer: string
-  partNumber: string
-  category: string
-  quantity: number
-  location: string
-  photos: string[]
-  fusionPhotos: string[]
-}
 
 export async function fetchStagedRecords(): Promise<StagedRecord[]> {
   const { cols, rows } = await fetchSheetData(GIDS.stagedRecords)
@@ -772,14 +653,6 @@ export async function fetchStagedRecords(): Promise<StagedRecord[]> {
 
 // --- Drawings ---
 
-export interface Drawing {
-  partNumber: string
-  product: string
-  productType: 'Tire' | 'Hub' | 'Other'
-  drawing1Url: string
-  drawing2Url: string
-  moldType: string
-}
 
 export async function fetchDrawings(): Promise<Drawing[]> {
   const { rows } = await fetchSheetData(GIDS.productionTotals)
@@ -819,26 +692,7 @@ export async function fetchDrawings(): Promise<Drawing[]> {
 
 // --- BOM (Bill of Materials) ---
 
-export interface BOMComponent {
-  partNumber: string
-  description: string
-  quantity: number
-  unit: string
-  costPerUnit: number
-  category: 'raw' | 'component' | 'packaging' | 'energy' | 'assembly'
-}
 
-export interface BOMItem {
-  partNumber: string
-  product: string
-  category: string
-  qtyPerPallet: number
-  components: BOMComponent[]
-  totalCost: number
-  materialCost: number
-  packagingCost: number
-  laborEnergyCost: number
-}
 
 function parseCurrency(val: unknown): number {
   if (val === null || val === undefined) return 0
