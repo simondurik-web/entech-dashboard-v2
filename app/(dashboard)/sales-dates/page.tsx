@@ -63,6 +63,8 @@ interface MonthRow extends Record<string, unknown> {
   costs: number
   shippedPL: number
   forecastPL: number
+  shippedRevenue: number
+  forecastRevenue: number
   pl: number
   margin: number
   orders: SalesOrder[]
@@ -611,7 +613,9 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   const shippedLoss = payload.find(p => p.name === 'Shipped Loss')?.value || 0
   const forecastProfit = payload.find(p => p.name === 'Forecast Profit')?.value || 0
   const forecastLoss = payload.find(p => p.name === 'Forecast Loss')?.value || 0
-  const revenue = payload.find(p => p.name === 'Revenue')?.value || 0
+  const shippedRevenue = payload.find(p => p.name === 'Shipped Revenue')?.value || 0
+  const forecastRevenue = payload.find(p => p.name === 'Forecast Revenue')?.value || 0
+  const revenue = shippedRevenue + forecastRevenue
   const totalPL = shippedProfit + shippedLoss + forecastProfit + forecastLoss
   const data = payload[0]?.payload as Record<string, unknown> | undefined
   const revMoM = data?.revMoM as number | null
@@ -630,7 +634,10 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
     <div className="rounded-xl border bg-popover p-3 shadow-lg text-sm space-y-1.5 min-w-[220px]">
       <p className="font-semibold">{label}</p>
       <div className="space-y-1 text-xs">
-        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue</span><span>{fmt(revenue)}</span></div>
+        <div className="flex justify-between gap-4"><span style={{ color: '#60a5fa' }}>Shipped Revenue</span><span>{fmt(shippedRevenue)}</span></div>
+        <div className="flex justify-between gap-4"><span style={{ color: 'rgba(96,165,250,0.6)' }}>Forecast Revenue</span><span>{fmt(forecastRevenue)}</span></div>
+        <div className="flex justify-between gap-4 font-semibold"><span className="text-muted-foreground">Total Revenue</span><span>{fmt(revenue)}</span></div>
+        <hr className="border-border" />
         <div className="flex justify-between gap-4"><span style={{ color: 'rgba(56,161,105,0.9)' }}>Shipped P/L</span><span>{fmt(shippedProfit + shippedLoss)}</span></div>
         <div className="flex justify-between gap-4"><span style={{ color: 'rgba(56,161,105,0.5)' }}>Forecast P/L</span><span>{fmt(forecastProfit + forecastLoss)}</span></div>
         <hr className="border-border" />
@@ -678,14 +685,14 @@ function SalesDatesContent() {
   // ─── Aggregate by month using attribution date ───
   const monthRowsRaw = useMemo(() => {
     if (!filteredOrders.length && !data) return []
-    const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedPL: number; forecastPL: number; costs: number }> = {}
+    const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedPL: number; forecastPL: number; shippedRevenue: number; forecastRevenue: number; costs: number }> = {}
 
     for (const order of filteredOrders) {
       const dateStr = getAttributionDate(order)
       const monthKey = dateStr ? getMonthKey(dateStr) : null
       if (!monthKey) continue
 
-      if (!byMonth[monthKey]) byMonth[monthKey] = { orders: [], shipped: 0, qty: 0, revenue: 0, shippedPL: 0, forecastPL: 0, costs: 0 }
+      if (!byMonth[monthKey]) byMonth[monthKey] = { orders: [], shipped: 0, qty: 0, revenue: 0, shippedPL: 0, forecastPL: 0, shippedRevenue: 0, forecastRevenue: 0, costs: 0 }
       const m = byMonth[monthKey]
       m.orders.push(order)
       m.qty += order.qty
@@ -694,8 +701,10 @@ function SalesDatesContent() {
       if (order.status === 'shipped') {
         m.shipped++
         m.shippedPL += order.pl
+        m.shippedRevenue += order.revenue
       } else {
         m.forecastPL += order.pl
+        m.forecastRevenue += order.revenue
       }
     }
 
@@ -713,6 +722,8 @@ function SalesDatesContent() {
           costs: m.costs,
           shippedPL: m.shippedPL,
           forecastPL: m.forecastPL,
+          shippedRevenue: m.shippedRevenue,
+          forecastRevenue: m.forecastRevenue,
           pl,
           margin: m.revenue > 0 ? (pl / m.revenue) * 100 : 0,
           orders: m.orders,
@@ -775,6 +786,8 @@ function SalesDatesContent() {
           forecastProfit: Math.max(0, m.forecastPL),
           forecastLoss: Math.min(0, m.forecastPL),
           revenue: m.revenue,
+          shippedRevenue: m.shippedRevenue,
+          forecastRevenue: m.forecastRevenue,
           revMoM, revYoY, plMoM, plYoY,
         }
       })
@@ -869,7 +882,8 @@ function SalesDatesContent() {
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(239,68,68,0.85)' }} /> Shipped Loss</span>
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(16,185,129,0.35)' }} /> Forecast Profit</span>
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: 'rgba(239,68,68,0.35)' }} /> Forecast Loss</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 rounded" style={{ background: '#60a5fa' }} /> Revenue</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 rounded-sm" style={{ background: '#60a5fa' }} /> Shipped Revenue</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 rounded-sm border-b border-dashed" style={{ background: '#60a5fa', opacity: 0.5 }} /> Forecast Revenue</span>
           </div>
         </div>
         <div className="h-96">
@@ -928,8 +942,10 @@ function SalesDatesContent() {
               {/* Stacked bars — forecast stack */}
               <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="url(#forecastProfitGrad)" radius={[6, 6, 0, 0]} animationBegin={400} animationDuration={800} animationEasing="ease-out" />
               <Bar yAxisId="left" dataKey="forecastLoss" name="Forecast Loss" stackId="forecast" fill="url(#forecastLossGrad)" radius={[0, 0, 6, 6]} animationBegin={400} animationDuration={800} animationEasing="ease-out" />
-              {/* Revenue line */}
-              <Line yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 3.5, fill: '#60a5fa', strokeWidth: 2, stroke: 'hsl(var(--card))' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#60a5fa', fill: 'hsl(var(--card))' }} animationBegin={600} animationDuration={1000} animationEasing="ease-out" />
+              {/* Shipped Revenue — solid line */}
+              <Line yAxisId="right" type="monotone" dataKey="shippedRevenue" name="Shipped Revenue" stroke="#60a5fa" strokeWidth={2.5} dot={{ r: 3.5, fill: '#60a5fa', strokeWidth: 2, stroke: 'hsl(var(--card))' }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#60a5fa', fill: 'hsl(var(--card))' }} animationBegin={600} animationDuration={1000} animationEasing="ease-out" />
+              {/* Forecast Revenue — dashed line, lighter color */}
+              <Line yAxisId="right" type="monotone" dataKey="forecastRevenue" name="Forecast Revenue" stroke="#60a5fa" strokeWidth={2} strokeDasharray="6 4" strokeOpacity={0.5} dot={{ r: 3, fill: '#60a5fa', strokeWidth: 1.5, stroke: 'hsl(var(--card))', opacity: 0.5 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#60a5fa', fill: 'hsl(var(--card))' }} animationBegin={700} animationDuration={1000} animationEasing="ease-out" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
