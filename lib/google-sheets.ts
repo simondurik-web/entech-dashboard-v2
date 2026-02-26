@@ -66,11 +66,17 @@ async function getSheetTitleByGid(gid: string): Promise<string> {
 }
 
 function toGvizShape(values: string[][]): GvizSheetData {
-  const rows = values.map((valueRow) => ({
+  if (values.length === 0) return { cols: [], rows: [] }
+
+  // First row is headers (cols), remaining rows are data
+  // This matches the old gviz behavior where table.rows excluded headers
+  const cols = [...values[0]]
+  const dataRows = values.slice(1)
+
+  const rows = dataRows.map((valueRow) => ({
     c: valueRow.map((cell) => (cell === '' ? null : { v: cell })),
   }))
 
-  const cols = values[0] ? [...values[0]] : []
   return { cols, rows }
 }
 
