@@ -1,6 +1,7 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -90,10 +91,12 @@ export default function CustomerReferencePage() {
 }
 
 function CustomerReferencePageContent() {
+  const router = useRouter()
   const [mappings, setMappings] = useState<PartMapping[]>([])
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [bomPartNumbers, setBomPartNumbers] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterCustomer, setFilterCustomer] = useState<string>('all')
@@ -103,11 +106,13 @@ function CustomerReferencePageContent() {
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   const [showMappingDialog, setShowMappingDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showBomDropdown, setShowBomDropdown] = useState(false)
   const [editingMapping, setEditingMapping] = useState<PartMapping | null>(null)
   const [formData, setFormData] = useState<MappingFormData>(EMPTY_MAPPING)
   const [customerForm, setCustomerForm] = useState({ name: '', payment_terms: 'Net 30', notes: '' })
   const [deleteTarget, setDeleteTarget] = useState<PartMapping | null>(null)
   const [saving, setSaving] = useState(false)
+  const bomDropdownRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
 
   const fetchData = useCallback(async () => {
@@ -128,6 +133,26 @@ function CustomerReferencePageContent() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  useEffect(() => {
+    fetch('/api/bom')
+      .then(res => res.json())
+      .then((data: Array<{ partNumber: string }>) => {
+        setBomPartNumbers(data.map((b) => b.partNumber).sort())
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!showBomDropdown) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bomDropdownRef.current && !bomDropdownRef.current.contains(event.target as Node)) {
+        setShowBomDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showBomDropdown])
 
   // Filter + search
   const filtered = mappings.filter((m) => {
@@ -244,6 +269,7 @@ function CustomerReferencePageContent() {
 
   const openEdit = (m: PartMapping) => {
     setEditingMapping(m)
+    setShowBomDropdown(false)
     setFormData({
       customer_id: m.customer_id,
       customer_part_number: m.customer_part_number || '',
@@ -263,6 +289,7 @@ function CustomerReferencePageContent() {
 
   const openNew = () => {
     setEditingMapping(null)
+    setShowBomDropdown(false)
     setFormData(EMPTY_MAPPING)
     setShowMappingDialog(true)
   }
@@ -279,6 +306,12 @@ function CustomerReferencePageContent() {
   const formContribution = editingMapping
     ? computeContributionLevel(formLowest, editingMapping.variable_cost, editingMapping.total_cost, editingMapping.sales_target)
     : null
+  const normalizedInternalPartNumber = formData.internal_part_number.trim()
+  const hasInternalPartNumber = normalizedInternalPartNumber.length > 0
+  const hasBomMatch = !hasInternalPartNumber || bomPartNumbers.includes(normalizedInternalPartNumber)
+  const filteredBomPartNumbers = bomPartNumbers
+    .filter((pn) => !normalizedInternalPartNumber || pn.toLowerCase().includes(normalizedInternalPartNumber.toLowerCase()))
+    .slice(0, 20)
 
   return (
     <div className="p-4 pb-20">
@@ -436,7 +469,13 @@ function CustomerReferencePageContent() {
       </Dialog>
 
       {/* Add/Edit Part Mapping Dialog */}
-      <Dialog open={showMappingDialog} onOpenChange={(open) => { setShowMappingDialog(open); if (!open) setEditingMapping(null) }}>
+      <Dialog open={showMappingDialog} onOpenChange={(open) => {
+        setShowMappingDialog(open)
+        if (!open) {
+          setEditingMapping(null)
+          setShowBomDropdown(false)
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingMapping ? t('ui.edit') : t('ui.add')} {t('customerRef.partMapping')}</DialogTitle>
@@ -462,9 +501,56 @@ function CustomerReferencePageContent() {
               <Label>Customer Part Number</Label>
               <Input value={formData.customer_part_number || ''} onChange={(e) => setFormData({ ...formData, customer_part_number: e.target.value })} />
             </div>
-            <div>
+            <div className="relative" ref={bomDropdownRef}>
               <Label>Internal Part Number *</Label>
-              <Input value={formData.internal_part_number} onChange={(e) => setFormData({ ...formData, internal_part_number: e.target.value })} />
+              <Input
+                value={formData.internal_part_number}
+                onChange={(e) => {
+                  setFormData({ ...formData, internal_part_number: e.target.value })
+                  setShowBomDropdown(true)
+                }}
+                onFocus={() => setShowBomDropdown(true)}
+                placeholder="Search or select part number..."
+                className={!hasInternalPartNumber ? '' : hasBomMatch ? 'border-green-500 focus-visible:ring-green-500/40' : 'border-amber-500 focus-visible:ring-amber-500/40'}
+              />
+              {hasInternalPartNumber && (
+                <p className={`mt-1 text-xs ${hasBomMatch ? 'text-green-500' : 'text-amber-500'}`}>
+                  {hasBomMatch ? '✓ BOM found for this part number' : '⚠️ No BOM found for this part number'}
+                </p>
+              )}
+              {showBomDropdown && (
+                <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-md shadow-lg max-h-56 overflow-y-auto">
+                  {filteredBomPartNumbers.length > 0 ? (
+                    filteredBomPartNumbers.map((pn) => (
+                      <button
+                        key={pn}
+                        type="button"
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted/50 transition-colors"
+                        onClick={() => {
+                          setFormData({ ...formData, internal_part_number: pn })
+                          setShowBomDropdown(false)
+                        }}
+                      >
+                        {pn}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">No matching BOM part numbers</div>
+                  )}
+                  <div className="border-t border-border">
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm text-blue-400 hover:bg-muted/50 font-medium"
+                      onClick={() => {
+                        setShowBomDropdown(false)
+                        router.push('/bom')
+                      }}
+                    >
+                      ➕ Create BOM
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <Label>Category</Label>
