@@ -291,7 +291,7 @@ function parseSheetNumber(value: string): number {
 }
 
 export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
-  const { rows: gvizRows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
+  const { cols, rows: gvizRows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
   const rows = gvizRows
     .map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
     .filter((row) =>
@@ -299,7 +299,8 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
   )
   if (rows.length === 0) return { dates: [], parts: [] }
 
-  const header = rows[0]
+  // cols contains the header row (part number label + date columns)
+  const header = cols
   const dateColumns: Array<{ index: number; date: string }> = []
 
   for (let i = 1; i < header.length; i++) {
@@ -310,7 +311,8 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
   }
 
   const parts: InventoryHistoryPart[] = []
-  for (let i = 1; i < rows.length; i++) {
+  // All rows are data rows now (header is in cols)
+  for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     const partNumber = (row[0] || '').trim()
     if (!partNumber) continue
