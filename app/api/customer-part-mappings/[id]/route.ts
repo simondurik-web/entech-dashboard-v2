@@ -14,6 +14,21 @@ export async function PUT(
       .filter((p) => p != null && p > 0)
     body.lowest_quoted_price = prices.length > 0 ? Math.min(...prices) : null
 
+    // Auto-populate costs from BOM if internal_part_number is present
+    if (body.internal_part_number) {
+      const { data: bomData } = await supabaseAdmin
+        .from('bom_final_assemblies')
+        .select('variable_cost, total_cost, sales_target')
+        .eq('part_number', body.internal_part_number)
+        .single()
+
+      if (bomData) {
+        body.variable_cost = bomData.variable_cost
+        body.total_cost = bomData.total_cost
+        body.sales_target = bomData.sales_target
+      }
+    }
+
     // Recompute contribution level if we have cost data
     if (body.variable_cost && body.total_cost && body.sales_target && body.lowest_quoted_price) {
       const lp = body.lowest_quoted_price
