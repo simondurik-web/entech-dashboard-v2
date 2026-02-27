@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("scheduling_entries")
-      .upsert(upsertRows, { onConflict: "employee_id,date" })
+      .upsert(upsertRows, { onConflict: "employee_id,date,shift" })
       .select("id, employee_id, date, shift, start_time, end_time, machine_id, hours, created_at, updated_at")
 
     if (error) throw error

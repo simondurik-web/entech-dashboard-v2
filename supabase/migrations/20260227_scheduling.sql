@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS public.scheduling_entries (
   created_by uuid,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  UNIQUE(employee_id, date)
+  UNIQUE(employee_id, date, shift)
 );
 
 -- ==========================================
