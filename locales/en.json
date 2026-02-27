@@ -396,5 +396,20 @@
   "scheduling.copyPrevWeek": "Copy Previous Week",
   "scheduling.revert": "Revert",
   "scheduling.copyConfirmMessage": "Are you sure you want to copy the entire schedule from the previous week to the current week? Existing entries will not be overwritten.",
-  "scheduling.copyConfirmYes": "Yes, Copy Schedule"
+  "scheduling.copyConfirmYes": "Yes, Copy Schedule",
+  "scheduling.auditLog": "Audit Log",
+  "scheduling.auditDateTime": "Date/Time",
+  "scheduling.auditAction": "Action",
+  "scheduling.auditChangedBy": "Changed By",
+  "scheduling.auditDetails": "Details",
+  "scheduling.auditAllEmployees": "All Employees",
+  "scheduling.auditAllActions": "All Actions",
+  "scheduling.auditFrom": "From",
+  "scheduling.auditTo": "To",
+  "scheduling.auditEntries": "entries",
+  "scheduling.auditAction_create": "Create",
+  "scheduling.auditAction_update": "Update",
+  "scheduling.auditAction_delete": "Delete",
+  "scheduling.auditAction_copy_week": "Copy Week",
+  "scheduling.auditAction_revert_week": "Revert Week"
 }

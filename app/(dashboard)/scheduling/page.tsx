@@ -14,6 +14,7 @@ import { ShiftAssignModal } from '@/components/scheduling/ShiftAssignModal'
 import { MachineManager } from '@/components/scheduling/MachineManager'
 import { HoursPayTable } from '@/components/scheduling/HoursPayTable'
 import { EmployeeManager } from '@/components/scheduling/EmployeeManager'
+import { AuditLogViewer } from '@/components/scheduling/AuditLogViewer'
 import {
   useScheduleEntries,
   useScheduleEmployees,
@@ -22,7 +23,7 @@ import {
   useScheduleMutations,
 } from '@/hooks/useScheduling'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, CalendarDays, Settings, Copy, Undo2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Settings, Copy, Undo2, ScrollText } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 // --- Week helpers ---
@@ -72,7 +73,7 @@ export default function SchedulingPage() {
   const to = formatDateStr(sunday)
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay' | 'employees'>('schedule')
+  const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay' | 'employees' | 'audit'>('schedule')
   const [shiftFilter, setShiftFilter] = useState<number | null>(null)
   const [departmentFilter, setDepartmentFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -266,7 +267,7 @@ export default function SchedulingPage() {
       </div>
 
       {/* Tabs: Schedule vs Hours & Pay */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'schedule' | 'hourspay' | 'employees')}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'schedule' | 'hourspay' | 'employees' | 'audit')}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <TabsList className="bg-muted border border-border">
             <TabsTrigger value="schedule" className="data-[state=active]:bg-accent text-foreground/80">
@@ -280,6 +281,12 @@ export default function SchedulingPage() {
             {isAdmin && (
               <TabsTrigger value="employees" className="data-[state=active]:bg-accent text-foreground/80">
                 {t('scheduling.employees')} ({employees.length})
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="audit" className="data-[state=active]:bg-accent text-foreground/80">
+                <ScrollText className="size-4 mr-1" />
+                {t('scheduling.auditLog')}
               </TabsTrigger>
             )}
           </TabsList>
@@ -443,6 +450,14 @@ export default function SchedulingPage() {
                   window.location.reload()
                 }}
               />
+            </Card>
+          </TabsContent>
+        )}
+        {/* Audit Log Tab (admin/manager only) */}
+        {isAdmin && (
+          <TabsContent value="audit" className="mt-0">
+            <Card className="bg-background border-border p-4">
+              <AuditLogViewer employees={employees} />
             </Card>
           </TabsContent>
         )}

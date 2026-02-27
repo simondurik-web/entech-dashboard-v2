@@ -118,6 +118,58 @@ export function useScheduleHours(from: string, to: string) {
   return { data, loading, refetch: fetchHours }
 }
 
+// --- Audit Log ---
+export interface AuditLogEntry {
+  id: string
+  entry_id: string | null
+  employee_id: string
+  action: 'create' | 'update' | 'delete' | 'copy_week' | 'revert_week'
+  changed_by: string | null
+  changed_by_email: string | null
+  field_changed: string | null
+  old_value: string | null
+  new_value: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export function useScheduleAudit(filters?: {
+  employee_id?: string
+  action?: string
+  from?: string
+  to?: string
+  limit?: number
+}) {
+  const { profile } = useAuth()
+  const [data, setData] = useState<AuditLogEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const isAllowed = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role === 'manager'
+
+  const fetchAudit = useCallback(async () => {
+    if (!isAllowed) { setLoading(false); return }
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (filters?.employee_id) params.set('employee_id', filters.employee_id)
+      if (filters?.action) params.set('action', filters.action)
+      if (filters?.from) params.set('from', filters.from)
+      if (filters?.to) params.set('to', filters.to)
+      params.set('limit', String(filters?.limit || 200))
+      const result = await apiFetch<AuditLogEntry[]>(`/api/scheduling/audit?${params}`)
+      setData(result)
+    } catch (err) {
+      console.error('Audit log fetch error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [isAllowed, filters?.employee_id, filters?.action, filters?.from, filters?.to, filters?.limit])
+
+  useEffect(() => { fetchAudit() }, [fetchAudit])
+
+  return { data, loading, refetch: fetchAudit }
+}
+
 // --- Mutations (need auth) ---
 export function useScheduleMutations() {
   const { user } = useAuth()

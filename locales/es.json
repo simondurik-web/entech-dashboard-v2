@@ -396,5 +396,20 @@
   "scheduling.copyPrevWeek": "Copiar Semana Anterior",
   "scheduling.revert": "Revertir",
   "scheduling.copyConfirmMessage": "¿Está seguro de que desea copiar todo el horario de la semana anterior a la semana actual? Las entradas existentes no se sobrescribirán.",
-  "scheduling.copyConfirmYes": "Sí, Copiar Horario"
+  "scheduling.copyConfirmYes": "Sí, Copiar Horario",
+  "scheduling.auditLog": "Registro de Auditoría",
+  "scheduling.auditDateTime": "Fecha/Hora",
+  "scheduling.auditAction": "Acción",
+  "scheduling.auditChangedBy": "Modificado Por",
+  "scheduling.auditDetails": "Detalles",
+  "scheduling.auditAllEmployees": "Todos los Empleados",
+  "scheduling.auditAllActions": "Todas las Acciones",
+  "scheduling.auditFrom": "Desde",
+  "scheduling.auditTo": "Hasta",
+  "scheduling.auditEntries": "registros",
+  "scheduling.auditAction_create": "Crear",
+  "scheduling.auditAction_update": "Actualizar",
+  "scheduling.auditAction_delete": "Eliminar",
+  "scheduling.auditAction_copy_week": "Copiar Semana",
+  "scheduling.auditAction_revert_week": "Revertir Semana"
 }
