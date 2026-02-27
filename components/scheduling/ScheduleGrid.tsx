@@ -11,6 +11,9 @@ export interface ScheduleEmployee {
   last_name: string
   department: string
   default_shift: number
+  shift_length: number
+  pay_rate?: number
+  is_active: boolean
 }
 
 export interface ScheduleEntry {

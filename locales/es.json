@@ -387,5 +387,10 @@
   "scheduling.thu": "Jue",
   "scheduling.fri": "Vie",
   "scheduling.sat": "Sáb",
-  "scheduling.sun": "Dom"
+  "scheduling.sun": "Dom",
+  "scheduling.allDepartments": "Todos los Departamentos",
+  "scheduling.employees": "Empleados",
+  "scheduling.showInactive": "Mostrar Inactivos",
+  "scheduling.hideInactive": "Ocultar Inactivos",
+  "scheduling.showing": "Mostrando"
 }
