@@ -168,7 +168,7 @@ export default function SchedulingPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <CalendarDays className="size-6" />
             {t('scheduling.title')}
           </h1>
@@ -180,7 +180,7 @@ export default function SchedulingPage() {
               variant="outline"
               size="sm"
               onClick={() => setMachineManagerOpen(true)}
-              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              className="border-border text-foreground/80 hover:bg-accent"
             >
               <Settings className="size-4 mr-1" />
               {t('scheduling.manageMachines')}
@@ -192,12 +192,12 @@ export default function SchedulingPage() {
       {/* Tabs: Schedule vs Hours & Pay */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'schedule' | 'hourspay')}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <TabsList className="bg-zinc-900 border border-zinc-800">
-            <TabsTrigger value="schedule" className="data-[state=active]:bg-zinc-700 text-zinc-300">
+          <TabsList className="bg-muted border border-border">
+            <TabsTrigger value="schedule" className="data-[state=active]:bg-accent text-foreground/80">
               {t('scheduling.title')}
             </TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="hourspay" className="data-[state=active]:bg-zinc-700 text-zinc-300">
+              <TabsTrigger value="hourspay" className="data-[state=active]:bg-accent text-foreground/80">
                 {t('scheduling.hoursPay')}
               </TabsTrigger>
             )}
@@ -210,7 +210,7 @@ export default function SchedulingPage() {
                 variant={shiftFilter === null ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShiftFilter(null)}
-                className={shiftFilter === null ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}
+                className={shiftFilter === null ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}
               >
                 All
               </Button>
@@ -218,7 +218,7 @@ export default function SchedulingPage() {
                 variant={shiftFilter === 1 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShiftFilter(1)}
-                className={shiftFilter === 1 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}
+                className={shiftFilter === 1 ? 'bg-blue-600 text-foreground' : 'text-muted-foreground hover:text-foreground'}
               >
                 {t('scheduling.shift1')}
               </Button>
@@ -226,7 +226,7 @@ export default function SchedulingPage() {
                 variant={shiftFilter === 2 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShiftFilter(2)}
-                className={shiftFilter === 2 ? 'bg-purple-600 text-white' : 'text-zinc-400 hover:text-white'}
+                className={shiftFilter === 2 ? 'bg-purple-600 text-foreground' : 'text-muted-foreground hover:text-foreground'}
               >
                 {t('scheduling.shift2')}
               </Button>
@@ -245,7 +245,7 @@ export default function SchedulingPage() {
                 size="sm"
                 disabled={!canGoPrev}
                 onClick={() => setWeekOffset((w) => w - 1)}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30"
+                className="border-border text-foreground/80 hover:bg-accent disabled:opacity-30"
               >
                 <ChevronLeft className="size-4" />
                 <span className="hidden sm:inline ml-1">{t('scheduling.prevWeek')}</span>
@@ -254,7 +254,7 @@ export default function SchedulingPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setWeekOffset(0)}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 font-medium"
+                className="border-border text-foreground/80 hover:bg-accent font-medium"
               >
                 {weekOffset === 0 ? t('scheduling.thisWeek') : weekLabel}
               </Button>
@@ -262,7 +262,7 @@ export default function SchedulingPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setWeekOffset((w) => w + 1)}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                className="border-border text-foreground/80 hover:bg-accent"
               >
                 <span className="hidden sm:inline mr-1">{t('scheduling.nextWeek')}</span>
                 <ChevronRight className="size-4" />
@@ -272,13 +272,13 @@ export default function SchedulingPage() {
 
           {/* Week label (when navigated away) */}
           {weekOffset !== 0 && (
-            <p className="text-sm text-zinc-400 mb-3">{weekLabel}</p>
+            <p className="text-sm text-muted-foreground mb-3">{weekLabel}</p>
           )}
 
           {loading ? (
             <PageSkeleton statCards={0} tableRows={8} />
           ) : (
-            <Card className="bg-zinc-950 border-zinc-800 overflow-hidden">
+            <Card className="bg-background border-border overflow-hidden">
               <ScheduleGrid
                 entries={entries as ScheduleEntry[]}
                 employees={filteredEmployees as ScheduleEmployee[]}
@@ -293,7 +293,7 @@ export default function SchedulingPage() {
         {/* Hours & Pay Tab (admin only) */}
         {isAdmin && (
           <TabsContent value="hourspay" className="mt-0">
-            <Card className="bg-zinc-950 border-zinc-800 p-4">
+            <Card className="bg-background border-border p-4">
               <HoursPayTable
                 data={Array.isArray(hoursData) ? hoursData : []}
                 loading={hoursLoading}

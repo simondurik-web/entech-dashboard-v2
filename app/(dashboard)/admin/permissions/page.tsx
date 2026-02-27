@@ -24,9 +24,11 @@ const ALL_MENU_PATHS = [
   '/bom', '/material-requirements', '/all-data',
   '/admin/users', '/admin/permissions',
   '/phil-assistant',
+  '/scheduling',
   // Feature permissions (not page paths)
   'manage_priority',
   'view_inventory_values',
+  '/scheduling:edit',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -56,6 +58,8 @@ const PATH_LABELS: Record<string, string> = {
   '/phil-assistant': '🤖 Phil Assistant (AI)',
   'manage_priority': '🎯 Manage Priority',
   'view_inventory_values': '💰 Inventory Values',
+  '/scheduling': '📅 Scheduling',
+  '/scheduling:edit': '📅 Scheduling: Edit',
 }
 
 export default function AdminPermissionsPage() {

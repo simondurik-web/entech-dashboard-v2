@@ -14,12 +14,12 @@ export function ScheduleSearch({ value, onChange }: ScheduleSearchProps) {
 
   return (
     <div className="relative w-full max-w-sm">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
       <Input
         placeholder={t('scheduling.search')}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="pl-9 bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-500"
+        className="pl-9 bg-muted border-border text-foreground placeholder:text-muted-foreground"
       />
     </div>
   )
