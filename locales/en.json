@@ -392,5 +392,9 @@
   "scheduling.employees": "Employees",
   "scheduling.showInactive": "Show Inactive",
   "scheduling.hideInactive": "Hide Inactive",
-  "scheduling.showing": "Showing"
+  "scheduling.showing": "Showing",
+  "scheduling.copyPrevWeek": "Copy Previous Week",
+  "scheduling.revert": "Revert",
+  "scheduling.copyConfirmMessage": "Are you sure you want to copy the entire schedule from the previous week to the current week? Existing entries will not be overwritten.",
+  "scheduling.copyConfirmYes": "Yes, Copy Schedule"
 }

@@ -22,7 +22,8 @@ import {
   useScheduleMutations,
 } from '@/hooks/useScheduling'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ChevronLeft, ChevronRight, CalendarDays, Settings } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Settings, Copy, Undo2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 // --- Week helpers ---
 function getMonday(d: Date): Date {
@@ -81,9 +82,10 @@ export default function SchedulingPage() {
     open: boolean
     employeeId: string
     employeeName: string
+    employeeDefaultShift: number
     date: Date
     existing?: ScheduleEntry
-  }>({ open: false, employeeId: '', employeeName: '', date: new Date() })
+  }>({ open: false, employeeId: '', employeeName: '', employeeDefaultShift: 1, date: new Date() })
   const [machineManagerOpen, setMachineManagerOpen] = useState(false)
 
   // Data
@@ -132,6 +134,11 @@ export default function SchedulingPage() {
   // Prevent regular users from navigating to past
   const canGoPrev = canViewPast || weekOffset > 0
 
+  // Copy week state
+  const [copyLoading, setCopyLoading] = useState(false)
+  const [lastCopiedIds, setLastCopiedIds] = useState<string[] | null>(null)
+  const [showCopyConfirm, setShowCopyConfirm] = useState(false)
+
   const handleCellClick = useCallback(
     (employeeId: string, date: Date, existing?: ScheduleEntry) => {
       if (!canEdit) return
@@ -140,6 +147,7 @@ export default function SchedulingPage() {
         open: true,
         employeeId,
         employeeName: emp ? `${emp.first_name} ${emp.last_name}` : employeeId,
+        employeeDefaultShift: emp?.default_shift ?? 1,
         date,
         existing,
       })
@@ -147,9 +155,64 @@ export default function SchedulingPage() {
     [canEdit, employees]
   )
 
-  const handleSaveEntry = async (data: Parameters<typeof saveEntry>[0]) => {
-    await saveEntry(data)
+  const handleSaveEntry = async (data: any) => {
+    if (data.applyTo === 'custom' && data.selectedDays?.length > 1) {
+      // Save each selected day as separate entry
+      for (const dateStr of data.selectedDays) {
+        await saveEntry({
+          employee_id: data.employee_id,
+          date: dateStr,
+          shift: data.shift,
+          start_time: data.start_time,
+          end_time: data.end_time,
+          machine_id: data.machine_id,
+          applyTo: 'day',
+        })
+      }
+    } else {
+      await saveEntry(data)
+    }
     refetchEntries()
+  }
+
+  const handleCopyWeek = async () => {
+    setCopyLoading(true)
+    try {
+      const prevMonday = addWeeks(monday, -1)
+      const resp = await fetch('/api/scheduling/copy-week', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        body: JSON.stringify({
+          sourceMonday: formatDateStr(prevMonday),
+          targetMonday: formatDateStr(monday),
+        }),
+      })
+      const result = await resp.json()
+      if (result.copiedIds) {
+        setLastCopiedIds(result.copiedIds)
+      }
+      refetchEntries()
+    } catch (err) {
+      console.error('Copy week failed:', err)
+    } finally {
+      setCopyLoading(false)
+      setShowCopyConfirm(false)
+    }
+  }
+
+  const handleRevertCopy = async () => {
+    if (!lastCopiedIds) return
+    try {
+      await fetch('/api/scheduling/revert-copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        body: JSON.stringify({ copiedIds: lastCopiedIds }),
+      })
+      setLastCopiedIds(null)
+      refetchEntries()
+    } catch (err) {
+      console.error('Revert failed:', err)
+    }
   }
 
   const handleDeleteEntry = async (id: string) => {
@@ -296,6 +359,32 @@ export default function SchedulingPage() {
                 <span className="hidden sm:inline mr-1">{t('scheduling.nextWeek')}</span>
                 <ChevronRight className="size-4" />
               </Button>
+              {canEdit && (
+                <>
+                  <div className="w-px h-6 bg-border mx-1" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCopyConfirm(true)}
+                    disabled={copyLoading}
+                    className="border-border text-foreground/80 hover:bg-accent"
+                  >
+                    <Copy className="size-4 mr-1" />
+                    <span className="hidden sm:inline">{t('scheduling.copyPrevWeek')}</span>
+                  </Button>
+                  {lastCopiedIds && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRevertCopy}
+                      className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
+                    >
+                      <Undo2 className="size-4 mr-1" />
+                      <span className="hidden sm:inline">{t('scheduling.revert')}</span>
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -365,7 +454,9 @@ export default function SchedulingPage() {
         onClose={() => setAssignModal((s) => ({ ...s, open: false }))}
         employeeId={assignModal.employeeId}
         employeeName={assignModal.employeeName}
+        employeeDefaultShift={assignModal.employeeDefaultShift}
         date={assignModal.date}
+        weekMonday={monday}
         existing={assignModal.existing}
         machines={machines.map((m: any) => ({ id: m.id, name: m.name }))}
         onSave={handleSaveEntry}
@@ -380,6 +471,26 @@ export default function SchedulingPage() {
         onUpdate={handleUpdateMachine}
         onDelete={handleDeleteMachine}
       />
+
+      {/* Copy week confirmation dialog */}
+      <Dialog open={showCopyConfirm} onOpenChange={setShowCopyConfirm}>
+        <DialogContent className="bg-background border-border text-foreground max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('scheduling.copyPrevWeek')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('scheduling.copyConfirmMessage')}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCopyConfirm(false)} className="border-border">
+              {t('scheduling.cancel')}
+            </Button>
+            <Button onClick={handleCopyWeek} disabled={copyLoading} className="bg-blue-600 hover:bg-blue-700">
+              {copyLoading ? '...' : t('scheduling.copyConfirmYes')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

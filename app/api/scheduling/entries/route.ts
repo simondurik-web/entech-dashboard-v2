@@ -114,6 +114,21 @@ export async function POST(req: NextRequest) {
       .select()
 
     if (error) throw error
+
+    // Audit log
+    const auditRows = (data || []).map((entry: any) => ({
+      entry_id: entry.id,
+      employee_id: entry.employee_id,
+      action: 'create',
+      changed_by: profile.id,
+      changed_by_email: profile.email,
+      new_value: JSON.stringify({ date: entry.date, shift: entry.shift, start_time: entry.start_time, end_time: entry.end_time, machine_id: entry.machine_id }),
+      metadata: { applyTo: applyTo || 'day' },
+    }))
+    if (auditRows.length > 0) {
+      await supabaseAdmin.from('scheduling_audit_log').insert(auditRows)
+    }
+
     return NextResponse.json(data || [], { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create entry'
@@ -131,8 +146,24 @@ export async function DELETE(req: NextRequest) {
     const id = url.searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
+    // Fetch entry before deleting for audit
+    const { data: existing } = await supabaseAdmin.from('scheduling_entries').select('*').eq('id', id).single()
+
     const { error } = await supabaseAdmin.from('scheduling_entries').delete().eq('id', id)
     if (error) throw error
+
+    // Audit log
+    if (existing) {
+      await supabaseAdmin.from('scheduling_audit_log').insert({
+        entry_id: id,
+        employee_id: existing.employee_id,
+        action: 'delete',
+        changed_by: profile.id,
+        changed_by_email: profile.email,
+        old_value: JSON.stringify({ date: existing.date, shift: existing.shift, start_time: existing.start_time, end_time: existing.end_time }),
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to delete entry'
