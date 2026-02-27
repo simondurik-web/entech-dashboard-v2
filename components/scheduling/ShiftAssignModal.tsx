@@ -164,12 +164,12 @@ export function ShiftAssignModal({
               onChange={(e) => setMachineSearch(e.target.value)}
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground mb-1"
             />
-            <Select value={machineId} onValueChange={setMachineId}>
+            <Select value={machineId || 'none'} onValueChange={(v) => setMachineId(v === 'none' ? '' : v)}>
               <SelectTrigger className="bg-muted border-border text-foreground">
                 <SelectValue placeholder={t('scheduling.selectMachine')} />
               </SelectTrigger>
               <SelectContent className="bg-muted border-border max-h-48">
-                <SelectItem value="" className="text-muted-foreground">— {t('scheduling.selectMachine')} —</SelectItem>
+                <SelectItem value="none" className="text-muted-foreground">— {t('scheduling.selectMachine')} —</SelectItem>
                 {filteredMachines.map((m) => (
                   <SelectItem key={m.id} value={m.id} className="text-foreground">{m.name}</SelectItem>
                 ))}
