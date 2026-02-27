@@ -102,10 +102,10 @@ export function useScheduleHours(from: string, to: string) {
     setLoading(true)
     try {
       const params = new URLSearchParams({ from, to })
-      const result = await apiFetch<any[]>(`/api/scheduling/hours?${params}`, {
+      const result = await apiFetch<{ rows: any[] }>(`/api/scheduling/hours?${params}`, {
         headers: authHeaders(user.id),
       })
-      setData(result)
+      setData(result.rows || [])
     } catch (err) {
       console.error('Scheduling fetch error:', err)
     } finally {

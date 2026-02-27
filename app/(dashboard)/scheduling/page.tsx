@@ -13,6 +13,7 @@ import { ScheduleGrid, type ScheduleEntry, type ScheduleEmployee } from '@/compo
 import { ShiftAssignModal } from '@/components/scheduling/ShiftAssignModal'
 import { MachineManager } from '@/components/scheduling/MachineManager'
 import { HoursPayTable } from '@/components/scheduling/HoursPayTable'
+import { EmployeeManager } from '@/components/scheduling/EmployeeManager'
 import {
   useScheduleEntries,
   useScheduleEmployees,
@@ -20,6 +21,7 @@ import {
   useScheduleHours,
   useScheduleMutations,
 } from '@/hooks/useScheduling'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChevronLeft, ChevronRight, CalendarDays, Settings } from 'lucide-react'
 
 // --- Week helpers ---
@@ -52,7 +54,7 @@ function addWeeks(d: Date, n: number): Date {
 
 export default function SchedulingPage() {
   const { t } = useI18n()
-  const { profile } = useAuth()
+  const { user, profile } = useAuth()
   const role = profile?.role ?? 'visitor'
 
   const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager'
@@ -69,8 +71,9 @@ export default function SchedulingPage() {
   const to = formatDateStr(sunday)
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay'>('schedule')
+  const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay' | 'employees'>('schedule')
   const [shiftFilter, setShiftFilter] = useState<number | null>(null)
+  const [departmentFilter, setDepartmentFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   // Modal state
@@ -96,17 +99,27 @@ export default function SchedulingPage() {
   const [hoursTo, setHoursTo] = useState(to)
   const { data: hoursData, loading: hoursLoading, refetch: refetchHours } = useScheduleHours(hoursFrom, hoursTo)
 
-  // Filter employees by search
+  // Departments list
+  const departments = useMemo(() => {
+    const depts = new Set(employees.map((e: ScheduleEmployee) => e.department))
+    return Array.from(depts).sort()
+  }, [employees])
+
+  // Filter employees
   const filteredEmployees = useMemo(() => {
-    if (!search) return employees
-    const q = search.toLowerCase()
-    return employees.filter(
-      (e: ScheduleEmployee) =>
+    let filtered = employees.filter((e: ScheduleEmployee) => e.is_active !== false)
+    if (departmentFilter) filtered = filtered.filter((e: ScheduleEmployee) => e.department === departmentFilter)
+    if (shiftFilter) filtered = filtered.filter((e: ScheduleEmployee) => e.default_shift === shiftFilter)
+    if (search) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter((e: ScheduleEmployee) =>
         e.first_name.toLowerCase().includes(q) ||
         e.last_name.toLowerCase().includes(q) ||
         e.employee_id.toLowerCase().includes(q)
-    )
-  }, [employees, search])
+      )
+    }
+    return filtered
+  }, [employees, departmentFilter, shiftFilter, search])
 
   // For regular users: filter to only show today+future
   const visibleWeekDates = useMemo(() => {
@@ -190,7 +203,7 @@ export default function SchedulingPage() {
       </div>
 
       {/* Tabs: Schedule vs Hours & Pay */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'schedule' | 'hourspay')}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'schedule' | 'hourspay' | 'employees')}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <TabsList className="bg-muted border border-border">
             <TabsTrigger value="schedule" className="data-[state=active]:bg-accent text-foreground/80">
@@ -199,6 +212,11 @@ export default function SchedulingPage() {
             {isAdmin && (
               <TabsTrigger value="hourspay" className="data-[state=active]:bg-accent text-foreground/80">
                 {t('scheduling.hoursPay')}
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="employees" className="data-[state=active]:bg-accent text-foreground/80">
+                {t('scheduling.employees')} ({employees.length})
               </TabsTrigger>
             )}
           </TabsList>
@@ -230,6 +248,17 @@ export default function SchedulingPage() {
               >
                 {t('scheduling.shift2')}
               </Button>
+              <Select value={departmentFilter || 'all'} onValueChange={(v) => setDepartmentFilter(v === 'all' ? null : v)}>
+                <SelectTrigger className="w-[180px] bg-muted border-border text-foreground">
+                  <SelectValue placeholder={t('scheduling.department')} />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border">
+                  <SelectItem value="all">{t('scheduling.allDepartments')}</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </div>
@@ -303,6 +332,24 @@ export default function SchedulingPage() {
                   setHoursFrom(f)
                   setHoursTo(t)
                   refetchHours()
+                }}
+              />
+            </Card>
+          </TabsContent>
+        )}
+        {/* Employees Tab (admin only) */}
+        {isAdmin && (
+          <TabsContent value="employees" className="mt-0">
+            <Card className="bg-background border-border p-4">
+              <EmployeeManager
+                employees={employees}
+                onUpdate={async (id, data) => {
+                  await fetch('/api/scheduling/employees', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+                    body: JSON.stringify({ id, ...data }),
+                  })
+                  window.location.reload()
                 }}
               />
             </Card>
