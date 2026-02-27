@@ -1,0 +1,195 @@
+'use client'
+
+import { useI18n } from '@/lib/i18n'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+
+export interface ScheduleEmployee {
+  id: string
+  employee_id: string
+  first_name: string
+  last_name: string
+  department: string
+  default_shift: number
+}
+
+export interface ScheduleEntry {
+  id: string
+  employee_id: string
+  date: string
+  shift: number
+  start_time: string
+  end_time: string
+  machine_id: string | null
+  machine_name?: string | null
+  hours: number
+}
+
+interface ScheduleGridProps {
+  entries: ScheduleEntry[]
+  employees: ScheduleEmployee[]
+  weekDates: Date[]
+  canEdit: boolean
+  onCellClick: (employeeId: string, date: Date, existing?: ScheduleEntry) => void
+}
+
+function formatTime(time: string) {
+  const [h, m] = time.split(':')
+  const hour = parseInt(h, 10)
+  const ampm = hour >= 12 ? 'PM' : 'AM'
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
+  return `${h12}:${m} ${ampm}`
+}
+
+function formatDayHeader(date: Date, language: string) {
+  const dayName = date.toLocaleDateString(language === 'es' ? 'es-US' : 'en-US', { weekday: 'short' })
+  const dayNum = date.getDate()
+  return { dayName, dayNum }
+}
+
+function isToday(date: Date) {
+  const now = new Date()
+  return date.toDateString() === now.toDateString()
+}
+
+export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellClick }: ScheduleGridProps) {
+  const { t, language } = useI18n()
+
+  const entryMap = new Map<string, ScheduleEntry>()
+  for (const e of entries) {
+    entryMap.set(`${e.employee_id}::${e.date}`, e)
+  }
+
+  const getEntry = (empId: string, date: Date): ScheduleEntry | undefined => {
+    const dateStr = date.toISOString().split('T')[0]
+    return entryMap.get(`${empId}::${dateStr}`)
+  }
+
+  // Desktop grid
+  const desktopGrid = (
+    <div className="hidden md:block overflow-x-auto">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-zinc-800">
+            <th className="sticky left-0 z-10 bg-zinc-950 px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider min-w-[180px]">
+              {t('scheduling.employee')}
+            </th>
+            {weekDates.map((date) => {
+              const { dayName, dayNum } = formatDayHeader(date, language)
+              const today = isToday(date)
+              return (
+                <th
+                  key={date.toISOString()}
+                  className={`px-2 py-3 text-center text-xs font-medium uppercase tracking-wider min-w-[120px] ${
+                    today ? 'text-blue-400 bg-blue-500/5' : 'text-zinc-400'
+                  }`}
+                >
+                  <div>{dayName}</div>
+                  <div className={`text-lg font-bold ${today ? 'text-blue-300' : 'text-white'}`}>{dayNum}</div>
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {employees.map((emp) => (
+            <tr key={emp.employee_id} className="border-b border-zinc-800/50 hover:bg-zinc-900/50">
+              <td className="sticky left-0 z-10 bg-zinc-950 px-4 py-2">
+                <div className="text-sm font-medium text-white">{emp.last_name}, {emp.first_name}</div>
+                <div className="text-xs text-zinc-500">#{emp.employee_id}</div>
+              </td>
+              {weekDates.map((date) => {
+                const entry = getEntry(emp.employee_id, date)
+                const today = isToday(date)
+                const shiftColor = entry
+                  ? entry.shift === 1
+                    ? 'bg-blue-500/20 border-blue-500/30'
+                    : 'bg-purple-500/20 border-purple-500/30'
+                  : ''
+
+                return (
+                  <td
+                    key={date.toISOString()}
+                    onClick={() => canEdit && onCellClick(emp.employee_id, date, entry)}
+                    className={`px-2 py-2 text-center border border-zinc-800/30 ${
+                      today ? 'bg-blue-500/5' : ''
+                    } ${canEdit ? 'cursor-pointer hover:bg-zinc-800/50' : ''}`}
+                  >
+                    {entry ? (
+                      <div className={`rounded-md p-1.5 ${shiftColor} border`}>
+                        <div className="text-xs font-medium text-white">
+                          {formatTime(entry.start_time)} - {formatTime(entry.end_time)}
+                        </div>
+                        {entry.machine_name && (
+                          <Badge variant="secondary" className="mt-1 text-[10px] bg-zinc-700 text-zinc-300 border-0">
+                            {entry.machine_name}
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-zinc-700 text-xs py-2">—</div>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+          {employees.length === 0 && (
+            <tr>
+              <td colSpan={weekDates.length + 1} className="text-center py-12 text-zinc-500">
+                {t('scheduling.noSchedule')}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  // Mobile card layout
+  const mobileCards = (
+    <div className="md:hidden space-y-3">
+      {employees.map((emp) => (
+        <Card key={emp.employee_id} className="bg-zinc-900 border-zinc-800 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <div className="text-sm font-medium text-white">{emp.last_name}, {emp.first_name}</div>
+              <div className="text-xs text-zinc-500">#{emp.employee_id}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {weekDates.map((date) => {
+              const entry = getEntry(emp.employee_id, date)
+              const today = isToday(date)
+              const { dayName } = formatDayHeader(date, language)
+              const shiftBg = entry
+                ? entry.shift === 1 ? 'bg-blue-500/20' : 'bg-purple-500/20'
+                : 'bg-zinc-800/30'
+
+              return (
+                <div
+                  key={date.toISOString()}
+                  onClick={() => canEdit && onCellClick(emp.employee_id, date, entry)}
+                  className={`rounded p-1 text-center ${shiftBg} ${today ? 'ring-1 ring-blue-500' : ''} ${canEdit ? 'cursor-pointer' : ''}`}
+                >
+                  <div className="text-[10px] text-zinc-400">{dayName}</div>
+                  <div className="text-[10px] font-medium text-white">{date.getDate()}</div>
+                  {entry && (
+                    <div className={`w-2 h-2 rounded-full mx-auto mt-0.5 ${entry.shift === 1 ? 'bg-blue-400' : 'bg-purple-400'}`} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      ))}
+    </div>
+  )
+
+  return (
+    <>
+      {desktopGrid}
+      {mobileCards}
+    </>
+  )
+}
