@@ -61,6 +61,7 @@ const productionItems: NavItem[] = [
   { tKey: "nav.drawingsLibrary", href: "/drawings", icon: <Ruler className="size-4" />, sub: true },
   { tKey: "nav.palletRecords", href: "/pallet-records", icon: <Camera className="size-4" /> },
   { tKey: "nav.shippingRecords", href: "/shipping-records", icon: <Truck className="size-4" /> },
+  { tKey: "nav.scheduling", href: "/scheduling", icon: <CalendarDays className="size-4" /> },
   { tKey: "nav.bom", href: "/bom", icon: <Layers className="size-4" /> },
   { tKey: "nav.materialReqs", href: "/material-requirements", icon: <Package className="size-4" />, sub: true },
   { tKey: "nav.fpReference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
