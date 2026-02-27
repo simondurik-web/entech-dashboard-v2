@@ -333,6 +333,7 @@ export default function SchedulingPage() {
                   setHoursTo(t)
                   refetchHours()
                 }}
+                showPay={isAdmin}
               />
             </Card>
           </TabsContent>
@@ -343,6 +344,7 @@ export default function SchedulingPage() {
             <Card className="bg-background border-border p-4">
               <EmployeeManager
                 employees={employees}
+                showPay={isAdmin}
                 onUpdate={async (id, data) => {
                   await fetch('/api/scheduling/employees', {
                     method: 'PUT',
