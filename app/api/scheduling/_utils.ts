@@ -19,15 +19,15 @@ export async function getRequestProfile(req: NextRequest) {
 }
 
 export function canEditScheduling(role: string) {
-  return ['admin', 'manager', 'group_leader'].includes(role)
+  return ['admin', 'super_admin', 'manager', 'group_leader'].includes(role)
 }
 
 export function canSeePayRate(role: string) {
-  return ['admin', 'manager'].includes(role)
+  return ['admin', 'super_admin', 'manager'].includes(role)
 }
 
 export function canViewHistory(role: string) {
-  return ['admin', 'manager', 'group_leader'].includes(role)
+  return ['admin', 'super_admin', 'manager', 'group_leader'].includes(role)
 }
 
 export function unauthorized() {

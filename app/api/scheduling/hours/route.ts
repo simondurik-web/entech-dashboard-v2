@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
           regular_hours: proportionalRegular,
           ot_hours: proportionalOt,
           pay_rate: payRate,
-          total_pay: hours * payRate,
+          total_pay: (proportionalRegular * payRate) + (proportionalOt * payRate * 1.5),
           weekly_totals: { [week]: hours },
           monthly_totals: { [monthKey(row.date)]: hours },
         })
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
         existing.total_hours += hours
         existing.regular_hours += proportionalRegular
         existing.ot_hours += proportionalOt
-        existing.total_pay += hours * payRate
+        existing.total_pay += (proportionalRegular * payRate) + (proportionalOt * payRate * 1.5)
         existing.weekly_totals[week] = (existing.weekly_totals[week] || 0) + hours
         const month = monthKey(row.date)
         existing.monthly_totals[month] = (existing.monthly_totals[month] || 0) + hours
