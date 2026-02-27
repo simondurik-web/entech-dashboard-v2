@@ -66,71 +66,71 @@ export function HoursPayTable({ data, loading, dateFrom, dateTo, onDateChange }:
       {/* Date range + export */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
-          <Label className="text-zinc-400 text-xs">{t('scheduling.startTime')}</Label>
+          <Label className="text-muted-foreground text-xs">{t('scheduling.startTime')}</Label>
           <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="bg-zinc-900 border-zinc-800 text-white w-40"
+            className="bg-muted border-border text-foreground w-40"
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-zinc-400 text-xs">{t('scheduling.endTime')}</Label>
+          <Label className="text-muted-foreground text-xs">{t('scheduling.endTime')}</Label>
           <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="bg-zinc-900 border-zinc-800 text-white w-40"
+            className="bg-muted border-border text-foreground w-40"
           />
         </div>
         <Button onClick={handleApply} size="sm" className="bg-blue-600 hover:bg-blue-700">
           Apply
         </Button>
-        <Button onClick={exportCsv} variant="outline" size="sm" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 ml-auto">
+        <Button onClick={exportCsv} variant="outline" size="sm" className="border-border text-foreground/80 hover:bg-accent ml-auto">
           <Download className="size-4 mr-1" /> {t('scheduling.exportCsv')}
         </Button>
       </div>
 
       {/* Table */}
-      <div className="rounded-md border border-zinc-800 overflow-hidden">
+      <div className="rounded-md border border-border overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-zinc-800 hover:bg-transparent">
-              <TableHead className="text-zinc-400">{t('scheduling.employee')}</TableHead>
-              <TableHead className="text-zinc-400 text-right">{t('scheduling.totalHours')}</TableHead>
-              <TableHead className="text-zinc-400 text-right">{t('scheduling.overtimeHours')}</TableHead>
-              <TableHead className="text-zinc-400 text-right">{t('scheduling.payRate')}</TableHead>
-              <TableHead className="text-zinc-400 text-right">{t('scheduling.grossPay')}</TableHead>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="text-muted-foreground">{t('scheduling.employee')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">{t('scheduling.totalHours')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">{t('scheduling.overtimeHours')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">{t('scheduling.payRate')}</TableHead>
+              <TableHead className="text-muted-foreground text-right">{t('scheduling.grossPay')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-zinc-500">Loading...</TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-zinc-500">{t('scheduling.noSchedule')}</TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">{t('scheduling.noSchedule')}</TableCell>
               </TableRow>
             ) : (
               <>
                 {data.map((row) => (
-                  <TableRow key={row.employee_id} className="border-zinc-800/50 hover:bg-zinc-900/50">
-                    <TableCell className="text-white font-medium">{row.employee_name}</TableCell>
-                    <TableCell className="text-right text-white">{row.total_hours.toFixed(1)}</TableCell>
-                    <TableCell className={`text-right ${row.ot_hours > 0 ? 'text-amber-400 font-semibold' : 'text-white'}`}>
+                  <TableRow key={row.employee_id} className="border-border/50 hover:bg-muted/50">
+                    <TableCell className="text-foreground font-medium">{row.employee_name}</TableCell>
+                    <TableCell className="text-right text-foreground">{row.total_hours.toFixed(1)}</TableCell>
+                    <TableCell className={`text-right ${row.ot_hours > 0 ? 'text-amber-400 font-semibold' : 'text-foreground'}`}>
                       {row.ot_hours.toFixed(1)}
                     </TableCell>
-                    <TableCell className="text-right text-zinc-300">${row.pay_rate.toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-foreground/80">${row.pay_rate.toFixed(2)}</TableCell>
                     <TableCell className="text-right text-emerald-400 font-semibold">${row.total_pay.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
                 {/* Totals row */}
-                <TableRow className="border-zinc-700 bg-zinc-900/70 font-bold">
-                  <TableCell className="text-white">Total</TableCell>
-                  <TableCell className="text-right text-white">{totals.hours.toFixed(1)}</TableCell>
-                  <TableCell className={`text-right ${totals.ot > 0 ? 'text-amber-400' : 'text-white'}`}>{totals.ot.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-zinc-500">—</TableCell>
+                <TableRow className="border-border bg-muted/70 font-bold">
+                  <TableCell className="text-foreground">Total</TableCell>
+                  <TableCell className="text-right text-foreground">{totals.hours.toFixed(1)}</TableCell>
+                  <TableCell className={`text-right ${totals.ot > 0 ? 'text-amber-400' : 'text-foreground'}`}>{totals.ot.toFixed(1)}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">—</TableCell>
                   <TableCell className="text-right text-emerald-400">${totals.pay.toFixed(2)}</TableCell>
                 </TableRow>
               </>

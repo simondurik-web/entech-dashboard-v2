@@ -110,25 +110,25 @@ export function ShiftAssignModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-zinc-950 border-zinc-800 text-white max-w-md">
+      <DialogContent className="bg-background border-border text-foreground max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-white">
+          <DialogTitle className="text-foreground">
             {existing ? t('scheduling.edit') : t('scheduling.assignShift')}
           </DialogTitle>
-          <p className="text-sm text-zinc-400">{employeeName} — {dateStr}</p>
+          <p className="text-sm text-muted-foreground">{employeeName} — {dateStr}</p>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Shift select */}
           <div className="space-y-2">
-            <Label className="text-zinc-300">{t('scheduling.dayShift')} / {t('scheduling.nightShift')}</Label>
+            <Label className="text-foreground/80">{t('scheduling.dayShift')} / {t('scheduling.nightShift')}</Label>
             <Select value={String(shift)} onValueChange={handleShiftChange}>
-              <SelectTrigger className="bg-zinc-900 border-zinc-800 text-white">
+              <SelectTrigger className="bg-muted border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800">
-                <SelectItem value="1" className="text-white">{t('scheduling.shift1')}</SelectItem>
-                <SelectItem value="2" className="text-white">{t('scheduling.shift2')}</SelectItem>
+              <SelectContent className="bg-muted border-border">
+                <SelectItem value="1" className="text-foreground">{t('scheduling.shift1')}</SelectItem>
+                <SelectItem value="2" className="text-foreground">{t('scheduling.shift2')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -136,42 +136,42 @@ export function ShiftAssignModal({
           {/* Time pickers */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label className="text-zinc-300">{t('scheduling.startTime')}</Label>
+              <Label className="text-foreground/80">{t('scheduling.startTime')}</Label>
               <Input
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="bg-zinc-900 border-zinc-800 text-white"
+                className="bg-muted border-border text-foreground"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-zinc-300">{t('scheduling.endTime')}</Label>
+              <Label className="text-foreground/80">{t('scheduling.endTime')}</Label>
               <Input
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="bg-zinc-900 border-zinc-800 text-white"
+                className="bg-muted border-border text-foreground"
               />
             </div>
           </div>
 
           {/* Machine dropdown with search */}
           <div className="space-y-2">
-            <Label className="text-zinc-300">{t('scheduling.machine')}</Label>
+            <Label className="text-foreground/80">{t('scheduling.machine')}</Label>
             <Input
               placeholder={t('scheduling.selectMachine')}
               value={machineSearch}
               onChange={(e) => setMachineSearch(e.target.value)}
-              className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-500 mb-1"
+              className="bg-muted border-border text-foreground placeholder:text-muted-foreground mb-1"
             />
             <Select value={machineId} onValueChange={setMachineId}>
-              <SelectTrigger className="bg-zinc-900 border-zinc-800 text-white">
+              <SelectTrigger className="bg-muted border-border text-foreground">
                 <SelectValue placeholder={t('scheduling.selectMachine')} />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800 max-h-48">
-                <SelectItem value="" className="text-zinc-400">— {t('scheduling.selectMachine')} —</SelectItem>
+              <SelectContent className="bg-muted border-border max-h-48">
+                <SelectItem value="" className="text-muted-foreground">— {t('scheduling.selectMachine')} —</SelectItem>
                 {filteredMachines.map((m) => (
-                  <SelectItem key={m.id} value={m.id} className="text-white">{m.name}</SelectItem>
+                  <SelectItem key={m.id} value={m.id} className="text-foreground">{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -179,15 +179,15 @@ export function ShiftAssignModal({
 
           {/* Apply to */}
           <div className="space-y-2">
-            <Label className="text-zinc-300">{t('scheduling.applyTo')}</Label>
+            <Label className="text-foreground/80">{t('scheduling.applyTo')}</Label>
             <Select value={applyTo} onValueChange={(v) => setApplyTo(v as 'day' | 'onward' | 'week')}>
-              <SelectTrigger className="bg-zinc-900 border-zinc-800 text-white">
+              <SelectTrigger className="bg-muted border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800">
-                <SelectItem value="day" className="text-white">{t('scheduling.thisDayOnly')}</SelectItem>
-                <SelectItem value="onward" className="text-white">{t('scheduling.thisDayOnward')}</SelectItem>
-                <SelectItem value="week" className="text-white">{t('scheduling.entireWeek')}</SelectItem>
+              <SelectContent className="bg-muted border-border">
+                <SelectItem value="day" className="text-foreground">{t('scheduling.thisDayOnly')}</SelectItem>
+                <SelectItem value="onward" className="text-foreground">{t('scheduling.thisDayOnward')}</SelectItem>
+                <SelectItem value="week" className="text-foreground">{t('scheduling.entireWeek')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -200,10 +200,10 @@ export function ShiftAssignModal({
             </Button>
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
+            <Button variant="outline" onClick={onClose} className="border-border text-foreground/80 hover:bg-accent">
               {t('scheduling.cancel')}
             </Button>
-            <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-foreground">
               {t('scheduling.assignShift')}
             </Button>
           </div>

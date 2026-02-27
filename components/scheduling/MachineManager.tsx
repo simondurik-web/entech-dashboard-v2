@@ -53,29 +53,29 @@ export function MachineManager({ open, onClose, machines, onAdd, onUpdate, onDel
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-zinc-950 border-zinc-800 text-white max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="bg-background border-border text-foreground max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white">{t('scheduling.manageMachines')}</DialogTitle>
+          <DialogTitle className="text-foreground">{t('scheduling.manageMachines')}</DialogTitle>
         </DialogHeader>
 
         {/* Add form */}
-        <div className="flex gap-2 items-end border-b border-zinc-800 pb-4">
+        <div className="flex gap-2 items-end border-b border-border pb-4">
           <div className="flex-1 space-y-1">
-            <Label className="text-zinc-400 text-xs">{t('scheduling.machineName')}</Label>
+            <Label className="text-muted-foreground text-xs">{t('scheduling.machineName')}</Label>
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder={t('scheduling.machineName')}
-              className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-500"
+              className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             />
           </div>
           <div className="w-28 space-y-1">
-            <Label className="text-zinc-400 text-xs">{t('scheduling.department')}</Label>
+            <Label className="text-muted-foreground text-xs">{t('scheduling.department')}</Label>
             <Input
               value={newDept}
               onChange={(e) => setNewDept(e.target.value)}
-              className="bg-zinc-900 border-zinc-800 text-white"
+              className="bg-muted border-border text-foreground"
             />
           </div>
           <Button onClick={handleAdd} size="sm" className="bg-blue-600 hover:bg-blue-700 shrink-0">
@@ -88,12 +88,12 @@ export function MachineManager({ open, onClose, machines, onAdd, onUpdate, onDel
           {machines.map((m) => (
             <div
               key={m.id}
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-zinc-900/50 group"
+              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 group"
             >
               <Checkbox
                 checked={m.is_active}
                 onCheckedChange={(checked) => onUpdate(m.id, { is_active: !!checked })}
-                className="border-zinc-600"
+                className="border-border"
               />
               {editingId === m.id ? (
                 <Input
@@ -101,21 +101,21 @@ export function MachineManager({ open, onClose, machines, onAdd, onUpdate, onDel
                   onChange={(e) => setEditName(e.target.value)}
                   onBlur={() => saveEdit(m.id)}
                   onKeyDown={(e) => e.key === 'Enter' && saveEdit(m.id)}
-                  className="flex-1 bg-zinc-900 border-zinc-700 text-white h-8 text-sm"
+                  className="flex-1 bg-muted border-border text-foreground h-8 text-sm"
                   autoFocus
                 />
               ) : (
-                <span className={`flex-1 text-sm ${m.is_active ? 'text-white' : 'text-zinc-500 line-through'}`}>
+                <span className={`flex-1 text-sm ${m.is_active ? 'text-foreground' : 'text-muted-foreground line-through'}`}>
                   {m.name}
                 </span>
               )}
-              <span className="text-xs text-zinc-500">{m.department}</span>
+              <span className="text-xs text-muted-foreground">{m.department}</span>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => startEdit(m)}
-                  className="h-7 w-7 p-0 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-accent"
                 >
                   <Pencil className="size-3" />
                 </Button>
@@ -123,7 +123,7 @@ export function MachineManager({ open, onClose, machines, onAdd, onUpdate, onDel
                   variant="ghost"
                   size="sm"
                   onClick={() => onDelete(m.id)}
-                  className="h-7 w-7 p-0 text-zinc-400 hover:text-red-400 hover:bg-zinc-800"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400 hover:bg-accent"
                 >
                   <Trash2 className="size-3" />
                 </Button>
@@ -131,7 +131,7 @@ export function MachineManager({ open, onClose, machines, onAdd, onUpdate, onDel
             </div>
           ))}
           {machines.length === 0 && (
-            <p className="text-center text-zinc-500 py-8 text-sm">{t('scheduling.noSchedule')}</p>
+            <p className="text-center text-muted-foreground py-8 text-sm">{t('scheduling.noSchedule')}</p>
           )}
         </div>
       </DialogContent>

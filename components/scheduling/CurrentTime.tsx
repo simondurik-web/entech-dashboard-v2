@@ -25,9 +25,9 @@ export function CurrentTime() {
   if (!time) return null
 
   return (
-    <div className="flex items-center gap-2 text-sm text-zinc-400">
-      <span className="text-zinc-500">{t('scheduling.currentTime')}:</span>
-      <span className="font-mono font-medium text-white">{time}</span>
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <span className="text-muted-foreground">{t('scheduling.currentTime')}:</span>
+      <span className="font-mono font-medium text-foreground">{time}</span>
     </div>
   )
 }

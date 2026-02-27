@@ -70,8 +70,8 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
     <div className="hidden md:block overflow-x-auto">
       <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-zinc-800">
-            <th className="sticky left-0 z-10 bg-zinc-950 px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider min-w-[180px]">
+          <tr className="border-b border-border">
+            <th className="sticky left-0 z-10 bg-background px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider min-w-[180px]">
               {t('scheduling.employee')}
             </th>
             {weekDates.map((date) => {
@@ -81,11 +81,11 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
                 <th
                   key={date.toISOString()}
                   className={`px-2 py-3 text-center text-xs font-medium uppercase tracking-wider min-w-[120px] ${
-                    today ? 'text-blue-400 bg-blue-500/5' : 'text-zinc-400'
+                    today ? 'text-blue-400 bg-blue-500/5' : 'text-muted-foreground'
                   }`}
                 >
                   <div>{dayName}</div>
-                  <div className={`text-lg font-bold ${today ? 'text-blue-300' : 'text-white'}`}>{dayNum}</div>
+                  <div className={`text-lg font-bold ${today ? 'text-blue-300' : 'text-foreground'}`}>{dayNum}</div>
                 </th>
               )
             })}
@@ -93,10 +93,10 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
         </thead>
         <tbody>
           {employees.map((emp) => (
-            <tr key={emp.employee_id} className="border-b border-zinc-800/50 hover:bg-zinc-900/50">
-              <td className="sticky left-0 z-10 bg-zinc-950 px-4 py-2">
-                <div className="text-sm font-medium text-white">{emp.last_name}, {emp.first_name}</div>
-                <div className="text-xs text-zinc-500">#{emp.employee_id}</div>
+            <tr key={emp.employee_id} className="border-b border-border/50 hover:bg-muted/50">
+              <td className="sticky left-0 z-10 bg-background px-4 py-2">
+                <div className="text-sm font-medium text-foreground">{emp.last_name}, {emp.first_name}</div>
+                <div className="text-xs text-muted-foreground">#{emp.employee_id}</div>
               </td>
               {weekDates.map((date) => {
                 const entry = getEntry(emp.employee_id, date)
@@ -111,23 +111,23 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
                   <td
                     key={date.toISOString()}
                     onClick={() => canEdit && onCellClick(emp.employee_id, date, entry)}
-                    className={`px-2 py-2 text-center border border-zinc-800/30 ${
+                    className={`px-2 py-2 text-center border border-border/30 ${
                       today ? 'bg-blue-500/5' : ''
-                    } ${canEdit ? 'cursor-pointer hover:bg-zinc-800/50' : ''}`}
+                    } ${canEdit ? 'cursor-pointer hover:bg-accent/50' : ''}`}
                   >
                     {entry ? (
                       <div className={`rounded-md p-1.5 ${shiftColor} border`}>
-                        <div className="text-xs font-medium text-white">
+                        <div className="text-xs font-medium text-foreground">
                           {formatTime(entry.start_time)} - {formatTime(entry.end_time)}
                         </div>
                         {entry.machine_name && (
-                          <Badge variant="secondary" className="mt-1 text-[10px] bg-zinc-700 text-zinc-300 border-0">
+                          <Badge variant="secondary" className="mt-1 text-[10px] bg-accent text-foreground/80 border-0">
                             {entry.machine_name}
                           </Badge>
                         )}
                       </div>
                     ) : (
-                      <div className="text-zinc-700 text-xs py-2">—</div>
+                      <div className="text-muted-foreground text-xs py-2">—</div>
                     )}
                   </td>
                 )
@@ -136,7 +136,7 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
           ))}
           {employees.length === 0 && (
             <tr>
-              <td colSpan={weekDates.length + 1} className="text-center py-12 text-zinc-500">
+              <td colSpan={weekDates.length + 1} className="text-center py-12 text-muted-foreground">
                 {t('scheduling.noSchedule')}
               </td>
             </tr>
@@ -150,11 +150,11 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
   const mobileCards = (
     <div className="md:hidden space-y-3">
       {employees.map((emp) => (
-        <Card key={emp.employee_id} className="bg-zinc-900 border-zinc-800 p-3">
+        <Card key={emp.employee_id} className="bg-muted border-border p-3">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <div className="text-sm font-medium text-white">{emp.last_name}, {emp.first_name}</div>
-              <div className="text-xs text-zinc-500">#{emp.employee_id}</div>
+              <div className="text-sm font-medium text-foreground">{emp.last_name}, {emp.first_name}</div>
+              <div className="text-xs text-muted-foreground">#{emp.employee_id}</div>
             </div>
           </div>
           <div className="grid grid-cols-7 gap-1">
@@ -164,7 +164,7 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
               const { dayName } = formatDayHeader(date, language)
               const shiftBg = entry
                 ? entry.shift === 1 ? 'bg-blue-500/20' : 'bg-purple-500/20'
-                : 'bg-zinc-800/30'
+                : 'bg-accent/30'
 
               return (
                 <div
@@ -172,8 +172,8 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
                   onClick={() => canEdit && onCellClick(emp.employee_id, date, entry)}
                   className={`rounded p-1 text-center ${shiftBg} ${today ? 'ring-1 ring-blue-500' : ''} ${canEdit ? 'cursor-pointer' : ''}`}
                 >
-                  <div className="text-[10px] text-zinc-400">{dayName}</div>
-                  <div className="text-[10px] font-medium text-white">{date.getDate()}</div>
+                  <div className="text-[10px] text-muted-foreground">{dayName}</div>
+                  <div className="text-[10px] font-medium text-foreground">{date.getDate()}</div>
                   {entry && (
                     <div className={`w-2 h-2 rounded-full mx-auto mt-0.5 ${entry.shift === 1 ? 'bg-blue-400' : 'bg-purple-400'}`} />
                   )}
