@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS public.scheduling_entries (
   start_time time NOT NULL DEFAULT '07:00',
   end_time time NOT NULL DEFAULT '17:30',
   machine_id uuid REFERENCES public.scheduling_machines(id) ON DELETE SET NULL,
+  hours numeric,
   created_by uuid,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
@@ -137,3 +138,24 @@ INSERT INTO public.scheduling_machines (name, department, sort_order) VALUES
   ('Press 28', 'Molding', 20),
   ('Extruder', 'Molding', 21)
 ON CONFLICT DO NOTHING;
+
+-- ==========================================
+-- 8. AUTO-CALCULATE HOURS TRIGGER
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.calculate_scheduling_hours()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.end_time > NEW.start_time THEN
+    NEW.hours := EXTRACT(EPOCH FROM (NEW.end_time - NEW.start_time)) / 3600;
+  ELSE
+    -- Cross-midnight shift (e.g. 17:30 to 04:30)
+    NEW.hours := EXTRACT(EPOCH FROM (('24:00:00'::time - NEW.start_time) + NEW.end_time)) / 3600;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_calculate_hours
+  BEFORE INSERT OR UPDATE ON public.scheduling_entries
+  FOR EACH ROW
+  EXECUTE FUNCTION public.calculate_scheduling_hours();

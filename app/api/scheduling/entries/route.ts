@@ -126,14 +126,55 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const entries = Array.isArray(body) ? body : body?.entries || body
-    const list: EntryInput[] = Array.isArray(entries) ? entries : [entries]
+
+    // Handle applyTo logic (expand single entry to multiple dates)
+    const applyTo = body?.applyTo as string | undefined
+    let entries: EntryInput[]
+
+    if (applyTo && !Array.isArray(body) && (applyTo === 'onward' || applyTo === 'week')) {
+      const baseDate = new Date(body.date + 'T12:00:00')
+      const generated: EntryInput[] = []
+
+      if (applyTo === 'week') {
+        // Find Monday of the week containing baseDate
+        const day = baseDate.getDay()
+        const monday = new Date(baseDate)
+        monday.setDate(monday.getDate() - ((day + 6) % 7))
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(monday)
+          d.setDate(d.getDate() + i)
+          generated.push({ ...body, date: d.toISOString().split('T')[0] })
+        }
+      } else {
+        // 'onward' — fill from baseDate to end of next 4 weeks (28 days)
+        for (let i = 0; i < 28; i++) {
+          const d = new Date(baseDate)
+          d.setDate(d.getDate() + i)
+          generated.push({ ...body, date: d.toISOString().split('T')[0] })
+        }
+      }
+      entries = generated
+    } else if (Array.isArray(body)) {
+      entries = body
+    } else if (body?.entries && Array.isArray(body.entries)) {
+      entries = body.entries
+    } else {
+      entries = [body]
+    }
+
+    const list: EntryInput[] = entries
 
     if (!list.length) {
       return NextResponse.json({ error: "At least one scheduling entry is required" }, { status: 400 })
     }
 
-    const upsertRows = list.map((entry) => normalizeEntry(entry, profile.id))
+    const upsertRows = list.map((entry) => {
+      const normalized = normalizeEntry(entry, profile.id)
+      // Remove applyTo from the row — it's not a DB column
+      const { ...row } = normalized as Record<string, unknown>
+      delete row.applyTo
+      return row
+    })
 
     const { data, error } = await supabaseAdmin
       .from("scheduling_entries")

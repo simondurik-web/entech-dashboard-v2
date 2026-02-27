@@ -59,8 +59,8 @@ export function useScheduleEmployees() {
     try {
       const data = await apiFetch<any[]>('/api/scheduling/employees')
       setEmployees(data)
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("Scheduling fetch error:", err)
     } finally {
       setLoading(false)
     }
@@ -81,8 +81,8 @@ export function useScheduleMachines() {
     try {
       const data = await apiFetch<any[]>('/api/scheduling/machines')
       setMachines(data)
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("Scheduling fetch error:", err)
     } finally {
       setLoading(false)
     }
@@ -108,8 +108,8 @@ export function useScheduleHours(from: string, to: string) {
       const params = new URLSearchParams({ from, to })
       const result = await apiFetch<any[]>(`/api/scheduling/hours?${params}`)
       setData(result)
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("Scheduling fetch error:", err)
     } finally {
       setLoading(false)
     }

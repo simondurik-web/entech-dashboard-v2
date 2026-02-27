@@ -113,7 +113,7 @@ export function ShiftAssignModal({
       <DialogContent className="bg-zinc-950 border-zinc-800 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {existing ? t('scheduling.assignShift') : t('scheduling.assignShift')}
+            {existing ? t('scheduling.edit') : t('scheduling.assignShift')}
           </DialogTitle>
           <p className="text-sm text-zinc-400">{employeeName} — {dateStr}</p>
         </DialogHeader>
@@ -201,7 +201,7 @@ export function ShiftAssignModal({
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
-              Cancel
+              {t('scheduling.cancel')}
             </Button>
             <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white">
               {t('scheduling.assignShift')}
