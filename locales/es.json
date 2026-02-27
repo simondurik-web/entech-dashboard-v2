@@ -392,5 +392,9 @@
   "scheduling.employees": "Empleados",
   "scheduling.showInactive": "Mostrar Inactivos",
   "scheduling.hideInactive": "Ocultar Inactivos",
-  "scheduling.showing": "Mostrando"
+  "scheduling.showing": "Mostrando",
+  "scheduling.copyPrevWeek": "Copiar Semana Anterior",
+  "scheduling.revert": "Revertir",
+  "scheduling.copyConfirmMessage": "¿Está seguro de que desea copiar todo el horario de la semana anterior a la semana actual? Las entradas existentes no se sobrescribirán.",
+  "scheduling.copyConfirmYes": "Sí, Copiar Horario"
 }
