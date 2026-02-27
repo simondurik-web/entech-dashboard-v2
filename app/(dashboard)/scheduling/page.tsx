@@ -55,8 +55,8 @@ export default function SchedulingPage() {
   const { profile } = useAuth()
   const role = profile?.role ?? 'visitor'
 
-  const isAdmin = role === 'admin' || role === 'manager'
-  const canEdit = role === 'admin' || role === 'manager' || role === 'group_leader'
+  const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager'
+  const canEdit = role === 'admin' || role === 'super_admin' || role === 'manager' || role === 'group_leader'
   const canViewPast = canEdit // admins/managers/group_leaders
 
   // Week state
@@ -295,7 +295,7 @@ export default function SchedulingPage() {
           <TabsContent value="hourspay" className="mt-0">
             <Card className="bg-zinc-950 border-zinc-800 p-4">
               <HoursPayTable
-                data={hoursData}
+                data={Array.isArray(hoursData) ? hoursData : []}
                 loading={hoursLoading}
                 dateFrom={hoursFrom}
                 dateTo={hoursTo}

@@ -99,7 +99,7 @@ export function useScheduleHours(from: string, to: string) {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  const isAllowed = profile?.role === 'admin' || profile?.role === 'manager'
+  const isAllowed = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role === 'manager'
 
   const fetchHours = useCallback(async () => {
     if (!isAllowed) { setLoading(false); return }
