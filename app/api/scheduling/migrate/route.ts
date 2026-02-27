@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getRequestProfile, unauthorized, forbidden } from '../_utils'
+import { getProfileFromHeader, unauthorized, forbidden } from '../_utils'
 import { google } from 'googleapis'
 
 const SHEET_ID = '1SqQeBkgzQPUqdMcOR-gIlPRk85renzqnV1bgn2C10lg'
@@ -17,7 +17,7 @@ async function getAuth() {
 }
 
 export async function POST(req: NextRequest) {
-  const profile = await getRequestProfile(req)
+  const profile = await getProfileFromHeader(req)
   if (!profile) return unauthorized()
   if (profile.role !== 'admin') return forbidden()
 
