@@ -46,9 +46,11 @@ interface EmployeeRow {
 interface EmployeeManagerProps {
   employees: Employee[]
   onUpdate: (id: string, data: Partial<Employee>) => Promise<void>
+  /** Whether to show pay rate data (admin/manager only) */
+  showPay?: boolean
 }
 
-export function EmployeeManager({ employees, onUpdate }: EmployeeManagerProps) {
+export function EmployeeManager({ employees, onUpdate, showPay = false }: EmployeeManagerProps) {
   const { t } = useI18n()
   const [showInactive, setShowInactive] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
@@ -102,14 +104,18 @@ export function EmployeeManager({ employees, onUpdate }: EmployeeManagerProps) {
         ),
       },
       { key: 'shift_length', label: 'Shift Length', sortable: true, defaultHidden: true },
-      {
-        key: 'hourly_rate',
-        label: t('scheduling.payRate'),
-        sortable: true,
-        render: (_v, row) => (
-          <span className="font-mono">{row.pay_rate}</span>
-        ),
-      },
+      ...(showPay
+        ? [
+            {
+              key: 'hourly_rate' as keyof EmployeeRow & string,
+              label: t('scheduling.payRate'),
+              sortable: true,
+              render: (_v: unknown, row: EmployeeRow) => (
+                <span className="font-mono">{row.pay_rate}</span>
+              ),
+            },
+          ]
+        : []),
       {
         key: 'status',
         label: t('scheduling.active'),
@@ -290,21 +296,23 @@ export function EmployeeManager({ employees, onUpdate }: EmployeeManagerProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-foreground/80">{t('scheduling.payRate')}</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={editForm.pay_rate ?? ''}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      pay_rate: e.target.value ? parseFloat(e.target.value) : undefined,
-                    })
-                  }
-                  className="bg-muted border-border text-foreground"
-                />
-              </div>
+              {showPay && (
+                <div className="space-y-2">
+                  <Label className="text-foreground/80">{t('scheduling.payRate')}</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={editForm.pay_rate ?? ''}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        pay_rate: e.target.value ? parseFloat(e.target.value) : undefined,
+                      })
+                    }
+                    className="bg-muted border-border text-foreground"
+                  />
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label className="text-foreground/80">Shift Length (hours)</Label>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { canViewHistory, forbidden, getProfileFromHeader, normalizeDateInput, unauthorized } from "../_utils"
+import { canViewHistory, canSeePayRate, forbidden, getProfileFromHeader, normalizeDateInput, unauthorized } from "../_utils"
 
 type HourRow = {
   employee_id: string
@@ -104,15 +104,22 @@ export async function GET(req: NextRequest) {
 
     const rows = Array.from(byEmployee.values()).sort((a, b) => a.employee_name.localeCompare(b.employee_name))
 
+    // Strip pay data unless admin/manager/super_admin
+    const showPay = canSeePayRate(profile.role)
+    const safeRows = showPay
+      ? rows
+      : rows.map(({ pay_rate: _, total_pay: __, ...rest }) => ({ ...rest, pay_rate: 0, total_pay: 0 }))
+
     return NextResponse.json({
       from,
       to,
-      rows,
+      rows: safeRows,
+      showPay,
       totals: {
         total_hours: rows.reduce((sum, row) => sum + row.total_hours, 0),
         regular_hours: rows.reduce((sum, row) => sum + row.regular_hours, 0),
         ot_hours: rows.reduce((sum, row) => sum + row.ot_hours, 0),
-        total_pay: rows.reduce((sum, row) => sum + row.total_pay, 0),
+        total_pay: showPay ? rows.reduce((sum, row) => sum + row.total_pay, 0) : 0,
       },
     })
   } catch (err) {
