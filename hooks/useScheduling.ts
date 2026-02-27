@@ -2,20 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
-import { supabase } from '@/lib/supabase'
 
-async function getToken(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession()
-  return data.session?.access_token ?? null
-}
-
+/** Simple fetch wrapper — read endpoints need no auth, write endpoints send x-user-id */
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
-  const token = await getToken()
   const res = await fetch(path, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...opts?.headers,
     },
   })
@@ -23,22 +16,25 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json()
 }
 
+/** Fetch with user ID header for write operations */
+function authHeaders(userId: string): Record<string, string> {
+  return { 'x-user-id': userId }
+}
+
 // --- Schedule Entries ---
-export function useScheduleEntries(from: string, to: string, filters?: { shift?: number; search?: string }) {
+export function useScheduleEntries(from: string, to: string, filters?: { shift?: number }) {
   const [entries, setEntries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const params = new URLSearchParams({ from, to })
       if (filters?.shift) params.set('shift', String(filters.shift))
       const data = await apiFetch<any[]>(`/api/scheduling/entries?${params}`)
       setEntries(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch entries')
+      console.error('Scheduling fetch error:', err)
     } finally {
       setLoading(false)
     }
@@ -46,7 +42,7 @@ export function useScheduleEntries(from: string, to: string, filters?: { shift?:
 
   useEffect(() => { fetchEntries() }, [fetchEntries])
 
-  return { entries, loading, error, refetch: fetchEntries }
+  return { entries, loading, refetch: fetchEntries }
 }
 
 // --- Employees ---
@@ -60,7 +56,7 @@ export function useScheduleEmployees() {
       const data = await apiFetch<any[]>('/api/scheduling/employees')
       setEmployees(data)
     } catch (err) {
-      console.error("Scheduling fetch error:", err)
+      console.error('Scheduling fetch error:', err)
     } finally {
       setLoading(false)
     }
@@ -82,7 +78,7 @@ export function useScheduleMachines() {
       const data = await apiFetch<any[]>('/api/scheduling/machines')
       setMachines(data)
     } catch (err) {
-      console.error("Scheduling fetch error:", err)
+      console.error('Scheduling fetch error:', err)
     } finally {
       setLoading(false)
     }
@@ -95,33 +91,39 @@ export function useScheduleMachines() {
 
 // --- Hours & Pay (admin/manager only) ---
 export function useScheduleHours(from: string, to: string) {
-  const { profile } = useAuth()
+  const { user, profile } = useAuth()
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const isAllowed = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role === 'manager'
 
   const fetchHours = useCallback(async () => {
-    if (!isAllowed) { setLoading(false); return }
+    if (!isAllowed || !user?.id) { setLoading(false); return }
     setLoading(true)
     try {
       const params = new URLSearchParams({ from, to })
-      const result = await apiFetch<any[]>(`/api/scheduling/hours?${params}`)
+      const result = await apiFetch<any[]>(`/api/scheduling/hours?${params}`, {
+        headers: authHeaders(user.id),
+      })
       setData(result)
     } catch (err) {
-      console.error("Scheduling fetch error:", err)
+      console.error('Scheduling fetch error:', err)
     } finally {
       setLoading(false)
     }
-  }, [from, to, isAllowed])
+  }, [from, to, isAllowed, user?.id])
 
   useEffect(() => { fetchHours() }, [fetchHours])
 
   return { data, loading, refetch: fetchHours }
 }
 
-// --- Mutations ---
+// --- Mutations (need auth) ---
 export function useScheduleMutations() {
+  const { user } = useAuth()
+
+  const getHeaders = () => user?.id ? authHeaders(user.id) : {}
+
   const saveEntry = async (entry: {
     employee_id: string
     date: string
@@ -133,17 +135,22 @@ export function useScheduleMutations() {
   }) => {
     return apiFetch('/api/scheduling/entries', {
       method: 'POST',
+      headers: getHeaders(),
       body: JSON.stringify(entry),
     })
   }
 
   const deleteEntry = async (id: string) => {
-    return apiFetch(`/api/scheduling/entries?id=${id}`, { method: 'DELETE' })
+    return apiFetch(`/api/scheduling/entries?id=${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    })
   }
 
   const addMachine = async (data: { name: string; department: string }) => {
     return apiFetch('/api/scheduling/machines', {
       method: 'POST',
+      headers: getHeaders(),
       body: JSON.stringify(data),
     })
   }
@@ -151,12 +158,16 @@ export function useScheduleMutations() {
   const updateMachine = async (id: string, data: Record<string, unknown>) => {
     return apiFetch('/api/scheduling/machines', {
       method: 'PUT',
+      headers: getHeaders(),
       body: JSON.stringify({ id, ...data }),
     })
   }
 
   const deleteMachine = async (id: string) => {
-    return apiFetch(`/api/scheduling/machines?id=${id}`, { method: 'DELETE' })
+    return apiFetch(`/api/scheduling/machines?id=${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    })
   }
 
   return { saveEntry, deleteEntry, addMachine, updateMachine, deleteMachine }

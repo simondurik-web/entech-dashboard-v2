@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { canViewHistory, forbidden, getRequestProfile, normalizeDateInput, unauthorized } from "../_utils"
+import { canViewHistory, forbidden, getProfileFromHeader, normalizeDateInput, unauthorized } from "../_utils"
 
 type HourRow = {
   employee_id: string
@@ -26,7 +26,7 @@ function monthKey(input: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const profile = await getRequestProfile(req)
+  const profile = await getProfileFromHeader(req)
   if (!profile) return unauthorized()
   if (!canViewHistory(profile.role)) return forbidden()
 
