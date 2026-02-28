@@ -237,19 +237,19 @@ async function exportExcel(rows: FlatRow[], dayCols: { key: string; label: strin
 // --- Print/PDF Export ---
 function exportPrintPDF(rows: FlatRow[], dayCols: { key: string; label: string }[], weekLabel: string, language: string) {
   const l = LABELS[language as 'en' | 'es'] || LABELS.en
-  const pageSize = 30
+  const pageSize = 28
 
   // Split by shift
   const shift1Rows = rows.filter((r) => r.shift_num === 1)
   const shift2Rows = rows.filter((r) => r.shift_num === 2)
 
   const shiftGroups = [
-    { label: l.shift1, rows: shift1Rows },
-    { label: l.shift2, rows: shift2Rows },
+    { label: l.shift1, rows: shift1Rows, badge: 'day', icon: '&#9728;' },
+    { label: l.shift2, rows: shift2Rows, badge: 'night', icon: '&#9790;' },
   ].filter((g) => g.rows.length > 0)
 
-  // Build pages: each shift group gets its own set of pages
-  const allPages: { shiftLabel: string; pageRows: FlatRow[]; pageNum: number; totalPages: number }[] = []
+  // Build pages
+  const allPages: { shiftLabel: string; badge: string; icon: string; pageRows: FlatRow[]; pageNum: number; totalPages: number }[] = []
   for (const group of shiftGroups) {
     const groupPages: FlatRow[][] = []
     for (let i = 0; i < group.rows.length; i += pageSize) {
@@ -258,6 +258,8 @@ function exportPrintPDF(rows: FlatRow[], dayCols: { key: string; label: string }
     groupPages.forEach((page, pi) => {
       allPages.push({
         shiftLabel: group.label,
+        badge: group.badge,
+        icon: group.icon,
         pageRows: page,
         pageNum: pi + 1,
         totalPages: groupPages.length,
@@ -265,7 +267,13 @@ function exportPrintPDF(rows: FlatRow[], dayCols: { key: string; label: string }
     })
   }
 
-  const thCols = `<th>${l.employee}</th><th>${l.id}</th><th>${l.department}</th><th>${l.shift}</th>${dayCols.map((d) => `<th>${d.label}</th>`).join('')}`
+  // Day column headers with split name/date
+  const thDays = dayCols.map((d) => {
+    const parts = d.label.split(' ')
+    return `<th class="day-col"><div class="day-name">${parts[0]}</div><div class="day-date">${parts[1] || ''}</div></th>`
+  }).join('')
+
+  const genDate = new Date().toLocaleDateString(language === 'es' ? 'es-US' : 'en-US')
 
   const html = `<!DOCTYPE html>
 <html>
@@ -273,56 +281,75 @@ function exportPrintPDF(rows: FlatRow[], dayCols: { key: string; label: string }
 <meta charset="utf-8">
 <title>${l.title} - ${weekLabel}</title>
 <style>
-  @page { size: landscape; margin: 0.5in; }
+  @page { size: landscape; margin: 0.4in 0.5in; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a2e; }
-  .page { page-break-after: always; }
-  .page:last-child { page-break-after: avoid; }
-  h1 { font-size: 16px; color: #1F3864; margin-bottom: 2px; }
-  .shift-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-left: 8px; }
-  .shift-day { background: #dbeafe; color: #1d4ed8; }
-  .shift-night { background: #ede9fe; color: #7c3aed; }
-  .subtitle { font-size: 10px; color: #64748b; margin-bottom: 10px; }
-  table { width: 100%; border-collapse: collapse; font-size: 9px; }
-  th { background: #1F3864; color: #fff; padding: 6px 4px; text-align: center; font-weight: 600; }
-  th:first-child { text-align: left; min-width: 140px; }
-  td { padding: 4px; border-bottom: 1px solid #e2e8f0; text-align: center; }
-  td:first-child { text-align: left; font-weight: 500; }
-  tr:nth-child(even) td { background: #f8fafc; }
-  .scheduled { color: #1d4ed8; font-weight: 500; }
-  .dash { color: #cbd5e1; }
-  .footer { font-size: 9px; color: #94a3b8; margin-top: 8px; text-align: right; }
-  small { font-size: 8px; color: #64748b; }
-  @media print { .no-print { display: none; } }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #111827; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { page-break-after: always; } .page:last-child { page-break-after: avoid; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 3px solid #1e3a5f; }
+  .header-left { display: flex; align-items: baseline; gap: 14px; }
+  .logo { font-size: 24px; font-weight: 800; color: #1e3a5f; letter-spacing: 3px; }
+  .title { font-size: 16px; font-weight: 600; color: #475569; }
+  .header-right { text-align: right; }
+  .week-range { font-size: 11px; color: #64748b; margin-top: 5px; }
+  .shift-badge { display: inline-block; padding: 5px 16px; border-radius: 8px; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
+  .shift-badge.day { background: #1e3a5f; color: #ffffff; }
+  .shift-badge.night { background: #312e81; color: #ffffff; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 8.5px; border-radius: 8px; overflow: hidden; border: 1.5px solid #cbd5e1; }
+  thead th { background: #1e3a5f; color: #ffffff; font-weight: 700; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 5px; text-align: center; border-right: 1px solid rgba(255,255,255,0.15); }
+  thead th:last-child { border-right: none; }
+  thead th.emp-col { text-align: left; padding-left: 12px; min-width: 160px; }
+  thead th.id-col { min-width: 44px; }
+  thead .day-name { font-size: 9px; font-weight: 700; }
+  thead .day-date { font-size: 8px; font-weight: 400; opacity: 0.8; margin-top: 2px; }
+  tbody td { padding: 6px 4px; text-align: center; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+  tbody td:last-child { border-right: none; }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.even td { background: #ffffff; } tr.odd td { background: #f1f5f9; }
+  td.emp-name { text-align: left; padding-left: 12px; font-weight: 600; color: #1e293b; white-space: nowrap; font-size: 9px; }
+  td.emp-id { text-align: center; color: #64748b; font-size: 8.5px; font-weight: 500; }
+  td.empty { color: #cbd5e1; } td.empty::after { content: '\\2014'; }
+  td.has-shift { background: #eff6ff !important; }
+  td.has-shift .time { color: #1e40af; font-weight: 700; font-size: 8.5px; white-space: nowrap; }
+  td.has-shift .machine { color: #6b7280; font-size: 7px; margin-top: 2px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+  .footer { display: flex; justify-content: space-between; margin-top: 10px; font-size: 8px; color: #9ca3af; padding-top: 6px; border-top: 1px solid #e5e7eb; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>
 <body>
-${allPages.map((p, idx) => {
-    const badgeClass = p.shiftLabel === l.shift1 ? 'shift-day' : 'shift-night'
-    return `
+${allPages.map((p) => `
 <div class="page">
-  <h1>${l.title}<span class="shift-badge ${badgeClass}">${p.shiftLabel}</span></h1>
-  <div class="subtitle">${weekLabel} | ${l.page} ${p.pageNum} ${l.of} ${p.totalPages} | ${l.generated} ${new Date().toLocaleDateString(language === 'es' ? 'es-US' : 'en-US')}</div>
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">ENTECH</div>
+      <div class="title">${l.title}</div>
+    </div>
+    <div class="header-right">
+      <div class="shift-badge ${p.badge}">${p.icon} ${p.shiftLabel}</div>
+      <div class="week-range">${weekLabel}</div>
+    </div>
+  </div>
   <table>
-    <thead><tr>${thCols}</tr></thead>
+    <thead><tr><th class="emp-col">${l.employee}</th><th class="id-col">${l.id}</th>${thDays}</tr></thead>
     <tbody>
-      ${p.pageRows.map((row) => `
-      <tr>
-        <td>${row.employee}</td>
-        <td>${row.employee_id}</td>
-        <td>${row.department}</td>
-        <td>${row.shift}</td>
-        ${dayCols.map((d) => {
+      ${p.pageRows.map((row, ri) => {
+        const cls = ri % 2 === 0 ? 'even' : 'odd'
+        const cells = dayCols.map((d) => {
           const val = String(row[d.key] || '-')
-          const cls = val === '-' ? 'dash' : 'scheduled'
-          return `<td class="${cls}">${val}</td>`
-        }).join('')}
-      </tr>`).join('')}
+          if (val === '-') return '<td class="empty"></td>'
+          const parts = val.split(' (')
+          const time = parts[0]
+          const machine = parts.length > 1 ? '<div class="machine">' + parts[1].replace(')', '') + '</div>' : ''
+          return '<td class="has-shift"><div class="time">' + time + '</div>' + machine + '</td>'
+        }).join('')
+        return '<tr class="' + cls + '"><td class="emp-name">' + row.employee + '</td><td class="emp-id">' + row.employee_id + '</td>' + cells + '</tr>'
+      }).join('')}
     </tbody>
   </table>
-  <div class="footer">${l.footer} - ${weekLabel}</div>
-</div>`
-  }).join('')}
+  <div class="footer">
+    <span>${l.footer}</span>
+    <span>${l.page} ${p.pageNum} ${l.of} ${p.totalPages} &bull; ${p.shiftLabel} &bull; ${l.generated} ${genDate}</span>
+  </div>
+</div>`).join('')}
 </body>
 </html>`
 
