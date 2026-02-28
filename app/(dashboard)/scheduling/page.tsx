@@ -176,8 +176,12 @@ export default function SchedulingPage() {
     refetchEntries()
   }
 
+  // Copy feedback state
+  const [copyMessage, setCopyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   const handleCopyWeek = async () => {
     setCopyLoading(true)
+    setCopyMessage(null)
     try {
       const prevMonday = addWeeks(monday, -1)
       const resp = await fetch('/api/scheduling/copy-week', {
@@ -189,15 +193,25 @@ export default function SchedulingPage() {
         }),
       })
       const result = await resp.json()
-      if (result.copiedIds) {
-        setLastCopiedIds(result.copiedIds)
+      if (!resp.ok) {
+        setCopyMessage({ type: 'error', text: result.error || 'Copy failed' })
+      } else if (result.copied === 0) {
+        setCopyMessage({ type: 'error', text: result.message || result.error || 'No entries to copy' })
+      } else {
+        setCopyMessage({ type: 'success', text: `✅ Copied ${result.copied} entries` })
+        if (result.copiedIds) {
+          setLastCopiedIds(result.copiedIds)
+        }
       }
       refetchEntries()
     } catch (err) {
       console.error('Copy week failed:', err)
+      setCopyMessage({ type: 'error', text: 'Network error — copy failed' })
     } finally {
       setCopyLoading(false)
       setShowCopyConfirm(false)
+      // Auto-dismiss success after 5s
+      setTimeout(() => setCopyMessage(null), 5000)
     }
   }
 
@@ -398,6 +412,17 @@ export default function SchedulingPage() {
           {/* Week label (when navigated away) */}
           {weekOffset !== 0 && (
             <p className="text-sm text-muted-foreground mb-3">{weekLabel}</p>
+          )}
+
+          {/* Copy feedback */}
+          {copyMessage && (
+            <div className={`mb-3 px-4 py-2 rounded-md text-sm font-medium ${
+              copyMessage.type === 'success'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-red-500/20 text-red-400 border border-red-500/30'
+            }`}>
+              {copyMessage.text}
+            </div>
           )}
 
           {loading ? (

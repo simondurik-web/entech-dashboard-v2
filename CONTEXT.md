@@ -134,6 +134,8 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 2026-02-17: Created lib/supabase.ts + lib/supabase-data.ts (same TS types as Sheets layer)
 2026-02-17: Simon added Supabase env vars to Vercel — pending deployment verification
 2026-02-17: Remaining routes still on Sheets: pallet-records, staged-records, shipping-records, BOM×3, inventory-history, generic-sheet
+2026-02-27 [AUTO-SUMMARY]: Scheduling system fully shipped to production (10 PRs #11-#21, 3,360 LOC). Weekly grid, shift assignment, employee management, copy/revert, full audit trail. Audit Log Viewer (PR #22) and Spanish URL param + dark theme default (PR #23) deployed to staging, awaiting production push.
+2026-02-28 [AUTO-SUMMARY]: PRs #22-#23 still on staging awaiting Simon's verification. Session backed up with continuation prompt for audit log viewer task.
 
 
 ## 🚨 CRITICAL: DataTable Standard (2026-02-19)
