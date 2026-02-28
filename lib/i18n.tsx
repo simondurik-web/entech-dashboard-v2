@@ -21,6 +21,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>('en')
 
   useEffect(() => {
+    // URL param takes priority (e.g. ?lang=es)
+    const params = new URLSearchParams(window.location.search)
+    const urlLang = params.get('lang') as Language | null
+    if (urlLang && (urlLang === 'en' || urlLang === 'es')) {
+      setLanguageState(urlLang)
+      localStorage.setItem('language', urlLang)
+      return
+    }
     const stored = localStorage.getItem('language') as Language | null
     if (stored && (stored === 'en' || stored === 'es')) {
       setLanguageState(stored)
