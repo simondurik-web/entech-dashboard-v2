@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
         start_time: entry.start_time,
         end_time: entry.end_time,
         machine_id: entry.machine_id,
-        checked: false,
       }))
 
     if (newEntries.length === 0) {
