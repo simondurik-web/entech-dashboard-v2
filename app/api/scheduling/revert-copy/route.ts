@@ -22,15 +22,19 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-    // Audit log
-    await supabaseAdmin.from('scheduling_audit_log').insert({
-      entry_id: null,
-      employee_id: 'BULK',
-      action: 'revert_week',
-      changed_by: profile.id,
-      changed_by_email: profile.email,
-      metadata: { revertedIds: copiedIds, count: copiedIds.length },
-    })
+    // Audit log (non-blocking)
+    try {
+      await supabaseAdmin.from('scheduling_audit_log').insert({
+        entry_id: null,
+        employee_id: 'BULK',
+        action: 'revert_week',
+        changed_by: profile.id,
+        changed_by_email: profile.email,
+        metadata: { revertedIds: copiedIds, count: copiedIds.length },
+      })
+    } catch (auditErr) {
+      console.error('Audit log insert failed (non-blocking):', auditErr)
+    }
 
     return NextResponse.json({ reverted: copiedIds.length })
   } catch (err) {

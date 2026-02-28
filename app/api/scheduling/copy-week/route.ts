@@ -81,18 +81,22 @@ export async function POST(req: NextRequest) {
 
     if (insertError) throw insertError
 
-    // Audit log
-    const auditEntries = (inserted || []).map((entry) => ({
-      entry_id: entry.id,
-      employee_id: entry.employee_id,
-      action: 'copy_week',
-      changed_by: profile.id,
-      changed_by_email: profile.email,
-      metadata: { sourceMonday, targetMonday },
-    }))
+    // Audit log (non-blocking — don't fail the copy if audit table has issues)
+    try {
+      const auditEntries = (inserted || []).map((entry) => ({
+        entry_id: entry.id,
+        employee_id: entry.employee_id,
+        action: 'copy_week',
+        changed_by: profile.id,
+        changed_by_email: profile.email,
+        metadata: { sourceMonday, targetMonday },
+      }))
 
-    if (auditEntries.length > 0) {
-      await supabaseAdmin.from('scheduling_audit_log').insert(auditEntries)
+      if (auditEntries.length > 0) {
+        await supabaseAdmin.from('scheduling_audit_log').insert(auditEntries)
+      }
+    } catch (auditErr) {
+      console.error('Audit log insert failed (non-blocking):', auditErr)
     }
 
     return NextResponse.json({

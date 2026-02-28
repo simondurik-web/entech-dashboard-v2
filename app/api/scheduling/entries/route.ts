@@ -115,18 +115,22 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-    // Audit log
-    const auditRows = (data || []).map((entry: any) => ({
-      entry_id: entry.id,
-      employee_id: entry.employee_id,
-      action: 'create',
-      changed_by: profile.id,
-      changed_by_email: profile.email,
-      new_value: JSON.stringify({ date: entry.date, shift: entry.shift, start_time: entry.start_time, end_time: entry.end_time, machine_id: entry.machine_id }),
-      metadata: { applyTo: applyTo || 'day' },
-    }))
-    if (auditRows.length > 0) {
-      await supabaseAdmin.from('scheduling_audit_log').insert(auditRows)
+    // Audit log (non-blocking)
+    try {
+      const auditRows = (data || []).map((entry: any) => ({
+        entry_id: entry.id,
+        employee_id: entry.employee_id,
+        action: 'create',
+        changed_by: profile.id,
+        changed_by_email: profile.email,
+        new_value: JSON.stringify({ date: entry.date, shift: entry.shift, start_time: entry.start_time, end_time: entry.end_time, machine_id: entry.machine_id }),
+        metadata: { applyTo: applyTo || 'day' },
+      }))
+      if (auditRows.length > 0) {
+        await supabaseAdmin.from('scheduling_audit_log').insert(auditRows)
+      }
+    } catch (auditErr) {
+      console.error('Audit log insert failed (non-blocking):', auditErr)
     }
 
     return NextResponse.json(data || [], { status: 201 })
@@ -152,16 +156,20 @@ export async function DELETE(req: NextRequest) {
     const { error } = await supabaseAdmin.from('scheduling_entries').delete().eq('id', id)
     if (error) throw error
 
-    // Audit log
-    if (existing) {
-      await supabaseAdmin.from('scheduling_audit_log').insert({
-        entry_id: id,
-        employee_id: existing.employee_id,
-        action: 'delete',
-        changed_by: profile.id,
-        changed_by_email: profile.email,
-        old_value: JSON.stringify({ date: existing.date, shift: existing.shift, start_time: existing.start_time, end_time: existing.end_time }),
-      })
+    // Audit log (non-blocking)
+    try {
+      if (existing) {
+        await supabaseAdmin.from('scheduling_audit_log').insert({
+          entry_id: id,
+          employee_id: existing.employee_id,
+          action: 'delete',
+          changed_by: profile.id,
+          changed_by_email: profile.email,
+          old_value: JSON.stringify({ date: existing.date, shift: existing.shift, start_time: existing.start_time, end_time: existing.end_time }),
+        })
+      }
+    } catch (auditErr) {
+      console.error('Audit log insert failed (non-blocking):', auditErr)
     }
 
     return NextResponse.json({ success: true })
