@@ -15,6 +15,7 @@ import { MachineManager } from '@/components/scheduling/MachineManager'
 import { HoursPayTable } from '@/components/scheduling/HoursPayTable'
 import { EmployeeManager } from '@/components/scheduling/EmployeeManager'
 import { AuditLogViewer } from '@/components/scheduling/AuditLogViewer'
+import { ScheduleExport } from '@/components/scheduling/ScheduleExport'
 import {
   useScheduleEntries,
   useScheduleEmployees,
@@ -406,6 +407,13 @@ export default function SchedulingPage() {
                   )}
                 </>
               )}
+              <div className="w-px h-6 bg-border mx-1" />
+              <ScheduleExport
+                entries={entries as ScheduleEntry[]}
+                employees={filteredEmployees as ScheduleEmployee[]}
+                weekDates={visibleWeekDates}
+                weekLabel={weekLabel}
+              />
             </div>
           </div>
 
