@@ -76,7 +76,7 @@ export default function SchedulingPage() {
   // Tab state
   const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay' | 'employees' | 'audit'>('schedule')
   const [shiftFilter, setShiftFilter] = useState<number | null>(null)
-  const [departmentFilter, setDepartmentFilter] = useState<string | null>(null)
+  const [departmentFilter, setDepartmentFilter] = useState<string | null>('Molding')
   const [search, setSearch] = useState('')
 
   // Modal state
