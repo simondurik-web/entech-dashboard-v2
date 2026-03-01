@@ -212,10 +212,7 @@ function MiniCarousel({ urls, partNumber }: { urls: string[]; partNumber: string
 
 /* ── Helper: get drawing URLs array ── */
 function getDrawingUrls(d: Drawing): string[] {
-  const urls: string[] = []
-  if (d.drawing1Url) urls.push(d.drawing1Url)
-  if (d.drawing2Url) urls.push(d.drawing2Url)
-  return urls
+  return d.drawingUrls
 }
 
 export default function DrawingsPage() {

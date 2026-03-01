@@ -449,9 +449,13 @@ export async function fetchDrawingsFromDB(): Promise<Drawing[]> {
     const partNumber = str(row.part_number).trim()
     if (!partNumber) continue
 
-    const drawing1Url = str(row.drawing_1_url).trim()
-    const drawing2Url = str(row.drawing_2_url).trim()
-    if (!drawing1Url && !drawing2Url) continue
+    const drawingUrls: string[] = []
+    for (const key of Object.keys(row)) {
+      if (key.match(/^drawing_\d+_url$/) && str(row[key]).trim()) {
+        drawingUrls.push(str(row[key]).trim())
+      }
+    }
+    if (drawingUrls.length === 0) continue
 
     const product = str(row.product).trim()
     const moldType = str(row.mold_type).trim()
@@ -460,7 +464,7 @@ export async function fetchDrawingsFromDB(): Promise<Drawing[]> {
     if (productLower.includes('tire')) productType = 'Tire'
     else if (productLower.includes('hub')) productType = 'Hub'
 
-    drawings.push({ partNumber, product, productType, drawing1Url, drawing2Url, moldType })
+    drawings.push({ partNumber, product, productType, drawingUrls, moldType })
   }
 
   return drawings.sort((a, b) => a.partNumber.localeCompare(b.partNumber))

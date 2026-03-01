@@ -12,7 +12,7 @@ export async function GET() {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
       drawings = await fetchDrawings()
     }
-    const resolved = await resolveRecordPhotos(drawings, ['drawing1Url', 'drawing2Url'])
+    const resolved = await resolveRecordPhotos(drawings, ['drawingUrls'])
     return NextResponse.json(resolved)
   } catch (error) {
     console.error('Failed to fetch drawings:', error)
