@@ -145,8 +145,7 @@ export interface Drawing {
   partNumber: string
   product: string
   productType: 'Tire' | 'Hub' | 'Other'
-  drawing1Url: string
-  drawing2Url: string
+  drawingUrls: string[]
   moldType: string
 }
 

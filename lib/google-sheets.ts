@@ -352,9 +352,20 @@ const PROD_COLS = {
   lastUpdate: 8,
   time: 9,
   productActive: 10,
-  drawing1Url: 11,  // Column L - Drawing 1 URL
-  drawing2Url: 12,  // Column M - Drawing 2 URL
-  makePurchasedCom: 13, // Column N - Make/Purchased/Com
+  drawingColStart: 11,  // Column L onwards = drawing URLs
+  // makePurchasedCom is dynamic — it's the first non-URL column after drawingColStart
+  // Currently index 13 (col N) but shifts if more drawing columns are added
+}
+
+/** Find makePurchasedCom column: first non-URL column at or after drawingColStart */
+function findMakePurchasedCol(row: GvizRow): number {
+  for (let col = PROD_COLS.drawingColStart; col < row.c.length; col++) {
+    const val = cellValue(row, col).trim()
+    if (val && !val.startsWith('http://') && !val.startsWith('https://')) {
+      return col
+    }
+  }
+  return -1 // not found
 }
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -396,7 +407,8 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
     }
 
     // Parse Make/Purchased/Com
-    const makePurchasedRaw = cellValue(row, PROD_COLS.makePurchasedCom).toLowerCase().trim()
+    const mpcCol = findMakePurchasedCol(row)
+    const makePurchasedRaw = mpcCol >= 0 ? cellValue(row, mpcCol).toLowerCase().trim() : ''
     let itemType = ''
     let isManufactured = false
     if (makePurchasedRaw.includes('make') || makePurchasedRaw.includes('manufactured')) {
@@ -671,26 +683,30 @@ export async function fetchDrawings(): Promise<Drawing[]> {
     const partNumber = cellValue(row, PROD_COLS.partNumber).trim()
     if (!partNumber) continue
     
-    const drawing1Url = cellValue(row, PROD_COLS.drawing1Url).trim()
-    const drawing2Url = cellValue(row, PROD_COLS.drawing2Url).trim()
-    
+    const drawingUrls: string[] = []
+    for (let col = PROD_COLS.drawingColStart; col < row.c.length; col++) {
+      const val = cellValue(row, col).trim()
+      if (val && (val.startsWith('http://') || val.startsWith('https://'))) {
+        drawingUrls.push(val)
+      }
+    }
+
     // Only include parts that have at least one drawing URL
-    if (!drawing1Url && !drawing2Url) continue
-    
+    if (drawingUrls.length === 0) continue
+
     const product = cellValue(row, PROD_COLS.product).trim()
     const moldType = cellValue(row, PROD_COLS.moldType).trim()
     const productLower = product.toLowerCase()
-    
+
     let productType: Drawing['productType'] = 'Other'
     if (productLower.includes('tire')) productType = 'Tire'
     else if (productLower.includes('hub')) productType = 'Hub'
-    
+
     drawings.push({
       partNumber,
       product,
       productType,
-      drawing1Url,
-      drawing2Url,
+      drawingUrls,
       moldType,
     })
   }
