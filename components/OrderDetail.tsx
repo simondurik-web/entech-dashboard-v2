@@ -26,11 +26,20 @@ function normalize(value: string | undefined): string {
 /** Drawing thumbnails with hover-enlarge */
 function DrawingThumbs({ drawings, onOpen }: { drawings: { main?: Drawing | null; tire?: Drawing | null; hub?: Drawing | null }; onOpen: (url: string) => void }) {
   const [hovered, setHovered] = useState<number | null>(null)
-  const items = [
-    { d: drawings.main, label: drawings.main?.partNumber },
-    { d: drawings.tire, label: `Tire: ${drawings.tire?.partNumber}` },
-    { d: drawings.hub, label: `Hub: ${drawings.hub?.partNumber}` },
-  ].filter((x) => x.d?.drawing1Url)
+  const items: { url: string; label: string }[] = []
+  for (const entry of [
+    { d: drawings.main, prefix: '' },
+    { d: drawings.tire, prefix: 'Tire: ' },
+    { d: drawings.hub, prefix: 'Hub: ' },
+  ]) {
+    if (!entry.d || entry.d.drawingUrls.length === 0) continue
+    for (let i = 0; i < entry.d.drawingUrls.length; i++) {
+      items.push({
+        url: entry.d.drawingUrls[i],
+        label: `${entry.prefix}${entry.d.partNumber}${entry.d.drawingUrls.length > 1 ? ` (${i + 1})` : ''}`,
+      })
+    }
+  }
 
   const getScale = (i: number) => {
     if (hovered === null) return 1
@@ -47,14 +56,14 @@ function DrawingThumbs({ drawings, onOpen }: { drawings: { main?: Drawing | null
         return (
           <button
             key={i}
-            onClick={() => onOpen(getDriveThumbUrl(x.d!.drawing1Url, 1200))}
+            onClick={() => onOpen(getDriveThumbUrl(x.url, 1200))}
             onMouseEnter={() => setHovered(i)}
             className="shrink-0 group flex flex-col items-center"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={getDriveThumbUrl(x.d!.drawing1Url, 300)}
-              alt={x.label || ''}
+              src={getDriveThumbUrl(x.url, 300)}
+              alt={x.label}
               className="rounded border bg-muted object-contain group-hover:ring-2 ring-primary"
               style={{
                 height: 48 * scale,
