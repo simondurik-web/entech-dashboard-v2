@@ -4,14 +4,21 @@ import { google } from 'googleapis'
 const SHEET_ID = '1yASi9Ot4GLBw2iQLfODAvOFHBWrNE8qqYfzvUTjhrz8'
 const TAB = 'Current inventory export'
 
-// Column indices (0-based)
-const COL_FUSION_ID = 0      // A
-const COL_DESCRIPTION = 1    // B
-const COL_NETSUITE_ID = 2    // C
-const COL_COST = 9           // J - Cost
-const COL_LOWER_COST = 10    // K - Lower of Cost or Market
-const COL_DEPARTMENT = 28    // AC
-const COL_SUB_DEPARTMENT = 29 // AD
+// Dynamic column lookup from header row — survives column additions
+function findCol(headers: string[], ...patterns: string[]): number {
+  for (const pat of patterns) {
+    const lp = pat.toLowerCase()
+    const idx = headers.findIndex(h => h.toLowerCase().trim() === lp)
+    if (idx >= 0) return idx
+  }
+  // Partial match fallback
+  for (const pat of patterns) {
+    const lp = pat.toLowerCase()
+    const idx = headers.findIndex(h => h.toLowerCase().trim().includes(lp))
+    if (idx >= 0) return idx
+  }
+  return -1
+}
 
 function parseCurrency(val: string | undefined | null): number | null {
   if (!val) return null
@@ -55,12 +62,26 @@ export async function GET() {
     const sheets = google.sheets({ version: 'v4', auth })
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `'${TAB}'!A:AD`,
+      range: `'${TAB}'`,  // Fetch all columns — no hardcoded range limit
     })
 
     const rows = res.data.values
     if (!rows || rows.length < 2) {
       return NextResponse.json({ costs: {}, debug: { rowCount: rows?.length ?? 0, hasEnv: !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON } })
+    }
+
+    // Dynamic column lookup from header row
+    const headers = rows[0].map((h: string) => String(h || ''))
+    const COL_FUSION_ID = findCol(headers, 'fusion id')
+    const COL_DESCRIPTION = findCol(headers, 'description')
+    const COL_NETSUITE_ID = findCol(headers, 'netsuite item id')
+    const COL_COST = findCol(headers, 'cost')
+    const COL_LOWER_COST = findCol(headers, 'lower of cost or market')
+    const COL_DEPARTMENT = findCol(headers, 'department')
+    const COL_SUB_DEPARTMENT = findCol(headers, 'sub department')
+
+    if (COL_FUSION_ID < 0) {
+      return NextResponse.json({ error: 'Could not find Fusion ID column in header', headers: headers.slice(0, 10) }, { status: 500 })
     }
 
     const costs: Record<string, {
@@ -81,12 +102,12 @@ export async function GET() {
 
       costs[fusionId] = {
         fusionId,
-        description: row[COL_DESCRIPTION]?.trim() || '',
-        netsuiteId: row[COL_NETSUITE_ID]?.trim() || '',
-        cost: parseCurrency(row[COL_COST]),
-        lowerCost: parseCurrency(row[COL_LOWER_COST]),
-        department: row[COL_DEPARTMENT]?.trim() || '',
-        subDepartment: row[COL_SUB_DEPARTMENT]?.trim() || '',
+        description: COL_DESCRIPTION >= 0 ? (row[COL_DESCRIPTION]?.trim() || '') : '',
+        netsuiteId: COL_NETSUITE_ID >= 0 ? (row[COL_NETSUITE_ID]?.trim() || '') : '',
+        cost: COL_COST >= 0 ? parseCurrency(row[COL_COST]) : null,
+        lowerCost: COL_LOWER_COST >= 0 ? parseCurrency(row[COL_LOWER_COST]) : null,
+        department: COL_DEPARTMENT >= 0 ? (row[COL_DEPARTMENT]?.trim() || '') : '',
+        subDepartment: COL_SUB_DEPARTMENT >= 0 ? (row[COL_SUB_DEPARTMENT]?.trim() || '') : '',
       }
     }
 
