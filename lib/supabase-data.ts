@@ -469,3 +469,80 @@ export async function fetchDrawingsFromDB(): Promise<Drawing[]> {
 
   return drawings.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
 }
+
+// ─── Inventory Reference (costs/departments from Supabase) ───
+
+export interface InventoryCostEntry {
+  fusionId: string
+  description: string
+  netsuiteId: string
+  cost: number | null
+  lowerCost: number | null
+  department: string
+  subDepartment: string
+}
+
+export async function fetchInventoryCostsFromDB(): Promise<Record<string, InventoryCostEntry>> {
+  const data = await fetchAllRows('inventory_reference')
+  const costs: Record<string, InventoryCostEntry> = {}
+
+  for (const row of data) {
+    const fusionId = str(row.fusion_id).trim()
+    if (!fusionId) continue
+
+    costs[fusionId] = {
+      fusionId,
+      description: str(row.description).trim(),
+      netsuiteId: str(row.netsuite_id).trim(),
+      cost: row.cost != null ? Number(row.cost) : null,
+      lowerCost: row.lower_cost != null ? Number(row.lower_cost) : null,
+      department: str(row.department).trim(),
+      subDepartment: str(row.sub_department).trim(),
+    }
+  }
+
+  return costs
+}
+
+// ─── Inventory History (from Supabase) ───
+
+import type { InventoryHistoryData, InventoryHistoryPart } from './google-sheets-shared'
+
+export async function fetchInventoryHistoryFromDB(): Promise<InventoryHistoryData> {
+  const data = await fetchAllRows('inventory_history')
+
+  // Group by part number, collect dates
+  const partMap = new Map<string, Record<string, number>>()
+  const dateSet = new Set<string>()
+
+  for (const row of data) {
+    const partNumber = str(row.part_number).trim()
+    const date = str(row.date).trim()
+    const quantity = Number(row.quantity) || 0
+
+    if (!partNumber || !date) continue
+
+    // Convert YYYY-MM-DD to MM/DD/YYYY for compatibility with existing frontend
+    const [y, m, d] = date.split('-')
+    const displayDate = `${parseInt(m)}/${parseInt(d)}/${y}`
+
+    dateSet.add(displayDate)
+
+    if (!partMap.has(partNumber)) partMap.set(partNumber, {})
+    partMap.get(partNumber)![displayDate] = quantity
+  }
+
+  // Sort dates chronologically
+  const dates = Array.from(dateSet).sort((a, b) => {
+    const [am, ad, ay] = a.split('/').map(Number)
+    const [bm, bd, by] = b.split('/').map(Number)
+    return new Date(ay, am - 1, ad).getTime() - new Date(by, bm - 1, bd).getTime()
+  })
+
+  const parts: InventoryHistoryPart[] = []
+  for (const [partNumber, dataByDate] of partMap) {
+    parts.push({ partNumber, dataByDate })
+  }
+
+  return { dates, parts }
+}
