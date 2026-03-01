@@ -353,7 +353,19 @@ const PROD_COLS = {
   time: 9,
   productActive: 10,
   drawingColStart: 11,  // Column L onwards = drawing URLs
-  makePurchasedCom: 13, // Column N - Make/Purchased/Com
+  // makePurchasedCom is dynamic — it's the first non-URL column after drawingColStart
+  // Currently index 13 (col N) but shifts if more drawing columns are added
+}
+
+/** Find makePurchasedCom column: first non-URL column at or after drawingColStart */
+function findMakePurchasedCol(row: GvizRow): number {
+  for (let col = PROD_COLS.drawingColStart; col < row.c.length; col++) {
+    const val = cellValue(row, col).trim()
+    if (val && !val.startsWith('http://') && !val.startsWith('https://')) {
+      return col
+    }
+  }
+  return -1 // not found
 }
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -395,7 +407,8 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
     }
 
     // Parse Make/Purchased/Com
-    const makePurchasedRaw = cellValue(row, PROD_COLS.makePurchasedCom).toLowerCase().trim()
+    const mpcCol = findMakePurchasedCol(row)
+    const makePurchasedRaw = mpcCol >= 0 ? cellValue(row, mpcCol).toLowerCase().trim() : ''
     let itemType = ''
     let isManufactured = false
     if (makePurchasedRaw.includes('make') || makePurchasedRaw.includes('manufactured')) {
