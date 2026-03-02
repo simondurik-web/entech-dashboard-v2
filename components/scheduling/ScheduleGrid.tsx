@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
 export interface ScheduleEmployee {
   id: string
@@ -57,6 +59,7 @@ function isToday(date: Date) {
 
 export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellClick }: ScheduleGridProps) {
   const { t, language } = useI18n()
+  const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null)
 
   const entryMap = new Map<string, ScheduleEntry>()
   for (const e of entries) {
@@ -152,40 +155,81 @@ export function ScheduleGrid({ entries, employees, weekDates, canEdit, onCellCli
   // Mobile card layout
   const mobileCards = (
     <div className="md:hidden space-y-3">
-      {employees.map((emp) => (
-        <Card key={emp.employee_id} className="bg-muted border-border p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="text-sm font-medium text-foreground">{emp.last_name}, {emp.first_name}</div>
-              <div className="text-xs text-muted-foreground">#{emp.employee_id}</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {weekDates.map((date) => {
-              const entry = getEntry(emp.employee_id, date)
-              const today = isToday(date)
-              const { dayName } = formatDayHeader(date, language)
-              const shiftBg = entry
-                ? entry.shift === 1 ? 'bg-blue-500/20' : 'bg-purple-500/20'
-                : 'bg-accent/30'
+      {employees.map((emp) => {
+        const isExpanded = expandedEmployee === emp.employee_id
+        const employeeEntries = weekDates
+          .map((date) => ({ date, entry: getEntry(emp.employee_id, date) }))
+          .filter((item): item is { date: Date; entry: ScheduleEntry } => Boolean(item.entry))
 
-              return (
-                <div
-                  key={date.toISOString()}
-                  onClick={() => canEdit && onCellClick(emp.employee_id, date, entry)}
-                  className={`rounded p-1 text-center ${shiftBg} ${today ? 'ring-1 ring-blue-500' : ''} ${canEdit ? 'cursor-pointer' : ''}`}
-                >
-                  <div className="text-[10px] text-muted-foreground">{dayName}</div>
-                  <div className="text-[10px] font-medium text-foreground">{date.getDate()}</div>
-                  {entry && (
-                    <div className={`w-2 h-2 rounded-full mx-auto mt-0.5 ${entry.shift === 1 ? 'bg-blue-400' : 'bg-purple-400'}`} />
+        return (
+          <Card key={emp.employee_id} className="bg-muted border-border p-3">
+            <button
+              type="button"
+              onClick={() => setExpandedEmployee(isExpanded ? null : emp.employee_id)}
+              className="w-full flex items-center justify-between mb-2 text-left"
+            >
+              <div>
+                <div className="text-sm font-medium text-foreground">{emp.last_name}, {emp.first_name}</div>
+                <div className="text-xs text-muted-foreground">#{emp.employee_id}</div>
+              </div>
+              {isExpanded ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+            <div className="grid grid-cols-7 gap-1">
+              {weekDates.map((date) => {
+                const entry = getEntry(emp.employee_id, date)
+                const today = isToday(date)
+                const { dayName } = formatDayHeader(date, language)
+                const shiftBg = entry
+                  ? entry.shift === 1 ? 'bg-blue-500/20' : 'bg-purple-500/20'
+                  : 'bg-accent/30'
+
+                return (
+                  <div
+                    key={date.toISOString()}
+                    onClick={() => canEdit && onCellClick(emp.employee_id, date, entry)}
+                    className={`rounded p-1 text-center ${shiftBg} ${today ? 'ring-1 ring-blue-500' : ''} ${canEdit ? 'cursor-pointer' : ''}`}
+                  >
+                    <div className="text-[10px] text-muted-foreground">{dayName}</div>
+                    <div className="text-[10px] font-medium text-foreground">{date.getDate()}</div>
+                    {entry && (
+                      <div className={`w-2 h-2 rounded-full mx-auto mt-0.5 ${entry.shift === 1 ? 'bg-blue-400' : 'bg-purple-400'}`} />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className="overflow-hidden">
+                <div className="border-t border-border/70 pt-2 space-y-1.5">
+                  {employeeEntries.length > 0 ? (
+                    employeeEntries.map(({ date, entry }) => (
+                      <div key={`${emp.employee_id}-${entry.id}`} className="text-[11px] leading-4 text-muted-foreground">
+                        <span className="text-foreground">
+                          {date.toLocaleDateString(language === 'es' ? 'es-US' : 'en-US', {
+                            weekday: 'short',
+                            month: 'numeric',
+                            day: 'numeric',
+                          })}
+                        </span>
+                        <span>{`: ${language === 'es' ? 'Turno' : 'Shift'} ${entry.shift}`}</span>
+                        <span>{` • ${formatTime(entry.start_time)} - ${formatTime(entry.end_time)}`}</span>
+                        {entry.machine_name && <span>{` • ${language === 'es' ? 'Maquina' : 'Machine'}: ${entry.machine_name}`}</span>}
+                        <span>{` • ${entry.hours}h`}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground">{t('scheduling.noSchedule')}</div>
                   )}
                 </div>
-              )
-            })}
-          </div>
-        </Card>
-      ))}
+              </div>
+            </div>
+          </Card>
+        )
+      })}
     </div>
   )
 
