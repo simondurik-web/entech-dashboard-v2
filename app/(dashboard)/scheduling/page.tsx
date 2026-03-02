@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -57,6 +58,7 @@ function addWeeks(d: Date, n: number): Date {
 
 export default function SchedulingPage() {
   const { t } = useI18n()
+  const searchParams = useSearchParams()
   const { user, profile } = useAuth()
   const role = profile?.role ?? 'visitor'
 
@@ -75,7 +77,10 @@ export default function SchedulingPage() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay' | 'employees' | 'audit'>('schedule')
-  const [shiftFilter, setShiftFilter] = useState<number | null>(null)
+  const initialShift = searchParams.get('shift')
+  const [shiftFilter, setShiftFilter] = useState<number | null>(
+    initialShift === '1' ? 1 : initialShift === '2' ? 2 : null
+  )
   const [departmentFilter, setDepartmentFilter] = useState<string | null>('Molding')
   const [search, setSearch] = useState('')
 
