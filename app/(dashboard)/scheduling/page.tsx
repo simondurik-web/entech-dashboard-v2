@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-
+import { Suspense, useState, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -57,6 +57,10 @@ function addWeeks(d: Date, n: number): Date {
 }
 
 export default function SchedulingPage() {
+  return <Suspense><SchedulingPageContent /></Suspense>
+}
+
+function SchedulingPageContent() {
   const { t } = useI18n()
   const { user, profile } = useAuth()
   const role = profile?.role ?? 'visitor'

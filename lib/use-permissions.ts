@@ -46,7 +46,16 @@ export function usePermissions() {
       // Check role-based permissions
       const rolePerm = permissions.find((p) => p.role === profile.role)
       if (!rolePerm) return false
-      return rolePerm.menu_access[path] === true
+      // Exact match first
+      if (rolePerm.menu_access[path] === true) return true
+      // Sub-path match: /quotes/new should match /quotes permission
+      const segments = path.split("/").filter(Boolean)
+      while (segments.length > 1) {
+        segments.pop()
+        const parentPath = "/" + segments.join("/")
+        if (rolePerm.menu_access[parentPath] === true) return true
+      }
+      return false
     },
     [profile, permissions]
   )
