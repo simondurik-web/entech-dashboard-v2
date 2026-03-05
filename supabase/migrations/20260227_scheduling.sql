@@ -82,35 +82,56 @@ ALTER TABLE public.scheduling_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scheduling_shift_defaults ENABLE ROW LEVEL SECURITY;
 
 -- Shift defaults: everyone can read
+DO $$ BEGIN
 CREATE POLICY "Anyone can read shift defaults" ON public.scheduling_shift_defaults
   FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Employees: authenticated users can read (pay_rate filtered at API level)
+DO $$ BEGIN
 CREATE POLICY "Authenticated users can read employees" ON public.scheduling_employees
   FOR SELECT USING (auth.role() = 'authenticated');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Admins can manage employees" ON public.scheduling_employees
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role IN ('admin', 'manager'))
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Machines: everyone reads, admins/managers/group_leaders write
+DO $$ BEGIN
 CREATE POLICY "Anyone can read machines" ON public.scheduling_machines
   FOR SELECT USING (auth.role() = 'authenticated');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Leaders can manage machines" ON public.scheduling_machines
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role IN ('admin', 'manager', 'group_leader'))
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Entries: everyone reads, admins/managers/group_leaders write
+DO $$ BEGIN
 CREATE POLICY "Anyone can read entries" ON public.scheduling_entries
   FOR SELECT USING (auth.role() = 'authenticated');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Leaders can manage entries" ON public.scheduling_entries
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role IN ('admin', 'manager', 'group_leader'))
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ==========================================
 -- 7. SEED MACHINES (from Google Sheet "Planing" tab)
@@ -155,6 +176,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_calculate_hours ON public.scheduling_entries;
+DROP TRIGGER IF EXISTS trg_calculate_hours ON public.scheduling_entries;
 CREATE TRIGGER trg_calculate_hours
   BEFORE INSERT OR UPDATE ON public.scheduling_entries
   FOR EACH ROW

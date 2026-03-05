@@ -31,42 +31,66 @@ ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
 
 -- user_profiles policies
+DO $$ BEGIN
 CREATE POLICY "Users can read own profile" ON public.user_profiles
   FOR SELECT USING (auth.uid() = id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Admins can read all profiles" ON public.user_profiles
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin')
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Admins can update all profiles" ON public.user_profiles
   FOR UPDATE USING (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin')
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Admins can insert profiles" ON public.user_profiles
   FOR INSERT WITH CHECK (
     auth.uid() = id OR
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin')
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Allow users to insert their own profile (for first login)
+DO $$ BEGIN
 CREATE POLICY "Users can insert own profile" ON public.user_profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- role_permissions policies
+DO $$ BEGIN
 CREATE POLICY "Anyone can read role_permissions" ON public.role_permissions
   FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Admins can update role_permissions" ON public.role_permissions
   FOR UPDATE USING (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin')
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Admins can insert role_permissions" ON public.role_permissions
   FOR INSERT WITH CHECK (
     EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin')
   );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Seed role_permissions
 INSERT INTO public.role_permissions (role, label, description, menu_access, sort_order) VALUES
@@ -126,6 +150,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
