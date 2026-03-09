@@ -18,23 +18,24 @@
 const NUM_FORMATS: Record<string, string> = {
   qty: '#,##0',
   unitPrice: '$#,##0.00',
-  contribution: '0.0%',
+  variableMarginPct: '0.0%',
   variableCost: '$#,##0.00',
   totalCost: '$#,##0.00',
   salesTarget: '$#,##0.00',
   profitPerPart: '$#,##0.00',
-  pl: '$#,##0.00',
+  totalProfit: '$#,##0.00',
+  totalMarginPct: '0.0%',
   revenue: '$#,##0.00',
   shippingCost: '$#,##0.00',
 }
 
-const GREEN_RED_COLS = new Set(['pl', 'profitPerPart'])
-const GREEN_ONLY_COLS = new Set(['contribution'])
+const GREEN_RED_COLS = new Set(['totalProfit', 'profitPerPart'])
+const GREEN_ONLY_COLS = new Set(['variableMarginPct'])
 
 // Columns to SUM in totals row (SUBTOTAL 109)
-const SUM_COLS = new Set(['qty', 'pl', 'revenue'])
+const SUM_COLS = new Set(['qty', 'totalProfit', 'revenue'])
 // Columns to AVERAGE in totals row (SUBTOTAL 101)
-const AVG_COLS = new Set(['contribution'])
+const AVG_COLS = new Set(['variableMarginPct', 'totalMarginPct'])
 
 function getColLetter(colNum: number): string {
   let letter = ''
@@ -86,7 +87,7 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     const values = columns.map((c) => {
       const val = row[c.key]
       if (val === null || val === undefined) return ''
-      if (c.key === 'contribution' && typeof val === 'number') return val / 100
+      if ((c.key === 'variableMarginPct' || c.key === 'totalMarginPct') && typeof val === 'number') return val / 100
       if (typeof val === 'number') return val
       const s = String(val)
       const n = Number(s)
@@ -166,7 +167,7 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     if (SUM_COLS.has(colKey)) {
       cell.value = { formula: `SUBTOTAL(109,${dataRange})` }
       // Green font for P/L total
-      if (colKey === 'pl') {
+      if (colKey === 'totalProfit') {
         cell.font = { name: 'Aptos', size: 11, bold: true, color: { argb: 'FF4ADE80' } }
       }
     } else if (AVG_COLS.has(colKey)) {
@@ -193,7 +194,7 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   const lastDataRow = data.length + 1
 
   // Contribution Level: 3-color scale
-  const contribCol = colIndexByKey.get('contribution')
+  const contribCol = colIndexByKey.get('variableMarginPct')
   if (contribCol) {
     ws.addConditionalFormatting({
       ref: `${getColLetter(contribCol)}2:${getColLetter(contribCol)}${lastDataRow}`,
@@ -206,7 +207,7 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   }
 
   // P/L: 3-color scale
-  const plCol = colIndexByKey.get('pl')
+  const plCol = colIndexByKey.get('totalProfit')
   if (plCol) {
     ws.addConditionalFormatting({
       ref: `${getColLetter(plCol)}2:${getColLetter(plCol)}${lastDataRow}`,
@@ -249,8 +250,8 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
     category: 12.1, dateOfRequest: 15, ifNumber: 13.6, ifStatusFusion: 16.4,
     ifStatus: 16.4, internalStatus: 15.7, poNumber: 22.1, customer: 30,
     partNumber: 18.6, qty: 11.4, requestedDate: 15, unitPrice: 12.1,
-    contribution: 15, variableCost: 13.6, totalCost: 12.1, salesTarget: 15,
-    profitPerPart: 12.9, pl: 14.3, revenue: 14.3, shippedDate: 14.3, shippingCost: 14.3,
+    variableMarginPct: 15, variableCost: 13.6, totalCost: 12.1, salesTarget: 15,
+    profitPerPart: 12.9, totalProfit: 14.3, totalMarginPct: 12.1, revenue: 14.3, shippedDate: 14.3, shippingCost: 14.3,
   }
   columns.forEach((col, i) => {
     const w = TEMPLATE_WIDTHS[String(col.key)]
@@ -284,8 +285,8 @@ interface SummaryRow {
   orders: number
   totalQty: number
   revenue: number
-  pl: number
-  avgMargin: number
+  totalProfit: number
+  totalMarginPct: number
 }
 
 function buildDashboardTab<T extends Record<string, unknown>>(
@@ -317,17 +318,17 @@ function buildDashboardTab<T extends Record<string, unknown>>(
   const totalOrders = data.length
   const totalQty = sumField(data, 'qty')
   const totalRevenue = sumField(data, 'revenue')
-  const totalPL = sumField(data, 'pl')
-  const avgMargin = data.length > 0
-    ? data.reduce((s, r) => s + (Number(r.contribution) || 0), 0) / data.length
+  const totalProfit = sumField(data, 'totalProfit')
+  const totalMarginPct = data.length > 0
+    ? data.reduce((s, r) => s + (Number(r.totalMarginPct) || 0), 0) / data.length
     : 0
 
   const kpis = [
     { label: 'Total Orders', value: totalOrders, fmt: '#,##0' },
     { label: 'Total Qty', value: totalQty, fmt: '#,##0' },
     { label: 'Total Revenue', value: totalRevenue, fmt: '$#,##0.00' },
-    { label: 'Total P/L', value: totalPL, fmt: '$#,##0.00' },
-    { label: 'Avg Margin', value: avgMargin / 100, fmt: '0.0%' },
+    { label: 'Total P/L', value: totalProfit, fmt: '$#,##0.00' },
+    { label: 'Avg Margin', value: totalMarginPct / 100, fmt: '0.0%' },
   ]
 
   // KPI labels row
@@ -384,7 +385,7 @@ function buildDashboardTab<T extends Record<string, unknown>>(
   // P/L by Customer chart
   addBarChart(wb, ds, 'P/L by Customer (Top 10)',
     byCustomer.slice(0, 10).map(r => r.label),
-    byCustomer.slice(0, 10).map(r => r.pl),
+    byCustomer.slice(0, 10).map(r => r.totalProfit),
     'H', 39, 'R', 54, 'FF1A7A2E')
 
   // Column widths for dashboard
@@ -397,17 +398,17 @@ function buildDashboardTab<T extends Record<string, unknown>>(
 }
 
 function aggregate<T extends Record<string, unknown>>(data: T[], groupKey: string): SummaryRow[] {
-  const map = new Map<string, { orders: number; qty: number; revenue: number; pl: number; margins: number[] }>()
+  const map = new Map<string, { orders: number; qty: number; revenue: number; totalProfit: number; margins: number[] }>()
 
   for (const row of data) {
     const key = String(row[groupKey] || 'Unknown').trim() || 'Unknown'
     let g = map.get(key)
-    if (!g) { g = { orders: 0, qty: 0, revenue: 0, pl: 0, margins: [] }; map.set(key, g) }
+    if (!g) { g = { orders: 0, qty: 0, revenue: 0, totalProfit: 0, margins: [] }; map.set(key, g) }
     g.orders++
     g.qty += Number(row.qty) || 0
     g.revenue += Number(row.revenue) || 0
-    g.pl += Number(row.pl) || 0
-    const m = Number(row.contribution)
+    g.totalProfit += Number(row.totalProfit) || 0
+    const m = Number(row.totalMarginPct)
     if (!isNaN(m)) g.margins.push(m)
   }
 
@@ -416,8 +417,8 @@ function aggregate<T extends Record<string, unknown>>(data: T[], groupKey: strin
     orders: g.orders,
     totalQty: g.qty,
     revenue: g.revenue,
-    pl: g.pl,
-    avgMargin: g.margins.length > 0 ? g.margins.reduce((a, b) => a + b, 0) / g.margins.length : 0,
+    totalProfit: g.totalProfit,
+    totalMarginPct: g.margins.length > 0 ? g.margins.reduce((a, b) => a + b, 0) / g.margins.length : 0,
   }))
 }
 
@@ -446,7 +447,7 @@ function writeTable(ws: any, startRow: number, title: string, rows: SummaryRow[]
   // Table data
   rows.forEach((r, ri) => {
     const rowNum = hdrRow + 1 + ri
-    const vals = [r.label, r.orders, r.totalQty, r.revenue, r.pl, r.avgMargin / 100]
+    const vals = [r.label, r.orders, r.totalQty, r.revenue, r.totalProfit, r.totalMarginPct / 100]
     vals.forEach((v, ci) => {
       const cell = ws.getCell(rowNum, ci + 1)
       cell.value = v
