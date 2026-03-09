@@ -29,8 +29,14 @@ ALTER TABLE notification_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_state_snapshot ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (API routes use service key)
+DO $$ BEGIN
 CREATE POLICY "Service role full access on notification_rules" ON notification_rules
   FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE POLICY "Service role full access on order_state_snapshot" ON order_state_snapshot
   FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;

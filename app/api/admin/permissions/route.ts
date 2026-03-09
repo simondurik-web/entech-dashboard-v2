@@ -3,16 +3,24 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 
+const DASHBOARD_APP_ID = "dashboard"
+
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const userId = req.headers.get("x-user-id")
   if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
-    .select("role, email")
+    .select("email")
     .eq("id", userId)
     .single()
   if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
-  return profile?.role === "admin"
+  const { data: appRole } = await supabaseAdmin
+    .from("user_app_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("app_id", DASHBOARD_APP_ID)
+    .single()
+  return appRole?.role === "admin"
 }
 
 export async function GET() {
@@ -23,13 +31,14 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Count users per role
-  const { data: profiles } = await supabaseAdmin
-    .from("user_profiles")
+  // Count users per app-specific role
+  const { data: appRoles } = await supabaseAdmin
+    .from("user_app_roles")
     .select("role")
+    .eq("app_id", DASHBOARD_APP_ID)
 
   const roleCounts: Record<string, number> = {}
-  for (const p of profiles ?? []) {
+  for (const p of appRoles ?? []) {
     roleCounts[p.role] = (roleCounts[p.role] || 0) + 1
   }
 

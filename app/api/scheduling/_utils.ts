@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-/** Get user profile from x-user-id header (matching existing dashboard pattern) */
+const DASHBOARD_APP_ID = 'dashboard'
+
+/** Get user profile from x-user-id header, with app-specific role overlay */
 export async function getProfileFromHeader(req: NextRequest) {
   const userId = req.headers.get('x-user-id')
   if (!userId) return null
@@ -12,6 +14,19 @@ export async function getProfileFromHeader(req: NextRequest) {
     .eq('id', userId)
     .single()
 
+  if (!profile) return null
+
+  // Overlay app-specific role
+  const { data: appRole } = await supabaseAdmin
+    .from('user_app_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('app_id', DASHBOARD_APP_ID)
+    .single()
+
+  if (appRole) {
+    return { ...profile, role: appRole.role }
+  }
   return profile
 }
 
