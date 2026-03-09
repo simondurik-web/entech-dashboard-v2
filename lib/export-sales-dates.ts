@@ -35,7 +35,7 @@ const GREEN_ONLY_COLS = new Set(['variableMarginPct'])
 // Columns to SUM in totals row (SUBTOTAL 109)
 const SUM_COLS = new Set(['qty', 'totalProfit', 'revenue'])
 // Columns to AVERAGE in totals row (SUBTOTAL 101)
-const AVG_COLS = new Set(['variableMarginPct', 'totalMarginPct'])
+const AVG_COLS = new Set(['variableMarginPct'])
 
 function getColLetter(colNum: number): string {
   let letter = ''
@@ -140,6 +140,8 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
   const totalsRow = ws.addRow(totalsValues)
   const totalsRowNum = spacerRowNum + 1
   totalsRow.height = 28
+  const totalProfitCol = colIndexByKey.get('totalProfit')
+  const revenueCol = colIndexByKey.get('revenue')
 
   totalsRow.eachCell((cell: any, colNumber: number) => {
     const colKey = String(columns[colNumber - 1]?.key || '')
@@ -170,6 +172,10 @@ export async function exportSalesDateExcel<T extends Record<string, unknown>>(
       if (colKey === 'totalProfit') {
         cell.font = { name: 'Aptos', size: 11, bold: true, color: { argb: 'FF4ADE80' } }
       }
+    } else if (colKey === 'totalMarginPct' && totalProfitCol && revenueCol) {
+      const totalProfitRange = `${getColLetter(totalProfitCol)}2:${getColLetter(totalProfitCol)}${data.length + 1}`
+      const revenueRange = `${getColLetter(revenueCol)}2:${getColLetter(revenueCol)}${data.length + 1}`
+      cell.value = { formula: `IFERROR(SUBTOTAL(109,${totalProfitRange})/SUBTOTAL(109,${revenueRange}),0)` }
     } else if (AVG_COLS.has(colKey)) {
       cell.value = { formula: `SUBTOTAL(101,${dataRange})` }
     }
@@ -319,16 +325,14 @@ function buildDashboardTab<T extends Record<string, unknown>>(
   const totalQty = sumField(data, 'qty')
   const totalRevenue = sumField(data, 'revenue')
   const totalProfit = sumField(data, 'totalProfit')
-  const totalMarginPct = data.length > 0
-    ? data.reduce((s, r) => s + (Number(r.totalMarginPct) || 0), 0) / data.length
-    : 0
+  const totalMarginPct = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
   const kpis = [
     { label: 'Total Orders', value: totalOrders, fmt: '#,##0' },
     { label: 'Total Qty', value: totalQty, fmt: '#,##0' },
     { label: 'Total Revenue', value: totalRevenue, fmt: '$#,##0.00' },
     { label: 'Total P/L', value: totalProfit, fmt: '$#,##0.00' },
-    { label: 'Avg Margin', value: totalMarginPct / 100, fmt: '0.0%' },
+    { label: 'Margin', value: totalMarginPct / 100, fmt: '0.0%' },
   ]
 
   // KPI labels row
@@ -398,18 +402,16 @@ function buildDashboardTab<T extends Record<string, unknown>>(
 }
 
 function aggregate<T extends Record<string, unknown>>(data: T[], groupKey: string): SummaryRow[] {
-  const map = new Map<string, { orders: number; qty: number; revenue: number; totalProfit: number; margins: number[] }>()
+  const map = new Map<string, { orders: number; qty: number; revenue: number; totalProfit: number }>()
 
   for (const row of data) {
     const key = String(row[groupKey] || 'Unknown').trim() || 'Unknown'
     let g = map.get(key)
-    if (!g) { g = { orders: 0, qty: 0, revenue: 0, totalProfit: 0, margins: [] }; map.set(key, g) }
+    if (!g) { g = { orders: 0, qty: 0, revenue: 0, totalProfit: 0 }; map.set(key, g) }
     g.orders++
     g.qty += Number(row.qty) || 0
     g.revenue += Number(row.revenue) || 0
     g.totalProfit += Number(row.totalProfit) || 0
-    const m = Number(row.totalMarginPct)
-    if (!isNaN(m)) g.margins.push(m)
   }
 
   return Array.from(map.entries()).map(([label, g]) => ({
@@ -418,7 +420,7 @@ function aggregate<T extends Record<string, unknown>>(data: T[], groupKey: strin
     totalQty: g.qty,
     revenue: g.revenue,
     totalProfit: g.totalProfit,
-    totalMarginPct: g.margins.length > 0 ? g.margins.reduce((a, b) => a + b, 0) / g.margins.length : 0,
+    totalMarginPct: g.revenue > 0 ? (g.totalProfit / g.revenue) * 100 : 0,
   }))
 }
 
@@ -435,7 +437,7 @@ function writeTable(ws: any, startRow: number, title: string, rows: SummaryRow[]
 
   // Table header
   const hdrRow = startRow + 1
-  const headers = ['Name', 'Orders', 'Total Qty', 'Revenue', 'P/L', 'Avg Margin']
+  const headers = ['Name', 'Orders', 'Total Qty', 'Revenue', 'P/L', 'Margin']
   const fmts = ['', '#,##0', '#,##0', '$#,##0.00', '$#,##0.00', '0.0%']
   headers.forEach((h, i) => {
     const cell = ws.getCell(hdrRow, i + 1)
