@@ -23,8 +23,13 @@ interface SalesOrder {
   variableCost: number
   totalCost: number
   pl: number
+  variableProfit: number
+  totalProfit: number
+  variableMarginPct: number
+  totalMarginPct: number
   shippedDate: string
   status: string
+  contributionLevel: string
 }
 
 interface SalesSummary {
@@ -37,6 +42,10 @@ interface SalesSummary {
   shippedCount?: number
   forecastPL?: number
   pendingCount?: number
+  variableProfit?: number
+  totalProfit?: number
+  variableMarginPct?: number
+  totalMarginPct?: number
 }
 
 interface SalesData {
@@ -111,17 +120,17 @@ export default function SalesOverviewPage() {
   // Monthly P/L trend
   const monthlyTrend = useMemo(() => {
     if (!data) return []
-    const byMonth: Record<string, { revenue: number; pl: number }> = {}
+    const byMonth: Record<string, { revenue: number; totalProfit: number }> = {}
     for (const order of data.orders) {
       if (!order.shippedDate) continue
       const parts = order.shippedDate.split('/')
       if (parts.length < 3) continue
       const monthKey = `${parts[2]}-${parts[0].padStart(2, '0')}`
       if (!byMonth[monthKey]) {
-        byMonth[monthKey] = { revenue: 0, pl: 0 }
+        byMonth[monthKey] = { revenue: 0, totalProfit: 0 }
       }
       byMonth[monthKey].revenue += order.revenue
-      byMonth[monthKey].pl += order.pl
+      byMonth[monthKey].totalProfit += order.totalProfit
     }
     return Object.entries(byMonth)
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -153,6 +162,8 @@ export default function SalesOverviewPage() {
   }
 
   const { summary } = data
+  const totalProfit = summary.totalProfit ?? summary.totalPL
+  const totalMarginPct = summary.totalMarginPct ?? summary.avgMargin
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -170,10 +181,10 @@ export default function SalesOverviewPage() {
         </SpotlightCard>
         <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="59,130,246">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{t('salesOverview.totalPL')}</p>
-          <p className={`text-2xl font-bold mt-1 ${summary.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>
-            {formatCurrency(summary.totalPL)}
+          <p className={`text-2xl font-bold mt-1 ${totalProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+            {formatCurrency(totalProfit)}
           </p>
-          <p className="text-xs text-muted-foreground mt-1">Margin: {summary.avgMargin.toFixed(2)}%</p>
+          <p className="text-xs text-muted-foreground mt-1">Margin: {totalMarginPct.toFixed(2)}%</p>
         </SpotlightCard>
         <SpotlightCard className="relative rounded-xl border bg-card p-4 overflow-hidden stat-card-accent" spotlightColor="16,185,129">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Shipped P/L</p>
@@ -262,7 +273,7 @@ export default function SalesOverviewPage() {
               <Tooltip formatter={(value) => formatCurrency(value as number)} contentStyle={{ backgroundColor: "hsl(var(--card) / 0.8)", backdropFilter: "blur(12px)", border: "1px solid hsl(var(--border))", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }} />
               <Legend />
               <Line type="monotone" dataKey="revenue" stroke="#38a169" strokeWidth={2} name="Revenue" dot={{ r: 3 }} animationBegin={200} animationDuration={1000} animationEasing="ease-out" />
-              <Line type="monotone" dataKey="pl" stroke="#3182ce" strokeWidth={2} name="P/L" dot={{ r: 3 }} animationBegin={400} animationDuration={1000} animationEasing="ease-out" />
+              <Line type="monotone" dataKey="totalProfit" stroke="#3182ce" strokeWidth={2} name="P/L" dot={{ r: 3 }} animationBegin={400} animationDuration={1000} animationEasing="ease-out" />
             </LineChart>
           </ResponsiveContainer>
         </div>
