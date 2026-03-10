@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchSalesFromDB } from '@/lib/supabase-data'
-import { calculateSalesMath, summarizeSalesOrders } from '@/lib/sales-math'
+import { calculateSalesMath, isNoOpSalesMathRow, summarizeSalesOrders } from '@/lib/sales-math'
 
 // Keep old imports for fallback
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
@@ -111,7 +111,7 @@ async function fetchSalesFromSheets() {
     const totalCost = cellNumber(row, totalCostCol)
     const pl = cellNumber(row, plCol)
     const salesMath = calculateSalesMath({ revenue, variableCost, totalCost })
-    if (revenue === 0 && pl === 0) continue
+    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
 
     const qty = cellNumber(row, COLS.orderQty)
     const unitPrice = cellNumber(row, COLS.unitPrice)

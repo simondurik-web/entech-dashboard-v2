@@ -35,6 +35,14 @@ export function getDisplayTotalCost(totalCost: number, variableCost: number): nu
   return totalCost || variableCost
 }
 
+export function isNoOpSalesMathRow({
+  revenue,
+  variableCost,
+  totalCost,
+}: SalesMathInputs): boolean {
+  return revenue === 0 && variableCost === 0 && totalCost === 0
+}
+
 export function calculateSalesMath({
   revenue,
   variableCost,
