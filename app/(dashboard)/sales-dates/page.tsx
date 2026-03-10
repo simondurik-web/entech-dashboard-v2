@@ -17,6 +17,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { AnimatedNumber } from "@/components/ui/animated-number"
 import { ScrollReveal } from "@/components/scroll-reveal"
 import { StaggeredGrid } from "@/components/ui/staggered-grid"
+import { getOrderCost } from '@/lib/sales-math'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
