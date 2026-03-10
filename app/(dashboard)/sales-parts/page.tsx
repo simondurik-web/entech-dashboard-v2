@@ -18,8 +18,13 @@ interface SalesOrder {
   variableCost: number
   totalCost: number
   pl: number
+  variableProfit: number
+  totalProfit: number
+  variableMarginPct: number
+  totalMarginPct: number
   shippedDate: string
   status: string
+  contributionLevel: string
 }
 
 interface SalesData {
@@ -34,8 +39,8 @@ interface PartRow extends Record<string, unknown> {
   totalQty: number
   revenue: number
   costs: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
   orders: SalesOrder[]
 }
 
@@ -45,8 +50,8 @@ interface CustomerGroupRow extends Record<string, unknown> {
   totalQty: number
   revenue: number
   costs: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
   orders: SalesOrder[]
 }
 
@@ -56,7 +61,7 @@ interface OrderRow extends Record<string, unknown> {
   qty: number
   revenue: number
   totalCost: number
-  pl: number
+  totalProfit: number
   shippedDate: string
   status: string
 }
@@ -77,7 +82,7 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
   { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
   { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
   { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
-  { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt(v as number)}</span> },
+  { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt(v as number)}</span> },
   { key: 'shippedDate', label: 'Shipped', sortable: true, filterable: true },
   { key: 'status', label: 'Status', sortable: true, filterable: true },
 ]
@@ -88,8 +93,8 @@ const CUSTOMER_GROUP_COLUMNS: ColumnDef<CustomerGroupRow>[] = [
   { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
   { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
   { key: 'costs', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
-  { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
-  { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{(v as number).toFixed(1)}%</span> },
+  { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
+  { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{(v as number).toFixed(1)}%</span> },
 ]
 
 function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storageKey: string }) {
@@ -99,7 +104,7 @@ function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storage
     qty: o.qty,
     revenue: o.revenue,
     totalCost: o.totalCost || o.variableCost,
-    pl: o.pl,
+    totalProfit: o.totalProfit,
     shippedDate: o.shippedDate,
     status: o.status,
   })), [orders])
@@ -116,8 +121,8 @@ function CustomersDataTable({ customerGroups, partNumber }: { customerGroups: [s
     const totalQty = orders.reduce((s, o) => s + o.qty, 0)
     const revenue = orders.reduce((s, o) => s + o.revenue, 0)
     const costs = orders.reduce((s, o) => s + (o.totalCost || o.variableCost), 0)
-    const pl = orders.reduce((s, o) => s + o.pl, 0)
-    return { customer, orderCount: orders.length, totalQty, revenue, costs, pl, margin: revenue > 0 ? (pl / revenue) * 100 : 0, orders }
+    const totalProfit = orders.reduce((s, o) => s + o.totalProfit, 0)
+    return { customer, orderCount: orders.length, totalQty, revenue, costs, totalProfit, totalMarginPct: revenue > 0 ? (totalProfit / revenue) * 100 : 0, orders }
   }), [customerGroups])
 
   const table = useDataTable({ data: rows, columns: CUSTOMER_GROUP_COLUMNS, storageKey: `${partNumber}_customers` })
@@ -192,15 +197,15 @@ function SalesPartsContent() {
     const byPart: Record<string, PartRow> = {}
     for (const o of filteredOrders) {
       const k = o.partNumber || 'Unknown'
-      if (!byPart[k]) byPart[k] = { partNumber: k, category: o.category, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, pl: 0, margin: 0, orders: [] }
+      if (!byPart[k]) byPart[k] = { partNumber: k, category: o.category, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, totalProfit: 0, totalMarginPct: 0, orders: [] }
       byPart[k].orderCount++
       byPart[k].totalQty += o.qty
       byPart[k].revenue += o.revenue
       byPart[k].costs += o.totalCost || o.variableCost
-      byPart[k].pl += o.pl
+      byPart[k].totalProfit += o.totalProfit
       byPart[k].orders.push(o)
     }
-    return Object.values(byPart).map((p) => ({ ...p, margin: p.revenue > 0 ? (p.pl / p.revenue) * 100 : 0 }))
+    return Object.values(byPart).map((p) => ({ ...p, totalMarginPct: p.revenue > 0 ? (p.totalProfit / p.revenue) * 100 : 0 }))
   }, [filteredOrders, data])
 
   const PART_COLUMNS: ColumnDef<PartRow>[] = useMemo(() => [
@@ -216,8 +221,8 @@ function SalesPartsContent() {
     { key: 'totalQty', label: t('table.qty'), sortable: true, render: (v) => fmtN(v as number) },
     { key: 'revenue', label: t('table.revenue'), sortable: true, render: (v) => fmt(v as number) },
     { key: 'costs', label: t('salesOverview.totalCosts'), sortable: true, render: (v) => fmt(v as number) },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
-    { key: 'margin', label: t('salesOverview.avgMargin'), sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{(v as number).toFixed(1)}%</span> },
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalMarginPct', label: t('salesOverview.avgMargin'), sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{(v as number).toFixed(1)}%</span> },
   ], [t])
 
   const table = useDataTable({ data: partSummaries, columns: PART_COLUMNS, storageKey: 'sales-by-part' })

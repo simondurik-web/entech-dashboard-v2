@@ -22,8 +22,13 @@ interface SalesOrder {
   variableCost: number
   totalCost: number
   pl: number
+  variableProfit: number
+  totalProfit: number
+  variableMarginPct: number
+  totalMarginPct: number
   shippedDate: string
   status: string
+  contributionLevel: string
 }
 
 interface SalesData {
@@ -37,8 +42,8 @@ interface CustomerRow extends Record<string, unknown> {
   totalQty: number
   revenue: number
   costs: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
   orders: SalesOrder[]
 }
 
@@ -50,8 +55,9 @@ interface PartSummaryRow extends Record<string, unknown> {
   avgUnitPrice: number
   revenue: number
   totalCost: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
+  variableMarginPct: number
   contribution: string
   orders: SalesOrder[]
 }
@@ -64,8 +70,9 @@ interface OrderRow extends Record<string, unknown> {
   unitPrice: number
   revenue: number
   totalCost: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
+  variableMarginPct: number
   shippedDate: string
   status: string
 }
@@ -91,8 +98,8 @@ const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
   { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
   { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
   { key: 'costs', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
-  { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
-  { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{(v as number).toFixed(1)}%</span> },
+  { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
+  { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{(v as number).toFixed(1)}%</span> },
 ]
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
@@ -222,8 +229,8 @@ function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
 
 // ─── Contribution Badge ──────────────────────────────────────────────────────
 
-function ContributionBadge({ margin }: { margin: number }) {
-  if (margin >= 0) {
+function ContributionBadge({ variableMarginPct }: { variableMarginPct: number }) {
+  if (variableMarginPct >= 0) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
         PROFITABLE
@@ -251,8 +258,9 @@ function PartExpandedContent({ part }: { part: PartSummaryRow }) {
         unitPrice: o.qty > 0 ? o.revenue / o.qty : 0,
         revenue: o.revenue,
         totalCost: o.totalCost || o.variableCost,
-        pl: o.pl,
-        margin: o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0,
+        totalProfit: o.totalProfit,
+        totalMarginPct: o.totalMarginPct,
+        variableMarginPct: o.variableMarginPct,
         shippedDate: o.shippedDate,
         status: o.status,
       })),
@@ -270,8 +278,8 @@ function PartExpandedContent({ part }: { part: PartSummaryRow }) {
     { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
-    { key: 'margin', label: 'Margin', sortable: true, render: (v) => {
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => {
       const n = v as number
       return <span className={n >= 0 ? 'text-emerald-400' : 'text-red-400'}>{n.toFixed(1)}%</span>
     }},
@@ -308,8 +316,10 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
         const totalQty = orders.reduce((s, o) => s + o.qty, 0)
         const revenue = orders.reduce((s, o) => s + o.revenue, 0)
         const totalCost = orders.reduce((s, o) => s + (o.totalCost || o.variableCost), 0)
-        const pl = orders.reduce((s, o) => s + o.pl, 0)
-        const margin = revenue > 0 ? (pl / revenue) * 100 : 0
+        const totalProfit = orders.reduce((s, o) => s + o.totalProfit, 0)
+        const variableProfit = orders.reduce((s, o) => s + o.variableProfit, 0)
+        const totalMarginPct = revenue > 0 ? (totalProfit / revenue) * 100 : 0
+        const variableMarginPct = revenue > 0 ? (variableProfit / revenue) * 100 : 0
         const avgUnitPrice = totalQty > 0 ? revenue / totalQty : 0
         return {
           partNumber,
@@ -319,9 +329,10 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
           avgUnitPrice,
           revenue,
           totalCost,
-          pl,
-          margin,
-          contribution: margin >= 0 ? 'PROFITABLE' : 'LOSS',
+          totalProfit,
+          totalMarginPct,
+          variableMarginPct,
+          contribution: variableMarginPct >= 0 ? 'PROFITABLE' : 'LOSS',
           orders,
         }
       })
@@ -360,13 +371,22 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     {
       key: 'contribution',
-      label: 'Contribution',
+      label: 'Variable Basis',
       sortable: true,
       filterable: true,
-      render: (_v, row) => <ContributionBadge margin={(row as PartSummaryRow).margin} />,
+      render: (_v, row) => <ContributionBadge variableMarginPct={(row as PartSummaryRow).variableMarginPct} />,
     },
     {
-      key: 'margin',
+      key: 'variableMarginPct',
+      label: 'Variable Margin',
+      sortable: true,
+      render: (v) => {
+        const n = v as number
+        return <span className={n >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{n.toFixed(1)}%</span>
+      },
+    },
+    {
+      key: 'totalMarginPct',
       label: 'Margin',
       sortable: true,
       render: (v) => {
@@ -374,7 +394,7 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
         return <span className={n >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{n.toFixed(1)}%</span>
       },
     },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
   ], [expandedPart])
 
   const storageKey = `sales_customer_${customerRow.customer.replace(/\W/g, '_')}_parts`
@@ -411,9 +431,9 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
         <StatCard
           icon={<TrendingUp className="size-4" />}
           label="P/L"
-          value={fmt(customerRow.pl)}
-          sub={`${customerRow.margin.toFixed(1)}% margin`}
-          color={customerRow.pl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}
+          value={fmt(customerRow.totalProfit)}
+          sub={`${customerRow.totalMarginPct.toFixed(1)}% margin`}
+          color={customerRow.totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}
         />
       </div>
 
@@ -482,16 +502,16 @@ function SalesCustomersContent() {
     for (const order of filteredOrders) {
       const key = order.customer || 'Unknown'
       if (!byCustomer[key]) {
-        byCustomer[key] = { customer: key, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, pl: 0, margin: 0, orders: [] }
+        byCustomer[key] = { customer: key, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, totalProfit: 0, totalMarginPct: 0, orders: [] }
       }
       byCustomer[key].orderCount++
       byCustomer[key].totalQty += order.qty
       byCustomer[key].revenue += order.revenue
       byCustomer[key].costs += order.totalCost || order.variableCost
-      byCustomer[key].pl += order.pl
+      byCustomer[key].totalProfit += order.totalProfit
       byCustomer[key].orders.push(order)
     }
-    return Object.values(byCustomer).map((c) => ({ ...c, margin: c.revenue > 0 ? (c.pl / c.revenue) * 100 : 0 }))
+    return Object.values(byCustomer).map((c) => ({ ...c, totalMarginPct: c.revenue > 0 ? (c.totalProfit / c.revenue) * 100 : 0 }))
   }, [filteredOrders, data])
 
   const table = useDataTable({ data: customerRows, columns: CUSTOMER_COLUMNS, storageKey: 'sales-by-customer' })

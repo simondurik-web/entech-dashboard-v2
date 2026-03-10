@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchSalesFromDB } from '@/lib/supabase-data'
+import { calculateSalesMath, isNoOpSalesMathRow, summarizeSalesOrders } from '@/lib/sales-math'
 
 // Keep old imports for fallback
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
@@ -95,8 +96,7 @@ async function fetchSalesFromSheets() {
     if (label === 'p/l' || label === 'pl' || label.includes('p/l total') || label.includes('profit')) plCol = i
   }
 
-  const orders: Array<{ line: string; customer: string; partNumber: string; category: string; qty: number; revenue: number; variableCost: number; totalCost: number; pl: number; shippedDate: string; requestedDate: string; status: string; dateOfRequest: string; ifNumber: string; ifStatus: string; internalStatus: string; poNumber: string; shippingCost: number; unitPrice: number; salesTarget: number; profitPerPart: number }> = []
-  let totalRevenue = 0, totalCosts = 0, totalPL = 0
+  const orders: Array<{ line: string; customer: string; partNumber: string; category: string; qty: number; revenue: number; variableCost: number; totalCost: number; pl: number; variableProfit: number; totalProfit: number; variableMarginPct: number; totalMarginPct: number; shippedDate: string; requestedDate: string; status: string; dateOfRequest: string; ifNumber: string; ifStatus: string; internalStatus: string; poNumber: string; shippingCost: number; unitPrice: number; salesTarget: number; profitPerPart: number; contributionLevel: string }> = []
 
   for (const row of rows) {
     if (!row.c) continue
@@ -110,7 +110,8 @@ async function fetchSalesFromSheets() {
     const variableCost = cellNumber(row, variableCostCol)
     const totalCost = cellNumber(row, totalCostCol)
     const pl = cellNumber(row, plCol)
-    if (revenue === 0 && pl === 0) continue
+    const salesMath = calculateSalesMath({ revenue, variableCost, totalCost })
+    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
 
     const qty = cellNumber(row, COLS.orderQty)
     const unitPrice = cellNumber(row, COLS.unitPrice)
@@ -122,6 +123,7 @@ async function fetchSalesFromSheets() {
       line, customer, partNumber: cellValue(row, COLS.partNumber),
       category: getCategory(cellValue(row, COLS.category)),
       qty, revenue, variableCost, totalCost, pl,
+      ...salesMath,
       shippedDate: cellDate(row, COLS.shippedDate),
       requestedDate: cellDate(row, COLS.requestedDate),
       status,
@@ -131,20 +133,11 @@ async function fetchSalesFromSheets() {
       internalStatus: cellValue(row, COLS.internalStatus),
       poNumber: cellValue(row, COLS.poNumber),
       shippingCost, unitPrice, salesTarget, profitPerPart,
+      contributionLevel: cellValue(row, COLS.contributionLevel),
     })
-    totalRevenue += revenue
-    totalCosts += totalCost || variableCost
-    totalPL += pl
   }
-
-  const shippedOrders = orders.filter(o => o.status === 'shipped')
-  const shippedPL = shippedOrders.reduce((s, o) => s + o.pl, 0)
-  const shippedCount = shippedOrders.length
-  const forecastPL = totalPL - shippedPL
-  const pendingCount = orders.length - shippedCount
-  const avgMargin = totalRevenue > 0 ? (totalPL / totalRevenue) * 100 : 0
   return NextResponse.json({
     orders,
-    summary: { totalRevenue, totalCosts, totalPL, avgMargin, orderCount: orders.length, shippedPL, shippedCount, forecastPL, pendingCount },
+    summary: summarizeSalesOrders(orders),
   })
 }
