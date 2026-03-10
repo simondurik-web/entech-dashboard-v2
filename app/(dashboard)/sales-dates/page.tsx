@@ -17,6 +17,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { AnimatedNumber } from "@/components/ui/animated-number"
 import { ScrollReveal } from "@/components/scroll-reveal"
 import { StaggeredGrid } from "@/components/ui/staggered-grid"
+import { getOrderCost } from '@/lib/sales-math'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,10 @@ interface SalesOrder {
   variableCost: number
   totalCost: number
   pl: number
+  variableProfit: number
+  totalProfit: number
+  variableMarginPct: number
+  totalMarginPct: number
   shippedDate: string
   requestedDate: string
   status: string
@@ -42,6 +47,7 @@ interface SalesOrder {
   unitPrice: number
   salesTarget: number
   profitPerPart: number
+  contributionLevel: string
 }
 
 interface SalesData {
@@ -61,19 +67,19 @@ interface MonthRow extends Record<string, unknown> {
   totalQty: number
   revenue: number
   costs: number
-  shippedPL: number
-  forecastPL: number
+  shippedTotalProfit: number
+  forecastTotalProfit: number
   shippedRevenue: number
   forecastRevenue: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
   orders: SalesOrder[]
   revMoM: number | null
   revYoY: number | null
-  plMoM: number | null
-  plYoY: number | null
-  marginMoM: number | null
-  marginYoY: number | null
+  totalProfitMoM: number | null
+  totalProfitYoY: number | null
+  totalMarginMoM: number | null
+  totalMarginYoY: number | null
 }
 
 interface MonthlyOrderRow extends Record<string, unknown> {
@@ -88,12 +94,13 @@ interface MonthlyOrderRow extends Record<string, unknown> {
   qty: number
   requestedDate: string
   unitPrice: number
-  contribution: number
+  variableMarginPct: number
   variableCost: number
   totalCost: number
   salesTarget: number
   profitPerPart: number
-  pl: number
+  totalProfit: number
+  totalMarginPct: number
   revenue: number
   shippedDate: string
   shippingCost: number
@@ -106,11 +113,11 @@ interface CustomerBreakdownRow extends Record<string, unknown> {
   orderCount: number
   totalQty: number
   revenue: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
   revMoM: number | null
   revYoY: number | null
-  plMoM: number | null
+  totalProfitMoM: number | null
 }
 
 interface CustomerOrderRow extends Record<string, unknown> {
@@ -118,8 +125,8 @@ interface CustomerOrderRow extends Record<string, unknown> {
   qty: number
   unitPrice: number
   revenue: number
-  pl: number
-  margin: number
+  totalProfit: number
+  totalMarginPct: number
   status: string
   shippedDate: string
 }
@@ -218,10 +225,10 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
 
 // ─── Contribution Badge ──────────────────────────────────────────────────────
 
-function ContributionBadge({ margin }: { margin: number }) {
-  if (margin >= 20) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">HIGH</span>
-  if (margin >= 10) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">MEDIUM</span>
-  if (margin >= 0) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">LOW</span>
+function ContributionBadge({ variableMarginPct }: { variableMarginPct: number }) {
+  if (variableMarginPct >= 20) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">HIGH</span>
+  if (variableMarginPct >= 10) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">MEDIUM</span>
+  if (variableMarginPct >= 0) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">LOW</span>
   return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30">NEGATIVE</span>
 }
 
@@ -231,8 +238,10 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
   const rows: MonthlyOrderRow[] = useMemo(() =>
     orders.map((o) => {
       const unitPrice = o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0)
-      const profitPerPart = o.profitPerPart || (o.qty > 0 ? o.pl / o.qty : 0)
-      const margin = o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0
+      const totalProfitPerPart = o.qty > 0 ? o.totalProfit / o.qty : 0
+      const profitPerPart = totalProfitPerPart
+      const variableCost = o.qty > 0 ? (o.variableCost || 0) * o.qty : (o.variableCost || 0)
+      const totalCost = getOrderCost(o)
       const salesTarget = o.salesTarget || unitPrice * 1.2
       return {
         category: o.category,
@@ -246,12 +255,13 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
         qty: o.qty,
         requestedDate: o.requestedDate || '-',
         unitPrice,
-        contribution: margin,
-        variableCost: o.variableCost,
-        totalCost: o.totalCost || o.variableCost,
+        variableMarginPct: o.variableMarginPct,
+        variableCost,
+        totalCost,
         salesTarget,
         profitPerPart,
-        pl: o.pl,
+        totalProfit: o.totalProfit,
+        totalMarginPct: o.totalMarginPct,
         revenue: o.revenue,
         shippedDate: o.shippedDate || '-',
         shippingCost: o.shippingCost || 0,
@@ -278,12 +288,13 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
     { key: 'qty', label: 'Order Qty', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'requestedDate', label: 'Requested Date', sortable: true, filterable: true },
     { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
-    { key: 'contribution', label: 'Contribution Level', sortable: true, filterable: true, render: (v) => <ContributionBadge margin={v as number} /> },
+    { key: 'variableMarginPct', label: 'Variable Margin Level', sortable: true, filterable: true, render: (v) => <ContributionBadge variableMarginPct={v as number} /> },
     { key: 'variableCost', label: 'Variable Cost', sortable: true, render: (v) => fmt(v as number) },
     { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
     { key: 'salesTarget', label: 'Sales Target (20%)', sortable: true, render: (v) => fmt(v as number) },
     { key: 'profitPerPart', label: 'Profit/Part', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmtPrice(v as number)}</span> },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
     { key: 'shippedDate', label: 'Shipped Date', sortable: true, filterable: true },
     { key: 'shippingCost', label: 'Shipping Cost', sortable: true, render: (v) => fmt(v as number) },
@@ -304,8 +315,8 @@ function CustomerOrderSubTable({ orders, customer }: { orders: SalesOrder[]; cus
       qty: o.qty,
       unitPrice: o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0),
       revenue: o.revenue,
-      pl: o.pl,
-      margin: o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0,
+      totalProfit: o.totalProfit,
+      totalMarginPct: o.totalMarginPct,
       status: o.status,
       shippedDate: o.shippedDate || '-',
     })),
@@ -317,8 +328,8 @@ function CustomerOrderSubTable({ orders, customer }: { orders: SalesOrder[]; cus
     { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'unitPrice', label: 'Unit Price', sortable: true, render: (v) => fmtPrice(v as number) },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
-    { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
     { key: 'status', label: 'Status', sortable: true, filterable: true, render: (v) => {
       const s = (v as string).toLowerCase()
       const cls = s === 'shipped' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
@@ -343,8 +354,8 @@ function CustomerDrilldown({ customer, orders, allMonthRows, onClose }: {
 }) {
   const customerOrders = useMemo(() => orders.filter(o => (o.customer || 'Unknown') === customer), [orders, customer])
   const totalRev = customerOrders.reduce((s, o) => s + o.revenue, 0)
-  const totalPL = customerOrders.reduce((s, o) => s + o.pl, 0)
-  const margin = totalRev > 0 ? (totalPL / totalRev) * 100 : 0
+  const totalProfit = customerOrders.reduce((s, o) => s + o.totalProfit, 0)
+  const totalMarginPct = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0
 
   // Sparkline: this customer's monthly revenue for the last 12 months
   const sparkData: CustomerMonthlyPoint[] = useMemo(() => {
@@ -372,8 +383,8 @@ function CustomerDrilldown({ customer, orders, allMonthRows, onClose }: {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard icon={<Package className="size-4" />} label="Orders" value={String(customerOrders.length)} color="bg-blue-500/10 text-blue-400" />
         <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totalRev)} color="bg-emerald-500/10 text-emerald-400" />
-        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalPL)} color={totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
-        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${margin.toFixed(1)}%`} color={margin >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalProfit)} color={totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${totalMarginPct.toFixed(1)}%`} color={totalMarginPct >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
       </div>
 
       {/* Sparkline chart */}
@@ -427,12 +438,12 @@ function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: 
     const prevKey = getPrevMonthKey(monthKey)
     const prevRow = allMonthRows.find(m => m.monthKey === prevKey)
     if (!prevRow) return null
-    const map: Record<string, { revenue: number; pl: number }> = {}
+    const map: Record<string, { revenue: number; totalProfit: number }> = {}
     for (const o of prevRow.orders) {
       const k = o.customer || 'Unknown'
-      if (!map[k]) map[k] = { revenue: 0, pl: 0 }
+      if (!map[k]) map[k] = { revenue: 0, totalProfit: 0 }
       map[k].revenue += o.revenue
-      map[k].pl += o.pl
+      map[k].totalProfit += o.totalProfit
     }
     return map
   }, [monthKey, allMonthRows])
@@ -441,25 +452,25 @@ function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: 
     const prevKey = getPrevYearMonthKey(monthKey)
     const prevRow = allMonthRows.find(m => m.monthKey === prevKey)
     if (!prevRow) return null
-    const map: Record<string, { revenue: number; pl: number }> = {}
+    const map: Record<string, { revenue: number; totalProfit: number }> = {}
     for (const o of prevRow.orders) {
       const k = o.customer || 'Unknown'
-      if (!map[k]) map[k] = { revenue: 0, pl: 0 }
+      if (!map[k]) map[k] = { revenue: 0, totalProfit: 0 }
       map[k].revenue += o.revenue
-      map[k].pl += o.pl
+      map[k].totalProfit += o.totalProfit
     }
     return map
   }, [monthKey, allMonthRows])
 
   const rows: CustomerBreakdownRow[] = useMemo(() => {
-    const byCustomer: Record<string, { orders: number; qty: number; revenue: number; pl: number }> = {}
+    const byCustomer: Record<string, { orders: number; qty: number; revenue: number; totalProfit: number }> = {}
     for (const o of orders) {
       const k = o.customer || 'Unknown'
-      if (!byCustomer[k]) byCustomer[k] = { orders: 0, qty: 0, revenue: 0, pl: 0 }
+      if (!byCustomer[k]) byCustomer[k] = { orders: 0, qty: 0, revenue: 0, totalProfit: 0 }
       byCustomer[k].orders++
       byCustomer[k].qty += o.qty
       byCustomer[k].revenue += o.revenue
-      byCustomer[k].pl += o.pl
+      byCustomer[k].totalProfit += o.totalProfit
     }
     return Object.entries(byCustomer)
       .map(([customer, s]) => {
@@ -470,11 +481,11 @@ function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: 
           orderCount: s.orders,
           totalQty: s.qty,
           revenue: s.revenue,
-          pl: s.pl,
-          margin: s.revenue > 0 ? (s.pl / s.revenue) * 100 : 0,
+          totalProfit: s.totalProfit,
+          totalMarginPct: s.revenue > 0 ? (s.totalProfit / s.revenue) * 100 : 0,
           revMoM: prevM ? (prevM.revenue > 0 ? ((s.revenue - prevM.revenue) / prevM.revenue) * 100 : (s.revenue > 0 ? 100 : 0)) : null,
           revYoY: prevY ? (prevY.revenue > 0 ? ((s.revenue - prevY.revenue) / prevY.revenue) * 100 : (s.revenue > 0 ? 100 : 0)) : null,
-          plMoM: prevM ? s.pl - prevM.pl : null,
+          totalProfitMoM: prevM ? s.totalProfit - prevM.totalProfit : null,
         }
       })
       .sort((a, b) => b.revenue - a.revenue)
@@ -497,11 +508,11 @@ function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: 
     { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
-    { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{(v as number).toFixed(1)}%</span> },
     { key: 'revMoM', label: 'Revenue MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
     { key: 'revYoY', label: 'Revenue YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
-    { key: 'plMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
+    { key: 'totalProfitMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
   ], [expandedCustomer])
 
   const storageKey = `sales_date_customers_${monthLabel.replace(/\W/g, '_')}`
@@ -540,7 +551,7 @@ function CustomerBreakdownTable({ orders, monthLabel, monthKey, allMonthRows }: 
 function MonthDrilldown({ monthRow, allMonthRows, onClose }: { monthRow: MonthRow; allMonthRows: MonthRow[]; onClose: () => void }) {
   const totalQty = monthRow.totalQty
   const totalRev = monthRow.revenue
-  const totalPL = monthRow.pl
+  const totalProfit = monthRow.totalProfit
 
   // MoM / YoY revenue comparisons for stat cards
   const monthLookup = useMemo(() => {
@@ -573,7 +584,7 @@ function MonthDrilldown({ monthRow, allMonthRows, onClose }: { monthRow: MonthRo
         <StatCard icon={<Package className="size-4" />} label="Orders" value={String(monthRow.orderCount)} sub={`${monthRow.shippedCount}/${monthRow.orderCount} shipped`} color="bg-blue-500/10 text-blue-400" />
         <StatCard icon={<CalendarDays className="size-4" />} label="Total Qty" value={fmtN(totalQty)} color="bg-violet-500/10 text-violet-400" />
         <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totalRev)} color="bg-emerald-500/10 text-emerald-400" />
-        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalPL)} sub={`${monthRow.margin.toFixed(1)}% margin`} color={totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totalProfit)} sub={`${monthRow.totalMarginPct.toFixed(1)}% margin`} color={totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
         <StatCard
           icon={<ArrowUpRight className="size-4" />}
           label="MoM Change"
@@ -620,8 +631,8 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   const data = payload[0]?.payload as Record<string, unknown> | undefined
   const revMoM = data?.revMoM as number | null
   const revYoY = data?.revYoY as number | null
-  const plMoM = data?.plMoM as number | null
-  const plYoY = data?.plYoY as number | null
+  const totalProfitMoM = data?.totalProfitMoM as number | null
+  const totalProfitYoY = data?.totalProfitYoY as number | null
 
   const changeText = (val: number | null, suffix = '%') => {
     if (val === null) return <span className="text-muted-foreground">-</span>
@@ -645,8 +656,8 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
         <hr className="border-border" />
         <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue MoM</span>{changeText(revMoM)}</div>
         <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue YoY</span>{changeText(revYoY)}</div>
-        <div className="flex justify-between gap-4"><span className="text-muted-foreground">P/L MoM</span>{changeText(plMoM, '$')}</div>
-        <div className="flex justify-between gap-4"><span className="text-muted-foreground">P/L YoY</span>{changeText(plYoY, '$')}</div>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">P/L MoM</span>{changeText(totalProfitMoM, '$')}</div>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">P/L YoY</span>{changeText(totalProfitYoY, '$')}</div>
       </div>
     </div>
   )
@@ -685,32 +696,32 @@ function SalesDatesContent() {
   // ─── Aggregate by month using attribution date ───
   const monthRowsRaw = useMemo(() => {
     if (!filteredOrders.length && !data) return []
-    const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedPL: number; forecastPL: number; shippedRevenue: number; forecastRevenue: number; costs: number }> = {}
+    const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedTotalProfit: number; forecastTotalProfit: number; shippedRevenue: number; forecastRevenue: number; costs: number }> = {}
 
     for (const order of filteredOrders) {
       const dateStr = getAttributionDate(order)
       const monthKey = dateStr ? getMonthKey(dateStr) : null
       if (!monthKey) continue
 
-      if (!byMonth[monthKey]) byMonth[monthKey] = { orders: [], shipped: 0, qty: 0, revenue: 0, shippedPL: 0, forecastPL: 0, shippedRevenue: 0, forecastRevenue: 0, costs: 0 }
+      if (!byMonth[monthKey]) byMonth[monthKey] = { orders: [], shipped: 0, qty: 0, revenue: 0, shippedTotalProfit: 0, forecastTotalProfit: 0, shippedRevenue: 0, forecastRevenue: 0, costs: 0 }
       const m = byMonth[monthKey]
       m.orders.push(order)
       m.qty += order.qty
       m.revenue += order.revenue
-      m.costs += order.totalCost || order.variableCost
+      m.costs += getOrderCost(order)
       if (order.status === 'shipped') {
         m.shipped++
-        m.shippedPL += order.pl
+        m.shippedTotalProfit += order.totalProfit
         m.shippedRevenue += order.revenue
       } else {
-        m.forecastPL += order.pl
+        m.forecastTotalProfit += order.totalProfit
         m.forecastRevenue += order.revenue
       }
     }
 
     return Object.entries(byMonth)
       .map(([monthKey, m]) => {
-        const pl = m.shippedPL + m.forecastPL
+        const totalProfit = m.shippedTotalProfit + m.forecastTotalProfit
         return {
           monthKey,
           monthLabel: getMonthLabel(monthKey),
@@ -720,12 +731,12 @@ function SalesDatesContent() {
           totalQty: m.qty,
           revenue: m.revenue,
           costs: m.costs,
-          shippedPL: m.shippedPL,
-          forecastPL: m.forecastPL,
+          shippedTotalProfit: m.shippedTotalProfit,
+          forecastTotalProfit: m.forecastTotalProfit,
           shippedRevenue: m.shippedRevenue,
           forecastRevenue: m.forecastRevenue,
-          pl,
-          margin: m.revenue > 0 ? (pl / m.revenue) * 100 : 0,
+          totalProfit,
+          totalMarginPct: m.revenue > 0 ? (totalProfit / m.revenue) * 100 : 0,
           orders: m.orders,
         }
       })
@@ -743,12 +754,12 @@ function SalesDatesContent() {
 
       const revMoM = prevM ? (prevM.revenue > 0 ? ((m.revenue - prevM.revenue) / prevM.revenue) * 100 : (m.revenue > 0 ? 100 : 0)) : null
       const revYoY = prevY ? (prevY.revenue > 0 ? ((m.revenue - prevY.revenue) / prevY.revenue) * 100 : (m.revenue > 0 ? 100 : 0)) : null
-      const plMoM = prevM ? m.pl - prevM.pl : null
-      const plYoY = prevY ? m.pl - prevY.pl : null
-      const marginMoM = prevM ? m.margin - prevM.margin : null
-      const marginYoY = prevY ? m.margin - prevY.margin : null
+      const totalProfitMoM = prevM ? m.totalProfit - prevM.totalProfit : null
+      const totalProfitYoY = prevY ? m.totalProfit - prevY.totalProfit : null
+      const totalMarginMoM = prevM ? m.totalMarginPct - prevM.totalMarginPct : null
+      const totalMarginYoY = prevY ? m.totalMarginPct - prevY.totalMarginPct : null
 
-      return { ...m, revMoM, revYoY, plMoM, plYoY, marginMoM, marginYoY }
+      return { ...m, revMoM, revYoY, totalProfitMoM, totalProfitYoY, totalMarginMoM, totalMarginYoY }
     })
   }, [monthRowsRaw])
 
@@ -757,9 +768,9 @@ function SalesDatesContent() {
     const totalOrders = monthRows.reduce((s, m) => s + m.orderCount, 0)
     const totalQty = monthRows.reduce((s, m) => s + m.totalQty, 0)
     const totalRevenue = monthRows.reduce((s, m) => s + m.revenue, 0)
-    const totalPL = monthRows.reduce((s, m) => s + m.pl, 0)
-    const margin = totalRevenue > 0 ? (totalPL / totalRevenue) * 100 : 0
-    return { totalOrders, totalQty, totalRevenue, totalPL, margin, monthCount: monthRows.length }
+    const totalProfit = monthRows.reduce((s, m) => s + m.totalProfit, 0)
+    const totalMarginPct = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+    return { totalOrders, totalQty, totalRevenue, totalProfit, totalMarginPct, monthCount: monthRows.length }
   }, [monthRows])
 
   // ─── Chart data (sorted chronologically) ───
@@ -777,18 +788,18 @@ function SalesDatesContent() {
         const prevYear = monthLookupForChart[getPrevYearMonthKey(m.monthKey)]
         const revMoM = prevMonth ? ((m.revenue - prevMonth.revenue) / (prevMonth.revenue || 1)) * 100 : null
         const revYoY = prevYear ? ((m.revenue - prevYear.revenue) / (prevYear.revenue || 1)) * 100 : null
-        const plMoM = prevMonth ? m.pl - prevMonth.pl : null
-        const plYoY = prevYear ? m.pl - prevYear.pl : null
+        const totalProfitMoM = prevMonth ? m.totalProfit - prevMonth.totalProfit : null
+        const totalProfitYoY = prevYear ? m.totalProfit - prevYear.totalProfit : null
         return {
           month: m.monthLabel,
-          shippedProfit: Math.max(0, m.shippedPL),
-          shippedLoss: Math.min(0, m.shippedPL),
-          forecastProfit: Math.max(0, m.forecastPL),
-          forecastLoss: Math.min(0, m.forecastPL),
+          shippedProfit: Math.max(0, m.shippedTotalProfit),
+          shippedLoss: Math.min(0, m.shippedTotalProfit),
+          forecastProfit: Math.max(0, m.forecastTotalProfit),
+          forecastLoss: Math.min(0, m.forecastTotalProfit),
           revenue: m.revenue,
           shippedRevenue: m.shippedRevenue,
           forecastRevenue: m.forecastRevenue,
-          revMoM, revYoY, plMoM, plYoY,
+          revMoM, revYoY, totalProfitMoM, totalProfitYoY,
         }
       })
   }, [monthRows, monthLookupForChart])
@@ -832,14 +843,14 @@ function SalesDatesContent() {
     { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
     { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
-    { key: 'pl', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
-    { key: 'margin', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{(v as number).toFixed(1)}%</span> },
+    { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{(v as number).toFixed(1)}%</span> },
     { key: 'revMoM', label: 'Revenue MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
     { key: 'revYoY', label: 'Revenue YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pct" /> },
-    { key: 'plMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
-    { key: 'plYoY', label: 'P/L YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
-    { key: 'marginMoM', label: 'Margin MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
-    { key: 'marginYoY', label: 'Margin YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
+    { key: 'totalProfitMoM', label: 'P/L MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
+    { key: 'totalProfitYoY', label: 'P/L YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="dollar" /> },
+    { key: 'totalMarginMoM', label: 'Margin MoM', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
+    { key: 'totalMarginYoY', label: 'Margin YoY', sortable: true, render: (v) => <ChangeIndicator value={v as number | null} format="pp" /> },
   ], [expandedMonth])
 
   const table = useDataTable({ data: monthRows, columns: MONTH_COLUMNS, storageKey: 'sales-by-date' })
@@ -868,8 +879,8 @@ function SalesDatesContent() {
       <StaggeredGrid className="grid grid-cols-2 lg:grid-cols-4 gap-3" stagger={100}>
         <StatCard icon={<Package className="size-4" />} label="Orders" value={fmtN(totals.totalOrders)} sub={`${fmtN(totals.totalQty)} units`} color="bg-blue-500/10 text-blue-400" />
         <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totals.totalRevenue)} color="bg-emerald-500/10 text-emerald-400" />
-        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totals.totalPL)} sub={`Margin: ${totals.margin.toFixed(1)}%`} color={totals.totalPL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
-        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${totals.margin.toFixed(1)}%`} sub={`${totals.monthCount} months`} color={totals.margin >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totals.totalProfit)} sub={`Margin: ${totals.totalMarginPct.toFixed(1)}%`} color={totals.totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${totals.totalMarginPct.toFixed(1)}%`} sub={`${totals.monthCount} months`} color={totals.totalMarginPct >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
       </StaggeredGrid>
 
       {/* Monthly P/L Breakdown Chart */}
