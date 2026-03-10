@@ -9,6 +9,7 @@ import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight } from
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { getOrderCost } from '@/lib/sales-math'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -257,7 +258,7 @@ function PartExpandedContent({ part }: { part: PartSummaryRow }) {
         qty: o.qty,
         unitPrice: o.qty > 0 ? o.revenue / o.qty : 0,
         revenue: o.revenue,
-        totalCost: o.totalCost || o.variableCost,
+        totalCost: getOrderCost(o),
         totalProfit: o.totalProfit,
         totalMarginPct: o.totalMarginPct,
         variableMarginPct: o.variableMarginPct,
@@ -315,7 +316,7 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
       .map(([partNumber, { orders, category }]) => {
         const totalQty = orders.reduce((s, o) => s + o.qty, 0)
         const revenue = orders.reduce((s, o) => s + o.revenue, 0)
-        const totalCost = orders.reduce((s, o) => s + (o.totalCost || o.variableCost), 0)
+        const totalCost = orders.reduce((s, o) => s + getOrderCost(o), 0)
         const totalProfit = orders.reduce((s, o) => s + o.totalProfit, 0)
         const variableProfit = orders.reduce((s, o) => s + o.variableProfit, 0)
         const totalMarginPct = revenue > 0 ? (totalProfit / revenue) * 100 : 0
@@ -507,7 +508,7 @@ function SalesCustomersContent() {
       byCustomer[key].orderCount++
       byCustomer[key].totalQty += order.qty
       byCustomer[key].revenue += order.revenue
-      byCustomer[key].costs += order.totalCost || order.variableCost
+      byCustomer[key].costs += getOrderCost(order)
       byCustomer[key].totalProfit += order.totalProfit
       byCustomer[key].orders.push(order)
     }

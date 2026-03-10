@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchSalesFromDB } from '@/lib/supabase-data'
-import { calculateSalesMath, isNoOpSalesMathRow, summarizeSalesOrders } from '@/lib/sales-math'
+import { calculateSalesMath, getProfitPerPart, isNoOpSalesMathRow, summarizeSalesOrders } from '@/lib/sales-math'
 
 // Keep old imports for fallback
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
@@ -109,15 +109,17 @@ async function fetchSalesFromSheets() {
     const revenue = cellNumber(row, revenueCol)
     const variableCost = cellNumber(row, variableCostCol)
     const totalCost = cellNumber(row, totalCostCol)
-    const pl = cellNumber(row, plCol)
-    const salesMath = calculateSalesMath({ revenue, variableCost, totalCost })
-    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
-
+    const rawPL = cellNumber(row, plCol)
     const qty = cellNumber(row, COLS.orderQty)
     const unitPrice = cellNumber(row, COLS.unitPrice)
+    const salesMath = calculateSalesMath({ qty, revenue, variableCost, totalCost, unitPrice })
+    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
+    if (revenue === 0 && rawPL === 0 && totalCost === 0 && variableCost === 0) continue
+
     const salesTarget = cellNumber(row, COLS.salesTarget)
-    const profitPerPart = cellNumber(row, COLS.profitPerPart)
+    const profitPerPart = getProfitPerPart({ qty, revenue, variableCost, totalCost, unitPrice })
     const shippingCost = cellNumber(row, COLS.shippingCost)
+    const pl = salesMath.totalProfit
 
     orders.push({
       line, customer, partNumber: cellValue(row, COLS.partNumber),

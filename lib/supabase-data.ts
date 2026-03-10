@@ -3,7 +3,7 @@
  * Returns the SAME types so API routes and pages don't need changes.
  */
 import { supabase } from './supabase'
-import { calculateSalesMath, isNoOpSalesMathRow, summarizeSalesOrders } from './sales-math'
+import { calculateSalesMath, getProfitPerPart, isNoOpSalesMathRow, summarizeSalesOrders } from './sales-math'
 import {
   type Order,
   type InventoryItem,
@@ -416,16 +416,18 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     const revenue = num(row.revenue)
     const variableCost = num(row.variable_cost)
     const totalCost = num(row.total_cost)
-    const pl = num(row.pl)
-    const salesMath = calculateSalesMath({ revenue, variableCost, totalCost })
-
-    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
-
+    const rawPL = num(row.pl)
     const qty = num(row.order_qty)
     const unitPrice = num(row.unit_price)
+    const salesMath = calculateSalesMath({ qty, revenue, variableCost, totalCost, unitPrice })
+
+    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
+    if (revenue === 0 && rawPL === 0 && totalCost === 0 && variableCost === 0) continue
+
     const salesTarget = num(row.sales_target_20)
-    const profitPerPart = num(row.profit_per_part)
+    const profitPerPart = getProfitPerPart({ qty, revenue, variableCost, totalCost, unitPrice })
     const shippingCost = num(row.shipping_cost)
+    const pl = salesMath.totalProfit
 
     orders.push({
       line,

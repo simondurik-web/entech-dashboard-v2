@@ -17,6 +17,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { AnimatedNumber } from "@/components/ui/animated-number"
 import { ScrollReveal } from "@/components/scroll-reveal"
 import { StaggeredGrid } from "@/components/ui/staggered-grid"
+import { getOrderCost } from '@/lib/sales-math'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,8 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
       const unitPrice = o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0)
       const totalProfitPerPart = o.qty > 0 ? o.totalProfit / o.qty : 0
       const profitPerPart = totalProfitPerPart
+      const variableCost = o.qty > 0 ? (o.variableCost || 0) * o.qty : (o.variableCost || 0)
+      const totalCost = getOrderCost(o)
       const salesTarget = o.salesTarget || unitPrice * 1.2
       return {
         category: o.category,
@@ -253,8 +256,8 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
         requestedDate: o.requestedDate || '-',
         unitPrice,
         variableMarginPct: o.variableMarginPct,
-        variableCost: o.variableCost,
-        totalCost: o.totalCost || o.variableCost,
+        variableCost,
+        totalCost,
         salesTarget,
         profitPerPart,
         totalProfit: o.totalProfit,
@@ -705,7 +708,7 @@ function SalesDatesContent() {
       m.orders.push(order)
       m.qty += order.qty
       m.revenue += order.revenue
-      m.costs += order.totalCost || order.variableCost
+      m.costs += getOrderCost(order)
       if (order.status === 'shipped') {
         m.shipped++
         m.shippedTotalProfit += order.totalProfit

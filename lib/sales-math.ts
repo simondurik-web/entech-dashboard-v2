@@ -1,7 +1,9 @@
 export interface SalesMathInputs {
+  qty?: number
   revenue: number
   variableCost: number
   totalCost: number
+  unitPrice?: number
 }
 
 export interface SalesMathResult {
@@ -31,8 +33,9 @@ function toMarginPct(revenue: number, profit: number): number {
   return revenue > 0 ? (profit / revenue) * 100 : 0
 }
 
-export function getDisplayTotalCost(totalCost: number, variableCost: number): number {
-  return totalCost || variableCost
+export function getDisplayTotalCost(totalCost: number, variableCost: number, qty: number = 1): number {
+  const perUnitCost = totalCost || variableCost
+  return qty > 0 ? perUnitCost * qty : perUnitCost
 }
 
 export function isNoOpSalesMathRow({
@@ -44,12 +47,14 @@ export function isNoOpSalesMathRow({
 }
 
 export function calculateSalesMath({
+  qty = 1,
   revenue,
   variableCost,
   totalCost,
 }: SalesMathInputs): SalesMathResult {
-  const displayTotalCost = getDisplayTotalCost(totalCost, variableCost)
-  const variableProfit = revenue - variableCost
+  const variableOrderCost = getDisplayTotalCost(variableCost, variableCost, qty)
+  const displayTotalCost = getDisplayTotalCost(totalCost, variableCost, qty)
+  const variableProfit = revenue - variableOrderCost
   const totalProfit = revenue - displayTotalCost
 
   return {
@@ -63,7 +68,7 @@ export function calculateSalesMath({
 export function summarizeSalesOrders<T extends SalesOrderLike>(orders: T[]): SalesSummaryLike {
   const totalRevenue = orders.reduce((sum, order) => sum + order.revenue, 0)
   const totalCosts = orders.reduce(
-    (sum, order) => sum + getDisplayTotalCost(order.totalCost, order.variableCost),
+    (sum, order) => sum + getDisplayTotalCost(order.totalCost, order.variableCost, order.qty),
     0
   )
   const variableProfit = orders.reduce((sum, order) => sum + order.variableProfit, 0)
@@ -89,4 +94,38 @@ export function summarizeSalesOrders<T extends SalesOrderLike>(orders: T[]): Sal
     forecastPL: forecastTotalProfit,
     pendingCount,
   }
+}
+
+export interface SalesMathInput {
+  qty: number
+  revenue: number
+  variableCost: number
+  totalCost: number
+  unitPrice?: number
+}
+
+export function getPerUnitCost(order: SalesMathInput): number {
+  return order.totalCost || order.variableCost || 0
+}
+
+export function getUnitPrice(order: SalesMathInput): number {
+  if (order.unitPrice && order.unitPrice > 0) return order.unitPrice
+  return order.qty > 0 ? order.revenue / order.qty : 0
+}
+
+export function getOrderCost(order: SalesMathInput): number {
+  const perUnitCost = getPerUnitCost(order)
+  return order.qty > 0 ? perUnitCost * order.qty : perUnitCost
+}
+
+export function getOrderPL(order: SalesMathInput): number {
+  return order.revenue - getOrderCost(order)
+}
+
+export function getOrderMargin(order: SalesMathInput): number {
+  return order.revenue > 0 ? (getOrderPL(order) / order.revenue) * 100 : 0
+}
+
+export function getProfitPerPart(order: SalesMathInput): number {
+  return getUnitPrice(order) - getPerUnitCost(order)
 }

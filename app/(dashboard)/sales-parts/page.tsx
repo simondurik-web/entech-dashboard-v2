@@ -7,6 +7,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { getOrderCost } from '@/lib/sales-math'
 
 interface SalesOrder {
   line: string
@@ -103,7 +104,7 @@ function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storage
     customer: o.customer,
     qty: o.qty,
     revenue: o.revenue,
-    totalCost: o.totalCost || o.variableCost,
+    totalCost: getOrderCost(o),
     totalProfit: o.totalProfit,
     shippedDate: o.shippedDate,
     status: o.status,
@@ -120,7 +121,7 @@ function CustomersDataTable({ customerGroups, partNumber }: { customerGroups: [s
   const rows: CustomerGroupRow[] = useMemo(() => customerGroups.map(([customer, orders]) => {
     const totalQty = orders.reduce((s, o) => s + o.qty, 0)
     const revenue = orders.reduce((s, o) => s + o.revenue, 0)
-    const costs = orders.reduce((s, o) => s + (o.totalCost || o.variableCost), 0)
+    const costs = orders.reduce((s, o) => s + getOrderCost(o), 0)
     const totalProfit = orders.reduce((s, o) => s + o.totalProfit, 0)
     return { customer, orderCount: orders.length, totalQty, revenue, costs, totalProfit, totalMarginPct: revenue > 0 ? (totalProfit / revenue) * 100 : 0, orders }
   }), [customerGroups])
@@ -201,7 +202,7 @@ function SalesPartsContent() {
       byPart[k].orderCount++
       byPart[k].totalQty += o.qty
       byPart[k].revenue += o.revenue
-      byPart[k].costs += o.totalCost || o.variableCost
+      byPart[k].costs += getOrderCost(o)
       byPart[k].totalProfit += o.totalProfit
       byPart[k].orders.push(o)
     }
