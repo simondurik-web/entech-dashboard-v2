@@ -10,6 +10,7 @@ import {
   type Drawing,
   normalizeStatus,
 } from './google-sheets'
+import { getOrderCost, getOrderPL, getProfitPerPart } from './sales-math'
 
 // Re-export types so API routes can import from either module
 export type { Order, InventoryItem, ProductionMakeItem, Drawing }
@@ -390,15 +391,28 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     const revenue = num(row.revenue)
     const variableCost = num(row.variable_cost)
     const totalCost = num(row.total_cost)
-    const pl = num(row.pl)
+    const rawPL = num(row.pl)
 
-    if (revenue === 0 && pl === 0) continue
+    if (revenue === 0 && rawPL === 0) continue
 
     const qty = num(row.order_qty)
     const unitPrice = num(row.unit_price)
     const salesTarget = num(row.sales_target_20)
-    const profitPerPart = num(row.profit_per_part)
+    const profitPerPart = getProfitPerPart({
+      qty,
+      revenue,
+      variableCost,
+      totalCost,
+      unitPrice,
+    })
     const shippingCost = num(row.shipping_cost)
+    const pl = getOrderPL({
+      qty,
+      revenue,
+      variableCost,
+      totalCost,
+      unitPrice,
+    })
 
     orders.push({
       line,
@@ -422,7 +436,13 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     })
 
     totalRevenue += revenue
-    totalCosts += totalCost || variableCost
+    totalCosts += getOrderCost({
+      qty,
+      revenue,
+      variableCost,
+      totalCost,
+      unitPrice,
+    })
     totalPL += pl
   }
 

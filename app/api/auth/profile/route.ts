@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { createClient } from "@supabase/supabase-js"
 
+const DASHBOARD_APP_ID = "dashboard"
+
+async function overlayAppRole(profile: Record<string, unknown>) {
+  if (!profile?.id) return profile
+  const { data: appRole } = await supabaseAdmin
+    .from("user_app_roles")
+    .select("role")
+    .eq("user_id", profile.id)
+    .eq("app_id", DASHBOARD_APP_ID)
+    .single()
+  if (appRole) return { ...profile, role: appRole.role }
+  return profile
+}
+
 async function getUserFromRequest(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
   if (!authHeader?.startsWith("Bearer ")) return null
@@ -24,7 +38,8 @@ export async function GET(req: NextRequest) {
     .eq("id", user.id)
     .single()
 
-  return NextResponse.json({ profile })
+  const withAppRole = profile ? await overlayAppRole(profile) : profile
+  return NextResponse.json({ profile: withAppRole })
 }
 
 export async function POST(req: NextRequest) {
@@ -60,7 +75,8 @@ export async function POST(req: NextRequest) {
       console.error("Profile update error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    return NextResponse.json({ profile })
+    const profileWithRole = await overlayAppRole(profile)
+    return NextResponse.json({ profile: profileWithRole })
   }
 
   // No pre-enrolled profile — insert new (super admin gets admin, others get visitor)
@@ -99,12 +115,14 @@ export async function POST(req: NextRequest) {
         console.error("Profile update error:", updateErr)
         return NextResponse.json({ error: updateErr.message }, { status: 500 })
       }
-      return NextResponse.json({ profile: updated })
+      const updatedWithRole = await overlayAppRole(updated)
+      return NextResponse.json({ profile: updatedWithRole })
     }
 
     console.error("Profile insert error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ profile })
+  const newProfileWithRole = await overlayAppRole(profile)
+  return NextResponse.json({ profile: newProfileWithRole })
 }
