@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchSalesFromDB } from '@/lib/supabase-data'
+import { getOrderCost, getOrderPL, getProfitPerPart } from '@/lib/sales-math'
 
 // Keep old imports for fallback
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
@@ -109,14 +110,27 @@ async function fetchSalesFromSheets() {
     const revenue = cellNumber(row, revenueCol)
     const variableCost = cellNumber(row, variableCostCol)
     const totalCost = cellNumber(row, totalCostCol)
-    const pl = cellNumber(row, plCol)
-    if (revenue === 0 && pl === 0) continue
+    const rawPL = cellNumber(row, plCol)
+    if (revenue === 0 && rawPL === 0) continue
 
     const qty = cellNumber(row, COLS.orderQty)
     const unitPrice = cellNumber(row, COLS.unitPrice)
     const salesTarget = cellNumber(row, COLS.salesTarget)
-    const profitPerPart = cellNumber(row, COLS.profitPerPart)
+    const profitPerPart = getProfitPerPart({
+      qty,
+      revenue,
+      variableCost,
+      totalCost,
+      unitPrice,
+    })
     const shippingCost = cellNumber(row, COLS.shippingCost)
+    const pl = getOrderPL({
+      qty,
+      revenue,
+      variableCost,
+      totalCost,
+      unitPrice,
+    })
 
     orders.push({
       line, customer, partNumber: cellValue(row, COLS.partNumber),
@@ -133,7 +147,13 @@ async function fetchSalesFromSheets() {
       shippingCost, unitPrice, salesTarget, profitPerPart,
     })
     totalRevenue += revenue
-    totalCosts += totalCost || variableCost
+    totalCosts += getOrderCost({
+      qty,
+      revenue,
+      variableCost,
+      totalCost,
+      unitPrice,
+    })
     totalPL += pl
   }
 

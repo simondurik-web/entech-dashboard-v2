@@ -17,6 +17,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { AnimatedNumber } from "@/components/ui/animated-number"
 import { ScrollReveal } from "@/components/scroll-reveal"
 import { StaggeredGrid } from "@/components/ui/staggered-grid"
+import { getOrderCost, getOrderMargin, getProfitPerPart } from '@/lib/sales-math'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -231,8 +232,8 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
   const rows: MonthlyOrderRow[] = useMemo(() =>
     orders.map((o) => {
       const unitPrice = o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0)
-      const profitPerPart = o.profitPerPart || (o.qty > 0 ? o.pl / o.qty : 0)
-      const margin = o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0
+      const profitPerPart = getProfitPerPart(o)
+      const margin = getOrderMargin(o)
       const salesTarget = o.salesTarget || unitPrice * 1.2
       return {
         category: o.category,
@@ -305,7 +306,7 @@ function CustomerOrderSubTable({ orders, customer }: { orders: SalesOrder[]; cus
       unitPrice: o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0),
       revenue: o.revenue,
       pl: o.pl,
-      margin: o.revenue > 0 ? (o.pl / o.revenue) * 100 : 0,
+      margin: getOrderMargin(o),
       status: o.status,
       shippedDate: o.shippedDate || '-',
     })),
@@ -697,7 +698,7 @@ function SalesDatesContent() {
       m.orders.push(order)
       m.qty += order.qty
       m.revenue += order.revenue
-      m.costs += order.totalCost || order.variableCost
+      m.costs += getOrderCost(order)
       if (order.status === 'shipped') {
         m.shipped++
         m.shippedPL += order.pl
