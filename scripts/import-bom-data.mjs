@@ -1,22 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
+import { fetchSheetRowsByGid, loadLocalEnv } from './lib/google-sheets-auth.mjs'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 import fs from 'fs'
+loadLocalEnv()
 const envPath = new URL('../.env.local', import.meta.url).pathname
-for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) { const m = line.match(/^([^#=]+)=(.*)$/); if (m) process.env[m[1].trim()] = m[2].trim() }
+for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) { const m = line.match(/^([^#=]+)=(.*)$/); if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim() }
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-async function fetchGviz(gid) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`
-  const res = await fetch(url)
-  const text = await res.text()
-  // Strip the JSONP wrapper: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
-  const jsonStr = text.replace(/^[^(]*\(/, '').replace(/\);?\s*$/, '')
-  const data = JSON.parse(jsonStr)
-  return data.table.rows.map(r => r.c.map(c => c ? c.v : null))
+async function fetchRows(gid) {
+  return fetchSheetRowsByGid({ spreadsheetId: SHEET_ID, gid })
 }
 
 function num(v) {
@@ -32,7 +28,7 @@ function str(v) {
 
 async function importIndividualItems() {
   console.log('--- Importing BOM 1: Individual Items ---')
-  const rows = await fetchGviz(1330839591)
+  const rows = await fetchRows(1330839591)
   console.log(`Fetched ${rows.length} rows`)
 
   const items = rows.filter(r => r[0]).map(r => ({
@@ -61,7 +57,7 @@ async function importIndividualItems() {
 
 async function importSubAssemblies(individualItems) {
   console.log('\n--- Importing BOM 2: Sub Assemblies ---')
-  const rows = await fetchGviz(1127983291)
+  const rows = await fetchRows(1127983291)
   console.log(`Fetched ${rows.length} rows`)
 
   // Build cost lookup from individual items
@@ -142,7 +138,7 @@ async function importSubAssemblies(individualItems) {
 
 async function importFinalAssemblies() {
   console.log('\n--- Importing BOM 3: Final Assemblies ---')
-  const rows = await fetchGviz(308947416)
+  const rows = await fetchRows(308947416)
   console.log(`Fetched ${rows.length} rows`)
 
   // Get sub assembly part numbers to determine component_source
