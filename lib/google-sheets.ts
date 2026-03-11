@@ -5,6 +5,7 @@ export { normalizeStatus } from './google-sheets-shared'
 // Local imports for internal use
 import type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
 import { normalizeStatus } from './google-sheets-shared'
+import { fetchSheetValuesByGid } from './google-sheets-api'
 
 const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 
@@ -29,41 +30,7 @@ const API_CACHE_TTL_MS = 60_000
 type GvizRow = { c: Array<{ v: unknown } | null> }
 type GvizSheetData = { cols: string[]; rows: GvizRow[] }
 
-const gidToTitleCache = new Map<string, string>()
 const sheetDataCache = new Map<string, { expiresAt: number; data: GvizSheetData }>()
-
-function quoteSheetTitle(title: string): string {
-  return `'${title.replace(/'/g, "''")}'`
-}
-
-async function getSheetTitleByGid(gid: string): Promise<string> {
-  const cachedTitle = gidToTitleCache.get(gid)
-  if (cachedTitle) return cachedTitle
-
-  const sheetId = Number(gid)
-  if (!Number.isFinite(sheetId)) {
-    throw new Error(`Invalid sheet gid: ${gid}`)
-  }
-
-  const { getSheetsClient } = await import('./google-auth')
-  const sheets = getSheetsClient()
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId: SHEET_ID,
-    fields: 'sheets(properties(sheetId,title))',
-  })
-
-  for (const sheet of meta.data.sheets ?? []) {
-    const props = sheet.properties
-    if (!props?.title || props.sheetId === undefined) continue
-    gidToTitleCache.set(String(props.sheetId), props.title)
-  }
-
-  const title = gidToTitleCache.get(gid)
-  if (!title) {
-    throw new Error(`Sheet title not found for gid: ${gid}`)
-  }
-  return title
-}
 
 function toGvizShape(values: string[][]): GvizSheetData {
   if (values.length === 0) return { cols: [], rows: [] }
@@ -85,16 +52,11 @@ async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
   const cached = sheetDataCache.get(gid)
   if (cached && cached.expiresAt > now) return cached.data
 
-  const title = await getSheetTitleByGid(gid)
-  const { getSheetsClient } = await import('./google-auth')
-  const sheets = getSheetsClient()
-  const response = await sheets.spreadsheets.values.get({
+  const values = await fetchSheetValuesByGid({
     spreadsheetId: SHEET_ID,
-    range: quoteSheetTitle(title),
+    gid,
     valueRenderOption: 'FORMATTED_VALUE',
   })
-
-  const values = (response.data.values ?? []) as string[][]
   const data = toGvizShape(values)
   sheetDataCache.set(gid, { data, expiresAt: now + API_CACHE_TTL_MS })
   return data
