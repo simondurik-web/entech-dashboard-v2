@@ -1,3 +1,7 @@
+import 'server-only'
+
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { google } from 'googleapis'
 
 const SHEETS_READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly'
@@ -57,6 +61,27 @@ function parseJsonCredentials(raw: string) {
   }
 }
 
+function parseJsonFileCredentials(filePath: string) {
+  const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath)
+
+  if (!existsSync(resolvedPath)) {
+    throw new Error(
+      `GOOGLE_SERVICE_ACCOUNT_JSON_PATH points to a missing file: ${resolvedPath}`
+    )
+  }
+
+  try {
+    return validateCredentials(
+      JSON.parse(readFileSync(resolvedPath, 'utf8')),
+      'GOOGLE_SERVICE_ACCOUNT_JSON_PATH'
+    )
+  } catch (error) {
+    throw new Error(
+      `Invalid GOOGLE_SERVICE_ACCOUNT_JSON_PATH: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+}
+
 function loadCredentials() {
   if (process.env.GOOGLE_SERVICE_ACCOUNT_BASE64) {
     return parseBase64Credentials(process.env.GOOGLE_SERVICE_ACCOUNT_BASE64)
@@ -66,8 +91,12 @@ function loadCredentials() {
     return parseJsonCredentials(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
   }
 
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH) {
+    return parseJsonFileCredentials(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH)
+  }
+
   throw new Error(
-    'Google Sheets credentials not found. Set GOOGLE_SERVICE_ACCOUNT_BASE64 or GOOGLE_SERVICE_ACCOUNT_JSON, then share the spreadsheet with that service account email.'
+    'Google Sheets credentials not found. Set GOOGLE_SERVICE_ACCOUNT_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_SERVICE_ACCOUNT_JSON_PATH, then share the spreadsheet with that service account email.'
   )
 }
 

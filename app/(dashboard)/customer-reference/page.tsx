@@ -282,6 +282,11 @@ function CustomerReferencePageContent() {
     ? computeContributionLevel(formLowest, editingMapping.variable_cost, editingMapping.total_cost, editingMapping.sales_target)
     : null
   const hasValidBomSelection = !formData.internal_part_number || bomPartNumbers.includes(formData.internal_part_number)
+  const internalPartPlaceholder = bomLoading
+    ? 'Loading BOM part numbers...'
+    : !hasValidBomSelection && editingMapping && formData.internal_part_number
+      ? `Current: ${formData.internal_part_number} (not in BOM)`
+      : 'Select BOM part number'
 
   return (
     <div className="p-4 pb-20">
@@ -477,7 +482,7 @@ function CustomerReferencePageContent() {
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
                 <SelectTrigger className="w-full" disabled={bomLoading || bomPartNumbers.length === 0}>
-                  <SelectValue placeholder={bomLoading ? 'Loading BOM part numbers...' : 'Select BOM part number'} />
+                  <SelectValue placeholder={internalPartPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {bomPartNumbers.length > 0 ? (
