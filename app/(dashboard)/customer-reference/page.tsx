@@ -95,6 +95,7 @@ function CustomerReferencePageContent() {
   const autoExport = useAutoExport()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [bomPartNumbers, setBomPartNumbers] = useState<string[]>([])
+  const [bomLoading, setBomLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterCustomer, setFilterCustomer] = useState<string>('all')
@@ -131,12 +132,18 @@ function CustomerReferencePageContent() {
   useEffect(() => { fetchData() }, [fetchData])
 
   useEffect(() => {
+    setBomLoading(true)
     fetch('/api/bom')
       .then(res => res.json())
       .then((data: Array<{ partNumber: string }>) => {
-        setBomPartNumbers(data.map((b) => b.partNumber).sort())
+        const nextBomPartNumbers = Array.isArray(data)
+          ? [...new Set(data.map((b) => b.partNumber?.trim()).filter((partNumber): partNumber is string => Boolean(partNumber)))]
+              .sort((a, b) => a.localeCompare(b))
+          : []
+        setBomPartNumbers(nextBomPartNumbers)
       })
       .catch(() => {})
+      .finally(() => setBomLoading(false))
   }, [])
 
   // Filter + search
@@ -274,9 +281,7 @@ function CustomerReferencePageContent() {
   const formContribution = editingMapping
     ? computeContributionLevel(formLowest, editingMapping.variable_cost, editingMapping.total_cost, editingMapping.sales_target)
     : null
-  const bomSelectOptions = formData.internal_part_number && !bomPartNumbers.includes(formData.internal_part_number)
-    ? [formData.internal_part_number, ...bomPartNumbers]
-    : bomPartNumbers
+  const hasValidBomSelection = !formData.internal_part_number || bomPartNumbers.includes(formData.internal_part_number)
 
   return (
     <div className="p-4 pb-20">
@@ -468,17 +473,17 @@ function CustomerReferencePageContent() {
             <div>
               <Label>Internal Part Number *</Label>
               <Select
-                value={formData.internal_part_number || undefined}
+                value={hasValidBomSelection ? formData.internal_part_number || undefined : undefined}
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select BOM part number" />
+                <SelectTrigger className="w-full" disabled={bomLoading || bomPartNumbers.length === 0}>
+                  <SelectValue placeholder={bomLoading ? 'Loading BOM part numbers...' : 'Select BOM part number'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {bomSelectOptions.length > 0 ? (
-                    bomSelectOptions.map((pn) => (
+                  {bomPartNumbers.length > 0 ? (
+                    bomPartNumbers.map((pn) => (
                       <SelectItem key={pn} value={pn}>
-                        {pn === formData.internal_part_number && !bomPartNumbers.includes(pn) ? `${pn} (not in current BOM)` : pn}
+                        {pn}
                       </SelectItem>
                     ))
                   ) : (
@@ -486,6 +491,11 @@ function CustomerReferencePageContent() {
                   )}
                 </SelectContent>
               </Select>
+              {!hasValidBomSelection && editingMapping ? (
+                <p className="mt-1 text-sm text-amber-600">
+                  The current internal part number is no longer in the BOM. Select a current BOM part to save changes.
+                </p>
+              ) : null}
               <Button
                 type="button"
                 variant="link"
@@ -554,7 +564,7 @@ function CustomerReferencePageContent() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowMappingDialog(false); setEditingMapping(null) }}>Cancel</Button>
-            <Button onClick={handleSaveMapping} disabled={saving || !formData.customer_id || !formData.internal_part_number}>
+            <Button onClick={handleSaveMapping} disabled={saving || !formData.customer_id || !formData.internal_part_number || !hasValidBomSelection}>
               {saving ? t('ui.saving') : editingMapping ? t('customerRef.update') : t('customerRef.create')}
             </Button>
           </DialogFooter>
