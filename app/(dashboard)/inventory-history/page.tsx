@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
   Area,
   AreaChart,
+  ComposedChart,
   ReferenceDot,
 } from 'recharts'
 import type { InventoryItem } from '@/lib/google-sheets-shared'

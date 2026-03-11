@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Search, Plus, Copy, Pencil, Trash2, Users, AlertTriangle, TrendingUp, Target,
+  Search, Plus, Users, AlertTriangle, TrendingUp, Target,
   RefreshCw,
 } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
@@ -83,8 +83,6 @@ const EMPTY_MAPPING: MappingFormData = {
   tier5_range: '', tier5_price: null,
   notes: '',
 }
-
-const PAGE_SIZE = 25
 
 export default function CustomerReferencePage() {
   return <Suspense><CustomerReferencePageContent /></Suspense>
@@ -226,21 +224,6 @@ function CustomerReferencePageContent() {
       setFormData(EMPTY_MAPPING)
       fetchData()
     } catch { /* ignore */ } finally { setSaving(false) }
-  }
-
-  const handleDuplicate = async (mapping: PartMapping) => {
-    try {
-      const res = await fetch('/api/customer-part-mappings/duplicate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: mapping.id }),
-      })
-      if (!res.ok) throw new Error('Failed')
-      const cloned = await res.json()
-      // Open edit dialog with the clone
-      openEdit(cloned)
-      fetchData()
-    } catch { /* ignore */ }
   }
 
   const handleDelete = async () => {

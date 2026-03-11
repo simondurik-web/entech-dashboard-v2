@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buildCustomerPartMappingCosts } from '@/lib/customer-part-mapping-costs'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
@@ -20,12 +21,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Mapping not found' }, { status: 404 })
     }
 
-    // Clone it (remove id, timestamps)
-    const { id: _id, created_at: _ca, updated_at: _ua, ...clone } = original
+    // Clone it without carrying over record identity fields.
+    const clone = {
+      ...original,
+    }
+    delete clone.id
+    delete clone.created_at
+    delete clone.updated_at
+    const mappingCosts = await buildCustomerPartMappingCosts(clone)
 
     const { data, error } = await supabaseAdmin
       .from('customer_part_mappings')
-      .insert(clone)
+      .insert({
+        ...clone,
+        ...mappingCosts,
+      })
       .select('*, customers(name, payment_terms)')
       .single()
 
