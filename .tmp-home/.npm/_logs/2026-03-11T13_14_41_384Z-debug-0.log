@@ -1,0 +1,19 @@
+0 verbose cli /opt/homebrew/Cellar/node/25.8.0/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@11.11.0
+2 info using node@v25.8.0
+3 silly config load:file:/opt/homebrew/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.npmrc
+5 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npmrc
+6 silly config load:file:/opt/homebrew/etc/npmrc
+7 verbose title npm exec gitnexus --help
+8 verbose argv "exec" "--" "gitnexus" "--help"
+9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T13_14_41_384Z-
+10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T13_14_41_384Z-debug-0.log
+11 silly logfile done cleaning log files
+12 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with ENOTFOUND
+13 verbose cwd /Users/simondurik/clawd/projects/entech-dashboard-v2
+14 verbose os Darwin 25.2.0
+15 verbose node v25.8.0
+16 verbose npm  v11.11.0
+17 verbose exit 0
+18 info ok
