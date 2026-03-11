@@ -283,11 +283,12 @@ function CustomerReferencePageContent() {
     : null
   const hasValidBomSelection = !formData.internal_part_number || bomPartNumbers.includes(formData.internal_part_number)
   const hasBomOptions = bomPartNumbers.length > 0
+  const missingCurrentBomPart = !hasValidBomSelection && editingMapping && formData.internal_part_number
   const internalPartPlaceholder = bomLoading
     ? 'Loading BOM part numbers...'
     : !hasBomOptions
       ? 'No BOM part numbers available'
-    : !hasValidBomSelection && editingMapping && formData.internal_part_number
+    : missingCurrentBomPart
       ? `Current: ${formData.internal_part_number} (not in BOM)`
       : 'Select BOM part number'
 
@@ -491,6 +492,11 @@ function CustomerReferencePageContent() {
                   <SelectValue placeholder={internalPartPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
+                  {missingCurrentBomPart ? (
+                    <SelectItem value={formData.internal_part_number} disabled>
+                      {formData.internal_part_number} (not in BOM)
+                    </SelectItem>
+                  ) : null}
                   {hasBomOptions ? (
                     bomPartNumbers.map((pn) => (
                       <SelectItem key={pn} value={pn}>
@@ -505,7 +511,7 @@ function CustomerReferencePageContent() {
                   No BOM part numbers are available yet. Create BOM entries before creating or updating a part mapping.
                 </p>
               ) : null}
-              {!hasValidBomSelection && editingMapping ? (
+              {missingCurrentBomPart ? (
                 <p className="mt-1 text-sm text-amber-600">
                   The current internal part number is no longer in the BOM. Select a current BOM part to save changes.
                 </p>
