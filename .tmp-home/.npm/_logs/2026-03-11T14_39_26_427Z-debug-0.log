@@ -5,10 +5,10 @@
 4 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.npmrc
 5 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npmrc
 6 silly config load:file:/opt/homebrew/etc/npmrc
-7 verbose title npm exec gitnexus impact --help
-8 verbose argv "exec" "--" "gitnexus" "impact" "--help"
-9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_02_809Z-
-10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_02_809Z-debug-0.log
+7 verbose title npm exec gitnexus context -r entech-dashboard-v2 fetchSalesFromDB
+8 verbose argv "exec" "--" "gitnexus" "context" "-r" "entech-dashboard-v2" "fetchSalesFromDB"
+9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_26_427Z-
+10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_26_427Z-debug-0.log
 11 silly logfile start cleaning logs, removing 2 files
 12 silly logfile done cleaning log files
 13 verbose cwd /Users/simondurik/clawd/projects/entech-dashboard-v2

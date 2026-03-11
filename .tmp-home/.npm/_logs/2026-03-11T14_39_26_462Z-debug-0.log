@@ -5,15 +5,9 @@
 4 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.npmrc
 5 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npmrc
 6 silly config load:file:/opt/homebrew/etc/npmrc
-7 verbose title npm exec gitnexus analyze
-8 verbose argv "exec" "--" "gitnexus" "analyze"
-9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_38_47_156Z-
-10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_38_47_156Z-debug-0.log
+7 verbose title npm exec gitnexus context -r entech-dashboard-v2 GET -f app/api/sales/route.ts
+8 verbose argv "exec" "--" "gitnexus" "context" "-r" "entech-dashboard-v2" "GET" "-f" "app/api/sales/route.ts"
+9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_26_462Z-
+10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_26_462Z-debug-0.log
 11 silly logfile start cleaning logs, removing 3 files
 12 silly logfile done cleaning log files
-13 verbose cwd /Users/simondurik/clawd/projects/entech-dashboard-v2
-14 verbose os Darwin 25.2.0
-15 verbose node v25.8.0
-16 verbose npm  v11.11.0
-17 verbose exit 0
-18 info ok

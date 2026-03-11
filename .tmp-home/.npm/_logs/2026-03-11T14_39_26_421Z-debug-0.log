@@ -1,0 +1,13 @@
+0 verbose cli /opt/homebrew/Cellar/node/25.8.0/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@11.11.0
+2 info using node@v25.8.0
+3 silly config load:file:/opt/homebrew/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.npmrc
+5 silly config load:file:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npmrc
+6 silly config load:file:/opt/homebrew/etc/npmrc
+7 verbose title npm exec gitnexus query -r entech-dashboard-v2 sales revenue profit margin cost dashboard
+8 verbose argv "exec" "--" "gitnexus" "query" "-r" "entech-dashboard-v2" "sales revenue profit margin cost dashboard"
+9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_26_421Z-
+10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_26_421Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 silly logfile done cleaning log files
