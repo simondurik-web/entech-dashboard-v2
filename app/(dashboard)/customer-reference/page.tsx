@@ -282,8 +282,11 @@ function CustomerReferencePageContent() {
     ? computeContributionLevel(formLowest, editingMapping.variable_cost, editingMapping.total_cost, editingMapping.sales_target)
     : null
   const hasValidBomSelection = !formData.internal_part_number || bomPartNumbers.includes(formData.internal_part_number)
+  const hasBomOptions = bomPartNumbers.length > 0
   const internalPartPlaceholder = bomLoading
     ? 'Loading BOM part numbers...'
+    : !hasBomOptions
+      ? 'No BOM part numbers available'
     : !hasValidBomSelection && editingMapping && formData.internal_part_number
       ? `Current: ${formData.internal_part_number} (not in BOM)`
       : 'Select BOM part number'
@@ -481,21 +484,24 @@ function CustomerReferencePageContent() {
                 value={hasValidBomSelection ? formData.internal_part_number || undefined : undefined}
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
-                <SelectTrigger className="w-full" disabled={bomLoading || bomPartNumbers.length === 0}>
+                <SelectTrigger className="w-full" disabled={bomLoading || !hasBomOptions}>
                   <SelectValue placeholder={internalPartPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
-                  {bomPartNumbers.length > 0 ? (
+                  {hasBomOptions ? (
                     bomPartNumbers.map((pn) => (
                       <SelectItem key={pn} value={pn}>
                         {pn}
                       </SelectItem>
                     ))
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No BOM part numbers available</div>
-                  )}
+                  ) : null}
                 </SelectContent>
               </Select>
+              {!bomLoading && !hasBomOptions ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  No BOM part numbers are available yet. Create BOM entries before creating or updating a part mapping.
+                </p>
+              ) : null}
               {!hasValidBomSelection && editingMapping ? (
                 <p className="mt-1 text-sm text-amber-600">
                   The current internal part number is no longer in the BOM. Select a current BOM part to save changes.
