@@ -7,8 +7,8 @@
 6 silly config load:file:/opt/homebrew/etc/npmrc
 7 verbose title npm exec gitnexus analyze
 8 verbose argv "exec" "--" "gitnexus" "analyze"
-9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T13_16_26_407Z-
-10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T13_16_26_407Z-debug-0.log
+9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_17_045Z-
+10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_17_045Z-debug-0.log
 11 silly logfile start cleaning logs, removing 1 files
 12 silly logfile done cleaning log files
 13 verbose cwd /Users/simondurik/clawd/projects/entech-dashboard-v2
