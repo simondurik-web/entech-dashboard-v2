@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -661,7 +661,16 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                             <h4 className="font-semibold mb-2 text-sm">Cost Breakdown</h4>
                             <div className="space-y-1.5 text-sm">
                               <div className="flex justify-between"><span className="text-muted-foreground">Description:</span><span className="text-right text-xs">{a.description || '—'}</span></div>
-                              <div className="flex justify-between"><span className="text-muted-foreground">Parts/Hr:</span><span>{a.parts_per_hour}</span></div>
+                              <EditableNumberLine
+                                label="Parts/Hr"
+                                value={a.parts_per_hour}
+                                id={a.id}
+                                field="parts_per_hour"
+                                onSave={updateOverhead}
+                                displayValue={a.parts_per_hour == null ? '—' : String(a.parts_per_hour)}
+                                inputClassName="w-20 h-6 text-xs text-right"
+                                validate={value => value > 0}
+                              />
                               <div className="flex justify-between"><span className="text-muted-foreground">Labor/Part:</span><span>{fmt(a.labor_cost_per_part)}</span></div>
                               <div className="flex justify-between"><span className="text-muted-foreground">Ship Labor:</span><span>{fmt(a.shipping_labor_cost)}</span></div>
                               <hr className="border-border" />
@@ -693,16 +702,44 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
 
 // ─── Editable Overhead Line ──────────────────────────────────────
 
-function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
+function EditableNumberLine({
+  label,
+  value,
+  id,
+  field,
+  onSave,
+  displayValue,
+  inputClassName = 'w-16 h-6 text-xs text-right',
+  step = '0.01',
+  suffix,
+  trailingContent,
+  validate,
+}: {
   label: string
-  pctValue: number
-  cost: number
+  value: number | null
   id: string
   field: string
-  onSave: (id: string, field: string, value: number) => void
+  onSave: (id: string, field: string, value: number) => void | Promise<void>
+  displayValue?: string
+  inputClassName?: string
+  step?: string
+  suffix?: string
+  trailingContent?: ReactNode
+  validate?: (value: number) => boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
+
+  const submit = async () => {
+    const nextValue = Number(val)
+    if (!Number.isFinite(nextValue) || (validate && !validate(nextValue))) {
+      setEditing(false)
+      return
+    }
+
+    await onSave(id, field, nextValue)
+    setEditing(false)
+  }
 
   return (
     <div className="flex justify-between items-center">
@@ -712,30 +749,54 @@ function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
           <>
             <Input
               type="number"
-              step="0.01"
+              step={step}
               value={val}
               onChange={e => setVal(e.target.value)}
-              className="w-16 h-6 text-xs text-right"
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  onSave(id, field, Number(val) / 100)
-                  setEditing(false)
-                }
+              className={inputClassName}
+              onBlur={() => setEditing(false)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter') await submit()
+                if (e.key === 'Escape') setEditing(false)
               }}
               autoFocus
             />
-            <span className="text-xs">%</span>
+            {suffix ? <span className="text-xs">{suffix}</span> : null}
           </>
         ) : (
           <span
             className="cursor-pointer hover:text-primary hover:underline text-xs"
-            onClick={() => { setEditing(true); setVal(String((Number(pctValue) * 100).toFixed(2))) }}
+            onClick={() => {
+              setEditing(true)
+              setVal(value == null ? '' : String(value))
+            }}
           >
-            {pct(pctValue)}
+            {displayValue ?? (value == null ? '—' : String(value))}
           </span>
         )}
-        <span className="text-xs ml-1">= {fmt(cost)}</span>
+        {trailingContent}
       </span>
     </div>
+  )
+}
+
+function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
+  label: string
+  pctValue: number
+  cost: number
+  id: string
+  field: string
+  onSave: (id: string, field: string, value: number) => void
+}) {
+  return (
+    <EditableNumberLine
+      label={label}
+      value={Number((Number(pctValue) * 100).toFixed(2))}
+      id={id}
+      field={field}
+      onSave={(lineId, lineField, value) => onSave(lineId, lineField, value / 100)}
+      displayValue={pct(pctValue)}
+      suffix="%"
+      trailingContent={<span className="text-xs ml-1">= {fmt(cost)}</span>}
+    />
   )
 }
