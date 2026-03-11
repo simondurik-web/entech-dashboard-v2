@@ -471,7 +471,7 @@ function CustomerReferencePageContent() {
                 value={formData.internal_part_number || undefined}
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select BOM part number" />
                 </SelectTrigger>
                 <SelectContent>
