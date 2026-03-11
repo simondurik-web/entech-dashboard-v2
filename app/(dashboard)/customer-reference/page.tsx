@@ -484,7 +484,7 @@ function CustomerReferencePageContent() {
                 value={hasValidBomSelection ? formData.internal_part_number || undefined : undefined}
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
-                <SelectTrigger className="w-full" disabled={bomLoading || !hasBomOptions}>
+                <SelectTrigger className="w-full [&>svg:last-child]:hidden" disabled={bomLoading || !hasBomOptions}>
                   <div className="flex w-full items-center justify-between gap-2">
                     <SelectValue placeholder={internalPartPlaceholder} />
                     <ChevronDown className="size-4 shrink-0 opacity-50" />
