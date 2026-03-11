@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -661,7 +661,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                             <h4 className="font-semibold mb-2 text-sm">Cost Breakdown</h4>
                             <div className="space-y-1.5 text-sm">
                               <div className="flex justify-between"><span className="text-muted-foreground">Description:</span><span className="text-right text-xs">{a.description || '—'}</span></div>
-                              <div className="flex justify-between"><span className="text-muted-foreground">Parts/Hr:</span><span>{a.parts_per_hour}</span></div>
+                              <PartsPerHourLine id={a.id} value={a.parts_per_hour} onSave={updateOverhead} />
                               <div className="flex justify-between"><span className="text-muted-foreground">Labor/Part:</span><span>{fmt(a.labor_cost_per_part)}</span></div>
                               <div className="flex justify-between"><span className="text-muted-foreground">Ship Labor:</span><span>{fmt(a.shipping_labor_cost)}</span></div>
                               <hr className="border-border" />
@@ -691,7 +691,74 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   )
 }
 
-// ─── Editable Overhead Line ──────────────────────────────────────
+// ─── Inline Editors ──────────────────────────────────────────────
+
+function PartsPerHourLine({ id, value, onSave }: {
+  id: string
+  value: number | null
+  onSave: (id: string, field: string, value: number) => void | Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState('')
+  const savingRef = useRef(false)
+
+  const submit = async () => {
+    if (savingRef.current) return
+
+    const nextValue = Number(val)
+    if (!Number.isFinite(nextValue) || nextValue <= 0) {
+      setEditing(false)
+      return
+    }
+
+    savingRef.current = true
+    try {
+      await onSave(id, 'parts_per_hour', nextValue)
+    } finally {
+      savingRef.current = false
+      setEditing(false)
+    }
+  }
+
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted-foreground">Parts/Hr:</span>
+      <span className="flex items-center gap-1">
+        {editing ? (
+          <Input
+            type="number"
+            step="1"
+            min="1"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            className="w-20 h-6 text-xs text-right"
+            onBlur={() => { void submit() }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void submit()
+              }
+              if (e.key === 'Escape') {
+                setEditing(false)
+              }
+            }}
+            autoFocus
+          />
+        ) : (
+          <span
+            className="cursor-pointer hover:text-primary hover:underline text-xs"
+            onClick={() => {
+              setEditing(true)
+              setVal(value == null ? '' : String(value))
+            }}
+          >
+            {value ?? '—'}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
 
 function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
   label: string
@@ -699,10 +766,29 @@ function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
   cost: number
   id: string
   field: string
-  onSave: (id: string, field: string, value: number) => void
+  onSave: (id: string, field: string, value: number) => void | Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
+  const savingRef = useRef(false)
+
+  const submit = async () => {
+    if (savingRef.current) return
+
+    const nextValue = Number(val)
+    if (!Number.isFinite(nextValue)) {
+      setEditing(false)
+      return
+    }
+
+    savingRef.current = true
+    try {
+      await onSave(id, field, nextValue / 100)
+    } finally {
+      savingRef.current = false
+      setEditing(false)
+    }
+  }
 
   return (
     <div className="flex justify-between items-center">
@@ -716,9 +802,13 @@ function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
               value={val}
               onChange={e => setVal(e.target.value)}
               className="w-16 h-6 text-xs text-right"
+              onBlur={() => { void submit() }}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
-                  onSave(id, field, Number(val) / 100)
+                  e.preventDefault()
+                  void submit()
+                }
+                if (e.key === 'Escape') {
                   setEditing(false)
                 }
               }}
