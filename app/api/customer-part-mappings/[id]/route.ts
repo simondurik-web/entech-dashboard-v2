@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildCustomerPartMappingCosts } from '@/lib/customer-part-mapping-costs'
+import {
+  buildCustomerPartMappingCosts,
+  CustomerPartMappingValidationError,
+} from '@/lib/customer-part-mapping-costs'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function PUT(
@@ -30,6 +33,9 @@ export async function PUT(
     if (error) throw error
     return NextResponse.json(data)
   } catch (err: unknown) {
+    if (err instanceof CustomerPartMappingValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
     const message = err instanceof Error ? err.message : 'Failed to update mapping'
     return NextResponse.json({ error: message }, { status: 500 })
   }
