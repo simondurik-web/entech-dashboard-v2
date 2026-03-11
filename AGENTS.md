@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **entech-dashboard-v2** (1324 symbols, 3290 relationships, 99 execution flows).
+This project is indexed by GitNexus as **entech-dashboard-v2** (1328 symbols, 3300 relationships, 99 execution flows).
 
 ## Always Start Here
 
