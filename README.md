@@ -12,6 +12,9 @@ GOOGLE_SERVICE_ACCOUNT_BASE64=...
 
 # Alternative: raw JSON string
 GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+
+# Alternative: filesystem path to the JSON key file
+GOOGLE_SERVICE_ACCOUNT_JSON_PATH=/absolute/path/to/service-account.json
 ```
 
 Setup requirements:
@@ -20,6 +23,7 @@ Setup requirements:
 2. Create a service account with read access.
 3. Share the spreadsheet with the service account email as a viewer.
 4. Add one of the env vars above to local `.env.local` and to Vercel.
+5. If you use `GOOGLE_SERVICE_ACCOUNT_JSON_PATH`, make sure the file exists on the runtime filesystem.
 
 ## Getting Started
 
