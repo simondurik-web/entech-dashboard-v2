@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getSheetsClient } from '@/lib/google-auth'
+import { fetchSheetValues } from '@/lib/google-sheets-api'
 import { getProfileFromHeader, unauthorized, forbidden } from '../_utils'
 
 const SHEET_ID = '1SqQeBkgzQPUqdMcOR-gIlPRk85renzqnV1bgn2C10lg'
@@ -11,14 +11,11 @@ export async function POST(req: NextRequest) {
   if (profile.role !== 'admin') return forbidden()
 
   try {
-    const sheets = getSheetsClient()
-
     // 1. Migrate employees from "Employee Reference data" tab
-    const empRes = await sheets.spreadsheets.values.get({
+    const empRows = await fetchSheetValues({
       spreadsheetId: SHEET_ID,
       range: 'Employee Reference data!A1:H100',
     })
-    const empRows = empRes.data.values || []
     const employees = empRows.slice(1) // skip header
       .filter(row => row[0] && row[1]) // need ID and first name
       .map(row => ({
@@ -40,11 +37,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Migrate historical schedule data from "Long Data" tab
-    const longRes = await sheets.spreadsheets.values.get({
+    const longRows = await fetchSheetValues({
       spreadsheetId: SHEET_ID,
       range: 'Long Data!A1:K20000',
     })
-    const longRows = longRes.data.values || []
     const entries = longRows.slice(1) // skip header
       .filter(row => row[0] && row[5] && row[6] === '1') // need ID, date, and checked=1
       .map(row => {

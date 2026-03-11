@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchInventoryCostsFromDB } from '@/lib/supabase-data'
-import { getSheetsClient } from '@/lib/google-auth'
+import { fetchSheetValues } from '@/lib/google-sheets-api'
 
 // Google Sheets fallback config
 const SHEET_ID = '1yASi9Ot4GLBw2iQLfODAvOFHBWrNE8qqYfzvUTjhrz8'
@@ -31,12 +31,13 @@ async function fetchCostsFromSheets(): Promise<Record<string, {
   fusionId: string; description: string; netsuiteId: string
   cost: number | null; lowerCost: number | null; department: string; subDepartment: string
 }>> {
-  const sheets = getSheetsClient()
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `'${TAB}'` })
-  const rows = res.data.values
+  const rows = await fetchSheetValues({
+    spreadsheetId: SHEET_ID,
+    range: `'${TAB}'`,
+  })
   if (!rows || rows.length < 2) return {}
 
-  const headers = rows[0].map((h: string) => String(h || ''))
+  const headers = rows[0].map((h) => String(h || ''))
   const COL_FUSION_ID = findCol(headers, 'fusion id')
   const COL_DESCRIPTION = findCol(headers, 'description')
   const COL_NETSUITE_ID = findCol(headers, 'netsuite item id')
