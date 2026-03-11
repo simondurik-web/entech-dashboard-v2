@@ -3,17 +3,20 @@ import 'server-only'
 import { getSheetsClient } from './google-auth'
 
 type ValueRenderOption = 'FORMATTED_VALUE' | 'UNFORMATTED_VALUE' | 'FORMULA'
+type DateTimeRenderOption = 'SERIAL_NUMBER' | 'FORMATTED_STRING'
 
 type FetchSheetValuesOptions = {
   spreadsheetId: string
   range: string
   valueRenderOption?: ValueRenderOption
+  dateTimeRenderOption?: DateTimeRenderOption
 }
 
 type FetchSheetValuesByGidOptions = {
   spreadsheetId: string
   gid: string
   valueRenderOption?: ValueRenderOption
+  dateTimeRenderOption?: DateTimeRenderOption
 }
 
 const sheetTitlesCache = new Map<string, Map<string, string>>()
@@ -52,12 +55,14 @@ export async function fetchSheetValues({
   spreadsheetId,
   range,
   valueRenderOption = 'FORMATTED_VALUE',
+  dateTimeRenderOption,
 }: FetchSheetValuesOptions): Promise<string[][]> {
   const sheets = getSheetsClient()
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range,
     valueRenderOption,
+    dateTimeRenderOption,
   })
 
   return (response.data.values ?? []).map((row) =>
@@ -69,12 +74,14 @@ export async function fetchSheetValuesByGid({
   spreadsheetId,
   gid,
   valueRenderOption = 'FORMATTED_VALUE',
+  dateTimeRenderOption,
 }: FetchSheetValuesByGidOptions): Promise<string[][]> {
   const title = await getSheetTitle(spreadsheetId, gid)
   return fetchSheetValues({
     spreadsheetId,
     range: quoteSheetTitle(title),
     valueRenderOption,
+    dateTimeRenderOption,
   })
 }
 
