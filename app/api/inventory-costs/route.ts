@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchInventoryCostsFromDB } from '@/lib/supabase-data'
-import { google } from 'googleapis'
+import { getSheetsClient } from '@/lib/google-auth'
 
 // Google Sheets fallback config
 const SHEET_ID = '1yASi9Ot4GLBw2iQLfODAvOFHBWrNE8qqYfzvUTjhrz8'
@@ -27,28 +27,11 @@ function findCol(headers: string[], ...patterns: string[]): number {
   return -1
 }
 
-function getAuth() {
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_BASE64) {
-    const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_BASE64, 'base64').toString())
-    return new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
-  }
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-    if (credentials.private_key) credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
-    return new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
-  }
-  return new google.auth.GoogleAuth({
-    keyFile: '/Users/simondurik/clawd/secrets/google-service-account.json',
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  })
-}
-
 async function fetchCostsFromSheets(): Promise<Record<string, {
   fusionId: string; description: string; netsuiteId: string
   cost: number | null; lowerCost: number | null; department: string; subDepartment: string
 }>> {
-  const auth = getAuth()
-  const sheets = google.sheets({ version: 'v4', auth })
+  const sheets = getSheetsClient()
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `'${TAB}'` })
   const rows = res.data.values
   if (!rows || rows.length < 2) return {}
