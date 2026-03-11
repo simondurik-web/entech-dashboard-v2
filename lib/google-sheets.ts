@@ -214,9 +214,7 @@ export async function fetchOrders(): Promise<Order[]> {
   const { rows } = await fetchSheetDataFromApi(GIDS.orders)
   const parsedRows = rows.map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
   
-  if (parsedRows.length < 2) return []
-  
-  const dataRows = parsedRows.slice(1)
+  if (parsedRows.length === 0) return []
   
   function col(row: string[], index: number): string {
     return (index >= 0 && index < row.length) ? row[index].trim() : ''
@@ -231,7 +229,7 @@ export async function fetchOrders(): Promise<Order[]> {
     return col(row, index)
   }
   
-  return dataRows
+  return parsedRows
     .map((row): Order => {
       const internalStatus = col(row, COLS.internalStatus)
       const ifStatus = col(row, COLS.ifStatus)
@@ -376,7 +374,7 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
 
   // Build Fusion Export map: partNumber -> qty
   const fusionMap = new Map<string, number>()
-  for (let i = 1; i < fusion.rows.length; i++) {
+  for (let i = 0; i < fusion.rows.length; i++) {
     const row = fusion.rows[i]
     const part = cellValue(row, FUSION_COLS.partNumber).trim()
     const qty = cellNumber(row, FUSION_COLS.qty)
@@ -449,7 +447,7 @@ export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
 
   // Build Fusion Export map: partNumber -> qty
   const fusionMap = new Map<string, number>()
-  for (let i = 1; i < fusion.rows.length; i++) {
+  for (let i = 0; i < fusion.rows.length; i++) {
     const row = fusion.rows[i]
     const part = cellValue(row, FUSION_COLS.partNumber).trim()
     const qty = cellNumber(row, FUSION_COLS.qty)
