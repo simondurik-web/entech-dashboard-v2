@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select'
 import {
   Search, Plus, Copy, Pencil, Trash2, Users, AlertTriangle, TrendingUp, Target,
-  RefreshCw, ChevronDown,
+  RefreshCw,
 } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -106,14 +106,11 @@ function CustomerReferencePageContent() {
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   const [showMappingDialog, setShowMappingDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [showBomDropdown, setShowBomDropdown] = useState(false)
-  const [showAllBomPartNumbers, setShowAllBomPartNumbers] = useState(false)
   const [editingMapping, setEditingMapping] = useState<PartMapping | null>(null)
   const [formData, setFormData] = useState<MappingFormData>(EMPTY_MAPPING)
   const [customerForm, setCustomerForm] = useState({ name: '', payment_terms: 'Net 30', notes: '' })
   const [deleteTarget, setDeleteTarget] = useState<PartMapping | null>(null)
   const [saving, setSaving] = useState(false)
-  const bomDropdownRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
 
   const fetchData = useCallback(async () => {
@@ -143,17 +140,6 @@ function CustomerReferencePageContent() {
       })
       .catch(() => {})
   }, [])
-
-  useEffect(() => {
-    if (!showBomDropdown) return
-    const handleClickOutside = (event: MouseEvent) => {
-      if (bomDropdownRef.current && !bomDropdownRef.current.contains(event.target as Node)) {
-        setShowBomDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showBomDropdown])
 
   // Filter + search
   const filtered = mappings.filter((m) => {
@@ -270,8 +256,6 @@ function CustomerReferencePageContent() {
 
   const openEdit = (m: PartMapping) => {
     setEditingMapping(m)
-    setShowBomDropdown(false)
-    setShowAllBomPartNumbers(false)
     setFormData({
       customer_id: m.customer_id,
       customer_part_number: m.customer_part_number || '',
@@ -291,8 +275,6 @@ function CustomerReferencePageContent() {
 
   const openNew = () => {
     setEditingMapping(null)
-    setShowBomDropdown(false)
-    setShowAllBomPartNumbers(false)
     setFormData(EMPTY_MAPPING)
     setShowMappingDialog(true)
   }
@@ -309,13 +291,9 @@ function CustomerReferencePageContent() {
   const formContribution = editingMapping
     ? computeContributionLevel(formLowest, editingMapping.variable_cost, editingMapping.total_cost, editingMapping.sales_target)
     : null
-  const normalizedInternalPartNumber = formData.internal_part_number.trim()
-  const hasInternalPartNumber = normalizedInternalPartNumber.length > 0
-  const hasBomMatch = !hasInternalPartNumber || bomPartNumbers.includes(normalizedInternalPartNumber)
-  const filteredBomPartNumbers = bomPartNumbers
-    .filter((pn) => !normalizedInternalPartNumber || pn.toLowerCase().includes(normalizedInternalPartNumber.toLowerCase()))
-    .slice(0, 20)
-  const visibleBomPartNumbers = showAllBomPartNumbers ? bomPartNumbers : filteredBomPartNumbers
+  const bomSelectOptions = formData.internal_part_number && !bomPartNumbers.includes(formData.internal_part_number)
+    ? [formData.internal_part_number, ...bomPartNumbers]
+    : bomPartNumbers
 
   return (
     <div className="p-4 pb-20">
@@ -477,8 +455,6 @@ function CustomerReferencePageContent() {
         setShowMappingDialog(open)
         if (!open) {
           setEditingMapping(null)
-          setShowBomDropdown(false)
-          setShowAllBomPartNumbers(false)
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -506,76 +482,35 @@ function CustomerReferencePageContent() {
               <Label>Customer Part Number</Label>
               <Input value={formData.customer_part_number || ''} onChange={(e) => setFormData({ ...formData, customer_part_number: e.target.value })} />
             </div>
-            <div className="relative" ref={bomDropdownRef}>
+            <div>
               <Label>Internal Part Number *</Label>
-              <div className="relative">
-                <Input
-                  value={formData.internal_part_number}
-                  onChange={(e) => {
-                    setFormData({ ...formData, internal_part_number: e.target.value })
-                    setShowAllBomPartNumbers(false)
-                    setShowBomDropdown(true)
-                  }}
-                  onFocus={() => {
-                    setShowAllBomPartNumbers(false)
-                    setShowBomDropdown(true)
-                  }}
-                  placeholder="Search or select part number..."
-                  className={`pr-8 ${!hasInternalPartNumber ? '' : hasBomMatch ? 'border-green-500 focus-visible:ring-green-500/40' : 'border-amber-500 focus-visible:ring-amber-500/40'}`}
-                />
-                <button
-                  type="button"
-                  aria-label="Toggle part number dropdown"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => {
-                    setShowBomDropdown((prev) => {
-                      const next = !prev
-                      setShowAllBomPartNumbers(next)
-                      return next
-                    })
-                  }}
-                >
-                  <ChevronDown className={`h-4 w-4 transition-transform ${showBomDropdown ? 'rotate-180' : ''}`} />
-                </button>
-              </div>
-              {hasInternalPartNumber && (
-                <p className={`mt-1 text-xs ${hasBomMatch ? 'text-green-500' : 'text-amber-500'}`}>
-                  {hasBomMatch ? '✓ BOM found for this part number' : '⚠️ No BOM found for this part number'}
-                </p>
-              )}
-              {showBomDropdown && (
-                <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-md shadow-lg max-h-56 overflow-y-auto">
-                  {visibleBomPartNumbers.length > 0 ? (
-                    visibleBomPartNumbers.map((pn) => (
-                      <button
-                        key={pn}
-                        type="button"
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted/50 transition-colors"
-                        onClick={() => {
-                          setFormData({ ...formData, internal_part_number: pn })
-                          setShowBomDropdown(false)
-                        }}
-                      >
-                        {pn}
-                      </button>
+              <Select
+                value={formData.internal_part_number || undefined}
+                onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select BOM part number" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bomSelectOptions.length > 0 ? (
+                    bomSelectOptions.map((pn) => (
+                      <SelectItem key={pn} value={pn}>
+                        {pn === formData.internal_part_number && !bomPartNumbers.includes(pn) ? `${pn} (not in current BOM)` : pn}
+                      </SelectItem>
                     ))
                   ) : (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No matching BOM part numbers</div>
+                    <div className="px-3 py-2 text-sm text-muted-foreground">No BOM part numbers available</div>
                   )}
-                  <div className="border-t border-border">
-                    <button
-                      type="button"
-                      className="w-full px-3 py-2 text-left text-sm text-blue-400 hover:bg-muted/50 font-medium"
-                      onClick={() => {
-                        setShowBomDropdown(false)
-                        router.push('/bom')
-                      }}
-                    >
-                      ➕ Create BOM
-                    </button>
-                  </div>
-                </div>
-              )}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto px-0 mt-1 text-sm"
+                onClick={() => router.push('/bom')}
+              >
+                Create BOM
+              </Button>
             </div>
             <div>
               <Label>Category</Label>

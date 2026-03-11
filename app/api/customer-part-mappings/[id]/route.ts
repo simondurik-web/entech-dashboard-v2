@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buildCustomerPartMappingCosts } from '@/lib/customer-part-mapping-costs'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function PUT(
@@ -8,35 +9,14 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await req.json()
+    const mappingCosts = await buildCustomerPartMappingCosts(body)
 
-    // Compute lowest price
-    const prices = [body.tier1_price, body.tier2_price, body.tier3_price, body.tier4_price, body.tier5_price]
-      .filter((p) => p != null && p > 0)
-    body.lowest_quoted_price = prices.length > 0 ? Math.min(...prices) : null
-
-    // Auto-populate costs from BOM if internal_part_number is present
-    if (body.internal_part_number) {
-      const { data: bomData } = await supabaseAdmin
-        .from('bom_final_assemblies')
-        .select('variable_cost, total_cost, sales_target')
-        .eq('part_number', body.internal_part_number)
-        .single()
-
-      if (bomData) {
-        body.variable_cost = bomData.variable_cost
-        body.total_cost = bomData.total_cost
-        body.sales_target = bomData.sales_target
-      }
-    }
-
-    // Recompute contribution level if we have cost data
-    if (body.variable_cost && body.total_cost && body.sales_target && body.lowest_quoted_price) {
-      const lp = body.lowest_quoted_price
-      if (lp < body.variable_cost) body.contribution_level = 'Critical Loss'
-      else if (lp < body.total_cost) body.contribution_level = 'Marginal Coverage'
-      else if (lp < body.sales_target) body.contribution_level = 'Net Profitable'
-      else body.contribution_level = 'Target Achieved'
-    }
+    body.internal_part_number = mappingCosts.internal_part_number
+    body.lowest_quoted_price = mappingCosts.lowest_quoted_price
+    body.variable_cost = mappingCosts.variable_cost
+    body.total_cost = mappingCosts.total_cost
+    body.sales_target = mappingCosts.sales_target
+    body.contribution_level = mappingCosts.contribution_level
 
     body.updated_at = new Date().toISOString()
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buildCustomerPartMappingCosts } from '@/lib/customer-part-mapping-costs'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function GET(req: NextRequest) {
@@ -34,51 +35,21 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const {
-      customer_id, customer_part_number, internal_part_number,
+      customer_id, customer_part_number,
       category, packaging, package_quantity,
       tier1_range, tier1_price, tier2_range, tier2_price,
       tier3_range, tier3_price, tier4_range, tier4_price,
       tier5_range, tier5_price, notes,
     } = body
 
+    const mappingCosts = await buildCustomerPartMappingCosts(body)
+    const { internal_part_number, lowest_quoted_price, variable_cost, total_cost, sales_target, contribution_level } = mappingCosts
+
     if (!customer_id || !internal_part_number) {
       return NextResponse.json(
         { error: 'customer_id and internal_part_number are required' },
         { status: 400 }
       )
-    }
-
-    // Compute lowest price
-    const prices = [tier1_price, tier2_price, tier3_price, tier4_price, tier5_price]
-      .filter((p) => p != null && p > 0)
-    const lowest_quoted_price = prices.length > 0 ? Math.min(...prices) : null
-
-    // Auto-populate costs from BOM
-    let variable_cost = null
-    let total_cost = null
-    let sales_target = null
-    let contribution_level = null
-
-    if (internal_part_number) {
-      const { data: bomData } = await supabaseAdmin
-        .from('bom_final_assemblies')
-        .select('variable_cost, total_cost, sales_target')
-        .eq('part_number', internal_part_number)
-        .single()
-
-      if (bomData) {
-        variable_cost = bomData.variable_cost
-        total_cost = bomData.total_cost
-        sales_target = bomData.sales_target
-
-        // Compute contribution level
-        if (variable_cost && total_cost && sales_target && lowest_quoted_price) {
-          if (lowest_quoted_price < variable_cost) contribution_level = 'Critical Loss'
-          else if (lowest_quoted_price < total_cost) contribution_level = 'Marginal Coverage'
-          else if (lowest_quoted_price < sales_target) contribution_level = 'Net Profitable'
-          else contribution_level = 'Target Achieved'
-        }
-      }
     }
 
     const { data, error } = await supabaseAdmin
