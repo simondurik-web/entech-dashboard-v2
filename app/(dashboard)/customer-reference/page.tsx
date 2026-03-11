@@ -486,7 +486,7 @@ function CustomerReferencePageContent() {
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
                 <SelectTrigger
-                  className="w-full"
+                  className="w-full [&>[data-slot=select-value]]:flex-1 [&>[data-slot=select-value]]:text-left [&>svg]:opacity-100"
                   disabled={bomLoading || !hasBomOptions}
                 >
                   <SelectValue placeholder={internalPartPlaceholder} />
