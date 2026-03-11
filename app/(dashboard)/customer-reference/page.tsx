@@ -25,7 +25,6 @@ import {
 import {
   Search, Plus, Users, AlertTriangle, TrendingUp, Target,
   RefreshCw,
-  ChevronDown,
 } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -486,15 +485,12 @@ function CustomerReferencePageContent() {
                 value={hasValidBomSelection ? formData.internal_part_number || undefined : undefined}
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
-                <div className="relative">
-                  <SelectTrigger
-                    className="w-full pr-9 [&>svg]:hidden"
-                    disabled={bomLoading || !hasBomOptions}
-                  >
-                    <SelectValue placeholder={internalPartPlaceholder} />
-                  </SelectTrigger>
-                  <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                </div>
+                <SelectTrigger
+                  className="w-full"
+                  disabled={bomLoading || !hasBomOptions}
+                >
+                  <SelectValue placeholder={internalPartPlaceholder} />
+                </SelectTrigger>
                 <SelectContent>
                   {missingCurrentBomPart ? (
                     <SelectItem value={formData.internal_part_number} disabled>
