@@ -203,7 +203,7 @@ Add to sync script:
 ## Current Code Structure
 
 - `lib/google-sheets.ts` (855 lines) — ALL data fetching from Sheets
-  - Uses `gviz/tq?tqx=out:json` for most queries
+  - Uses authenticated Google Sheets API v4 server-side helpers (no public `gviz` or CSV endpoints)
   - Column indices hardcoded in `COLS` object
   - Type interfaces defined: `Order`, `InventoryItem`, `ProductionItem`, etc.
 - API routes in `app/api/*/route.ts` — thin wrappers calling google-sheets functions
