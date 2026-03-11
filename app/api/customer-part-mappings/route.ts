@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildCustomerPartMappingCosts } from '@/lib/customer-part-mapping-costs'
+import {
+  buildCustomerPartMappingCosts,
+  CustomerPartMappingValidationError,
+} from '@/lib/customer-part-mapping-costs'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function GET(req: NextRequest) {
@@ -68,6 +71,9 @@ export async function POST(req: NextRequest) {
     if (error) throw error
     return NextResponse.json(data, { status: 201 })
   } catch (err: unknown) {
+    if (err instanceof CustomerPartMappingValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
     const message = err instanceof Error ? err.message : 'Failed to create mapping'
     return NextResponse.json({ error: message }, { status: 500 })
   }

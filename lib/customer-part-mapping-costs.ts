@@ -24,6 +24,13 @@ type BomCostFields = {
   sales_target: number | null
 }
 
+export class CustomerPartMappingValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'CustomerPartMappingValidationError'
+  }
+}
+
 export function normalizeInternalPartNumber(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -41,14 +48,6 @@ export function computeLowestQuotedPrice(input: MappingPriceInput): number | nul
 }
 
 async function fetchBomCostFields(partNumber: string): Promise<BomCostFields> {
-  if (!partNumber) {
-    return {
-      variable_cost: null,
-      total_cost: null,
-      sales_target: null,
-    }
-  }
-
   const { data } = await supabaseAdmin
     .from('bom_final_assemblies')
     .select('part_number, variable_cost, total_cost, sales_target')
@@ -56,11 +55,9 @@ async function fetchBomCostFields(partNumber: string): Promise<BomCostFields> {
     .maybeSingle()
 
   if (!data) {
-    return {
-      variable_cost: null,
-      total_cost: null,
-      sales_target: null,
-    }
+    throw new CustomerPartMappingValidationError(
+      `Internal part number "${partNumber}" was not found in BOM final assemblies`
+    )
   }
 
   return {
@@ -74,6 +71,11 @@ export async function buildCustomerPartMappingCosts(
   input: MappingPriceInput & { internal_part_number?: unknown }
 ): Promise<MappingCostFields> {
   const internal_part_number = normalizeInternalPartNumber(input.internal_part_number)
+
+  if (!internal_part_number) {
+    throw new CustomerPartMappingValidationError('internal_part_number is required')
+  }
+
   const lowest_quoted_price = computeLowestQuotedPrice(input)
   const bomCosts = await fetchBomCostFields(internal_part_number)
 
