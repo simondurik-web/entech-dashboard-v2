@@ -37,8 +37,7 @@ const sheetDataCache = new Map<string, { expiresAt: number; data: GvizSheetData 
 function toGvizShape(values: string[][]): GvizSheetData {
   if (values.length === 0) return { cols: [], rows: [] }
 
-  // First row is headers (cols), remaining rows are data
-  // This matches the old gviz behavior where table.rows excluded headers
+  // Preserve the legacy gviz contract: headers in cols, data rows only in rows.
   const cols = [...values[0]]
   const dataRows = values.slice(1)
 
@@ -254,15 +253,14 @@ function parseSheetNumber(value: string): number {
 }
 
 export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
-  const { cols, rows: gvizRows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
-  const rows = gvizRows
+  const { cols, rows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
+  const normalizedRows = rows
     .map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
     .filter((row) =>
     row.some((cell) => cell.trim() !== '')
   )
-  if (rows.length === 0) return { dates: [], parts: [] }
+  if (normalizedRows.length === 0) return { dates: [], parts: [] }
 
-  // cols contains the header row (part number label + date columns)
   const header = cols
   const dateColumns: Array<{ index: number; date: string }> = []
 
@@ -274,9 +272,8 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
   }
 
   const parts: InventoryHistoryPart[] = []
-  // All rows are data rows now (header is in cols)
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]
+  for (let i = 0; i < normalizedRows.length; i++) {
+    const row = normalizedRows[i]
     const partNumber = (row[0] || '').trim()
     if (!partNumber) continue
 
