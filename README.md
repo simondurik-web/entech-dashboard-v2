@@ -1,5 +1,26 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Google Sheets Access
+
+This app reads Google Sheets through the authenticated Sheets API, not public `gviz` or public CSV exports.
+
+Required server env vars:
+
+```bash
+# Preferred: base64-encoded full service account JSON
+GOOGLE_SERVICE_ACCOUNT_BASE64=...
+
+# Alternative: raw JSON string
+GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+```
+
+Setup requirements:
+
+1. Enable Google Sheets API in the Google Cloud project that owns the service account.
+2. Create a service account with read access.
+3. Share the spreadsheet with the service account email as a viewer.
+4. Add one of the env vars above to local `.env.local` and to Vercel.
+
 ## Getting Started
 
 First, run the development server:
