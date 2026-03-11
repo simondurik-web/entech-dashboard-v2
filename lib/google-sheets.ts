@@ -57,7 +57,8 @@ async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
   const values = await fetchSheetValuesByGid({
     spreadsheetId: SHEET_ID,
     gid,
-    valueRenderOption: 'FORMATTED_VALUE',
+    valueRenderOption: 'UNFORMATTED_VALUE',
+    dateTimeRenderOption: 'FORMATTED_STRING',
   })
   const data = toGvizShape(values)
   sheetDataCache.set(gid, { data, expiresAt: now + API_CACHE_TTL_MS })
