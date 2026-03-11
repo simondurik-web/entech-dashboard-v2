@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { getSheetsClient } from './google-auth'
 
 type ValueRenderOption = 'FORMATTED_VALUE' | 'UNFORMATTED_VALUE' | 'FORMULA'

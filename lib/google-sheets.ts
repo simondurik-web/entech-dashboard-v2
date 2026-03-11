@@ -1,3 +1,5 @@
+import 'server-only'
+
 // Re-export types so API routes can still import from this file
 export type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
 export { normalizeStatus } from './google-sheets-shared'

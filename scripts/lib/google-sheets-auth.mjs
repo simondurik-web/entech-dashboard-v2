@@ -41,6 +41,18 @@ function loadServiceAccountCredentials() {
     }
   }
 
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+      if (typeof credentials.private_key === 'string') {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
+      }
+      return credentials
+    } catch (error) {
+      throw new Error(`Invalid GOOGLE_SERVICE_ACCOUNT_JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   const explicitPath = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH
   const credentialPath = explicitPath ? path.resolve(REPO_ROOT, explicitPath) : DEFAULT_SECRET_PATH
   if (fs.existsSync(credentialPath)) {
@@ -48,7 +60,7 @@ function loadServiceAccountCredentials() {
   }
 
   throw new Error(
-    `Google Sheets credentials not found. Set GOOGLE_SERVICE_ACCOUNT_BASE64 or GOOGLE_SERVICE_ACCOUNT_JSON_PATH, or place a service account at ${DEFAULT_SECRET_PATH}.`
+    `Google Sheets credentials not found. Set GOOGLE_SERVICE_ACCOUNT_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_SERVICE_ACCOUNT_JSON_PATH, or place a service account at ${DEFAULT_SECRET_PATH}.`
   )
 }
 
