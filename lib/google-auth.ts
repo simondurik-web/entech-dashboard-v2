@@ -5,6 +5,7 @@ import path from 'node:path'
 import { google } from 'googleapis'
 
 const SHEETS_READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly'
+const DEFAULT_SECRET_PATH = path.resolve(process.cwd(), '..', '..', 'secrets', 'google-service-account.json')
 
 let cachedAuth: InstanceType<typeof google.auth.GoogleAuth> | InstanceType<typeof google.auth.JWT> | null = null
 
@@ -95,8 +96,12 @@ function loadCredentials() {
     return parseJsonFileCredentials(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH)
   }
 
+  if (existsSync(DEFAULT_SECRET_PATH)) {
+    return parseJsonFileCredentials(DEFAULT_SECRET_PATH)
+  }
+
   throw new Error(
-    'Google Sheets credentials not found. Set GOOGLE_SERVICE_ACCOUNT_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_SERVICE_ACCOUNT_JSON_PATH, then share the spreadsheet with that service account email.'
+    `Google Sheets credentials not found. Set GOOGLE_SERVICE_ACCOUNT_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_SERVICE_ACCOUNT_JSON_PATH, or place a service account at ${DEFAULT_SECRET_PATH}, then share the spreadsheet with that service account email.`
   )
 }
 
