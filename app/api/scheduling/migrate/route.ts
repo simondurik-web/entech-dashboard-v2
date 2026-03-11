@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getSheetsClient } from '@/lib/google-auth'
 import { getProfileFromHeader, unauthorized, forbidden } from '../_utils'
-import { google } from 'googleapis'
 
 const SHEET_ID = '1SqQeBkgzQPUqdMcOR-gIlPRk85renzqnV1bgn2C10lg'
-
-async function getAuth() {
-  const base64 = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64
-  if (!base64) throw new Error('GOOGLE_SERVICE_ACCOUNT_BASE64 not set')
-  const creds = JSON.parse(Buffer.from(base64, 'base64').toString())
-  const auth = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  })
-  return auth
-}
 
 export async function POST(req: NextRequest) {
   const profile = await getProfileFromHeader(req)
@@ -22,8 +11,7 @@ export async function POST(req: NextRequest) {
   if (profile.role !== 'admin') return forbidden()
 
   try {
-    const auth = await getAuth()
-    const sheets = google.sheets({ version: 'v4', auth })
+    const sheets = getSheetsClient()
 
     // 1. Migrate employees from "Employee Reference data" tab
     const empRes = await sheets.spreadsheets.values.get({
@@ -61,7 +49,6 @@ export async function POST(req: NextRequest) {
       .filter(row => row[0] && row[5] && row[6] === '1') // need ID, date, and checked=1
       .map(row => {
         const shift = parseInt(String(row[4] || '1')) || 1
-        const hours = parseFloat(String(row[10] || '10')) || 10
         // Calculate times from shift + hours
         let start_time = '07:00'
         let end_time = '17:30'
