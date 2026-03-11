@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select'
 import {
   Search, Plus, Users, AlertTriangle, TrendingUp, Target,
-  RefreshCw, ChevronDown,
+  RefreshCw,
 } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -484,11 +484,8 @@ function CustomerReferencePageContent() {
                 value={hasValidBomSelection ? formData.internal_part_number || undefined : undefined}
                 onValueChange={(value) => setFormData({ ...formData, internal_part_number: value })}
               >
-                <SelectTrigger className="w-full [&>svg:last-child]:hidden" disabled={bomLoading || !hasBomOptions}>
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <SelectValue placeholder={internalPartPlaceholder} />
-                    <ChevronDown className="size-4 shrink-0 opacity-50" />
-                  </div>
+                <SelectTrigger className="w-full" disabled={bomLoading || !hasBomOptions}>
+                  <SelectValue placeholder={internalPartPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {hasBomOptions ? (
