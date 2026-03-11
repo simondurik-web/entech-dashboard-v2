@@ -3,6 +3,9 @@ import { fetchSheetValuesByGid, loadLocalEnv, valuesToCsv } from './lib/google-s
 const [, , gidArg, formatArg = 'csv'] = process.argv
 const gid = gidArg?.trim()
 const format = formatArg.trim().toLowerCase()
+
+loadLocalEnv()
+
 const spreadsheetId = process.env.GOOGLE_SHEET_ID || '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 
 if (!gid) {
@@ -14,8 +17,6 @@ if (!['csv', 'json'].includes(format)) {
   console.error(`Unsupported format: ${format}`)
   process.exit(1)
 }
-
-loadLocalEnv()
 
 try {
   const values = await fetchSheetValuesByGid({ spreadsheetId, gid })

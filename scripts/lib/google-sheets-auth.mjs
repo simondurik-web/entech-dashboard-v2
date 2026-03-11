@@ -10,7 +10,7 @@ const SHEETS_READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.read
 
 let envLoaded = false
 let cachedSheetsClient = null
-let cachedSheetTitles = null
+const cachedSheetTitlesBySpreadsheet = new Map()
 
 export function loadLocalEnv() {
   if (envLoaded) return
@@ -66,7 +66,8 @@ export function getSheetsClient() {
 }
 
 async function getSheetTitles(spreadsheetId) {
-  if (cachedSheetTitles) return cachedSheetTitles
+  const cached = cachedSheetTitlesBySpreadsheet.get(spreadsheetId)
+  if (cached) return cached
 
   const sheets = getSheetsClient()
   const response = await sheets.spreadsheets.get({
@@ -74,14 +75,15 @@ async function getSheetTitles(spreadsheetId) {
     fields: 'sheets(properties(sheetId,title))',
   })
 
-  cachedSheetTitles = new Map()
+  const titleMap = new Map()
   for (const sheet of response.data.sheets ?? []) {
     const props = sheet.properties
     if (!props?.title || props.sheetId === undefined) continue
-    cachedSheetTitles.set(String(props.sheetId), props.title)
+    titleMap.set(String(props.sheetId), props.title)
   }
 
-  return cachedSheetTitles
+  cachedSheetTitlesBySpreadsheet.set(spreadsheetId, titleMap)
+  return titleMap
 }
 
 function quoteSheetTitle(title) {

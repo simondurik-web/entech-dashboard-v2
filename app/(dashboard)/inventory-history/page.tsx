@@ -83,13 +83,57 @@ function getMonthStartDates(dates: string[]): string[] {
   return result
 }
 
-// Custom gradient area chart with animation
+/** Compute projection data by extending the last data point with a linear trend */
+function computeProjection(
+  data: { date: string; value: number }[],
+  numPoints: number = 14,
+  lookbackPoints: number = 30,
+): { date: string; value: number | null; projectedValue: number | null }[] {
+  if (data.length < 2) return data.map(d => ({ ...d, projectedValue: null }))
+
+  const lookback = data.slice(-Math.min(lookbackPoints, data.length))
+  const lastValue = lookback[lookback.length - 1].value
+  const firstValue = lookback[0].value
+  const ratePerPoint = (lastValue - firstValue) / (lookback.length - 1)
+
+  // Compute average interval between data points in days
+  const lastDate = parseUsDate(data[data.length - 1].date)
+  const prevDate = parseUsDate(data[data.length - 2].date)
+  if (!lastDate || !prevDate) return data.map(d => ({ ...d, projectedValue: null }))
+
+  // Average day gap across last few points
+  const recentDates = data.slice(-Math.min(10, data.length)).map(d => parseUsDate(d.date)?.getTime() ?? 0).filter(Boolean)
+  const avgDayGap = recentDates.length > 1
+    ? (recentDates[recentDates.length - 1] - recentDates[0]) / (recentDates.length - 1) / 86400000
+    : 1
+
+  const result: { date: string; value: number | null; projectedValue: number | null }[] =
+    data.map(d => ({ date: d.date, value: d.value, projectedValue: null }))
+
+  // Bridge: last actual point also gets projectedValue so the line connects
+  result[result.length - 1].projectedValue = lastValue
+
+  for (let i = 1; i <= numPoints; i++) {
+    const futureDate = new Date(lastDate)
+    futureDate.setDate(futureDate.getDate() + Math.round(i * avgDayGap))
+    const dateStr = `${futureDate.getMonth() + 1}/${futureDate.getDate()}/${futureDate.getFullYear()}`
+    result.push({
+      date: dateStr,
+      value: null,
+      projectedValue: Math.max(0, Math.round((lastValue + ratePerPoint * i) * 100) / 100),
+    })
+  }
+
+  return result
+}
+
+// Custom gradient area chart with animation + projection
 function ValueChart({
   data,
   monthStartDates,
   animationActive,
 }: {
-  data: { date: string; value: number }[]
+  data: { date: string; value: number | null; projectedValue: number | null }[]
   monthStartDates: string[]
   animationActive: boolean
 }) {
@@ -100,7 +144,7 @@ function ValueChart({
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+      <ComposedChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
@@ -137,7 +181,12 @@ function ValueChart({
             fontSize: '12px',
             color: '#e2e8f0',
           }}
-          formatter={(value: number | undefined) => [`$${(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Inventory Value']}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          formatter={(value: any, name: any) => {
+            if (value == null) return [null, null]
+            const label = name === 'projectedValue' ? 'Projected' : 'Inventory Value'
+            return [`$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, label]
+          }}
           labelFormatter={(label: unknown) => `📅 ${label}`}
         />
         <Area
@@ -150,11 +199,24 @@ function ValueChart({
           animationDuration={animationActive ? 2000 : 0}
           animationEasing="ease-out"
           dot={false}
+          connectNulls={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="projectedValue"
+          stroke="#8b5cf6"
+          strokeWidth={2}
+          strokeDasharray="6 4"
+          dot={false}
+          connectNulls={false}
+          animationBegin={animationActive ? 2000 : 0}
+          animationDuration={animationActive ? 800 : 0}
+          animationEasing="ease-out"
         />
         {/* Month-start dots */}
         {monthStartDates.map((date) => {
-          const point = data.find(d => d.date === date)
-          if (!point) return null
+          const point = data.find(d => d.date === date && d.value != null)
+          if (!point || point.value == null) return null
           return (
             <ReferenceDot
               key={date}
@@ -167,7 +229,7 @@ function ValueChart({
             />
           )
         })}
-      </AreaChart>
+      </ComposedChart>
     </ResponsiveContainer>
   )
 }
@@ -324,6 +386,11 @@ export default function InventoryHistoryPage() {
     return getMonthStartDates(rangeDates)
   }, [rangeDates])
 
+  // Compute projection from overview data
+  const overviewWithProjection = useMemo(() => {
+    return computeProjection(overviewChartData, 14, 30)
+  }, [overviewChartData])
+
   // Current total value for animated counter
   const currentTotalValue = overviewChartData.length ? overviewChartData[overviewChartData.length - 1].value : 0
   const animatedTotalValue = useCountUpDecimal(currentTotalValue)
@@ -428,11 +495,14 @@ export default function InventoryHistoryPage() {
                 <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Month start
                 </span>
+                <span className="inline-flex items-center gap-1 text-[10px] text-purple-400">
+                  <span className="w-4 h-0 border-t-2 border-dashed border-purple-400 inline-block" /> Projection
+                </span>
               </div>
             </div>
             <div className="h-[220px]">
               <ValueChart
-                data={overviewChartData}
+                data={overviewWithProjection}
                 monthStartDates={monthStartDates}
                 animationActive={chartAnimated}
               />
