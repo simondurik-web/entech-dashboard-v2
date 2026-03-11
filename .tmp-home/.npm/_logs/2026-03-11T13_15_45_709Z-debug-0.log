@@ -10,3 +10,9 @@
 9 verbose logfile logs-max:10 dir:/Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T13_15_45_709Z-
 10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T13_15_45_709Z-debug-0.log
 11 silly logfile done cleaning log files
+12 verbose cwd /Users/simondurik/clawd/projects/entech-dashboard-v2
+13 verbose os Darwin 25.2.0
+14 verbose node v25.8.0
+15 verbose npm  v11.11.0
+16 verbose exit 0
+17 info ok
