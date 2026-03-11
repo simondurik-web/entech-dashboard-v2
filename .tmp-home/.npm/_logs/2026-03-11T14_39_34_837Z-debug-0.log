@@ -11,3 +11,9 @@
 10 verbose logfile /Users/simondurik/clawd/projects/entech-dashboard-v2/.tmp-home/.npm/_logs/2026-03-11T14_39_34_837Z-debug-0.log
 11 silly logfile start cleaning logs, removing 1 files
 12 silly logfile done cleaning log files
+13 verbose cwd /Users/simondurik/clawd/projects/entech-dashboard-v2
+14 verbose os Darwin 25.2.0
+15 verbose node v25.8.0
+16 verbose npm  v11.11.0
+17 verbose exit 0
+18 info ok
