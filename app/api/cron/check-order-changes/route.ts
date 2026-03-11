@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
-const MAIN_DATA_GID = '290032634'
-
 // Column indices from Main Data sheet
 const COLS = {
   line: 0, category: 1, urgentOverride: 4,

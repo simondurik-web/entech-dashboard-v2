@@ -8,8 +8,7 @@ export { normalizeStatus } from './google-sheets-shared'
 import type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
 import { normalizeStatus } from './google-sheets-shared'
 import { fetchSheetValuesByGid } from './google-sheets-api'
-
-const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
+import { MAIN_SPREADSHEET_ID } from './google-sheets-config'
 
 export const GIDS = {
   orders: '290032634',
@@ -54,7 +53,7 @@ async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
   if (cached && cached.expiresAt > now) return cached.data
 
   const values = await fetchSheetValuesByGid({
-    spreadsheetId: SHEET_ID,
+    spreadsheetId: MAIN_SPREADSHEET_ID,
     gid,
     valueRenderOption: 'UNFORMATTED_VALUE',
     dateTimeRenderOption: 'FORMATTED_STRING',

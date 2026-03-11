@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { fetchInventoryCostsFromDB } from '@/lib/supabase-data'
 import { fetchSheetValues } from '@/lib/google-sheets-api'
+import { SPREADSHEET_IDS } from '@/lib/google-sheets-config'
 
 // Google Sheets fallback config
-const SHEET_ID = '1yASi9Ot4GLBw2iQLfODAvOFHBWrNE8qqYfzvUTjhrz8'
 const TAB = 'Current inventory export'
 
 function parseCurrency(val: string | undefined | null): number | null {
@@ -32,7 +32,7 @@ async function fetchCostsFromSheets(): Promise<Record<string, {
   cost: number | null; lowerCost: number | null; department: string; subDepartment: string
 }>> {
   const rows = await fetchSheetValues({
-    spreadsheetId: SHEET_ID,
+    spreadsheetId: SPREADSHEET_IDS.inventoryCosts,
     range: `'${TAB}'`,
   })
   if (!rows || rows.length < 2) return {}

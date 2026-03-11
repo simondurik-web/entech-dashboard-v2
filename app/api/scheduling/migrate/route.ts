@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { fetchSheetValues } from '@/lib/google-sheets-api'
+import { SPREADSHEET_IDS } from '@/lib/google-sheets-config'
 import { getProfileFromHeader, unauthorized, forbidden } from '../_utils'
-
-const SHEET_ID = '1SqQeBkgzQPUqdMcOR-gIlPRk85renzqnV1bgn2C10lg'
 
 export async function POST(req: NextRequest) {
   const profile = await getProfileFromHeader(req)
@@ -13,7 +12,7 @@ export async function POST(req: NextRequest) {
   try {
     // 1. Migrate employees from "Employee Reference data" tab
     const empRows = await fetchSheetValues({
-      spreadsheetId: SHEET_ID,
+      spreadsheetId: SPREADSHEET_IDS.scheduling,
       range: 'Employee Reference data!A1:H100',
     })
     const employees = empRows.slice(1) // skip header
@@ -38,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Migrate historical schedule data from "Long Data" tab
     const longRows = await fetchSheetValues({
-      spreadsheetId: SHEET_ID,
+      spreadsheetId: SPREADSHEET_IDS.scheduling,
       range: 'Long Data!A1:K20000',
     })
     const entries = longRows.slice(1) // skip header
