@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS bom_sub_assembly_components (
   created_at timestamptz DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS idx_bom_sub_assembly_components_sub_assembly_id
+  ON bom_sub_assembly_components(sub_assembly_id);
+
 -- BOM Final Assembly
 CREATE TABLE IF NOT EXISTS bom_final_assemblies (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -86,6 +89,19 @@ CREATE TABLE IF NOT EXISTS bom_final_assembly_components (
   sort_order integer DEFAULT 0,
   created_at timestamptz DEFAULT now()
 );
+
+ALTER TABLE bom_final_assembly_components
+  DROP CONSTRAINT IF EXISTS bom_final_assembly_components_component_source_check;
+
+ALTER TABLE bom_final_assembly_components
+  ADD CONSTRAINT bom_final_assembly_components_component_source_check
+  CHECK (component_source IN ('sub_assembly', 'individual_item'));
+
+CREATE INDEX IF NOT EXISTS idx_bom_final_assembly_components_final_assembly_id
+  ON bom_final_assembly_components(final_assembly_id);
+
+CREATE INDEX IF NOT EXISTS idx_bom_final_assembly_components_source_part
+  ON bom_final_assembly_components(component_source, component_part_number);
 
 -- BOM Config
 CREATE TABLE IF NOT EXISTS bom_config (

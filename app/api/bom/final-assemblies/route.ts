@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { BomAuthoringError, createFinalAssembly } from '@/lib/bom-authoring'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function GET() {
@@ -11,19 +12,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json()
-  const { components, ...assemblyData } = body
-  const { data, error } = await supabaseAdmin
-    .from('bom_final_assemblies')
-    .insert(assemblyData)
-    .select()
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  
-  if (components?.length) {
-    const comps = components.map((c: Record<string, unknown>, i: number) => ({ ...c, final_assembly_id: data.id, sort_order: i }))
-    await supabaseAdmin.from('bom_final_assembly_components').insert(comps)
+  try {
+    const body = await req.json()
+    const data = await createFinalAssembly(body)
+    return NextResponse.json(data)
+  } catch (error) {
+    if (error instanceof BomAuthoringError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+
+    return NextResponse.json({ error: 'Failed to create final assembly.' }, { status: 500 })
   }
-  
-  return NextResponse.json(data)
 }
