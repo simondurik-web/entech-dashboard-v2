@@ -107,11 +107,7 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
     componentTotal += cost
   }
 
-  const labor_cost_per_part = Number(assembly.parts_per_hour) > 0
-    ? (Number(assembly.num_employees) * Number(assembly.labor_rate_per_hour)) / Number(assembly.parts_per_hour)
-    : 0
-
-  const subtotal_cost = componentTotal + labor_cost_per_part + Number(assembly.shipping_labor_cost)
+  const subtotal_cost = componentTotal + Number(assembly.labor_cost_per_part) + Number(assembly.shipping_labor_cost)
   
   const oh = Number(assembly.overhead_pct)
   const ad = Number(assembly.admin_pct)
@@ -132,16 +128,8 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
   const { data: updated } = await supabaseAdmin
     .from('bom_final_assemblies')
     .update({
-      labor_cost_per_part,
-      subtotal_cost,
-      overhead_cost,
-      admin_cost,
-      depreciation_cost,
-      repairs_cost,
-      variable_cost,
-      total_cost,
-      profit_amount,
-      sales_target,
+      subtotal_cost, overhead_cost, admin_cost, depreciation_cost, repairs_cost,
+      variable_cost, total_cost, profit_amount, sales_target,
     })
     .eq('id', finalAssemblyId)
     .select()
