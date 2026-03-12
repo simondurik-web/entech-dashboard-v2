@@ -7,6 +7,10 @@ CREATE INDEX IF NOT EXISTS idx_bom_final_assembly_components_final_assembly_id
 CREATE INDEX IF NOT EXISTS idx_bom_final_assembly_components_source_part
   ON public.bom_final_assembly_components(component_source, component_part_number);
 
+UPDATE public.bom_final_assembly_components
+SET component_source = 'individual_item'
+WHERE component_source = 'individual';
+
 ALTER TABLE public.bom_final_assembly_components
   DROP CONSTRAINT IF EXISTS bom_final_assembly_components_component_source_check;
 

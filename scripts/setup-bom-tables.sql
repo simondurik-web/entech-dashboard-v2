@@ -93,6 +93,10 @@ CREATE TABLE IF NOT EXISTS bom_final_assembly_components (
 ALTER TABLE bom_final_assembly_components
   DROP CONSTRAINT IF EXISTS bom_final_assembly_components_component_source_check;
 
+UPDATE bom_final_assembly_components
+SET component_source = 'individual_item'
+WHERE component_source = 'individual';
+
 ALTER TABLE bom_final_assembly_components
   ADD CONSTRAINT bom_final_assembly_components_component_source_check
   CHECK (component_source IN ('sub_assembly', 'individual_item'));
