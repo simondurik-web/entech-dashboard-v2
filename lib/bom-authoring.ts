@@ -131,7 +131,7 @@ async function normalizeSubAssemblyComponents(components: unknown) {
 
   const normalized = components.map((component, index) => {
     const source = (component || {}) as SubAssemblyComponentInput
-    const componentPartNumber = normalizeString(source.component_part_number, { required: true })
+    const componentPartNumber = normalizeString(source.component_part_number, { required: true })!
     const quantity = normalizeNumber(source.quantity, {
       field: `Sub-assembly component ${index + 1} quantity`,
       min: 0.000001,
@@ -170,8 +170,8 @@ async function normalizeFinalAssemblyComponents(components: unknown) {
 
   const normalized = components.map((component, index) => {
     const source = (component || {}) as FinalAssemblyComponentInput
-    const componentPartNumber = normalizeString(source.component_part_number, { required: true })
-    const rawComponentSource = normalizeString(source.component_source, { required: true })
+    const componentPartNumber = normalizeString(source.component_part_number, { required: true })!
+    const rawComponentSource = normalizeString(source.component_source, { required: true })!
 
     if (rawComponentSource === 'individual') {
       throw new BomAuthoringError('component_source value "individual" is invalid. Use "individual_item".')
@@ -217,7 +217,7 @@ async function normalizeSubAssemblyPayload(body: UnknownRecord, currentId?: stri
   const payload: UnknownRecord = {}
 
   if ('part_number' in body || requirePartNumber) {
-    const partNumber = normalizeString(body.part_number, { required: true })
+    const partNumber = normalizeString(body.part_number, { required: true })!
     await ensureUniquePartNumber('bom_sub_assemblies', partNumber, currentId)
     payload.part_number = partNumber
   }
@@ -238,7 +238,7 @@ async function normalizeFinalAssemblyPayload(body: UnknownRecord, currentId?: st
   const payload: UnknownRecord = {}
 
   if ('part_number' in body || requirePartNumber) {
-    const partNumber = normalizeString(body.part_number, { required: true })
+    const partNumber = normalizeString(body.part_number, { required: true })!
     await ensureUniquePartNumber('bom_final_assemblies', partNumber, currentId)
     payload.part_number = partNumber
   }
