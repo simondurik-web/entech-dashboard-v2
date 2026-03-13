@@ -126,6 +126,74 @@ const FINAL_COMPONENT_SOURCES = [
   { value: 'individual_item', label: 'Individual Item' },
 ] as const
 
+// ─── Select-or-Create Combo ──────────────────────────────────────
+
+function SelectOrCreate({ value, onChange, options, placeholder, label }: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder?: string
+  label?: string
+}) {
+  const [mode, setMode] = useState<'select' | 'create'>('select')
+  const [customValue, setCustomValue] = useState('')
+
+  // If value is set but not in options, show it as custom
+  const isCustom = value !== '' && !options.includes(value)
+
+  if (mode === 'create' || isCustom) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          value={isCustom && mode !== 'create' ? value : customValue}
+          onChange={e => {
+            setCustomValue(e.target.value)
+            onChange(e.target.value)
+          }}
+          placeholder={placeholder || 'Type new value...'}
+          className="flex-1"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-9 px-2 text-xs whitespace-nowrap"
+          onClick={() => { setMode('select'); setCustomValue(''); onChange('') }}
+        >
+          ← List
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Select
+      value={value || undefined}
+      onValueChange={v => {
+        if (v === '__create_new__') {
+          setMode('create')
+          setCustomValue('')
+          onChange('')
+        } else {
+          onChange(v)
+        }
+      }}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder || 'Select...'} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(opt => (
+          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+        ))}
+        <SelectItem value="__create_new__" className="text-primary font-medium border-t mt-1 pt-1">
+          + Add New
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────────
 
 export default function BOMExplorer() {
@@ -346,8 +414,9 @@ function IndividualItemsTab({ items, search, onRefresh }: {
   )
 }
 
-function NewSubAssemblyDialog({ individualItems, onCreated }: {
+function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }: {
   individualItems: IndividualItem[]
+  existingCategories: string[]
   onCreated: () => Promise<void> | void
 }) {
   const [open, setOpen] = useState(false)
@@ -425,11 +494,11 @@ function NewSubAssemblyDialog({ individualItems, onCreated }: {
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Sub-Assembly</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[1200px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Sub-Assembly</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Part Number</Label>
@@ -437,7 +506,12 @@ function NewSubAssemblyDialog({ individualItems, onCreated }: {
             </div>
             <div className="grid gap-2">
               <Label>Category</Label>
-              <Input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
+              <SelectOrCreate
+                value={form.category}
+                onChange={v => setForm({ ...form, category: v })}
+                options={existingCategories}
+                placeholder="Select category..."
+              />
             </div>
             <div className="grid gap-2">
               <Label>Mold Name</Label>
@@ -548,9 +622,11 @@ function NewSubAssemblyDialog({ individualItems, onCreated }: {
   )
 }
 
-function NewFinalAssemblyDialog({ subAssemblies, individualItems, onCreated }: {
+function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProductCategories, existingSubProductCategories, onCreated }: {
   subAssemblies: SubAssembly[]
   individualItems: IndividualItem[]
+  existingProductCategories: string[]
+  existingSubProductCategories: string[]
   onCreated: () => Promise<void> | void
 }) {
   const [open, setOpen] = useState(false)
@@ -635,11 +711,11 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, onCreated }: {
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Final Assembly</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[1400px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Final Assembly</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Part Number</Label>
@@ -648,11 +724,21 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, onCreated }: {
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
                 <Label>Product Category</Label>
-                <Input value={form.product_category} onChange={e => setForm({ ...form, product_category: e.target.value })} />
+                <SelectOrCreate
+                  value={form.product_category}
+                  onChange={v => setForm({ ...form, product_category: v })}
+                  options={existingProductCategories}
+                  placeholder="Select category..."
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Sub-Product Category</Label>
-                <Input value={form.sub_product_category} onChange={e => setForm({ ...form, sub_product_category: e.target.value })} />
+                <SelectOrCreate
+                  value={form.sub_product_category}
+                  onChange={v => setForm({ ...form, sub_product_category: v })}
+                  options={existingSubProductCategories}
+                  placeholder="Select sub-category..."
+                />
               </div>
             </div>
             <div className="grid gap-2">
@@ -840,11 +926,13 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
     onRefresh()
   }
 
+  const existingCategories = [...new Set(assemblies.map(a => a.category).filter((c): c is string => !!c))].sort()
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg">Sub Assemblies (Molded Parts)</CardTitle>
-        <NewSubAssemblyDialog individualItems={individualItems} onCreated={onRefresh} />
+        <NewSubAssemblyDialog individualItems={individualItems} existingCategories={existingCategories} onCreated={onRefresh} />
       </CardHeader>
       <CardContent>
         <Table>
@@ -1006,6 +1094,9 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
     onRefresh()
   }
 
+  const existingProductCategories = [...new Set(assemblies.map(a => a.product_category).filter((c): c is string => !!c))].sort()
+  const existingSubProductCategories = [...new Set(assemblies.map(a => a.sub_product_category).filter((c): c is string => !!c))].sort()
+
   return (
     <div className="space-y-4">
       {/* Config Panel */}
@@ -1015,7 +1106,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
             <CardTitle className="text-lg">Final Assemblies (Finished Products)</CardTitle>
           </div>
           <div className="flex gap-2">
-            <NewFinalAssemblyDialog subAssemblies={subAssemblies} individualItems={individualItems} onCreated={onRefresh} />
+            <NewFinalAssemblyDialog subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onCreated={onRefresh} />
             <Dialog open={showConfig} onOpenChange={v => { setShowConfig(v); if (v) { const m: Record<string, string> = {}; config.forEach(c => { m[c.key] = String(c.value) }); setConfigEdits(m) } }}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm"><Settings className="h-4 w-4 mr-1" /> Overhead Settings</Button>
