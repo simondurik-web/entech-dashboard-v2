@@ -494,11 +494,11 @@ function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Sub-Assembly</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[1200px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[90vw] xl:max-w-[1200px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Sub-Assembly</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid gap-8 lg:grid-cols-2">
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Part Number</Label>
@@ -529,11 +529,11 @@ function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
-                <Label>Labor Rate per Hour</Label>
+                <Label>Labor Rate / Hr</Label>
                 <Input type="number" min="0" step="0.01" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: e.target.value })} />
               </div>
               <div className="grid gap-2">
-                <Label>Number of Employees</Label>
+                <Label># Employees</Label>
                 <Input type="number" min="0" step="0.1" value={form.num_employees} onChange={e => setForm({ ...form, num_employees: e.target.value })} />
               </div>
             </div>
@@ -711,11 +711,11 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Final Assembly</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[1400px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[90vw] xl:max-w-[1400px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Final Assembly</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+        <div className="grid gap-8 lg:grid-cols-2">
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Part Number</Label>
@@ -759,19 +759,19 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
                 <Input type="number" min="0" step="0.01" value={form.parts_per_hour} onChange={e => setForm({ ...form, parts_per_hour: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
-                <Label>Labor Rate per Hour</Label>
+                <Label>Labor Rate / Hr</Label>
                 <Input type="number" min="0" step="0.01" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: e.target.value })} />
               </div>
               <div className="grid gap-2">
-                <Label>Number of Employees</Label>
+                <Label># Employees</Label>
                 <Input type="number" min="0" step="0.1" value={form.num_employees} onChange={e => setForm({ ...form, num_employees: e.target.value })} />
               </div>
-              <div className="grid gap-2">
-                <Label>Shipping Labor Cost</Label>
-                <Input type="number" min="0" step="0.0001" value={form.shipping_labor_cost} onChange={e => setForm({ ...form, shipping_labor_cost: e.target.value })} />
-              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Shipping Labor Cost</Label>
+              <Input type="number" min="0" step="0.0001" value={form.shipping_labor_cost} onChange={e => setForm({ ...form, shipping_labor_cost: e.target.value })} />
             </div>
           </div>
           <div className="grid gap-3">
