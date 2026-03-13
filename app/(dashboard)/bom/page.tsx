@@ -203,22 +203,27 @@ export default function BOMExplorer() {
   const [subAssemblies, setSubAssemblies] = useState<SubAssembly[]>([])
   const [finalAssemblies, setFinalAssemblies] = useState<FinalAssembly[]>([])
   const [config, setConfig] = useState<BomConfig[]>([])
+  const [inventoryParts, setInventoryParts] = useState<{ partNumber: string; product: string }[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [items, subs, finals, cfg] = await Promise.all([
+      const [items, subs, finals, cfg, inv] = await Promise.all([
         fetch('/api/bom/individual-items').then(r => r.json()),
         fetch('/api/bom/sub-assemblies').then(r => r.json()),
         fetch('/api/bom/final-assemblies').then(r => r.json()),
         fetch('/api/bom/config').then(r => r.json()),
+        fetch('/api/inventory').then(r => r.json()).catch(() => []),
       ])
       setIndividualItems(items)
       setSubAssemblies(subs)
       setFinalAssemblies(finals)
       setConfig(cfg)
+      if (Array.isArray(inv)) {
+        setInventoryParts(inv.map((i: { partNumber: string; product: string }) => ({ partNumber: i.partNumber, product: i.product })))
+      }
     } catch (e) {
       console.error('Failed to fetch BOM data', e)
     }
@@ -255,7 +260,7 @@ export default function BOMExplorer() {
         </TabsList>
 
         <TabsContent value="individual">
-          <IndividualItemsTab items={individualItems} search={search} onRefresh={fetchAll} />
+          <IndividualItemsTab items={individualItems} inventoryParts={inventoryParts} search={search} onRefresh={fetchAll} />
         </TabsContent>
         <TabsContent value="sub">
           <SubAssembliesTab assemblies={subAssemblies} individualItems={individualItems} search={search} onRefresh={fetchAll} />
@@ -277,8 +282,9 @@ export default function BOMExplorer() {
 
 // ─── Tab 1: Individual Items ─────────────────────────────────────
 
-function IndividualItemsTab({ items, search, onRefresh }: {
+function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   items: IndividualItem[]
+  inventoryParts: { partNumber: string; product: string }[]
   search: string
   onRefresh: () => void
 }) {
@@ -332,10 +338,34 @@ function IndividualItemsTab({ items, search, onRefresh }: {
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Item</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[600px]">
             <DialogHeader><DialogTitle>{t('bom.addItem')}</DialogTitle></DialogHeader>
             <div className="grid gap-3">
-              <Input placeholder="Part Number *" value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
+              <div className="grid gap-2">
+                <Label>Part Number *</Label>
+                <Input placeholder="Type to search or enter custom part number..." value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
+                {inventoryParts.length > 0 && (
+                  <div className="border rounded-md max-h-40 overflow-y-auto">
+                    {inventoryParts
+                      .filter(p => !newItem.part_number || p.partNumber.toLowerCase().includes(newItem.part_number.toLowerCase()) || p.product.toLowerCase().includes(newItem.part_number.toLowerCase()))
+                      .slice(0, 50)
+                      .map(p => (
+                        <button
+                          key={p.partNumber}
+                          type="button"
+                          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex justify-between items-center ${newItem.part_number === p.partNumber ? 'bg-accent font-medium' : ''}`}
+                          onClick={() => setNewItem({ ...newItem, part_number: p.partNumber, description: p.product || newItem.description })}
+                        >
+                          <span className="font-mono">{p.partNumber}</span>
+                          <span className="text-muted-foreground text-xs truncate ml-2 max-w-[200px]">{p.product}</span>
+                        </button>
+                      ))}
+                    {inventoryParts.filter(p => !newItem.part_number || p.partNumber.toLowerCase().includes(newItem.part_number.toLowerCase()) || p.product.toLowerCase().includes(newItem.part_number.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">No matching inventory items</p>
+                    )}
+                  </div>
+                )}
+              </div>
               <Input placeholder={t('table.description')} value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
               <Input placeholder="Cost per Unit *" type="number" step="0.0001" value={newItem.cost_per_unit} onChange={e => setNewItem({ ...newItem, cost_per_unit: e.target.value })} />
               <Select value={newItem.unit} onValueChange={v => setNewItem({ ...newItem, unit: v })}>
