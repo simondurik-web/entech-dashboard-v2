@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -14,9 +14,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
 import {
-  ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle, Pencil,
+  ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle,
 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 
@@ -68,17 +67,6 @@ interface FinalAssemblyComponent {
   sort_order: number
 }
 
-interface EditableSubAssemblyComponent {
-  component_part_number: string
-  quantity: string
-}
-
-interface EditableFinalAssemblyComponent {
-  component_source: 'sub_assembly' | 'individual_item'
-  component_part_number: string
-  quantity: string
-}
-
 interface FinalAssembly {
   id: string
   part_number: string
@@ -121,78 +109,6 @@ interface BomConfig {
 
 const fmt = (n: number) => `$${Number(n).toFixed(n < 1 ? 4 : 2)}`
 const pct = (n: number) => `${(Number(n) * 100).toFixed(2)}%`
-const FINAL_COMPONENT_SOURCES = [
-  { value: 'sub_assembly', label: 'Sub-Assembly' },
-  { value: 'individual_item', label: 'Individual Item' },
-] as const
-
-// ─── Select-or-Create Combo ──────────────────────────────────────
-
-function SelectOrCreate({ value, onChange, options, placeholder, label }: {
-  value: string
-  onChange: (v: string) => void
-  options: string[]
-  placeholder?: string
-  label?: string
-}) {
-  const [mode, setMode] = useState<'select' | 'create'>('select')
-  const [customValue, setCustomValue] = useState('')
-
-  // If value is set but not in options, show it as custom
-  const isCustom = value !== '' && !options.includes(value)
-
-  if (mode === 'create' || isCustom) {
-    return (
-      <div className="flex gap-2">
-        <Input
-          value={isCustom && mode !== 'create' ? value : customValue}
-          onChange={e => {
-            setCustomValue(e.target.value)
-            onChange(e.target.value)
-          }}
-          placeholder={placeholder || 'Type new value...'}
-          className="flex-1"
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-9 px-2 text-xs whitespace-nowrap"
-          onClick={() => { setMode('select'); setCustomValue(''); onChange('') }}
-        >
-          ← List
-        </Button>
-      </div>
-    )
-  }
-
-  return (
-    <Select
-      value={value || undefined}
-      onValueChange={v => {
-        if (v === '__create_new__') {
-          setMode('create')
-          setCustomValue('')
-          onChange('')
-        } else {
-          onChange(v)
-        }
-      }}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder={placeholder || 'Select...'} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map(opt => (
-          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-        ))}
-        <SelectItem value="__create_new__" className="text-primary font-medium border-t mt-1 pt-1">
-          + Add New
-        </SelectItem>
-      </SelectContent>
-    </Select>
-  )
-}
 
 // ─── Main Page ───────────────────────────────────────────────────
 
@@ -203,27 +119,22 @@ export default function BOMExplorer() {
   const [subAssemblies, setSubAssemblies] = useState<SubAssembly[]>([])
   const [finalAssemblies, setFinalAssemblies] = useState<FinalAssembly[]>([])
   const [config, setConfig] = useState<BomConfig[]>([])
-  const [inventoryParts, setInventoryParts] = useState<{ partNumber: string; product: string }[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [items, subs, finals, cfg, inv] = await Promise.all([
+      const [items, subs, finals, cfg] = await Promise.all([
         fetch('/api/bom/individual-items').then(r => r.json()),
         fetch('/api/bom/sub-assemblies').then(r => r.json()),
         fetch('/api/bom/final-assemblies').then(r => r.json()),
         fetch('/api/bom/config').then(r => r.json()),
-        fetch('/api/inventory').then(r => r.json()).catch(() => []),
       ])
       setIndividualItems(items)
       setSubAssemblies(subs)
       setFinalAssemblies(finals)
       setConfig(cfg)
-      if (Array.isArray(inv)) {
-        setInventoryParts(inv.map((i: { partNumber: string; product: string }) => ({ partNumber: i.partNumber, product: i.product })))
-      }
     } catch (e) {
       console.error('Failed to fetch BOM data', e)
     }
@@ -260,7 +171,7 @@ export default function BOMExplorer() {
         </TabsList>
 
         <TabsContent value="individual">
-          <IndividualItemsTab items={individualItems} inventoryParts={inventoryParts} search={search} onRefresh={fetchAll} />
+          <IndividualItemsTab items={individualItems} search={search} onRefresh={fetchAll} />
         </TabsContent>
         <TabsContent value="sub">
           <SubAssembliesTab assemblies={subAssemblies} individualItems={individualItems} search={search} onRefresh={fetchAll} />
@@ -282,9 +193,8 @@ export default function BOMExplorer() {
 
 // ─── Tab 1: Individual Items ─────────────────────────────────────
 
-function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
+function IndividualItemsTab({ items, search, onRefresh }: {
   items: IndividualItem[]
-  inventoryParts: { partNumber: string; product: string }[]
   search: string
   onRefresh: () => void
 }) {
@@ -338,37 +248,10 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Item</Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent>
             <DialogHeader><DialogTitle>{t('bom.addItem')}</DialogTitle></DialogHeader>
             <div className="grid gap-3">
-              <div className="grid gap-2">
-                <Label>Part Number *</Label>
-                <Input placeholder="Type to search or enter custom part number..." value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
-                {inventoryParts.length > 0 && (() => {
-                  const filtered = inventoryParts.filter(p =>
-                    !newItem.part_number ||
-                    p.partNumber.toLowerCase().includes(newItem.part_number.toLowerCase()) ||
-                    p.product.toLowerCase().includes(newItem.part_number.toLowerCase())
-                  )
-                  return (
-                    <div className="border rounded-md max-h-64 overflow-y-auto">
-                      {filtered.length > 0 ? filtered.map(p => (
-                        <button
-                          key={p.partNumber}
-                          type="button"
-                          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex justify-between items-center ${newItem.part_number === p.partNumber ? 'bg-accent font-medium' : ''}`}
-                          onClick={() => setNewItem({ ...newItem, part_number: p.partNumber, description: p.product || newItem.description })}
-                        >
-                          <span className="font-mono">{p.partNumber}</span>
-                          <span className="text-muted-foreground text-xs truncate ml-2 max-w-[200px]">{p.product}</span>
-                        </button>
-                      )) : (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">No matching inventory items</p>
-                      )}
-                    </div>
-                  )
-                })()}
-              </div>
+              <Input placeholder="Part Number *" value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
               <Input placeholder={t('table.description')} value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
               <Input placeholder="Cost per Unit *" type="number" step="0.0001" value={newItem.cost_per_unit} onChange={e => setNewItem({ ...newItem, cost_per_unit: e.target.value })} />
               <Select value={newItem.unit} onValueChange={v => setNewItem({ ...newItem, unit: v })}>
@@ -434,12 +317,9 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                 <TableCell>{item.unit}</TableCell>
                 <TableCell className="text-muted-foreground">{item.supplier}</TableCell>
                 <TableCell>
-                  <div className="flex gap-1">
-                    <EditIndividualItemDialog item={item} onSaved={onRefresh} />
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteItem(item.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteItem(item.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -447,781 +327,6 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
         </Table>
       </CardContent>
     </Card>
-  )
-}
-
-function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }: {
-  individualItems: IndividualItem[]
-  existingCategories: string[]
-  onCreated: () => Promise<void> | void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    part_number: '',
-    category: '',
-    mold_name: '',
-    part_weight: '',
-    parts_per_hour: '',
-    labor_rate_per_hour: '29.25',
-    num_employees: '1',
-  })
-  const [components, setComponents] = useState<EditableSubAssemblyComponent[]>([
-    { component_part_number: '', quantity: '1' },
-  ])
-
-  const reset = () => {
-    setForm({
-      part_number: '',
-      category: '',
-      mold_name: '',
-      part_weight: '',
-      parts_per_hour: '',
-      labor_rate_per_hour: '29.25',
-      num_employees: '1',
-    })
-    setComponents([{ component_part_number: '', quantity: '1' }])
-    setError(null)
-    setSaving(false)
-  }
-
-  const submit = async () => {
-    setSaving(true)
-    setError(null)
-
-    const payload = {
-      ...form,
-      components: components.map(component => ({
-        component_part_number: component.component_part_number,
-        quantity: component.quantity,
-      })),
-    }
-
-    try {
-      const response = await fetch('/api/bom/sub-assemblies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create sub-assembly.')
-      }
-
-      await onCreated()
-      setOpen(false)
-      reset()
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Failed to create sub-assembly.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={nextOpen => {
-        setOpen(nextOpen)
-        if (!nextOpen) reset()
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Sub-Assembly</Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[90vw] xl:max-w-[1200px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>New Sub-Assembly</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="grid gap-3">
-            <div className="grid gap-2">
-              <Label>Part Number</Label>
-              <Input value={form.part_number} onChange={e => setForm({ ...form, part_number: e.target.value })} placeholder="Required" />
-            </div>
-            <div className="grid gap-2">
-              <Label>Category</Label>
-              <SelectOrCreate
-                value={form.category}
-                onChange={v => setForm({ ...form, category: v })}
-                options={existingCategories}
-                placeholder="Select category..."
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>Mold Name</Label>
-              <Input value={form.mold_name} onChange={e => setForm({ ...form, mold_name: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label>Part Weight</Label>
-                <Input type="number" min="0" step="0.0001" value={form.part_weight} onChange={e => setForm({ ...form, part_weight: e.target.value })} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Parts per Hour</Label>
-                <Input type="number" min="0" step="0.01" value={form.parts_per_hour} onChange={e => setForm({ ...form, parts_per_hour: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label>Labor Rate / Hr</Label>
-                <Input type="number" min="0" step="0.01" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: e.target.value })} />
-              </div>
-              <div className="grid gap-2">
-                <Label># Employees</Label>
-                <Input type="number" min="0" step="0.1" value={form.num_employees} onChange={e => setForm({ ...form, num_employees: e.target.value })} />
-              </div>
-            </div>
-          </div>
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Components</h3>
-                <p className="text-xs text-muted-foreground">Sub-assemblies can only include individual items.</p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setComponents([...components, { component_part_number: '', quantity: '1' }])}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Add Component
-              </Button>
-            </div>
-            <div className="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
-              {components.map((component, index) => (
-                <div key={`sub-component-${index}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[minmax(0,1fr)_160px_48px] items-end">
-                  <div className="grid gap-2">
-                    <Label>Individual Item</Label>
-                    <Select
-                      value={component.component_part_number || undefined}
-                      onValueChange={value => {
-                        const next = [...components]
-                        next[index] = { ...component, component_part_number: value }
-                        setComponents(next)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select part number" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {individualItems.map(item => (
-                          <SelectItem key={item.id} value={item.part_number}>
-                            {item.part_number}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Quantity</Label>
-                    <Input
-                      type="number"
-                      min="0.000001"
-                      step="0.0001"
-                      value={component.quantity}
-                      onChange={e => {
-                        const next = [...components]
-                        next[index] = { ...component, quantity: e.target.value }
-                        setComponents(next)
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-10 px-2 text-destructive"
-                      onClick={() => setComponents(components.length === 1 ? [{ component_part_number: '', quantity: '1' }] : components.filter((_, componentIndex) => componentIndex !== index))}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter className="gap-3 pt-4">
-          <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
-          </DialogClose>
-          <Button onClick={() => { void submit() }} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Sub-Assembly'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProductCategories, existingSubProductCategories, onCreated }: {
-  subAssemblies: SubAssembly[]
-  individualItems: IndividualItem[]
-  existingProductCategories: string[]
-  existingSubProductCategories: string[]
-  onCreated: () => Promise<void> | void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    part_number: '',
-    product_category: '',
-    sub_product_category: '',
-    description: '',
-    notes: '',
-    parts_per_package: '',
-    parts_per_hour: '',
-    labor_rate_per_hour: '29.25',
-    num_employees: '1',
-    shipping_labor_cost: '0',
-  })
-  const [components, setComponents] = useState<EditableFinalAssemblyComponent[]>([
-    { component_source: 'sub_assembly', component_part_number: '', quantity: '1' },
-  ])
-
-  const reset = () => {
-    setForm({
-      part_number: '',
-      product_category: '',
-      sub_product_category: '',
-      description: '',
-      notes: '',
-      parts_per_package: '',
-      parts_per_hour: '',
-      labor_rate_per_hour: '29.25',
-      num_employees: '1',
-      shipping_labor_cost: '0',
-    })
-    setComponents([{ component_source: 'sub_assembly', component_part_number: '', quantity: '1' }])
-    setError(null)
-    setSaving(false)
-  }
-
-  const submit = async () => {
-    setSaving(true)
-    setError(null)
-
-    const payload = {
-      ...form,
-      components: components.map(component => ({
-        component_source: component.component_source,
-        component_part_number: component.component_part_number,
-        quantity: component.quantity,
-      })),
-    }
-
-    try {
-      const response = await fetch('/api/bom/final-assemblies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create final assembly.')
-      }
-
-      await onCreated()
-      setOpen(false)
-      reset()
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Failed to create final assembly.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={nextOpen => {
-        setOpen(nextOpen)
-        if (!nextOpen) reset()
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Final Assembly</Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[90vw] xl:max-w-[1400px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>New Final Assembly</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="grid gap-3">
-            <div className="grid gap-2">
-              <Label>Part Number</Label>
-              <Input value={form.part_number} onChange={e => setForm({ ...form, part_number: e.target.value })} placeholder="Required" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label>Product Category</Label>
-                <SelectOrCreate
-                  value={form.product_category}
-                  onChange={v => setForm({ ...form, product_category: v })}
-                  options={existingProductCategories}
-                  placeholder="Select category..."
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Sub-Product Category</Label>
-                <SelectOrCreate
-                  value={form.sub_product_category}
-                  onChange={v => setForm({ ...form, sub_product_category: v })}
-                  options={existingSubProductCategories}
-                  placeholder="Select sub-category..."
-                />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Description</Label>
-              <Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Notes</Label>
-              <Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label>Parts per Package</Label>
-                <Input type="number" min="0" step="1" value={form.parts_per_package} onChange={e => setForm({ ...form, parts_per_package: e.target.value })} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Parts per Hour</Label>
-                <Input type="number" min="0" step="0.01" value={form.parts_per_hour} onChange={e => setForm({ ...form, parts_per_hour: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label>Labor Rate / Hr</Label>
-                <Input type="number" min="0" step="0.01" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: e.target.value })} />
-              </div>
-              <div className="grid gap-2">
-                <Label># Employees</Label>
-                <Input type="number" min="0" step="0.1" value={form.num_employees} onChange={e => setForm({ ...form, num_employees: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Shipping Labor Cost</Label>
-              <Input type="number" min="0" step="0.0001" value={form.shipping_labor_cost} onChange={e => setForm({ ...form, shipping_labor_cost: e.target.value })} />
-            </div>
-          </div>
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Components</h3>
-                <p className="text-xs text-muted-foreground">Final assemblies can mix sub-assemblies and individual items.</p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setComponents([...components, { component_source: 'sub_assembly', component_part_number: '', quantity: '1' }])}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Add Component
-              </Button>
-            </div>
-            <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-              {components.map((component, index) => {
-                const partOptions = component.component_source === 'sub_assembly' ? subAssemblies : individualItems
-
-                return (
-                  <div key={`final-component-${index}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[170px_minmax(0,1fr)_140px_48px] items-end">
-                    <div className="grid gap-2">
-                      <Label>Source</Label>
-                      <Select
-                        value={component.component_source}
-                        onValueChange={value => {
-                          const next = [...components]
-                          next[index] = {
-                            component_source: value as EditableFinalAssemblyComponent['component_source'],
-                            component_part_number: '',
-                            quantity: component.quantity,
-                          }
-                          setComponents(next)
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {FINAL_COMPONENT_SOURCES.map(source => (
-                            <SelectItem key={source.value} value={source.value}>
-                              {source.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Part</Label>
-                      <Select
-                        value={component.component_part_number || undefined}
-                        onValueChange={value => {
-                          const next = [...components]
-                          next[index] = { ...component, component_part_number: value }
-                          setComponents(next)
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select part number" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {partOptions.map(option => (
-                            <SelectItem key={option.id} value={option.part_number}>
-                              {option.part_number}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Quantity</Label>
-                      <Input
-                        type="number"
-                        min="0.000001"
-                        step="0.0001"
-                        value={component.quantity}
-                        onChange={e => {
-                          const next = [...components]
-                          next[index] = { ...component, quantity: e.target.value }
-                          setComponents(next)
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-10 px-2 text-destructive"
-                        onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1' }] : components.filter((_, componentIndex) => componentIndex !== index))}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter className="gap-3 pt-4">
-          <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
-          </DialogClose>
-          <Button onClick={() => { void submit() }} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Final Assembly'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── Edit Individual Item Dialog ─────────────────────────────────
-
-function EditIndividualItemDialog({ item, onSaved }: {
-  item: IndividualItem
-  onSaved: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    part_number: item.part_number,
-    description: item.description || '',
-    cost_per_unit: String(item.cost_per_unit),
-    unit: item.unit,
-    supplier: item.supplier || '',
-  })
-
-  const submit = async () => {
-    setSaving(true)
-    try {
-      await fetch(`/api/bom/individual-items/${item.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, cost_per_unit: Number(form.cost_per_unit) }),
-      })
-      onSaved()
-      setOpen(false)
-    } catch { /* ignore */ }
-    setSaving(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => {
-      setOpen(v)
-      if (v) setForm({ part_number: item.part_number, description: item.description || '', cost_per_unit: String(item.cost_per_unit), unit: item.unit, supplier: item.supplier || '' })
-    }}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2" title="Edit"><Pencil className="h-3 w-3" /></Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Edit Individual Item</DialogTitle></DialogHeader>
-        <div className="grid gap-3">
-          <div className="grid gap-2"><Label>Part Number</Label><Input value={form.part_number} onChange={e => setForm({ ...form, part_number: e.target.value })} /></div>
-          <div className="grid gap-2"><Label>Description</Label><Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-          <div className="grid gap-2"><Label>Cost per Unit</Label><Input type="number" step="0.0001" value={form.cost_per_unit} onChange={e => setForm({ ...form, cost_per_unit: e.target.value })} /></div>
-          <div className="grid gap-2">
-            <Label>Unit</Label>
-            <Select value={form.unit} onValueChange={v => setForm({ ...form, unit: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="lb">lb</SelectItem><SelectItem value="ea">ea</SelectItem>
-                <SelectItem value="ft">ft</SelectItem><SelectItem value="roll">roll</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2"><Label>Supplier</Label><Input value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} /></div>
-        </div>
-        <DialogFooter className="gap-3 pt-4">
-          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={() => { void submit() }} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── Edit Sub-Assembly Dialog ────────────────────────────────────
-
-function EditSubAssemblyDialog({ assembly, individualItems, existingCategories, onSaved }: {
-  assembly: SubAssembly
-  individualItems: IndividualItem[]
-  existingCategories: string[]
-  onSaved: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    part_number: assembly.part_number,
-    category: assembly.category || '',
-    mold_name: assembly.mold_name || '',
-    part_weight: assembly.part_weight != null ? String(assembly.part_weight) : '',
-    parts_per_hour: assembly.parts_per_hour != null ? String(assembly.parts_per_hour) : '',
-    labor_rate_per_hour: String(assembly.labor_rate_per_hour),
-    num_employees: String(assembly.num_employees),
-  })
-  const [components, setComponents] = useState<EditableSubAssemblyComponent[]>(
-    assembly.bom_sub_assembly_components.map(c => ({ component_part_number: c.component_part_number, quantity: String(c.quantity) }))
-  )
-
-  const reset = () => {
-    setForm({
-      part_number: assembly.part_number, category: assembly.category || '', mold_name: assembly.mold_name || '',
-      part_weight: assembly.part_weight != null ? String(assembly.part_weight) : '',
-      parts_per_hour: assembly.parts_per_hour != null ? String(assembly.parts_per_hour) : '',
-      labor_rate_per_hour: String(assembly.labor_rate_per_hour), num_employees: String(assembly.num_employees),
-    })
-    setComponents(assembly.bom_sub_assembly_components.map(c => ({ component_part_number: c.component_part_number, quantity: String(c.quantity) })))
-    setError(null)
-  }
-
-  const submit = async () => {
-    setSaving(true); setError(null)
-    try {
-      const res = await fetch(`/api/bom/sub-assemblies/${assembly.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, components: components.map(c => ({ component_part_number: c.component_part_number, quantity: c.quantity })) }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update.')
-      onSaved(); setOpen(false)
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to update.') }
-    setSaving(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => { setOpen(v); if (v) reset() }}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2" title="Edit"><Pencil className="h-3 w-3" /></Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[90vw] xl:max-w-[1200px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Edit Sub-Assembly: {assembly.part_number}</DialogTitle></DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="grid gap-3">
-            <div className="grid gap-2"><Label>Part Number</Label><Input value={form.part_number} onChange={e => setForm({ ...form, part_number: e.target.value })} /></div>
-            <div className="grid gap-2">
-              <Label>Category</Label>
-              <SelectOrCreate value={form.category} onChange={v => setForm({ ...form, category: v })} options={existingCategories} placeholder="Select category..." />
-            </div>
-            <div className="grid gap-2"><Label>Mold Name</Label><Input value={form.mold_name} onChange={e => setForm({ ...form, mold_name: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2"><Label>Part Weight</Label><Input type="number" min="0" step="0.0001" value={form.part_weight} onChange={e => setForm({ ...form, part_weight: e.target.value })} /></div>
-              <div className="grid gap-2"><Label>Parts / Hr</Label><Input type="number" min="0" step="0.01" value={form.parts_per_hour} onChange={e => setForm({ ...form, parts_per_hour: e.target.value })} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2"><Label>Labor Rate / Hr</Label><Input type="number" min="0" step="0.01" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: e.target.value })} /></div>
-              <div className="grid gap-2"><Label># Employees</Label><Input type="number" min="0" step="0.1" value={form.num_employees} onChange={e => setForm({ ...form, num_employees: e.target.value })} /></div>
-            </div>
-          </div>
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <div><h3 className="font-semibold">Components</h3><p className="text-xs text-muted-foreground">Individual items only.</p></div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setComponents([...components, { component_part_number: '', quantity: '1' }])}><Plus className="h-4 w-4 mr-1" /> Add</Button>
-            </div>
-            <div className="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
-              {components.map((comp, i) => (
-                <div key={`edit-sub-comp-${i}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[minmax(0,1fr)_160px_48px] items-end">
-                  <div className="grid gap-2">
-                    <Label>Individual Item</Label>
-                    <Select value={comp.component_part_number || undefined} onValueChange={v => { const n = [...components]; n[i] = { ...comp, component_part_number: v }; setComponents(n) }}>
-                      <SelectTrigger><SelectValue placeholder="Select part number" /></SelectTrigger>
-                      <SelectContent>{individualItems.map(item => <SelectItem key={item.id} value={item.part_number}>{item.part_number}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2"><Label>Qty</Label><Input type="number" min="0.000001" step="0.0001" value={comp.quantity} onChange={e => { const n = [...components]; n[i] = { ...comp, quantity: e.target.value }; setComponents(n) }} /></div>
-                  <div className="flex items-end"><Button type="button" variant="ghost" size="sm" className="h-10 px-2 text-destructive" onClick={() => setComponents(components.length === 1 ? [{ component_part_number: '', quantity: '1' }] : components.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter className="gap-3 pt-4">
-          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={() => { void submit() }} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── Edit Final Assembly Dialog ──────────────────────────────────
-
-function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, existingProductCategories, existingSubProductCategories, onSaved }: {
-  assembly: FinalAssembly
-  subAssemblies: SubAssembly[]
-  individualItems: IndividualItem[]
-  existingProductCategories: string[]
-  existingSubProductCategories: string[]
-  onSaved: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    part_number: assembly.part_number,
-    product_category: assembly.product_category || '',
-    sub_product_category: assembly.sub_product_category || '',
-    description: assembly.description || '',
-    notes: assembly.notes || '',
-    parts_per_package: assembly.parts_per_package != null ? String(assembly.parts_per_package) : '',
-    parts_per_hour: assembly.parts_per_hour != null ? String(assembly.parts_per_hour) : '',
-    labor_rate_per_hour: String(assembly.labor_rate_per_hour),
-    num_employees: String(assembly.num_employees),
-    shipping_labor_cost: String(assembly.shipping_labor_cost),
-  })
-  const [components, setComponents] = useState<EditableFinalAssemblyComponent[]>(
-    assembly.bom_final_assembly_components.map(c => ({
-      component_source: c.component_source as 'sub_assembly' | 'individual_item',
-      component_part_number: c.component_part_number,
-      quantity: String(c.quantity),
-    }))
-  )
-
-  const reset = () => {
-    setForm({
-      part_number: assembly.part_number, product_category: assembly.product_category || '', sub_product_category: assembly.sub_product_category || '',
-      description: assembly.description || '', notes: assembly.notes || '',
-      parts_per_package: assembly.parts_per_package != null ? String(assembly.parts_per_package) : '',
-      parts_per_hour: assembly.parts_per_hour != null ? String(assembly.parts_per_hour) : '',
-      labor_rate_per_hour: String(assembly.labor_rate_per_hour), num_employees: String(assembly.num_employees),
-      shipping_labor_cost: String(assembly.shipping_labor_cost),
-    })
-    setComponents(assembly.bom_final_assembly_components.map(c => ({
-      component_source: c.component_source as 'sub_assembly' | 'individual_item',
-      component_part_number: c.component_part_number, quantity: String(c.quantity),
-    })))
-    setError(null)
-  }
-
-  const submit = async () => {
-    setSaving(true); setError(null)
-    try {
-      const res = await fetch(`/api/bom/final-assemblies/${assembly.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, components: components.map(c => ({ component_source: c.component_source, component_part_number: c.component_part_number, quantity: c.quantity })) }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update.')
-      onSaved(); setOpen(false)
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to update.') }
-    setSaving(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => { setOpen(v); if (v) reset() }}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2" title="Edit"><Pencil className="h-3 w-3" /></Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[90vw] xl:max-w-[1400px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Edit Final Assembly: {assembly.part_number}</DialogTitle></DialogHeader>
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="grid gap-3">
-            <div className="grid gap-2"><Label>Part Number</Label><Input value={form.part_number} onChange={e => setForm({ ...form, part_number: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2"><Label>Product Category</Label><SelectOrCreate value={form.product_category} onChange={v => setForm({ ...form, product_category: v })} options={existingProductCategories} placeholder="Select..." /></div>
-              <div className="grid gap-2"><Label>Sub-Category</Label><SelectOrCreate value={form.sub_product_category} onChange={v => setForm({ ...form, sub_product_category: v })} options={existingSubProductCategories} placeholder="Select..." /></div>
-            </div>
-            <div className="grid gap-2"><Label>Description</Label><Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-            <div className="grid gap-2"><Label>Notes</Label><Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2"><Label>Parts / Package</Label><Input type="number" min="0" step="1" value={form.parts_per_package} onChange={e => setForm({ ...form, parts_per_package: e.target.value })} /></div>
-              <div className="grid gap-2"><Label>Parts / Hr</Label><Input type="number" min="0" step="0.01" value={form.parts_per_hour} onChange={e => setForm({ ...form, parts_per_hour: e.target.value })} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2"><Label>Labor Rate / Hr</Label><Input type="number" min="0" step="0.01" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: e.target.value })} /></div>
-              <div className="grid gap-2"><Label># Employees</Label><Input type="number" min="0" step="0.1" value={form.num_employees} onChange={e => setForm({ ...form, num_employees: e.target.value })} /></div>
-            </div>
-            <div className="grid gap-2"><Label>Shipping Labor Cost</Label><Input type="number" min="0" step="0.0001" value={form.shipping_labor_cost} onChange={e => setForm({ ...form, shipping_labor_cost: e.target.value })} /></div>
-          </div>
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <div><h3 className="font-semibold">Components</h3><p className="text-xs text-muted-foreground">Mix sub-assemblies and individual items.</p></div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setComponents([...components, { component_source: 'sub_assembly', component_part_number: '', quantity: '1' }])}><Plus className="h-4 w-4 mr-1" /> Add</Button>
-            </div>
-            <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-              {components.map((comp, i) => {
-                const partOpts = comp.component_source === 'sub_assembly' ? subAssemblies : individualItems
-                return (
-                  <div key={`edit-final-comp-${i}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[170px_minmax(0,1fr)_140px_48px] items-end">
-                    <div className="grid gap-2">
-                      <Label>Source</Label>
-                      <Select value={comp.component_source} onValueChange={v => { const n = [...components]; n[i] = { component_source: v as 'sub_assembly' | 'individual_item', component_part_number: '', quantity: comp.quantity }; setComponents(n) }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{FINAL_COMPONENT_SOURCES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Part</Label>
-                      <Select value={comp.component_part_number || undefined} onValueChange={v => { const n = [...components]; n[i] = { ...comp, component_part_number: v }; setComponents(n) }}>
-                        <SelectTrigger><SelectValue placeholder="Select part number" /></SelectTrigger>
-                        <SelectContent>{partOpts.map(o => <SelectItem key={o.id} value={o.part_number}>{o.part_number}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2"><Label>Qty</Label><Input type="number" min="0.000001" step="0.0001" value={comp.quantity} onChange={e => { const n = [...components]; n[i] = { ...comp, quantity: e.target.value }; setComponents(n) }} /></div>
-                    <div className="flex items-end"><Button type="button" variant="ghost" size="sm" className="h-10 px-2 text-destructive" onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1' }] : components.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button></div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter className="gap-3 pt-4">
-          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={() => { void submit() }} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 
@@ -1263,13 +368,10 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
     onRefresh()
   }
 
-  const existingCategories = [...new Set(assemblies.map(a => a.category).filter((c): c is string => !!c))].sort()
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg">Sub Assemblies (Molded Parts)</CardTitle>
-        <NewSubAssemblyDialog individualItems={individualItems} existingCategories={existingCategories} onCreated={onRefresh} />
       </CardHeader>
       <CardContent>
         <Table>
@@ -1287,7 +389,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
           </TableHeader>
           <TableBody>
             {filtered.map(a => (
-              <Fragment key={a.id}>
+              <>
                 <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
                   <TableCell>
                     {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -1304,7 +406,6 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                   <TableCell className="text-right font-semibold">{fmt(a.total_cost)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                      <EditSubAssemblyDialog assembly={a} individualItems={individualItems} existingCategories={existingCategories} onSaved={onRefresh} />
                       <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
                         <RefreshCw className="h-3 w-3" />
                       </Button>
@@ -1358,7 +459,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                     </TableCell>
                   </TableRow>
                 )}
-              </Fragment>
+              </>
             ))}
           </TableBody>
         </Table>
@@ -1432,9 +533,6 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
     onRefresh()
   }
 
-  const existingProductCategories = [...new Set(assemblies.map(a => a.product_category).filter((c): c is string => !!c))].sort()
-  const existingSubProductCategories = [...new Set(assemblies.map(a => a.sub_product_category).filter((c): c is string => !!c))].sort()
-
   return (
     <div className="space-y-4">
       {/* Config Panel */}
@@ -1444,7 +542,6 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
             <CardTitle className="text-lg">Final Assemblies (Finished Products)</CardTitle>
           </div>
           <div className="flex gap-2">
-            <NewFinalAssemblyDialog subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onCreated={onRefresh} />
             <Dialog open={showConfig} onOpenChange={v => { setShowConfig(v); if (v) { const m: Record<string, string> = {}; config.forEach(c => { m[c.key] = String(c.value) }); setConfigEdits(m) } }}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm"><Settings className="h-4 w-4 mr-1" /> Overhead Settings</Button>
@@ -1497,7 +594,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
             </TableHeader>
             <TableBody>
               {filtered.map(a => (
-                <Fragment key={a.id}>
+                <>
                   <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
                     <TableCell>
                       {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -1515,7 +612,6 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                     <TableCell className="text-right font-semibold text-green-400">{fmt(a.sales_target)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                        <EditFinalAssemblyDialog assembly={a} subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onSaved={onRefresh} />
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
                           <RefreshCw className="h-3 w-3" />
                         </Button>
@@ -1585,7 +681,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                       </TableCell>
                     </TableRow>
                   )}
-                </Fragment>
+                </>
               ))}
             </TableBody>
           </Table>
