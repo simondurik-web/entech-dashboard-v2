@@ -3,6 +3,7 @@
  * Returns the SAME types so API routes and pages don't need changes.
  */
 import { supabase } from './supabase'
+import { calculateSalesMath, getProfitPerPart, isNoOpSalesMathRow, summarizeSalesOrders } from './sales-math'
 import {
   type Order,
   type InventoryItem,
@@ -26,6 +27,10 @@ export interface SalesOrder {
   variableCost: number
   totalCost: number
   pl: number
+  variableProfit: number
+  totalProfit: number
+  variableMarginPct: number
+  totalMarginPct: number
   shippedDate: string
   requestedDate: string
   status: string
@@ -38,6 +43,7 @@ export interface SalesOrder {
   unitPrice: number
   salesTarget: number
   profitPerPart: number
+  contributionLevel: string
 }
 
 export interface SalesSummary {
@@ -50,6 +56,10 @@ export interface SalesSummary {
   shippedCount: number
   forecastPL: number
   pendingCount: number
+  variableProfit: number
+  totalProfit: number
+  variableMarginPct: number
+  totalMarginPct: number
 }
 
 export interface SalesData {
@@ -372,12 +382,28 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
 
 export async function fetchSalesFromDB(): Promise<SalesData> {
   const data = await fetchAllRows('dashboard_orders')
-  if (!data.length) return { orders: [], summary: { totalRevenue: 0, totalCosts: 0, totalPL: 0, avgMargin: 0, orderCount: 0, shippedPL: 0, shippedCount: 0, forecastPL: 0, pendingCount: 0 } }
+  if (!data.length) {
+    return {
+      orders: [],
+      summary: {
+        totalRevenue: 0,
+        totalCosts: 0,
+        totalPL: 0,
+        avgMargin: 0,
+        orderCount: 0,
+        shippedPL: 0,
+        shippedCount: 0,
+        forecastPL: 0,
+        pendingCount: 0,
+        variableProfit: 0,
+        totalProfit: 0,
+        variableMarginPct: 0,
+        totalMarginPct: 0,
+      },
+    }
+  }
 
   const orders: SalesOrder[] = []
-  let totalRevenue = 0
-  let totalCosts = 0
-  let totalPL = 0
 
   for (const row of data) {
     const line = str(row.line)
@@ -390,15 +416,18 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     const revenue = num(row.revenue)
     const variableCost = num(row.variable_cost)
     const totalCost = num(row.total_cost)
-    const pl = num(row.pl)
-
-    if (revenue === 0 && pl === 0) continue
-
+    const rawPL = num(row.pl)
     const qty = num(row.order_qty)
     const unitPrice = num(row.unit_price)
+    const salesMath = calculateSalesMath({ qty, revenue, variableCost, totalCost, unitPrice })
+
+    if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
+    if (revenue === 0 && rawPL === 0 && totalCost === 0 && variableCost === 0) continue
+
     const salesTarget = num(row.sales_target_20)
-    const profitPerPart = num(row.profit_per_part)
+    const profitPerPart = getProfitPerPart({ qty, revenue, variableCost, totalCost, unitPrice })
     const shippingCost = num(row.shipping_cost)
+    const pl = salesMath.totalProfit
 
     orders.push({
       line,
@@ -410,6 +439,7 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
       variableCost,
       totalCost,
       pl,
+      ...salesMath,
       shippedDate: str(row.shipped_date),
       requestedDate: str(row.requested_completion_date),
       status,
@@ -419,23 +449,13 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
       internalStatus: str(row.work_order_status),
       poNumber: str(row.po_number),
       shippingCost, unitPrice, salesTarget, profitPerPart,
+      contributionLevel: str(row.contribution_level),
     })
-
-    totalRevenue += revenue
-    totalCosts += totalCost || variableCost
-    totalPL += pl
   }
-
-  const shippedOrders = orders.filter(o => o.status === 'shipped')
-  const shippedPL = shippedOrders.reduce((s, o) => s + o.pl, 0)
-  const shippedCount = shippedOrders.length
-  const forecastPL = totalPL - shippedPL
-  const pendingCount = orders.length - shippedCount
-  const avgMargin = totalRevenue > 0 ? (totalPL / totalRevenue) * 100 : 0
 
   return {
     orders,
-    summary: { totalRevenue, totalCosts, totalPL, avgMargin, orderCount: orders.length, shippedPL, shippedCount, forecastPL, pendingCount },
+    summary: summarizeSalesOrders(orders),
   }
 }
 

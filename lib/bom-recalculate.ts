@@ -1,5 +1,7 @@
 import { supabaseAdmin } from './supabase-admin'
 
+const FINAL_ASSEMBLY_COMPONENT_SOURCES = new Set(['sub_assembly', 'individual_item'])
+
 // Recalculate sub assembly costs from its components
 export async function recalculateSubAssembly(subAssemblyId: string) {
   const { data: assembly } = await supabaseAdmin
@@ -80,6 +82,14 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
 
   if (!components) return assembly
 
+  const invalidSources = components
+    .map(component => component.component_source)
+    .filter(source => !FINAL_ASSEMBLY_COMPONENT_SOURCES.has(source))
+
+  if (invalidSources.length > 0) {
+    throw new Error(`Invalid final assembly component_source values for ${assembly.part_number}: ${[...new Set(invalidSources)].join(', ')}`)
+  }
+
   // Get costs from sub assemblies and individual items
   const subParts = components.filter(c => c.component_source === 'sub_assembly').map(c => c.component_part_number)
   const indParts = components.filter(c => c.component_source === 'individual_item').map(c => c.component_part_number)
@@ -107,7 +117,11 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
     componentTotal += cost
   }
 
-  const subtotal_cost = componentTotal + Number(assembly.labor_cost_per_part) + Number(assembly.shipping_labor_cost)
+  const labor_cost_per_part = Number(assembly.parts_per_hour) > 0
+    ? (Number(assembly.num_employees) * Number(assembly.labor_rate_per_hour)) / Number(assembly.parts_per_hour)
+    : 0
+
+  const subtotal_cost = componentTotal + labor_cost_per_part + Number(assembly.shipping_labor_cost)
   
   const oh = Number(assembly.overhead_pct)
   const ad = Number(assembly.admin_pct)
@@ -128,8 +142,16 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
   const { data: updated } = await supabaseAdmin
     .from('bom_final_assemblies')
     .update({
-      subtotal_cost, overhead_cost, admin_cost, depreciation_cost, repairs_cost,
-      variable_cost, total_cost, profit_amount, sales_target,
+      labor_cost_per_part,
+      subtotal_cost,
+      overhead_cost,
+      admin_cost,
+      depreciation_cost,
+      repairs_cost,
+      variable_cost,
+      total_cost,
+      profit_amount,
+      sales_target,
     })
     .eq('id', finalAssemblyId)
     .select()
@@ -161,12 +183,26 @@ export async function recalculateCascade(changedItemType: 'individual_item' | 's
     }
 
     // Find all final assemblies using these sub assemblies OR the individual item directly
-    const { data: finalComps } = await supabaseAdmin
+    const { data: directFinalComps } = await supabaseAdmin
       .from('bom_final_assembly_components')
       .select('final_assembly_id')
-      .or(`component_part_number.eq.${item.part_number},component_part_number.in.(${updatedSubParts.join(',')})`)
+      .eq('component_source', 'individual_item')
+      .eq('component_part_number', item.part_number)
 
-    const finalIds = [...new Set(finalComps?.map(c => c.final_assembly_id) || [])]
+    const { data: subAssemblyFinalComps } = updatedSubParts.length === 0
+      ? { data: [] as { final_assembly_id: string }[] }
+      : await supabaseAdmin
+          .from('bom_final_assembly_components')
+          .select('final_assembly_id')
+          .eq('component_source', 'sub_assembly')
+          .in('component_part_number', updatedSubParts)
+
+    const finalIds = [
+      ...new Set([
+        ...(directFinalComps?.map(c => c.final_assembly_id) || []),
+        ...(subAssemblyFinalComps?.map(c => c.final_assembly_id) || []),
+      ]),
+    ]
     for (const fId of finalIds) {
       await recalculateFinalAssembly(fId)
     }
@@ -177,6 +213,7 @@ export async function recalculateCascade(changedItemType: 'individual_item' | 's
     const { data: finalComps } = await supabaseAdmin
       .from('bom_final_assembly_components')
       .select('final_assembly_id')
+      .eq('component_source', 'sub_assembly')
       .eq('component_part_number', sub.part_number)
 
     const finalIds = [...new Set(finalComps?.map(c => c.final_assembly_id) || [])]

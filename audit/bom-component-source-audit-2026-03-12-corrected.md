@@ -1,0 +1,323 @@
+# BOM Component Source Audit — 2026-03-12 (corrected after DB normalization)
+
+- Total final assemblies: 213
+- Total final assembly components: 1853
+- Source counts: {"sub_assembly":355,"individual_item":1498}
+- Legacy 'individual' rows remaining: 0
+- Likely damaged assemblies: 11
+- Assemblies with missing master components: 121
+
+## Likely damaged assemblies
+
+- **616.261.191**
+  - PALLET-42X42: stored 0, expected 0.0725 (qty 0.01 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.021 (qty 0.03 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.03625 (qty 0.01 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.04082 (qty 5 × unit 0.008164)
+  - KWH: stored 0, expected 0.24 (qty 1.5 × unit 0.16)
+- **616.308.191**
+  - PALLET-42X42: stored 0, expected 0.029 (qty 0.004 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.0084 (qty 0.012 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.0145 (qty 0.004 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.016328 (qty 2 × unit 0.008164)
+  - KWH: stored 0, expected 0.24 (qty 1.5 × unit 0.16)
+- **618.261.1911**
+  - PLU-53R: stored 0, expected 0.022 (qty 1 × unit 0.022)
+  - BUL-0620Z02: stored 0, expected 0.05 (qty 1 × unit 0.05)
+  - SPG-060824SS: stored 0, expected 0.015 (qty 1 × unit 0.015)
+  - PALLET-42X42: stored 0, expected 0.020713 (qty 0.002857 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.006 (qty 0.008571 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.010357 (qty 0.002857 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.011663 (qty 1.428571 × unit 0.008164)
+  - KWH: stored 0, expected 0.24 (qty 1.5 × unit 0.16)
+- **648.254.1530**
+  - FBB-163510G: stored 0, expected 0.776 (qty 2 × unit 0.388)
+  - PALLET-42X42: stored 0, expected 0.022656 (qty 0.003125 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.006562 (qty 0.009375 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.011328 (qty 0.003125 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.012756 (qty 1.5625 × unit 0.008164)
+  - KWH: stored 0, expected 0.24 (qty 1.5 × unit 0.16)
+- **648.254.1534M**
+  - FBB-163510MG: stored 0, expected 1.99606 (qty 2 × unit 0.99803)
+  - PALLET-42X42: stored 0, expected 0.027883 (qty 0.003846 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.008077 (qty 0.011538 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.013942 (qty 0.003846 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.0157 (qty 1.923077 × unit 0.008164)
+  - KWH: stored 0, expected 0.24 (qty 1.5 × unit 0.16)
+- **SP-BS1**
+  - PALLET-42X42: stored 0, expected 7.25 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.7 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SP-CP1**
+  - PALLET-42X42: stored 0, expected 7.25 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.7 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SP-DN1**
+  - PALLET-42X42: stored 0, expected 7.25 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.7 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SPU1**
+  - PALLET-42X42: stored 0, expected 7.25 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.7 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SPV1**
+  - PALLET-42X42: stored 0, expected 7.25 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.7 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SPW1**
+  - PALLET-42X42: stored 0, expected 7.25 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.7 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+
+## Missing master components
+
+- **616.261.191**
+  - LABOR (source=individual_item, stored=0, qty=1)
+- **616.308.191**
+  - LABOR (source=individual_item, stored=0, qty=1)
+- **618.261.1911**
+  - LABOR (source=individual_item, stored=0, qty=1)
+- **618.261.1912**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **618.308.1911**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **618.308.1912**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **619.261.1931**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **619.261.2211**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **619.261.2211.BOXED**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **619.261.2212**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **619.308.2211**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **619.308.2212**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **620.261.1911**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **620.261.2211**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **620.308.1911**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **620.308.2211**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **620.308.2211BOXED**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **620.308.2212**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **621.405.1910**
+  - LABOR (source=individual_item, stored=0.975, qty=1)
+- **622.405.1916Z**
+  - LABOR (source=individual_item, stored=0.975, qty=1)
+- **639.207.1330**
+  - LABOR (source=individual_item, stored=1.4625, qty=1)
+- **640.163.283**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **640.255.2633**
+  - FNB-263518D  (source=individual_item, stored=0.781, qty=2)
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **642.163.1936Z**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **642.207.1936Z**
+  - LABOR (source=individual_item, stored=1.4625, qty=1)
+- **642.208.1936Z**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **642.306.2636Z**
+  - LABOR (source=individual_item, stored=0.975, qty=1)
+- **643.163.1310**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **643.163.1330**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **643.208.1330**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **643.208.1530**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **643.208.353**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **643.254.1310**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.254.1510**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.254.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.254.353**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.255.1520**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.255.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.256.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.256.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **643.256.353**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.254.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.254.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.254.1930HD**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.256.1533**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.256.1930SB**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.306.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.306.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **644.306.1930Z**
+  - LABOR (source=individual_item, stored=0.975, qty=1)
+- **646.306.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **646.306.1930HD**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **646.306.2633**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **646.308.1930HD**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **647.306.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **647.306.1930HD**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **647.308.1930**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **648.208.1330**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **648.208.1530**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **648.208.1534M**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **648.208.1910**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **648.208.1930**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **648.208.353**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **648.254.1530**
+  - LABOR (source=individual_item, stored=0, qty=1)
+- **648.254.1530SB**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.254.1530Z**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.254.1534M**
+  - LABOR (source=individual_item, stored=0, qty=1)
+- **648.254.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.254.1930HD**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.254.353**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.255.1510**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.255.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.256.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **648.256.1530SB**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **649.256.1330**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **649.256.1930**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **668.254.1530**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **668.254.353**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **668.256.1530HD**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **668.256.1910**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **673.207.2633**
+  - LABOR (source=individual_item, stored=1.4625, qty=1)
+- **673.207.353**
+  - LABOR (source=individual_item, stored=1.4625, qty=1)
+- **675.208.1330**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **675.208.1930**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **675.208.351**
+  - LABOR (source=individual_item, stored=1.271739, qty=1)
+- **676.261.1911**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **676.308.1911**
+  - LABOR (source=individual_item, stored=0.790541, qty=1)
+- **681.201.2211**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **682.201.1611**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **682.201.1911**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **683.201.1611**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **683.201.1911**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **683.201.2211**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **684.163.2211**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **684.201.2211**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **684.201.2212**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **6845.163.1612**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **6845.201.1612**
+  - LABOR (source=individual_item, stored=0.585, qty=1)
+- **686.294.1911**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **687.294.1611**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **687.294.1612**
+  - LABOR (source=individual_item, stored=0.73125, qty=1)
+- **687.294.1911**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **687.294.1911S**
+  - LABOR (source=individual_item, stored=0.835714, qty=1)
+- **688.236.1611**
+  - LABOR (source=individual_item, stored=0.73125, qty=1)
+- **688.236.1911**
+  - LABOR (source=individual_item, stored=0.73125, qty=1)
+- **688.236.1912**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **688.246.1612**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **689.236.1911**
+  - LABOR (source=individual_item, stored=0.73125, qty=1)
+- **PADASM-8X18**
+  - LABOR (source=individual_item, stored=0.325, qty=1)
+- **PADASM-8X18-W/O-T**
+  - LABOR (source=individual_item, stored=0.325, qty=1)
+- **RUBB-RISE-2.25-10399**
+  - LABOR (source=individual_item, stored=0.975, qty=1)
+- **THRESH-1.5-19821**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **THRESH-1.5-WLCM-BLK-19812**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **THRESH-1.5-WLCM-GRY-19849**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **THRESH-1.5GRY-20061**
+  - LABOR (source=individual_item, stored=0.65, qty=1)
+- **THRESH-10398**
+  - LABOR (source=individual_item, stored=1.95, qty=1)
+- **THRESH-2.5-19820**
+  - LABOR (source=individual_item, stored=1.95, qty=1)
+- **THRESH-2.5-WLCM-BLK-19811**
+  - LABOR (source=individual_item, stored=1.95, qty=1)
+- **THRESH-2.5-WLCM-GRY-19848**
+  - LABOR (source=individual_item, stored=1.95, qty=1)
+- **THRESH-2.5GRY-20060**
+  - LABOR (source=individual_item, stored=1.95, qty=1)
+- **WEDGE-10DEG**
+  - LABOR (source=individual_item, stored=0.1625, qty=1)
+- **WEDGE-5DEG**
+  - LABOR (source=individual_item, stored=0.1625, qty=1)
