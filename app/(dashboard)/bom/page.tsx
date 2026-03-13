@@ -425,11 +425,11 @@ function NewSubAssemblyDialog({ individualItems, onCreated }: {
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Sub-Assembly</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Sub-Assembly</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Part Number</Label>
@@ -481,7 +481,7 @@ function NewSubAssemblyDialog({ individualItems, onCreated }: {
             </div>
             <div className="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
               {components.map((component, index) => (
-                <div key={`sub-component-${index}`} className="grid gap-3 rounded-md border p-3 md:grid-cols-[minmax(0,1fr)_140px_40px]">
+                <div key={`sub-component-${index}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[minmax(0,1fr)_160px_48px] items-end">
                   <div className="grid gap-2">
                     <Label>Individual Item</Label>
                     <Select
@@ -535,7 +535,7 @@ function NewSubAssemblyDialog({ individualItems, onCreated }: {
           </div>
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter>
+        <DialogFooter className="gap-3 pt-4">
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
@@ -635,11 +635,11 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, onCreated }: {
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Final Assembly</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Final Assembly</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Part Number</Label>
@@ -708,7 +708,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, onCreated }: {
                 const partOptions = component.component_source === 'sub_assembly' ? subAssemblies : individualItems
 
                 return (
-                  <div key={`final-component-${index}`} className="grid gap-3 rounded-md border p-3 md:grid-cols-[150px_minmax(0,1fr)_120px_40px]">
+                  <div key={`final-component-${index}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[170px_minmax(0,1fr)_140px_48px] items-end">
                     <div className="grid gap-2">
                       <Label>Source</Label>
                       <Select
@@ -789,7 +789,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, onCreated }: {
           </div>
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter>
+        <DialogFooter className="gap-3 pt-4">
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
