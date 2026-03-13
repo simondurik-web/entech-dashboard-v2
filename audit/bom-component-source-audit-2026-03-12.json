@@ -1,0 +1,4657 @@
+{
+  "generatedAt": "2026-03-12T14:41:34.519Z",
+  "sourceCounts": {
+    "sub_assembly": 196,
+    "individual": 684,
+    "individual_item": 120
+  },
+  "totalFinalAssemblies": 213,
+  "assembliesWithLegacyMapping": 97,
+  "likelyDamagedAssemblies": 5,
+  "assembliesWithMissingMasterComponents": 58,
+  "likelyDamaged": [
+    {
+      "part_number": "616.308.191",
+      "description": "308, H16.170.1960B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.812854,
+      "expected_component_total": 3.121082,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 0.004,
+          "stored": 0,
+          "expected": 0.029,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 0.012,
+          "stored": 0,
+          "expected": 0.0084,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 0.004,
+          "stored": 0,
+          "expected": 0.0145,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 2,
+          "stored": 0,
+          "expected": 0.016328,
+          "source": "individual",
+          "unit": 0.008164
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "bad_mismatch_components": [],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530",
+      "description": "254, H48.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 2.234639,
+      "expected_component_total": 3.303942,
+      "bad_zero_components": [
+        {
+          "part": "FBB-163510G",
+          "qty": 2,
+          "stored": 0,
+          "expected": 0.776,
+          "source": "individual",
+          "unit": 0.388
+        },
+        {
+          "part": "PALLET-42X42",
+          "qty": 0.003125,
+          "stored": 0,
+          "expected": 0.022656250000000003,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 0.009375,
+          "stored": 0,
+          "expected": 0.0065625,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 0.003125,
+          "stored": 0,
+          "expected": 0.011328125000000001,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1.5625,
+          "stored": 0,
+          "expected": 0.012756249999999998,
+          "source": "individual",
+          "unit": 0.008164
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "bad_mismatch_components": [],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "SP-CP1",
+      "description": "SP-CP1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.44,
+      "expected_component_total": 13.903164,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 1,
+          "stored": 0,
+          "expected": 7.25,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.7,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 1,
+          "stored": 0,
+          "expected": 3.625,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.008164,
+          "source": "individual",
+          "unit": 0.008164
+        }
+      ],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SP-DN1",
+      "description": "SP-DN1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.44,
+      "expected_component_total": 13.903164,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 1,
+          "stored": 0,
+          "expected": 7.25,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.7,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 1,
+          "stored": 0,
+          "expected": 3.625,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.008164,
+          "source": "individual",
+          "unit": 0.008164
+        }
+      ],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPU1",
+      "description": "SPU1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 6.876126,
+      "expected_component_total": 18.33929,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 1,
+          "stored": 0,
+          "expected": 7.25,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.7,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 1,
+          "stored": 0,
+          "expected": 3.625,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.008164,
+          "source": "individual",
+          "unit": 0.008164
+        }
+      ],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    }
+  ],
+  "legacyAssemblies": [
+    {
+      "part_number": "616.308.191",
+      "description": "308, H16.170.1960B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.812854,
+      "expected_component_total": 3.121082,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 0.004,
+          "stored": 0,
+          "expected": 0.029,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 0.012,
+          "stored": 0,
+          "expected": 0.0084,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 0.004,
+          "stored": 0,
+          "expected": 0.0145,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 2,
+          "stored": 0,
+          "expected": 0.016328,
+          "source": "individual",
+          "unit": 0.008164
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "bad_mismatch_components": [],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "618.308.1912",
+      "description": "308, H18.170.1981B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "619.261.2211",
+      "description": "261, H19.170.22100B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.509399,
+      "expected_component_total": 2.598857,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "619.308.2212",
+      "description": "308, H19.170.22100B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.261.1911",
+      "description": "261, H20.170.19115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.509399,
+      "expected_component_total": 2.598857,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.261.2211",
+      "description": "261, H20.170.22115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.509399,
+      "expected_component_total": 2.598857,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.308.1911",
+      "description": "308, H20.170.19115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.308.2212",
+      "description": "308, H20.170.22115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "622.405.1916Z",
+      "description": "405, H22.225.3683B, RBG-95348NAH, ZERK, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 3,
+      "modern_component_count": 0,
+      "individual_like_count": 3,
+      "stored_component_total": 9.673428,
+      "expected_component_total": 9.673428,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "640.255.2633",
+      "description": "255, H40.120.3540G, FNB-263518D , PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.124757,
+      "expected_component_total": 2.38804,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "FNB-263518D ",
+          "qty": 2,
+          "stored": 0.781,
+          "source": "individual"
+        },
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "642.207.1936Z",
+      "description": "207, H42.100.2857G, 73332NAH-C, ZERK, SEALRING, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 4.271637,
+      "expected_component_total": 2.689138,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.4625,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "642.306.2636Z",
+      "description": "306, H42.170.3557G, 93532NAH-ROLLERBEARING, SEALRING, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 6.734584,
+      "expected_component_total": 5.639586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.975,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.163.1310",
+      "description": "163, H43.100.3557B, FBB-133510, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.113048,
+      "expected_component_total": 2.343048,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.163.1330",
+      "description": "163, H43.100.3557G, FBB-133510, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.255725,
+      "expected_component_total": 2.485725,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.208.1330",
+      "description": "208, H43.100.3557G, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.164894,
+      "expected_component_total": 2.773156,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.254.1510",
+      "description": "254, H43.120.3557B, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.218705,
+      "expected_component_total": 3.262992,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.254.353",
+      "description": "254, H43.120.3557G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.64483,
+      "expected_component_total": 2.689117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.256.1530",
+      "description": "256, H43.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.310499,
+      "expected_component_total": 3.354786,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.256.1930",
+      "description": "256, H43.120.3557G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.534499,
+      "expected_component_total": 2.578786,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.256.1533",
+      "description": "256, H44.120.3582G, FNB-153518D, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 3.967899,
+      "expected_component_total": 3.012186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.256.1930SB",
+      "description": "256, H44.120.3582G, SBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.047408,
+      "expected_component_total": 5.091698,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.306.1530",
+      "description": "306, H44.170.3582G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.191298,
+      "expected_component_total": 5.235586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.306.1930",
+      "description": "306, H44.170.3582G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.168898,
+      "expected_component_total": 5.213186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.306.1930Z",
+      "description": "306, H44.170.3582G, FBB-193510, ZERK, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 6.308184,
+      "expected_component_total": 5.213186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.975,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "646.306.1930HD",
+      "description": "306, H46.170.3560G, FBB-193510HD, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 7.003298,
+      "expected_component_total": 6.047586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "646.306.2633",
+      "description": "306, H46.170.3560G, FNB-263518D(LS167), PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.407298,
+      "expected_component_total": 5.451586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "647.306.1930",
+      "description": "306, H47.170.3567G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.168898,
+      "expected_component_total": 5.213186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "647.308.1930",
+      "description": "308, H47.170.3567G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.802279,
+      "expected_component_total": 3.891739,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1330",
+      "description": "208, H48.100.3557G, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.140161,
+      "expected_component_total": 2.748423,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1530",
+      "description": "208, H48.100.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.156161,
+      "expected_component_total": 2.764423,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1534M",
+      "description": "208, H48.100.3557G, FBB-163510MG, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 5.376221,
+      "expected_component_total": 3.984483,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1910",
+      "description": "208, H48.100.3557B, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 14,
+      "modern_component_count": 0,
+      "individual_like_count": 14,
+      "stored_component_total": 8.004422,
+      "expected_component_total": 5.220946,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        },
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1930",
+      "description": "208, H48.100.3557G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.133761,
+      "expected_component_total": 2.742023,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530",
+      "description": "254, H48.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 2.234639,
+      "expected_component_total": 3.303942,
+      "bad_zero_components": [
+        {
+          "part": "FBB-163510G",
+          "qty": 2,
+          "stored": 0,
+          "expected": 0.776,
+          "source": "individual",
+          "unit": 0.388
+        },
+        {
+          "part": "PALLET-42X42",
+          "qty": 0.003125,
+          "stored": 0,
+          "expected": 0.022656250000000003,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 0.009375,
+          "stored": 0,
+          "expected": 0.0065625,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 0.003125,
+          "stored": 0,
+          "expected": 0.011328125000000001,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1.5625,
+          "stored": 0,
+          "expected": 0.012756249999999998,
+          "source": "individual",
+          "unit": 0.008164
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "bad_mismatch_components": [],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530SB",
+      "description": "254, H48.120.3557G, SBB-153510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 5.35858,
+      "expected_component_total": 4.402867,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530Z",
+      "description": "254, H48.120.3557G, FBB-163510G, ZERK, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 4.27458,
+      "expected_component_total": 3.318867,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.256.1530",
+      "description": "256, H48.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.164249,
+      "expected_component_total": 3.208536,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "649.256.1330",
+      "description": "256, H49.120.3595G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 3.878389,
+      "expected_component_total": 2.922676,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "649.256.1930",
+      "description": "256, H49.120.3595G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 3.878389,
+      "expected_component_total": 2.922676,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "668.254.353",
+      "description": "254, H68.120.3557G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.68193,
+      "expected_component_total": 2.726217,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "668.256.1530HD",
+      "description": "256, H68.120.3557G, FBB-153510HD, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.004999,
+      "expected_component_total": 3.049286,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "668.256.1910",
+      "description": "256, H68.120.3557B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.923773,
+      "expected_component_total": 1.96806,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "675.208.1330",
+      "description": "208, H75.100.3568G, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.140161,
+      "expected_component_total": 2.748423,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "675.208.351",
+      "description": "208, H75.100.3568B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.245411,
+      "expected_component_total": 1.853673,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "676.261.1911",
+      "description": "261, H76.170.19115, PLU-53GRN, BUL-0620Z02, SPG-060824SS, 40X48PALLET, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.524085,
+      "expected_component_total": 2.613542,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "681.201.2211",
+      "description": "201, H81.100.2296B, PLU-10G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 11,
+      "modern_component_count": 0,
+      "individual_like_count": 11,
+      "stored_component_total": 2.350117,
+      "expected_component_total": 1.645117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.585,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "683.201.1611",
+      "description": "201, H83.100.1696B, PLU-10G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 11,
+      "modern_component_count": 0,
+      "individual_like_count": 11,
+      "stored_component_total": 2.350117,
+      "expected_component_total": 1.645117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.585,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "6845.201.1612",
+      "description": "201, H82.100.1672 56 mm TH, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 2.278117,
+      "expected_component_total": 1.573117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.585,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "686.294.1911",
+      "description": "294, H86.215.1972B, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 3.825165,
+      "expected_component_total": 2.869453,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "687.294.1612",
+      "description": "294, H87.215.1652B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.655701,
+      "expected_component_total": 2.804453,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.73125,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "687.294.1911",
+      "description": "294, H87.215.1952B, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 3.825165,
+      "expected_component_total": 2.869453,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "688.236.1611",
+      "description": "236, H88.200.1652B, PLU-71G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.336135,
+      "expected_component_total": 2.484886,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.73125,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "688.236.1912",
+      "description": "236, H88.200.1952B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.158885,
+      "expected_component_total": 2.388886,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "688.246.1612",
+      "description": "246, H88.200.1652B, PLU-71G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.307544,
+      "expected_component_total": 2.537545,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "689.236.1911",
+      "description": "236, H89.200.1972B, PLU-71G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.336135,
+      "expected_component_total": 2.484886,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.73125,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "SP-BS1-BLY",
+      "description": "SP-BS1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.488733,
+      "expected_component_total": 2.368732,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SP-CP1",
+      "description": "SP-CP1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.44,
+      "expected_component_total": 13.903164,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 1,
+          "stored": 0,
+          "expected": 7.25,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.7,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 1,
+          "stored": 0,
+          "expected": 3.625,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.008164,
+          "source": "individual",
+          "unit": 0.008164
+        }
+      ],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SP-CSTR1",
+      "description": "SP-CSTR1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.525284,
+      "expected_component_total": 2.405285,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SP-DN1",
+      "description": "SP-DN1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.44,
+      "expected_component_total": 13.903164,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 1,
+          "stored": 0,
+          "expected": 7.25,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.7,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 1,
+          "stored": 0,
+          "expected": 3.625,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.008164,
+          "source": "individual",
+          "unit": 0.008164
+        }
+      ],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPB1",
+      "description": "SPB1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 6.237391,
+      "expected_component_total": 6.117396,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPB1-3PK-PRM",
+      "description": "SPB1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 13.926931,
+      "expected_component_total": 13.806932,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPB1-4PK-BF10",
+      "description": "SPB1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 17.629561,
+      "expected_component_total": 17.509562,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPBF-2B2FPK-EQ",
+      "description": "SPB1, SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 10.224301,
+      "expected_component_total": 21.265242,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPC1",
+      "description": "SPC1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 4.96163,
+      "expected_component_total": 4.841631,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPCF-2C2FPK-HiWay",
+      "description": "SPC1, SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 7.743172,
+      "expected_component_total": 18.784116,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPE1",
+      "description": "SPE1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 7.101412,
+      "expected_component_total": 6.981418,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPE1-3PK",
+      "description": "SPE1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 16.630715,
+      "expected_component_total": 16.510718,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPE1-4PK-EQ",
+      "description": "SPE1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 21.285147,
+      "expected_component_total": 21.165146,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPEC-2E2CPK-HiWay",
+      "description": "SPE1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 12.052094,
+      "expected_component_total": 11.932094,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPEF-2E2FPK-HiWay",
+      "description": "SPE1, SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 12.052094,
+      "expected_component_total": 17.512564,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPF1-4PK-EQ",
+      "description": "SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 25.140921,
+      "expected_component_total": 25.020922,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPF1-4PK-HiWay",
+      "description": "SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 25.140921,
+      "expected_component_total": 25.020922,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPF1-4PK-XTRA",
+      "description": "SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 25.140921,
+      "expected_component_total": 25.020922,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPFB-2F4B-EQ",
+      "description": "SPF1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 13.979981,
+      "expected_component_total": 13.859982,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPG1",
+      "description": "SPG1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 5.212394,
+      "expected_component_total": 5.092391,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPG1-6PK",
+      "description": "SPG1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 19.11227,
+      "expected_component_total": 18.99227,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPJ1",
+      "description": "SPJ1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 6.561794,
+      "expected_component_total": 6.441798,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPJ1-4PK-BF",
+      "description": "SPJ1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 19.154602,
+      "expected_component_total": 19.034604,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPK1",
+      "description": "SPK1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 12,
+      "modern_component_count": 0,
+      "individual_like_count": 12,
+      "stored_component_total": 12.871028,
+      "expected_component_total": 12.631036,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPK1-4PK",
+      "description": "SPK1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 18.649482,
+      "expected_component_total": 18.529484,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPL1",
+      "description": "SPL1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.482643,
+      "expected_component_total": 2.362642,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPN1",
+      "description": "SPN1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 6.618498,
+      "expected_component_total": 6.498497,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPO1",
+      "description": "SPO1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 4.769046,
+      "expected_component_total": 4.64905,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPO1-4PK-BL5SP4",
+      "description": "SPO1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 11.983609,
+      "expected_component_total": 11.863612,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPO1-SJUSP2-2PK",
+      "description": "PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.86642,
+      "expected_component_total": 2.746425,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPO1-SPSJDROP-4PK",
+      "description": "PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.86642,
+      "expected_component_total": 2.746425,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPP1",
+      "description": "SPP1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 6.543754,
+      "expected_component_total": 6.423758,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPP1-4PK-XTRA",
+      "description": "SPP1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 19.082442,
+      "expected_component_total": 18.962444,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPR1",
+      "description": "SPR1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 7.013889,
+      "expected_component_total": 6.893888,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPS1",
+      "description": "SPS1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 4.741986,
+      "expected_component_total": 4.62199,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "SPU1",
+      "description": "SPU1, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 6.876126,
+      "expected_component_total": 18.33929,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 1,
+          "stored": 0,
+          "expected": 7.25,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.7,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 1,
+          "stored": 0,
+          "expected": 3.625,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1,
+          "stored": 0,
+          "expected": 0.008164,
+          "source": "individual",
+          "unit": 0.008164
+        }
+      ],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "STK-MAT-1730-G",
+      "description": "STK-MAT-1730-G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.781136,
+      "expected_component_total": 2.66114,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "STK-MAT-2436-G",
+      "description": "STK-MAT-2436-G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.781136,
+      "expected_component_total": 2.66114,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": []
+    },
+    {
+      "part_number": "THRESH-10398",
+      "description": "THRESH-10398, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 24.001911,
+      "expected_component_total": 21.931913,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.95,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "THRESH-2.5-WLCM-GRY-19848",
+      "description": "THRESH-2.5-WLCM-GRY-19848, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 22.739111,
+      "expected_component_total": 20.669113,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.95,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "WEDGE-10DEG",
+      "description": "WEDGE-10DEG, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.281189,
+      "expected_component_total": 5.998693,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.1625,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "WEDGE-5DEG",
+      "description": "WEDGE-5DEG, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.082749,
+      "expected_component_total": 5.800253,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.1625,
+          "source": "individual"
+        }
+      ]
+    }
+  ],
+  "missingMaster": [
+    {
+      "part_number": "616.308.191",
+      "description": "308, H16.170.1960B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.812854,
+      "expected_component_total": 3.121082,
+      "bad_zero_components": [
+        {
+          "part": "PALLET-42X42",
+          "qty": 0.004,
+          "stored": 0,
+          "expected": 0.029,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 0.012,
+          "stored": 0,
+          "expected": 0.0084,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 0.004,
+          "stored": 0,
+          "expected": 0.0145,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 2,
+          "stored": 0,
+          "expected": 0.016328,
+          "source": "individual",
+          "unit": 0.008164
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "bad_mismatch_components": [],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "618.308.1912",
+      "description": "308, H18.170.1981B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "619.261.2211",
+      "description": "261, H19.170.22100B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.509399,
+      "expected_component_total": 2.598857,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "619.308.2212",
+      "description": "308, H19.170.22100B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.261.1911",
+      "description": "261, H20.170.19115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.509399,
+      "expected_component_total": 2.598857,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.261.2211",
+      "description": "261, H20.170.22115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.509399,
+      "expected_component_total": 2.598857,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.308.1911",
+      "description": "308, H20.170.19115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "620.308.2212",
+      "description": "308, H20.170.22115B, PLU-53R, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.579498,
+      "expected_component_total": 2.668959,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "640.255.2633",
+      "description": "255, H40.120.3540G, FNB-263518D , PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.124757,
+      "expected_component_total": 2.38804,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "FNB-263518D ",
+          "qty": 2,
+          "stored": 0.781,
+          "source": "individual"
+        },
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "642.207.1936Z",
+      "description": "207, H42.100.2857G, 73332NAH-C, ZERK, SEALRING, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 4.271637,
+      "expected_component_total": 2.689138,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.4625,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "642.306.2636Z",
+      "description": "306, H42.170.3557G, 93532NAH-ROLLERBEARING, SEALRING, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 6.734584,
+      "expected_component_total": 5.639586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.975,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.163.1310",
+      "description": "163, H43.100.3557B, FBB-133510, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.113048,
+      "expected_component_total": 2.343048,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.163.1330",
+      "description": "163, H43.100.3557G, FBB-133510, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.255725,
+      "expected_component_total": 2.485725,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.208.1330",
+      "description": "208, H43.100.3557G, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.164894,
+      "expected_component_total": 2.773156,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.254.1510",
+      "description": "254, H43.120.3557B, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.218705,
+      "expected_component_total": 3.262992,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.254.353",
+      "description": "254, H43.120.3557G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.64483,
+      "expected_component_total": 2.689117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.256.1530",
+      "description": "256, H43.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.310499,
+      "expected_component_total": 3.354786,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "643.256.1930",
+      "description": "256, H43.120.3557G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.534499,
+      "expected_component_total": 2.578786,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.256.1533",
+      "description": "256, H44.120.3582G, FNB-153518D, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 3.967899,
+      "expected_component_total": 3.012186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.256.1930SB",
+      "description": "256, H44.120.3582G, SBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.047408,
+      "expected_component_total": 5.091698,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.306.1530",
+      "description": "306, H44.170.3582G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.191298,
+      "expected_component_total": 5.235586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.306.1930",
+      "description": "306, H44.170.3582G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.168898,
+      "expected_component_total": 5.213186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "644.306.1930Z",
+      "description": "306, H44.170.3582G, FBB-193510, ZERK, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 6.308184,
+      "expected_component_total": 5.213186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.975,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "646.306.1930HD",
+      "description": "306, H46.170.3560G, FBB-193510HD, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 7.003298,
+      "expected_component_total": 6.047586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "646.306.2633",
+      "description": "306, H46.170.3560G, FNB-263518D(LS167), PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.407298,
+      "expected_component_total": 5.451586,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "647.306.1930",
+      "description": "306, H47.170.3567G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.168898,
+      "expected_component_total": 5.213186,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "647.308.1930",
+      "description": "308, H47.170.3567G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.802279,
+      "expected_component_total": 3.891739,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1330",
+      "description": "208, H48.100.3557G, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.140161,
+      "expected_component_total": 2.748423,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1530",
+      "description": "208, H48.100.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.156161,
+      "expected_component_total": 2.764423,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1534M",
+      "description": "208, H48.100.3557G, FBB-163510MG, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 5.376221,
+      "expected_component_total": 3.984483,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1910",
+      "description": "208, H48.100.3557B, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 14,
+      "modern_component_count": 0,
+      "individual_like_count": 14,
+      "stored_component_total": 8.004422,
+      "expected_component_total": 5.220946,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        },
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.208.1930",
+      "description": "208, H48.100.3557G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.133761,
+      "expected_component_total": 2.742023,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530",
+      "description": "254, H48.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 2.234639,
+      "expected_component_total": 3.303942,
+      "bad_zero_components": [
+        {
+          "part": "FBB-163510G",
+          "qty": 2,
+          "stored": 0,
+          "expected": 0.776,
+          "source": "individual",
+          "unit": 0.388
+        },
+        {
+          "part": "PALLET-42X42",
+          "qty": 0.003125,
+          "stored": 0,
+          "expected": 0.022656250000000003,
+          "source": "individual",
+          "unit": 7.25
+        },
+        {
+          "part": "CLEARFILMCOVER",
+          "qty": 0.009375,
+          "stored": 0,
+          "expected": 0.0065625,
+          "source": "individual",
+          "unit": 0.7
+        },
+        {
+          "part": "BAG-MOLD-COV-BLK",
+          "qty": 0.003125,
+          "stored": 0,
+          "expected": 0.011328125000000001,
+          "source": "individual",
+          "unit": 3.625
+        },
+        {
+          "part": "FILM-STRETCH-20IN",
+          "qty": 1.5625,
+          "stored": 0,
+          "expected": 0.012756249999999998,
+          "source": "individual",
+          "unit": 0.008164
+        },
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "bad_mismatch_components": [],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530SB",
+      "description": "254, H48.120.3557G, SBB-153510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 5.35858,
+      "expected_component_total": 4.402867,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.254.1530Z",
+      "description": "254, H48.120.3557G, FBB-163510G, ZERK, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 4.27458,
+      "expected_component_total": 3.318867,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "648.256.1530",
+      "description": "256, H48.120.3557G, FBB-163510G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.164249,
+      "expected_component_total": 3.208536,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "649.256.1330",
+      "description": "256, H49.120.3595G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 3.878389,
+      "expected_component_total": 2.922676,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "649.256.1930",
+      "description": "256, H49.120.3595G, FBB-193510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 3.878389,
+      "expected_component_total": 2.922676,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "668.254.353",
+      "description": "254, H68.120.3557G, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.68193,
+      "expected_component_total": 2.726217,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "668.256.1530HD",
+      "description": "256, H68.120.3557G, FBB-153510HD, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.004999,
+      "expected_component_total": 3.049286,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "668.256.1910",
+      "description": "256, H68.120.3557B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 2.923773,
+      "expected_component_total": 1.96806,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "675.208.1330",
+      "description": "208, H75.100.3568G, FBB-133510, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 4.140161,
+      "expected_component_total": 2.748423,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "675.208.351",
+      "description": "208, H75.100.3568B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.245411,
+      "expected_component_total": 1.853673,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.271739,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "676.261.1911",
+      "description": "261, H76.170.19115, PLU-53GRN, BUL-0620Z02, SPG-060824SS, 40X48PALLET, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.524085,
+      "expected_component_total": 2.613542,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.790541,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "681.201.2211",
+      "description": "201, H81.100.2296B, PLU-10G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 11,
+      "modern_component_count": 0,
+      "individual_like_count": 11,
+      "stored_component_total": 2.350117,
+      "expected_component_total": 1.645117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.585,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "683.201.1611",
+      "description": "201, H83.100.1696B, PLU-10G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 11,
+      "modern_component_count": 0,
+      "individual_like_count": 11,
+      "stored_component_total": 2.350117,
+      "expected_component_total": 1.645117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.585,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "6845.201.1612",
+      "description": "201, H82.100.1672 56 mm TH, PALLET-42X42, BOX-45X45X45, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, BOX-GL-LID, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 2.278117,
+      "expected_component_total": 1.573117,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.585,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "686.294.1911",
+      "description": "294, H86.215.1972B, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 3.825165,
+      "expected_component_total": 2.869453,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "687.294.1612",
+      "description": "294, H87.215.1652B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.655701,
+      "expected_component_total": 2.804453,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.73125,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "687.294.1911",
+      "description": "294, H87.215.1952B, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 8,
+      "modern_component_count": 0,
+      "individual_like_count": 8,
+      "stored_component_total": 3.825165,
+      "expected_component_total": 2.869453,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.835714,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "688.236.1611",
+      "description": "236, H88.200.1652B, PLU-71G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.336135,
+      "expected_component_total": 2.484886,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.73125,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "688.236.1912",
+      "description": "236, H88.200.1952B, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 6,
+      "modern_component_count": 0,
+      "individual_like_count": 6,
+      "stored_component_total": 3.158885,
+      "expected_component_total": 2.388886,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "688.246.1612",
+      "description": "246, H88.200.1652B, PLU-71G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.307544,
+      "expected_component_total": 2.537545,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.65,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "689.236.1911",
+      "description": "236, H89.200.1972B, PLU-71G, BUL-0620Z02, SPG-060824SS, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, KWH, LABOR",
+      "legacy_component_count": 9,
+      "modern_component_count": 0,
+      "individual_like_count": 9,
+      "stored_component_total": 3.336135,
+      "expected_component_total": 2.484886,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.73125,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "THRESH-10398",
+      "description": "THRESH-10398, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 24.001911,
+      "expected_component_total": 21.931913,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.95,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "THRESH-2.5-WLCM-GRY-19848",
+      "description": "THRESH-2.5-WLCM-GRY-19848, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 22.739111,
+      "expected_component_total": 20.669113,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 1.95,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "WEDGE-10DEG",
+      "description": "WEDGE-10DEG, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.281189,
+      "expected_component_total": 5.998693,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.1625,
+          "source": "individual"
+        }
+      ]
+    },
+    {
+      "part_number": "WEDGE-5DEG",
+      "description": "WEDGE-5DEG, PALLET-42X42, CLEARFILMCOVER, BAG-MOLD-COV-BLK, FILM-STRETCH-20IN, CORNER-PROTECTOR-LONG, KWH, LABOR",
+      "legacy_component_count": 7,
+      "modern_component_count": 0,
+      "individual_like_count": 7,
+      "stored_component_total": 6.082749,
+      "expected_component_total": 5.800253,
+      "bad_zero_components": [],
+      "bad_mismatch_components": [
+        {
+          "part": "KWH",
+          "qty": 1.5,
+          "stored": 0.36,
+          "expected": 0.24,
+          "source": "individual",
+          "unit": 0.16
+        }
+      ],
+      "missing_master_components": [
+        {
+          "part": "LABOR",
+          "qty": 1,
+          "stored": 0.1625,
+          "source": "individual"
+        }
+      ]
+    }
+  ]
+}

@@ -23,6 +23,40 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query
     if (error) throw error
+
+    // Enrich mappings with LIVE BOM costs (stored costs are stale after BOM edits)
+    if (data && data.length > 0) {
+      const partNumbers = [...new Set(data.map((m: { internal_part_number: string }) => m.internal_part_number).filter(Boolean))]
+      const { data: bomData } = await supabaseAdmin
+        .from('bom_final_assemblies')
+        .select('part_number, variable_cost, total_cost, sales_target')
+        .in('part_number', partNumbers)
+
+      if (bomData) {
+        const bomLookup = new Map(bomData.map((b: { part_number: string; variable_cost: number; total_cost: number; sales_target: number }) => [b.part_number, b]))
+        for (const mapping of data) {
+          const bom = bomLookup.get(mapping.internal_part_number)
+          if (bom) {
+            mapping.variable_cost = bom.variable_cost
+            mapping.total_cost = bom.total_cost
+            mapping.sales_target = bom.sales_target
+
+            // Recompute contribution level with live costs
+            const prices = [mapping.tier1_price, mapping.tier2_price, mapping.tier3_price, mapping.tier4_price, mapping.tier5_price]
+              .filter((p: number | null) => p != null && p > 0)
+            const lowest = prices.length > 0 ? Math.min(...prices) : mapping.lowest_quoted_price
+
+            if (lowest && bom.variable_cost && bom.total_cost && bom.sales_target) {
+              if (lowest < bom.variable_cost) mapping.contribution_level = 'Critical Loss'
+              else if (lowest < bom.total_cost) mapping.contribution_level = 'Marginal Coverage'
+              else if (lowest < bom.sales_target) mapping.contribution_level = 'Net Profitable'
+              else mapping.contribution_level = 'Target Achieved'
+            }
+          }
+        }
+      }
+    }
+
     return NextResponse.json(data || [])
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to fetch mappings'

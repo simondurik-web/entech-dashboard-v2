@@ -1,0 +1,159 @@
+# BOM Component Source Audit — 2026-03-12
+
+- Total final assemblies: 213
+- Component source counts: {"sub_assembly":196,"individual":684,"individual_item":120}
+- Assemblies with legacy `individual` mapping: 97
+- Likely damaged assemblies (zeroed individual components with valid master cost): 5
+- Assemblies with missing individual-item master rows: 58
+
+## Likely damaged assemblies
+
+- **616.308.191** — 5 zeroed component(s); legacy mapped components: 6
+  - PALLET-42X42: stored 0, expected 0.029000 (qty 0.004 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.008400 (qty 0.012 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.014500 (qty 0.004 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.016328 (qty 2 × unit 0.008164)
+  - KWH: stored 0, expected 0.240000 (qty 1.5 × unit 0.16)
+- **648.254.1530** — 6 zeroed component(s); legacy mapped components: 7
+  - FBB-163510G: stored 0, expected 0.776000 (qty 2 × unit 0.388)
+  - PALLET-42X42: stored 0, expected 0.022656 (qty 0.003125 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.006562 (qty 0.009375 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 0.011328 (qty 0.003125 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.012756 (qty 1.5625 × unit 0.008164)
+  - KWH: stored 0, expected 0.240000 (qty 1.5 × unit 0.16)
+- **SP-CP1** — 4 zeroed component(s); legacy mapped components: 6
+  - PALLET-42X42: stored 0, expected 7.250000 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.700000 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625000 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SP-DN1** — 4 zeroed component(s); legacy mapped components: 6
+  - PALLET-42X42: stored 0, expected 7.250000 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.700000 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625000 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+- **SPU1** — 4 zeroed component(s); legacy mapped components: 6
+  - PALLET-42X42: stored 0, expected 7.250000 (qty 1 × unit 7.25)
+  - CLEARFILMCOVER: stored 0, expected 0.700000 (qty 1 × unit 0.7)
+  - BAG-MOLD-COV-BLK: stored 0, expected 3.625000 (qty 1 × unit 3.625)
+  - FILM-STRETCH-20IN: stored 0, expected 0.008164 (qty 1 × unit 0.008164)
+
+## Missing master components
+
+- **616.308.191**
+  - LABOR (source=individual, stored=0, qty=1)
+- **618.308.1912**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **619.261.2211**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **619.308.2212**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **620.261.1911**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **620.261.2211**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **620.308.1911**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **620.308.2212**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **640.255.2633**
+  - FNB-263518D  (source=individual, stored=0.781, qty=2)
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **642.207.1936Z**
+  - LABOR (source=individual, stored=1.4625, qty=1)
+- **642.306.2636Z**
+  - LABOR (source=individual, stored=0.975, qty=1)
+- **643.163.1310**
+  - LABOR (source=individual, stored=0.65, qty=1)
+- **643.163.1330**
+  - LABOR (source=individual, stored=0.65, qty=1)
+- **643.208.1330**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **643.254.1510**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **643.254.353**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **643.256.1530**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **643.256.1930**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **644.256.1533**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **644.256.1930SB**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **644.306.1530**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **644.306.1930**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **644.306.1930Z**
+  - LABOR (source=individual, stored=0.975, qty=1)
+- **646.306.1930HD**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **646.306.2633**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **647.306.1930**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **647.308.1930**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **648.208.1330**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **648.208.1530**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **648.208.1534M**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **648.208.1910**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **648.208.1930**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **648.254.1530**
+  - LABOR (source=individual, stored=0, qty=1)
+- **648.254.1530SB**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **648.254.1530Z**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **648.256.1530**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **649.256.1330**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **649.256.1930**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **668.254.353**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **668.256.1530HD**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **668.256.1910**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **675.208.1330**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **675.208.351**
+  - LABOR (source=individual, stored=1.271739, qty=1)
+- **676.261.1911**
+  - LABOR (source=individual, stored=0.790541, qty=1)
+- **681.201.2211**
+  - LABOR (source=individual, stored=0.585, qty=1)
+- **683.201.1611**
+  - LABOR (source=individual, stored=0.585, qty=1)
+- **6845.201.1612**
+  - LABOR (source=individual, stored=0.585, qty=1)
+- **686.294.1911**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **687.294.1612**
+  - LABOR (source=individual, stored=0.73125, qty=1)
+- **687.294.1911**
+  - LABOR (source=individual, stored=0.835714, qty=1)
+- **688.236.1611**
+  - LABOR (source=individual, stored=0.73125, qty=1)
+- **688.236.1912**
+  - LABOR (source=individual, stored=0.65, qty=1)
+- **688.246.1612**
+  - LABOR (source=individual, stored=0.65, qty=1)
+- **689.236.1911**
+  - LABOR (source=individual, stored=0.73125, qty=1)
+- **THRESH-10398**
+  - LABOR (source=individual, stored=1.95, qty=1)
+- **THRESH-2.5-WLCM-GRY-19848**
+  - LABOR (source=individual, stored=1.95, qty=1)
+- **WEDGE-10DEG**
+  - LABOR (source=individual, stored=0.1625, qty=1)
+- **WEDGE-5DEG**
+  - LABOR (source=individual, stored=0.1625, qty=1)
