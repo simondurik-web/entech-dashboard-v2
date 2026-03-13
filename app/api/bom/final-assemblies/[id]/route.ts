@@ -1,31 +1,20 @@
 import { NextResponse } from 'next/server'
+import { BomAuthoringError, updateFinalAssembly } from '@/lib/bom-authoring'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { recalculateCascade } from '@/lib/bom-recalculate'
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const body = await req.json()
-  const { components, ...assemblyData } = body
-  assemblyData.updated_at = new Date().toISOString()
-  
-  const { data, error } = await supabaseAdmin
-    .from('bom_final_assemblies')
-    .update(assemblyData)
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  if (components) {
-    await supabaseAdmin.from('bom_final_assembly_components').delete().eq('final_assembly_id', id)
-    if (components.length) {
-      const comps = components.map((c: Record<string, unknown>, i: number) => ({ ...c, final_assembly_id: id, sort_order: i }))
-      await supabaseAdmin.from('bom_final_assembly_components').insert(comps)
+  try {
+    const { id } = await params
+    const body = await req.json()
+    const data = await updateFinalAssembly(id, body)
+    return NextResponse.json(data)
+  } catch (error) {
+    if (error instanceof BomAuthoringError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
     }
-  }
 
-  await recalculateCascade('final_assembly', id)
-  return NextResponse.json(data)
+    return NextResponse.json({ error: 'Failed to update final assembly.' }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
