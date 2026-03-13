@@ -344,12 +344,15 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
               <div className="grid gap-2">
                 <Label>Part Number *</Label>
                 <Input placeholder="Type to search or enter custom part number..." value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
-                {inventoryParts.length > 0 && (
-                  <div className="border rounded-md max-h-40 overflow-y-auto">
-                    {inventoryParts
-                      .filter(p => !newItem.part_number || p.partNumber.toLowerCase().includes(newItem.part_number.toLowerCase()) || p.product.toLowerCase().includes(newItem.part_number.toLowerCase()))
-                      .slice(0, 50)
-                      .map(p => (
+                {inventoryParts.length > 0 && (() => {
+                  const filtered = inventoryParts.filter(p =>
+                    !newItem.part_number ||
+                    p.partNumber.toLowerCase().includes(newItem.part_number.toLowerCase()) ||
+                    p.product.toLowerCase().includes(newItem.part_number.toLowerCase())
+                  )
+                  return (
+                    <div className="border rounded-md max-h-64 overflow-y-auto">
+                      {filtered.length > 0 ? filtered.map(p => (
                         <button
                           key={p.partNumber}
                           type="button"
@@ -359,12 +362,12 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                           <span className="font-mono">{p.partNumber}</span>
                           <span className="text-muted-foreground text-xs truncate ml-2 max-w-[200px]">{p.product}</span>
                         </button>
-                      ))}
-                    {inventoryParts.filter(p => !newItem.part_number || p.partNumber.toLowerCase().includes(newItem.part_number.toLowerCase()) || p.product.toLowerCase().includes(newItem.part_number.toLowerCase())).length === 0 && (
-                      <p className="px-3 py-2 text-xs text-muted-foreground">No matching inventory items</p>
-                    )}
-                  </div>
-                )}
+                      )) : (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">No matching inventory items</p>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
               <Input placeholder={t('table.description')} value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
               <Input placeholder="Cost per Unit *" type="number" step="0.0001" value={newItem.cost_per_unit} onChange={e => setNewItem({ ...newItem, cost_per_unit: e.target.value })} />
