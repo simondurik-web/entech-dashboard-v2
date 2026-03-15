@@ -11,7 +11,9 @@ export async function GET() {
     // Primary: Supabase
     try {
       const salesData = await fetchSalesFromDB()
-      return NextResponse.json(salesData)
+      return NextResponse.json(salesData, {
+        headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' },
+      })
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
       // Fallback: Google Sheets (original implementation)
@@ -138,8 +140,13 @@ async function fetchSalesFromSheets() {
       contributionLevel: cellValue(row, COLS.contributionLevel),
     })
   }
-  return NextResponse.json({
-    orders,
-    summary: summarizeSalesOrders(orders),
-  })
+  return NextResponse.json(
+    {
+      orders,
+      summary: summarizeSalesOrders(orders),
+    },
+    {
+      headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' },
+    }
+  )
 }

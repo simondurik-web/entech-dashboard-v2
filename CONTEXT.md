@@ -136,6 +136,8 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 2026-02-17: Remaining routes still on Sheets: pallet-records, staged-records, shipping-records, BOM×3, inventory-history, generic-sheet
 2026-02-27 [AUTO-SUMMARY]: Scheduling system fully shipped to production (10 PRs #11-#21, 3,360 LOC). Weekly grid, shift assignment, employee management, copy/revert, full audit trail. Audit Log Viewer (PR #22) and Spanish URL param + dark theme default (PR #23) deployed to staging, awaiting production push.
 2026-02-28 [AUTO-SUMMARY]: PRs #22-#23 still on staging awaiting Simon's verification. Session backed up with continuation prompt for audit log viewer task.
+2026-03-14 [NIGHTLY]: Relevant ecosystem notes — Vercel AI Elements 1.9 shipped agent-facing UI primitives + screenshot-aware prompt input; Vercel Flags gained stronger agent/webhook tooling; Supabase changelog highlights faster large-dataset Storage listing and stricter recursive Edge Function rate limiting. Useful for future internal assistant + rollout safety planning, no code changes made.
+2026-03-15 [NIGHTLY]: Follow-up watch items — Supabase still deprecates anon-key schema/OpenAPI access for existing projects on 2026-04-08; verify no dashboard tooling depends on client-side `/rest/v1/` schema introspection. No app code changes made.
 
 
 ## 🚨 CRITICAL: DataTable Standard (2026-02-19)
