@@ -207,15 +207,16 @@ export default function BOMExplorer() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (bust = false) => {
     setLoading(true)
+    const qs = bust ? `?t=${Date.now()}` : ''
     try {
       const [items, subs, finals, cfg, inv] = await Promise.all([
-        fetch('/api/bom/individual-items').then(r => r.json()),
-        fetch('/api/bom/sub-assemblies').then(r => r.json()),
-        fetch('/api/bom/final-assemblies').then(r => r.json()),
-        fetch('/api/bom/config').then(r => r.json()),
-        fetch('/api/inventory').then(r => r.json()).catch(() => []),
+        fetch(`/api/bom/individual-items${qs}`).then(r => r.json()),
+        fetch(`/api/bom/sub-assemblies${qs}`).then(r => r.json()),
+        fetch(`/api/bom/final-assemblies${qs}`).then(r => r.json()),
+        fetch(`/api/bom/config${qs}`).then(r => r.json()),
+        fetch(`/api/inventory${qs}`).then(r => r.json()).catch(() => []),
       ])
       setIndividualItems(items)
       setSubAssemblies(subs)
@@ -286,7 +287,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   items: IndividualItem[]
   inventoryParts: { partNumber: string; product: string }[]
   search: string
-  onRefresh: () => void
+  onRefresh: (bust?: boolean) => void
 }) {
   const { t } = useI18n()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -307,13 +308,13 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
       body: JSON.stringify({ cost_per_unit: Number(editCost) }),
     })
     setEditingId(null)
-    onRefresh()
+    onRefresh(true)
   }
 
   const deleteItem = async (id: string) => {
     if (!confirm('Delete this item? This may affect sub-assemblies and final assemblies.')) return
     await fetch(`/api/bom/individual-items/${id}`, { method: 'DELETE' })
-    onRefresh()
+    onRefresh(true)
   }
 
   const addItem = async () => {
@@ -324,7 +325,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     })
     setShowAdd(false)
     setNewItem({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
-    onRefresh()
+    onRefresh(true)
   }
 
   return (
@@ -435,7 +436,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                 <TableCell className="text-muted-foreground">{item.supplier}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <EditIndividualItemDialog item={item} onSaved={onRefresh} />
+                    <EditIndividualItemDialog item={item} onSaved={() => onRefresh(true)} />
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteItem(item.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -1231,7 +1232,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   assemblies: SubAssembly[]
   individualItems: IndividualItem[]
   search: string
-  onRefresh: () => void
+  onRefresh: (bust?: boolean) => void
 }) {
   const { t } = useI18n()
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -1249,18 +1250,18 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, new_part_number: newPart }),
     })
-    onRefresh()
+    onRefresh(true)
   }
 
   const recalculate = async (id: string) => {
     await fetch(`/api/bom/sub-assemblies/${id}/recalculate`, { method: 'POST' })
-    onRefresh()
+    onRefresh(true)
   }
 
   const deleteAssembly = async (id: string) => {
     if (!confirm('Delete this sub-assembly?')) return
     await fetch(`/api/bom/sub-assemblies/${id}`, { method: 'DELETE' })
-    onRefresh()
+    onRefresh(true)
   }
 
   const existingCategories = [...new Set(assemblies.map(a => a.category).filter((c): c is string => !!c))].sort()
@@ -1269,7 +1270,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg">Sub Assemblies (Molded Parts)</CardTitle>
-        <NewSubAssemblyDialog individualItems={individualItems} existingCategories={existingCategories} onCreated={onRefresh} />
+        <NewSubAssemblyDialog individualItems={individualItems} existingCategories={existingCategories} onCreated={() => onRefresh(true)} />
       </CardHeader>
       <CardContent>
         <Table>
@@ -1304,7 +1305,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                   <TableCell className="text-right font-semibold">{fmt(a.total_cost)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                      <EditSubAssemblyDialog assembly={a} individualItems={individualItems} existingCategories={existingCategories} onSaved={onRefresh} />
+                      <EditSubAssemblyDialog assembly={a} individualItems={individualItems} existingCategories={existingCategories} onSaved={() => onRefresh(true)} />
                       <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
                         <RefreshCw className="h-3 w-3" />
                       </Button>
@@ -1375,7 +1376,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   individualItems: IndividualItem[]
   config: BomConfig[]
   search: string
-  onRefresh: () => void
+  onRefresh: (bust?: boolean) => void
 }) {
   const { t } = useI18n()
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -1396,18 +1397,18 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, new_part_number: newPart }),
     })
-    onRefresh()
+    onRefresh(true)
   }
 
   const recalculate = async (id: string) => {
     await fetch(`/api/bom/final-assemblies/${id}/recalculate`, { method: 'POST' })
-    onRefresh()
+    onRefresh(true)
   }
 
   const deleteAssembly = async (id: string) => {
     if (!confirm('Delete this final assembly?')) return
     await fetch(`/api/bom/final-assemblies/${id}`, { method: 'DELETE' })
-    onRefresh()
+    onRefresh(true)
   }
 
   const saveConfig = async (applyToAll: boolean) => {
@@ -1420,7 +1421,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
     })
     setShowConfig(false)
     setConfigEdits({})
-    onRefresh()
+    onRefresh(true)
   }
 
   const updateOverhead = async (id: string, field: string, value: number) => {
@@ -1429,7 +1430,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [field]: value }),
     })
-    onRefresh()
+    onRefresh(true)
   }
 
   const existingProductCategories = [...new Set(assemblies.map(a => a.product_category).filter((c): c is string => !!c))].sort()
@@ -1444,7 +1445,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
             <CardTitle className="text-lg">Final Assemblies (Finished Products)</CardTitle>
           </div>
           <div className="flex gap-2">
-            <NewFinalAssemblyDialog subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onCreated={onRefresh} />
+            <NewFinalAssemblyDialog subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onCreated={() => onRefresh(true)} />
             <Dialog open={showConfig} onOpenChange={v => { setShowConfig(v); if (v) { const m: Record<string, string> = {}; config.forEach(c => { m[c.key] = String(c.value) }); setConfigEdits(m) } }}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm"><Settings className="h-4 w-4 mr-1" /> Overhead Settings</Button>
@@ -1515,7 +1516,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                     <TableCell className="text-right font-semibold text-green-400">{fmt(a.sales_target)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                        <EditFinalAssemblyDialog assembly={a} subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onSaved={onRefresh} />
+                        <EditFinalAssemblyDialog assembly={a} subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onSaved={() => onRefresh(true)} />
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
                           <RefreshCw className="h-3 w-3" />
                         </Button>
