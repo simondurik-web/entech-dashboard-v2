@@ -247,7 +247,7 @@ export default function BOMExplorer() {
               className="pl-8 w-64"
             />
           </div>
-          <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => fetchAll(true)} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
         </div>
