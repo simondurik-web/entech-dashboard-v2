@@ -10,7 +10,7 @@ export async function GET() {
       fetchBOM(GIDS.bomFinal),
       supabaseAdmin
         .from('bom_final_assemblies')
-        .select('part_number, product_category, parts_per_package, total_cost, material_cost, packaging_cost, labor_energy_cost')
+        .select('part_number, product_category, parts_per_package, total_cost, variable_cost, labor_cost_per_part')
         .order('part_number'),
     ])
 
@@ -29,9 +29,9 @@ export async function GET() {
         qtyPerPallet: row.parts_per_package || 0,
         components: [],
         totalCost: row.total_cost || 0,
-        materialCost: row.material_cost || 0,
-        packagingCost: row.packaging_cost || 0,
-        laborEnergyCost: row.labor_energy_cost || 0,
+        materialCost: row.variable_cost || 0,
+        packagingCost: 0,
+        laborEnergyCost: row.labor_cost_per_part || 0,
       }))
 
     return NextResponse.json([...sheetsBom, ...supabaseBom])
