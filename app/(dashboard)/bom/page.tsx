@@ -1245,12 +1245,21 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   const duplicate = async (id: string, partNumber: string) => {
     const newPart = prompt('New part number for the clone:', `${partNumber}-COPY`)
     if (!newPart) return
-    await fetch('/api/bom/sub-assemblies/duplicate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, new_part_number: newPart }),
-    })
-    onRefresh(true)
+    try {
+      const res = await fetch('/api/bom/sub-assemblies/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, new_part_number: newPart }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(`Clone failed: ${body.error || res.statusText}`)
+        return
+      }
+      onRefresh(true)
+    } catch (e) {
+      alert(`Clone failed: ${e instanceof Error ? e.message : 'Network error'}`)
+    }
   }
 
   const recalculate = async (id: string) => {
@@ -1392,12 +1401,21 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   const duplicate = async (id: string, partNumber: string) => {
     const newPart = prompt('New part number for the clone:', `${partNumber}-COPY`)
     if (!newPart) return
-    await fetch('/api/bom/final-assemblies/duplicate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, new_part_number: newPart }),
-    })
-    onRefresh(true)
+    try {
+      const res = await fetch('/api/bom/final-assemblies/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, new_part_number: newPart }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(`Clone failed: ${body.error || res.statusText}`)
+        return
+      }
+      onRefresh(true)
+    } catch (e) {
+      alert(`Clone failed: ${e instanceof Error ? e.message : 'Network error'}`)
+    }
   }
 
   const recalculate = async (id: string) => {

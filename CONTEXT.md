@@ -138,6 +138,13 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 2026-02-28 [AUTO-SUMMARY]: PRs #22-#23 still on staging awaiting Simon's verification. Session backed up with continuation prompt for audit log viewer task.
 2026-03-14 [NIGHTLY]: Relevant ecosystem notes — Vercel AI Elements 1.9 shipped agent-facing UI primitives + screenshot-aware prompt input; Vercel Flags gained stronger agent/webhook tooling; Supabase changelog highlights faster large-dataset Storage listing and stricter recursive Edge Function rate limiting. Useful for future internal assistant + rollout safety planning, no code changes made.
 2026-03-15 [NIGHTLY]: Follow-up watch items — Supabase still deprecates anon-key schema/OpenAPI access for existing projects on 2026-04-08; verify no dashboard tooling depends on client-side `/rest/v1/` schema introspection. No app code changes made.
+2026-03-16 [NIGHTLY]: Ecosystem watch — Vercel next-forge 6 and Flags agent tooling continue pushing agent-native app scaffolding and rollout control; Supabase changelog emphasizes AI-assisted table filters plus Storage performance/security work. No app code changes made.
+2026-03-17 [NIGHTLY]: Watch items — Vercel now supports LiteLLM server on Vercel AI Gateway, which could simplify future internal assistant routing. Supabase also formalized recursive Edge Function rate limits, so future agent/job chains should stay queue-based rather than function-to-function fan-out. No app code changes made.
+2026-03-15 [AUTO-SUMMARY]: BOM performance work shipped to staging then production after Simon approved promotion.
+- Added short-lived cache headers to BOM + inventory API routes and a longer cache on the sales API route to cut repeated serverless work.
+- Replaced BOM recalculation N+1 loops with batch upserts to reduce DB round-trips.
+- Added post-mutation cache-busting (`?t=` / bust flag) so edits still show immediately after writes.
+- Final status reported: production live with lower Vercel CPU usage.
 
 
 ## 🚨 CRITICAL: DataTable Standard (2026-02-19)
