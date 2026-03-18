@@ -6,14 +6,14 @@ Created: 2026-02-07
 
 ---
 
-## ⚠️ DEPLOYMENT WORKFLOW (MANDATORY — Simon's Requirement 2026-02-21)
+## ⚠️ DEPLOYMENT WORKFLOW (MANDATORY - Simon's Requirement 2026-02-21)
 
 **TWO branches. TWO environments. ALWAYS ask before pushing.**
 
 | Branch | URL | Purpose |
 |--------|-----|---------|
-| `staging` | `entech-dashboard-v2-git-staging-*.vercel.app` | **TEST** — all new features go here first |
-| `main` | `entech-dashboard-v2.vercel.app` | **PRODUCTION** — employees use this daily |
+| `staging` | `entech-dashboard-v2-git-staging-*.vercel.app` | **TEST** - all new features go here first |
+| `main` | `entech-dashboard-v2.vercel.app` | **PRODUCTION** - employees use this daily |
 
 ### Rules:
 1. **ALL new features → `staging` branch first**
@@ -39,7 +39,7 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 
 ## Current Status
 
-**Phase 3 Complete** — All 16 pages built with auto-refresh and photo lightbox.
+**Phase 3 Complete** - All 16 pages built with auto-refresh and photo lightbox.
 
 ### Live URLs
 - **Production:** https://entech-dashboard-v2.vercel.app
@@ -95,7 +95,7 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 - API routes proxy Google Sheets to avoid CORS
 - Auto-refresh at component level, not page level
 
-## Next Steps — ACTIVE (Supabase Migration)
+## Next Steps - ACTIVE (Supabase Migration)
 
 **Full plan:** `SUPABASE-MIGRATION-PLAN.md` (read this first!)
 
@@ -120,7 +120,7 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 2026-02-19: Google OAuth fix, admin panel fixes, super admin hardcoded, photos merge (Sheets+Supabase), sales password removed, EN/ES translation expansion.
 2026-02-17: Supabase migration plan created. DB tables already syncing. Ready to start switching API routes.
 2026-02-08: Created CONTEXT.md (was missing)
-2026-02-07 20:51: Phase 3 complete — all 16 pages with auto-refresh + lightbox
+2026-02-07 20:51: Phase 3 complete - all 16 pages with auto-refresh + lightbox
 2026-02-07 19:55: Updated HANDOFF.md with resume prompt
 2026-02-07 13:12: Project initialized with create-next-app
 
@@ -132,7 +132,7 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 
 2026-02-17: Switched 6 API routes to Supabase with Sheets fallback (sheets, inventory, production-make, all-data, sales, drawings)
 2026-02-17: Created lib/supabase.ts + lib/supabase-data.ts (same TS types as Sheets layer)
-2026-02-17: Simon added Supabase env vars to Vercel — pending deployment verification
+2026-02-17: Simon added Supabase env vars to Vercel - pending deployment verification
 2026-02-17: Remaining routes still on Sheets: pallet-records, staged-records, shipping-records, BOM×3, inventory-history, generic-sheet
 2026-02-27 [AUTO-SUMMARY]: Scheduling system fully shipped to production (10 PRs #11-#21, 3,360 LOC). Weekly grid, shift assignment, employee management, copy/revert, full audit trail. Audit Log Viewer (PR #22) and Spanish URL param + dark theme default (PR #23) deployed to staging, awaiting production push.
 2026-02-28 [AUTO-SUMMARY]: PRs #22-#23 still on staging awaiting Simon's verification. Session backed up with continuation prompt for audit log viewer task.
@@ -145,8 +145,17 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 2026-03-10 [NIGHTLY]: Research watchlist refreshed. Most relevant items for Dashboard V2 right now: Vercel AI Gateway now supports OpenAI Responses API directly; Vercel also added custom MCP server support in v0 and continues investing in agentic tooling; Supabase is leaning further into ETL/analytics/vector storage, which may matter if dashboard reporting or AI retrieval grows heavier.
 2026-03-10 [AUTO-SUMMARY]: Sales profitability qty-aware follow-up is NOT on staging yet. PR #41 (`review/sales-cost-qty-fix`) is dirty/conflicting because it was branched from `main`; clean recovery branch `review/sales-cost-qty-fix-clean` was created from current `staging` and is being manually re-ported.
 2026-03-10 [AUTO-SUMMARY]: Remaining clean-port scope called out explicitly: `app/api/sales/route.ts`, `lib/supabase-data.ts`, `app/(dashboard)/sales-customers/page.tsx`, `app/(dashboard)/sales-parts/page.tsx`, `app/(dashboard)/sales-dates/page.tsx`, plus tests. Estimate given to Simon: ~30–60 minutes if the clean port behaves.
-2026-03-10 [AUTO-SUMMARY]: Sales profitability postmortem + deployment complete. Root cause was two stacked issues: (1) cost-basis mismatch — some views displayed Total Cost while still using legacy `pl` / variable-basis profit logic; (2) unit-scale mismatch — per-unit `variableCost` / `totalCost` were compared against total order revenue without multiplying by quantity. Fixes were delivered in two stages: PR #39 corrected total-vs-variable basis mismatch, export margin aggregation, profit-per-part consistency, and zero-revenue loss-row preservation; PR #42 made sales profitability qty-aware, aligned Sales by Customer / Part / Date views and drilldowns with order-total cost math, and added regression tests for the exact screenshot-style failure cases. Staging merged at `1e3fee7`; production promoted to `main` at `17b7809` with Simon’s explicit approval after staging looked correct.
+2026-03-10 [AUTO-SUMMARY]: Sales profitability postmortem + deployment complete. Root cause was two stacked issues: (1) cost-basis mismatch — some views displayed Total Cost while still using legacy `pl` / variable-basis profit logic; (2) unit-scale mismatch — per-unit `variableCost` / `totalCost` were compared against total order revenue without multiplying by quantity. Fixes were delivered in two stages: PR #39 corrected total-vs-variable basis mismatch, export margin aggregation, profit-per-part consistency, and zero-revenue loss-row preservation; PR #42 made sales profitability qty-aware, aligned Sales by Customer / Part / Date views and drilldowns with order-total cost math, and added regression tests for the exact screenshot-style failure cases. Staging merged at `1e3fee7`; production promoted to `main` at `17b7809` with Simon's explicit approval after staging looked correct.
 2026-03-11 [NIGHTLY]: Research watchlist still favors Vercel AI Gateway + Responses API, Supabase ETL/analytics/vector bucket direction, and low-cost/offline voice systems. Brave web_search is still unconfigured on this OpenClaw host, so browser/X/direct-fetch research remains the reliable fallback path for automated briefings.
+2026-03-14 [NIGHTLY]: Relevant ecosystem notes — Vercel AI Elements 1.9 shipped agent-facing UI primitives + screenshot-aware prompt input; Vercel Flags gained stronger agent/webhook tooling; Supabase changelog highlights faster large-dataset Storage listing and stricter recursive Edge Function rate limiting. Useful for future internal assistant + rollout safety planning, no code changes made.
+2026-03-15 [NIGHTLY]: Follow-up watch items — Supabase still deprecates anon-key schema/OpenAPI access for existing projects on 2026-04-08; verify no dashboard tooling depends on client-side `/rest/v1/` schema introspection. No app code changes made.
+2026-03-15 [AUTO-SUMMARY]: BOM performance work shipped to staging then production after Simon approved promotion.
+- Added short-lived cache headers to BOM + inventory API routes and a longer cache on the sales API route to cut repeated serverless work.
+- Replaced BOM recalculation N+1 loops with batch upserts to reduce DB round-trips.
+- Added post-mutation cache-busting (`?t=` / bust flag) so edits still show immediately after writes.
+- Final status reported: production live with lower Vercel CPU usage.
+2026-03-16 [NIGHTLY]: Ecosystem watch — Vercel next-forge 6 and Flags agent tooling continue pushing agent-native app scaffolding and rollout control; Supabase changelog emphasizes AI-assisted table filters plus Storage performance/security work. No app code changes made.
+2026-03-17 [NIGHTLY]: Watch items — Vercel now supports LiteLLM server on Vercel AI Gateway, which could simplify future internal assistant routing. Supabase also formalized recursive Edge Function rate limits, so future agent/job chains should stay queue-based rather than function-to-function fan-out. No app code changes made.
 
 
 ## 🚨 CRITICAL: DataTable Standard (2026-02-19)
@@ -154,7 +163,7 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 **EVERY table in the dashboard MUST have the FULL DataTable toolbar:**
 - Search bar 🔍
 - Reset button 🔄
-- Views button (save/share views — see below)
+- Views button (save/share views - see below)
 - Columns button (hide/show)
 - Export button (CSV + Excel)
 - Sort on every column ↕️
@@ -171,10 +180,10 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 
 ### Views Feature (Priority: HIGH)
 The "Views" button (currently shows "Soon") should allow:
-1. **Save current view** — column order, hidden columns, sort, filters → saved as a named view
-2. **Load a saved view** — click to instantly apply a saved configuration
-3. **Share views** — users can share their views with others
-4. **Per-user views** — each user sees their own + shared views
+1. **Save current view** - column order, hidden columns, sort, filters → saved as a named view
+2. **Load a saved view** - click to instantly apply a saved configuration
+3. **Share views** - users can share their views with others
+4. **Per-user views** - each user sees their own + shared views
 5. **Storage:** Supabase `saved_views` table with: id, user_id, page, name, config (JSON), shared (bool), created_at
 6. **Config JSON:** { columnOrder, hiddenColumns, sortKey, sortDir, filters }
 
@@ -193,19 +202,19 @@ The "Views" button (currently shows "Soon") should allow:
 - Idea: dedicated Reports page with saved presets (Monthly Sales, Inventory, Full Export)
 - Each preset generates a multi-tab Excel with custom formatting, totals, dashboard tab
 - Options discussed: per-section buttons, global report page, templates, scheduled emails
-- Simon picked Option 3 (templates) as best approach — to be built later
+- Simon picked Option 3 (templates) as best approach - to be built later
 
 2026-02-24 [AUTO-SUMMARY]: Entech Dashboard V2 major feature day
 - Automatic Notifications system: Supabase tables + cron endpoint + admin UI, OpenClaw cron every 5 min for urgent/staged order change detection with push notifications
 - Requested Date & Due Date columns added to Orders page
-- Extra Columns Toggle (`defaultHidden` pattern) added across all order pages: Orders, Need to Package, Staged, Shipped — with shared column registry
+- Extra Columns Toggle (`defaultHidden` pattern) added across all order pages: Orders, Need to Package, Staged, Shipped - with shared column registry
 - Pallet Load Calculator: SVG viewBox DOOR label cutoff fix + landscape PDF export with forced light colors
 - Sales by Date MoM/YoY: 6 comparison columns (Revenue MoM/YoY, P/L MoM/YoY, Margin MoM/YoY), expandable customer rows with sparkline charts, chart tooltip with MoM/YoY data
 - Count-up animations fixed on stat cards (AnimatedNumber component now starts from 0 on mount, 2.5s duration)
 - Column labels renamed: "Rev MoM" → "Revenue MoM", "Rev YoY" → "Revenue YoY"
 - All features deployed to both staging and production
 
-## ⚠️ CODE REVIEW RULE (MANDATORY — Simon's Requirement 2026-02-25)
+## ⚠️ CODE REVIEW RULE (MANDATORY - Simon's Requirement 2026-02-25)
 
 **ALL code changes must go through the agent fleet review pipeline before pushing.**
 
@@ -242,10 +251,10 @@ The "Views" button (currently shows "Soon") should allow:
 9. Simon approves → merge staging to main
 10. **NEVER push directly to staging or main**
 2026-02-25 [AUTO-SUMMARY]: Migrated all Google Sheets access from public gviz to authenticated API v4 (PR #6)
-- Critical bug found by Codex review: header row included as data — fixed in `toGvizShape`
-- Gemini review found 4 more gviz routes (sales, quotes, cron) — all migrated to centralized `fetchSheetData`
+- Critical bug found by Codex review: header row included as data - fixed in `toGvizShape`
+- Gemini review found 4 more gviz routes (sales, quotes, cron) - all migrated to centralized `fetchSheetData`
 - Root cause: Simon removed public link sharing, breaking gviz endpoint; fix uses service account auth
 - TypeScript compiles clean; PR #6 ready for Vercel preview → staging → production
-- Claude Code OAuth expired — fell back to Codex + Gemini for reviews
-- Exec policy changed to "full" — production deploys now gated by conversation approval
+- Claude Code OAuth expired - fell back to Codex + Gemini for reviews
+- Exec policy changed to "full" - production deploys now gated by conversation approval
 - Deployment approval rule established: must message Simon and get explicit "yes" before pushing to main

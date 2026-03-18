@@ -31,22 +31,30 @@ export async function recalculateSubAssembly(subAssemblyId: string) {
 
   // First pass: non-scrap components
   let nonScrapTotal = 0
+  const nonScrapUpdates: { id: string; cost: number }[] = []
   for (const comp of components) {
     if (comp.is_scrap) continue
     const unitCost = costLookup[comp.component_part_number] || 0
     const cost = Number(comp.quantity) * unitCost
-    await supabaseAdmin.from('bom_sub_assembly_components').update({ cost }).eq('id', comp.id)
+    nonScrapUpdates.push({ id: comp.id, cost })
     nonScrapTotal += cost
+  }
+  if (nonScrapUpdates.length > 0) {
+    await supabaseAdmin.from('bom_sub_assembly_components').upsert(nonScrapUpdates, { onConflict: 'id' })
   }
 
   // Second pass: scrap components
   let scrapTotal = 0
+  const scrapUpdates: { id: string; cost: number }[] = []
   for (const comp of components) {
     if (!comp.is_scrap) continue
     const rate = Number(comp.scrap_rate) || 0.10
     const cost = nonScrapTotal * rate
-    await supabaseAdmin.from('bom_sub_assembly_components').update({ cost }).eq('id', comp.id)
+    scrapUpdates.push({ id: comp.id, cost })
     scrapTotal += cost
+  }
+  if (scrapUpdates.length > 0) {
+    await supabaseAdmin.from('bom_sub_assembly_components').upsert(scrapUpdates, { onConflict: 'id' })
   }
 
   const material_cost = nonScrapTotal + scrapTotal
@@ -108,13 +116,17 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
 
   // Update component costs
   let componentTotal = 0
+  const componentUpdates: { id: string; cost: number }[] = []
   for (const comp of components) {
     const unitCost = comp.component_source === 'sub_assembly'
       ? (subCosts[comp.component_part_number] || 0)
       : (indCosts[comp.component_part_number] || 0)
     const cost = Number(comp.quantity) * unitCost
-    await supabaseAdmin.from('bom_final_assembly_components').update({ cost }).eq('id', comp.id)
+    componentUpdates.push({ id: comp.id, cost })
     componentTotal += cost
+  }
+  if (componentUpdates.length > 0) {
+    await supabaseAdmin.from('bom_final_assembly_components').upsert(componentUpdates, { onConflict: 'id' })
   }
 
   const labor_cost_per_part = Number(assembly.parts_per_hour) > 0
