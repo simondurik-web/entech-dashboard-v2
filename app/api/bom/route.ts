@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { fetchBOM, GIDS } from '@/lib/google-sheets'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const [sheetsBom, supabaseResult] = await Promise.all([
@@ -11,6 +13,10 @@ export async function GET() {
         .select('part_number, product_category, parts_per_package, total_cost, material_cost, packaging_cost, labor_energy_cost')
         .order('part_number'),
     ])
+
+    if (supabaseResult.error) {
+      console.error('Supabase BOM query error:', supabaseResult.error)
+    }
 
     // Merge Supabase final assemblies that aren't already in Sheets
     const sheetsPartNumbers = new Set(sheetsBom.map((b) => b.partNumber))
