@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS labels (
   printed_by UUID REFERENCES auth.users(id),
   printed_at TIMESTAMPTZ,
   error_message TEXT,
+  -- Product details for label printout
+  tire TEXT,
+  hub TEXT,
+  hub_style TEXT,
+  bearings TEXT,
+  po_number TEXT,
+  if_number TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
