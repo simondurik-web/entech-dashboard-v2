@@ -196,7 +196,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[95vw] max-h-[85vh]">
+      <DialogContent className="!max-w-[95vw] w-[95vw] max-h-[85vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="size-5" />

@@ -25,8 +25,28 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
   const handlePrint = () => {
     // Mark as printed via callback
     if (onPrint) onPrint(label)
-    // Always open the browser print dialog so the user can print/save as PDF
-    setTimeout(() => window.print(), 300)
+
+    // Clone the label into a root-level container so it's outside the Radix portal
+    // This ensures the print CSS can show it while hiding everything else
+    const source = document.getElementById('label-print-area')
+    if (!source) return
+
+    let printRoot = document.getElementById('label-print-root')
+    if (!printRoot) {
+      printRoot = document.createElement('div')
+      printRoot.id = 'label-print-root'
+      document.body.appendChild(printRoot)
+    }
+    printRoot.innerHTML = ''
+    const clone = source.cloneNode(true) as HTMLElement
+    clone.id = 'label-print-clone'
+    printRoot.appendChild(clone)
+
+    setTimeout(() => {
+      window.print()
+      // Clean up after print dialog closes
+      setTimeout(() => { if (printRoot) printRoot.innerHTML = '' }, 1000)
+    }, 300)
   }
 
   return (
@@ -163,22 +183,19 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
       {/* eslint-disable-next-line react/no-unknown-property */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page { size: letter landscape; margin: 0.4in; }
-          html, body { margin: 0 !important; padding: 0 !important; }
-          body * { visibility: hidden !important; display: none !important; }
-          #label-print-area,
-          #label-print-area * {
-            visibility: visible !important;
-            display: revert !important;
-          }
-          #label-print-area {
+          @page { size: letter landscape; margin: 0.5in; }
+          /* Hide everything except the print root */
+          body > *:not(#label-print-root) { display: none !important; visibility: hidden !important; }
+          body { margin: 0 !important; padding: 0 !important; background: white !important; }
+          #label-print-root { display: block !important; visibility: visible !important; }
+          #label-print-root * { visibility: visible !important; }
+          /* The cloned label */
+          #label-print-clone {
             position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 9.7in !important;
-            max-width: 9.7in !important;
-            height: 7.2in !important;
-            max-height: 7.2in !important;
+            left: 0.5in !important;
+            top: 0.5in !important;
+            width: 9in !important;
+            height: 6.5in !important;
             overflow: hidden !important;
             border: 3px solid black !important;
             background: white !important;
@@ -187,41 +204,25 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
             padding: 0 !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
-            font-size: 14px !important;
-            display: flex !important;
-            flex-direction: row !important;
+            font-size: 16px !important;
           }
-          /* Two-column layout: left = header+QR, right = all fields */
-          #label-print-area [data-label-header] {
-            min-height: auto !important;
-            padding: 16px 20px !important;
-            flex-shrink: 0 !important;
-            border-bottom: none !important;
-            border-right: 2px solid black !important;
-            width: 3in !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 8px !important;
+          #label-print-clone [data-label-header] {
+            padding: 20px 24px !important;
+            border-bottom: 2px solid black !important;
           }
-          #label-print-area [data-label-header] svg {
-            width: 160px !important;
-            height: 160px !important;
+          #label-print-clone [data-label-header] svg {
+            width: 120px !important;
+            height: 120px !important;
           }
-          #label-print-area [data-line-label] { font-size: 20px !important; }
-          #label-print-area [data-line-value] { font-size: 56px !important; }
-          #label-print-area [data-label-body] {
-            padding: 12px 24px !important;
-            flex: 1 !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: center !important;
+          #label-print-clone [data-line-label] { font-size: 24px !important; }
+          #label-print-clone [data-line-value] { font-size: 52px !important; }
+          #label-print-clone [data-label-body] {
+            padding: 16px 32px !important;
           }
-          #label-print-area [data-label-row] {
-            padding: 3px 0 !important;
-            font-size: 14px !important;
-            line-height: 1.6 !important;
+          #label-print-clone [data-label-row] {
+            padding: 4px 0 !important;
+            font-size: 16px !important;
+            line-height: 1.7 !important;
           }
         }
       `}} />
