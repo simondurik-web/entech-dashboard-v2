@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/auth-context'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
+import { AssigneeEditor } from '@/components/AssigneeEditor'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -63,7 +64,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -187,7 +188,25 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
     },
     { key: 'hubMold', label: t('table.hubMold'), sortable: true, filterable: true },
     { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
-    { key: 'assignedTo', label: t('table.assignedTo'), sortable: true, filterable: true },
+    {
+      key: 'assignedTo',
+      label: t('table.assignedTo'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as PackageOrder
+        if (onAssigneeUpdate) {
+          return (
+            <AssigneeEditor
+              line={order.line}
+              currentAssignee={String(v || '')}
+              onUpdated={onAssigneeUpdate}
+            />
+          )
+        }
+        return String(v || '')
+      },
+    },
     {
       key: 'internalStatus',
       label: t('table.status'),
@@ -273,6 +292,12 @@ function NeedToPackagePageContent() {
     }))
   }, [])
 
+  const handleAssigneeUpdate = useCallback((line: string, newAssignee: string) => {
+    setOrders(prev => prev.map(o =>
+      o.line === line ? { ...o, assignedTo: newAssignee } : o
+    ))
+  }, [])
+
   const handleLabelClick = useCallback(async (order: PackageOrder) => {
     setLabelWarning(null)
     // Validate parts_per_package
@@ -323,7 +348,7 @@ function NeedToPackagePageContent() {
   ], [t])
 
   const showLabels = canAccess('/labels')
-  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined), [t, handlePriorityUpdate, showLabels, handleLabelClick])
+  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, handleAssigneeUpdate), [t, handlePriorityUpdate, showLabels, handleLabelClick, handleAssigneeUpdate])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
