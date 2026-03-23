@@ -9,6 +9,14 @@ export interface LabelData {
   packaging_type?: string
   qr_data?: string
   label_status: 'pending' | 'generated' | 'emailed' | 'printed' | 'error'
+  // Product details (for label printout)
+  tire?: string
+  hub?: string
+  hub_style?: string
+  bearings?: string
+  po_number?: string
+  if_number?: string
+  // Tracking
   assigned_to?: string
   generated_by?: string
   generated_at?: string

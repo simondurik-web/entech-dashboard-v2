@@ -29,79 +29,114 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[480px] p-4">
         <DialogHeader>
-          <DialogTitle>{t('labels.preview')}</DialogTitle>
+          <DialogTitle className="flex items-center justify-between">
+            {t('labels.preview')}
+            <Badge className={getLabelStatusColor(label.label_status)}>
+              {label.label_status.toUpperCase()}
+            </Badge>
+          </DialogTitle>
         </DialogHeader>
 
-        {/* Printable label area */}
-        <div id="label-print-area" className="border-2 border-dashed rounded-lg p-6 space-y-4 bg-white text-black dark:bg-white">
-          {/* Header */}
-          <div className="text-center border-b-2 border-black pb-3">
-            <h2 className="text-lg font-bold tracking-wider">{t('labels.palletLabel')}</h2>
-            <p className="text-xs text-gray-500 mt-1">Entech Molding</p>
-          </div>
-
-          {/* Customer + Part */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-[10px] uppercase text-gray-500 font-medium">{t('table.customer')}</p>
-              <p className="text-sm font-bold">{label.customer_name}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase text-gray-500 font-medium">{t('table.partNumber')}</p>
-              <p className="text-sm font-bold">{label.part_number}</p>
-            </div>
-          </div>
-
-          {/* Quantities */}
-          <div className="grid grid-cols-3 gap-3 bg-gray-50 rounded-md p-3">
-            <div className="text-center">
-              <p className="text-[10px] uppercase text-gray-500">{t('labels.orderQty')}</p>
-              <p className="text-lg font-bold">{label.order_qty.toLocaleString()}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] uppercase text-gray-500">{t('labels.partsInPackage')}</p>
-              <p className="text-lg font-bold">{label.parts_per_package.toLocaleString()}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] uppercase text-gray-500">{t('table.packages')}</p>
-              <p className="text-lg font-bold">{label.num_packages}</p>
-            </div>
-          </div>
-
-          {/* QR Code + Line */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase text-gray-500">{t('table.line')}</p>
-              <p className="text-sm font-bold">{label.order_line}</p>
-              {label.packaging_type && (
-                <>
-                  <p className="text-[10px] uppercase text-gray-500 mt-2">{t('table.packaging')}</p>
-                  <p className="text-sm">{label.packaging_type}</p>
-                </>
-              )}
-              {label.generated_at && (
-                <>
-                  <p className="text-[10px] uppercase text-gray-500 mt-2">{t('labels.generatedAt')}</p>
-                  <p className="text-xs">{new Date(label.generated_at).toLocaleDateString()}</p>
-                </>
+        {/* ===== PALLET LABEL — exact match to Google Sheets template ===== */}
+        <div
+          id="label-print-area"
+          className="bg-white text-black dark:bg-white dark:text-black"
+          style={{
+            fontFamily: "'Calibri', 'Segoe UI', sans-serif",
+            border: '3px solid black',
+            width: '100%',
+            maxWidth: '420px',
+            margin: '0 auto',
+          }}
+        >
+          {/* === HEADER: QR Code + Line Number === */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '100px 1fr 1fr',
+              alignItems: 'center',
+              borderBottom: '2px solid black',
+              padding: '10px 12px',
+              minHeight: '90px',
+            }}
+          >
+            {/* QR Code — top left */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {label.qr_data ? (
+                <QRCodeSVG value={label.qr_data} size={80} level="M" />
+              ) : (
+                <div style={{ width: 80, height: 80, border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#999' }}>
+                  No QR
+                </div>
               )}
             </div>
-            {label.qr_data && (
-              <div className="shrink-0">
-                <QRCodeSVG value={label.qr_data} size={96} level="M" />
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* Status */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">{t('labels.status')}:</span>
-          <Badge className={getLabelStatusColor(label.label_status)}>
-            {label.label_status.toUpperCase()}
-          </Badge>
+            {/* Line Number label */}
+            <div style={{ fontSize: '18px', fontWeight: 'bold', paddingLeft: '8px' }}>
+              Line Number:
+            </div>
+
+            {/* Line Number value — largest element */}
+            <div style={{ fontSize: '28px', fontWeight: 'bold', textAlign: 'center' }}>
+              {label.order_line}
+            </div>
+          </div>
+
+          {/* === BODY: Field rows === */}
+          <div style={{ padding: '4px 16px 8px' }}>
+            {/* Customer */}
+            <LabelRow label="Customer:" value={label.customer_name} />
+
+            {/* Part Number */}
+            <LabelRow label="Part Number:" value={label.part_number} />
+
+            {/* Order Quantity */}
+            <LabelRow label="Order Quantity:" value={label.order_qty?.toLocaleString()} />
+
+            {/* Tire */}
+            <LabelRow label="Tire:" value={label.tire || '—'} />
+
+            {/* Hub */}
+            <LabelRow label="Hub:" value={label.hub || '—'} />
+
+            {/* Hub Style */}
+            <LabelRow label="Hub Style:" value={label.hub_style || '—'} />
+
+            {/* Bearings */}
+            <LabelRow label="Bearings:" value={label.bearings || '—'} />
+
+            {/* PO Number */}
+            <LabelRow label="PO Number:" value={label.po_number || '—'} />
+
+            {/* IF# */}
+            <LabelRow label="IF#" value={label.if_number || '—'} />
+
+            {/* Parts per Package */}
+            <LabelRow label="Parts per Package:" value={label.parts_per_package?.toLocaleString()} />
+
+            {/* Package number */}
+            <LabelRow label="Package number:" value={`of ${label.num_packages}`} />
+
+            {/* Type of packaging */}
+            <LabelRow label="Type of packaging" value={label.packaging_type || '—'} />
+
+            {/* Carefully Packaged by — blank for handwriting */}
+            <LabelRow label="Carefully Packaged by 🤗 :" value="" writeable />
+
+            {/* Date — with slash placeholders */}
+            <LabelRow label="Date:" value="       /       /       " writeable />
+
+            {/* Spacer before Weight/Dimension */}
+            <div style={{ height: '8px' }} />
+
+            {/* Weight — blank for handwriting */}
+            <LabelRow label="Weight:" value="" writeable />
+
+            {/* Dimension — with slash placeholders */}
+            <LabelRow label="Dimension:" value="       /       /       " writeable />
+          </div>
         </div>
 
         <DialogFooter>
@@ -121,27 +156,61 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
         </DialogFooter>
       </DialogContent>
 
-      {/* Print styles */}
+      {/* Print styles — only the label prints */}
       <style jsx global>{`
         @media print {
           body > *:not([data-slot="dialog-overlay"]) { display: none !important; }
-          [data-slot="dialog-overlay"] { position: static !important; }
+          [data-slot="dialog-overlay"] { position: static !important; background: none !important; }
           [data-slot="dialog-content"] {
             position: static !important;
             box-shadow: none !important;
             border: none !important;
             max-width: 100% !important;
             padding: 0 !important;
-          }
-          #label-print-area {
-            border: 2px solid black !important;
-            background: white !important;
-            color: black !important;
+            background: none !important;
           }
           [data-slot="dialog-content"] > *:not(#label-print-area) { display: none !important; }
-          #label-print-area { display: block !important; }
+          #label-print-area {
+            display: block !important;
+            border: 3px solid black !important;
+            background: white !important;
+            color: black !important;
+            width: 4in !important;
+            max-width: 4in !important;
+            margin: 0 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
     </Dialog>
+  )
+}
+
+/* === Label field row component — matches the two-column Google Sheets layout === */
+function LabelRow({ label, value, writeable }: { label: string; value?: string; writeable?: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        padding: '2px 0',
+        fontSize: '13px',
+        lineHeight: '1.7',
+      }}
+    >
+      <span style={{ flex: '0 0 48%', textAlign: 'left' }}>{label}</span>
+      <span
+        style={{
+          flex: '0 0 52%',
+          textAlign: 'center',
+          borderBottom: writeable ? '1px solid #999' : undefined,
+          minHeight: writeable ? '20px' : undefined,
+        }}
+      >
+        {value}
+      </span>
+    </div>
   )
 }

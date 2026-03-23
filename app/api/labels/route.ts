@@ -102,6 +102,13 @@ export async function POST(req: NextRequest) {
         packaging_type: order.packaging || order.packaging_type || null,
         qr_data: qrData,
         label_status: 'generated',
+        // Product details for label printout
+        tire: order.tire || null,
+        hub: order.hub || null,
+        hub_style: order.hub_style || order.hub_mold || null,
+        bearings: order.bearings || null,
+        po_number: order.po_number || null,
+        if_number: order.if_number || null,
         assigned_to: order.assigned_to || order.assignedTo || null,
         generated_by: userId || null,
         generated_at: new Date().toISOString(),
