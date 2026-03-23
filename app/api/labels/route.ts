@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { order_lines } = body as { order_lines: string[] }
+  const { order_lines, custom_parts_per_package } = body as {
+    order_lines: string[]
+    custom_parts_per_package?: Record<string, number>
+  }
 
   if (!order_lines?.length) {
     return NextResponse.json({ error: 'order_lines array is required' }, { status: 400 })
@@ -50,7 +53,12 @@ export async function POST(req: NextRequest) {
     const orderQty = Number(order.order_qty || order.orderQty || 0)
     let partsPerPackage = Number(order.parts_per_package || order.partsPerPackage || 0)
 
-    // Check customer_part_mappings if parts_per_package is missing
+    // Apply custom parts_per_package override if provided
+    if (custom_parts_per_package?.[orderLine]) {
+      partsPerPackage = custom_parts_per_package[orderLine]
+    }
+
+    // Check customer_part_mappings if parts_per_package is still missing
     if (partsPerPackage <= 0) {
       const { data: mapping } = await supabaseAdmin
         .from('customer_part_mappings')
@@ -79,14 +87,14 @@ export async function POST(req: NextRequest) {
     const { numPackages, lastPackageQty } = calculatePackages(orderQty, partsPerPackage)
     const qrData = generateQrData(orderLine, customerName, partNumber)
 
-    // Check if labels already exist for this order line
+    // Check if labels already exist — skip duplicate check (caller handles delete for regenerate)
     const { data: existing } = await supabaseAdmin
       .from('labels')
       .select('id')
       .eq('order_line', orderLine)
 
     if (existing && existing.length > 0) {
-      results.push({ order_line: orderLine, error: 'Labels already exist for this order line' })
+      results.push({ order_line: orderLine, error: 'Labels already exist for this order line. Delete first to regenerate.' })
       continue
     }
 
@@ -102,7 +110,6 @@ export async function POST(req: NextRequest) {
         packaging_type: order.packaging || order.packaging_type || null,
         qr_data: qrData,
         label_status: 'generated',
-        // Product details for label printout
         tire: order.tire || null,
         hub: order.hub || null,
         hub_style: order.hub_style || order.hub_mold || null,
@@ -120,18 +127,17 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    // Log activity
     if (labels?.[0]) {
+      const isCustom = custom_parts_per_package?.[orderLine] ? ' (custom packaging)' : ''
       await supabaseAdmin.from('label_activity_log').insert({
         label_id: labels[0].id,
         order_line: orderLine,
         action: 'generated',
         status: 'success',
-        notes: `Generated label with ${numPackages} packages (last package: ${lastPackageQty} parts)`,
+        notes: `Generated label with ${numPackages} packages (last package: ${lastPackageQty} parts)${isCustom}`,
         created_by: userId || null,
       })
 
-      // Update dashboard_orders label_status
       await supabaseAdmin
         .from('dashboard_orders')
         .update({ label_status: 'generated' })
@@ -142,4 +148,42 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ results })
+}
+
+export async function DELETE(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const orderLine = searchParams.get('order_line')
+
+  if (!orderLine) {
+    return NextResponse.json({ error: 'order_line query parameter is required' }, { status: 400 })
+  }
+
+  const userId = req.headers.get('x-user-id') || undefined
+
+  // Log the deletion
+  const { data: existing } = await supabaseAdmin
+    .from('labels')
+    .select('id, order_line')
+    .eq('order_line', orderLine)
+
+  if (existing && existing.length > 0) {
+    for (const label of existing) {
+      await supabaseAdmin.from('label_activity_log').insert({
+        label_id: label.id,
+        order_line: label.order_line,
+        action: 'deleted',
+        status: 'success',
+        notes: 'Deleted for regeneration',
+        created_by: userId || null,
+      })
+    }
+  }
+
+  const { error } = await supabaseAdmin
+    .from('labels')
+    .delete()
+    .eq('order_line', orderLine)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }

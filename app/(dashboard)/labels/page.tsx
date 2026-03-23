@@ -248,7 +248,14 @@ function LabelsPageContent() {
       <GenerateLabelsDialog
         open={showGenerate}
         onOpenChange={setShowGenerate}
-        onGenerated={fetchLabels}
+        onGenerated={(label) => {
+          fetchLabels()
+          // If a label was returned, open the preview
+          if (label) {
+            setPreviewLabel(label)
+            setShowPreview(true)
+          }
+        }}
       />
     </div>
   )
