@@ -17,6 +17,11 @@ import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
+import { usePermissions } from '@/lib/use-permissions'
+import { useAuth } from '@/lib/auth-context'
+import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import type { LabelData } from '@/lib/label-utils'
+import { Tag } from 'lucide-react'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -58,7 +63,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -202,6 +207,23 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
         return `${days}d`
       },
     },
+    // Label button column
+    ...(onLabelClick ? [{
+      key: 'labelAction' as keyof PackageRow & string,
+      label: '🏷️',
+      render: (_v: PackageRow[keyof PackageRow], row: PackageRow) => {
+        const order = row as unknown as PackageOrder
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); onLabelClick(order) }}
+            className="rounded p-1 hover:bg-muted transition-colors"
+            title="Label"
+          >
+            <Tag className="size-4" />
+          </button>
+        )
+      },
+    }] as ColumnDef<PackageRow>[] : []),
     // Extra columns — hidden by default
     ...getExtraOrderColumns<PackageRow>(new Set([
       'category', 'requestedDate', 'effectivePriority', 'line', 'customer', 'ifNumber',
@@ -231,6 +253,8 @@ export default function NeedToPackagePage() {
 
 function NeedToPackagePageContent() {
   const { t } = useI18n()
+  const { user } = useAuth()
+  const { canAccess } = usePermissions()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<PackageOrder[]>([])
@@ -238,6 +262,9 @@ function NeedToPackagePageContent() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+  const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
+  const [showLabelPreview, setShowLabelPreview] = useState(false)
+  const [labelWarning, setLabelWarning] = useState<string | null>(null)
 
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
     setOrders(prev => prev.map(o => {
@@ -246,6 +273,48 @@ function NeedToPackagePageContent() {
     }))
   }, [])
 
+  const handleLabelClick = useCallback(async (order: PackageOrder) => {
+    setLabelWarning(null)
+    // Validate parts_per_package
+    if (!order.partsPerPackage || order.partsPerPackage <= 0) {
+      setLabelWarning(t('labels.missingPackagingInfo').replace('{partNumber}', order.partNumber))
+      return
+    }
+
+    try {
+      // Check if label already exists
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(order.line)}`)
+      const existing = await res.json()
+
+      if (Array.isArray(existing) && existing.length > 0) {
+        setLabelPreview(existing[0])
+        setShowLabelPreview(true)
+      } else {
+        // Generate new label
+        const genRes = await fetch('/api/labels', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(user ? { 'x-user-id': user.id } : {}),
+          },
+          body: JSON.stringify({ order_lines: [order.line] }),
+        })
+        const genData = await genRes.json()
+        const result = genData.results?.[0]
+        if (result?.error) {
+          setLabelWarning(result.error)
+          return
+        }
+        if (result?.labels?.[0]) {
+          setLabelPreview(result.labels[0])
+          setShowLabelPreview(true)
+        }
+      }
+    } catch (e) {
+      setLabelWarning((e as Error).message)
+    }
+  }, [user, t])
+
   const FILTERS = useMemo(() => [
     { key: 'all' as const, label: t('category.all') },
     { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
@@ -253,7 +322,8 @@ function NeedToPackagePageContent() {
     { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
   ], [t])
 
-  const columns = useMemo(() => getColumns(t, handlePriorityUpdate), [t, handlePriorityUpdate])
+  const showLabels = canAccess('/labels')
+  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined), [t, handlePriorityUpdate, showLabels, handleLabelClick])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -382,6 +452,13 @@ function NeedToPackagePageContent() {
         <p className="text-center text-destructive py-10">{error}</p>
       )}
 
+      {labelWarning && (
+        <div className="mb-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-400">
+          ⚠️ {labelWarning}
+          <button onClick={() => setLabelWarning(null)} className="ml-2 text-xs underline">dismiss</button>
+        </div>
+      )}
+
       {!loading && !error && (
         <DataTable
           table={table}
@@ -443,6 +520,12 @@ function NeedToPackagePageContent() {
           }}
         />
       )}
+
+      <LabelPreviewModal
+        label={labelPreview}
+        open={showLabelPreview}
+        onOpenChange={setShowLabelPreview}
+      />
     </div>
   )
 }
