@@ -196,7 +196,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh]">
+      <DialogContent className="max-w-[95vw] w-[95vw] max-h-[85vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="size-5" />
@@ -260,7 +260,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
                       onClick={() => setExpandedLine(isExpanded ? null : o.line)}
                     >
                       <td className="px-3 py-2 font-medium">{o.line}</td>
-                      <td className="px-3 py-2 truncate max-w-[160px]">{o.customer}</td>
+                      <td className="px-3 py-2">{o.customer}</td>
                       <td className="px-3 py-2">{o.partNumber}</td>
                       <td className="px-3 py-2 text-muted-foreground">{o.poNumber || '—'}</td>
                       <td className="px-3 py-2 text-muted-foreground">{o.ifNumber || '—'}</td>
