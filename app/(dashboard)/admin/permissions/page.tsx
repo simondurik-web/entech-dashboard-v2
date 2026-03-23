@@ -25,10 +25,14 @@ const ALL_MENU_PATHS = [
   '/admin/users', '/admin/permissions',
   '/phil-assistant',
   '/scheduling',
+  '/labels',
   // Feature permissions (not page paths)
   'manage_priority',
   'view_inventory_values',
   '/scheduling:edit',
+  'labels:generate',
+  'labels:print',
+  'labels:settings',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -60,6 +64,10 @@ const PATH_LABELS: Record<string, string> = {
   'view_inventory_values': '💰 Inventory Values',
   '/scheduling': '📅 Scheduling',
   '/scheduling:edit': '📅 Scheduling: Edit',
+  '/labels': 'Labels',
+  'labels:generate': '🏷️ Generate Labels',
+  'labels:print': '🖨️ Print Labels',
+  'labels:settings': '⚙️ Label Settings',
 }
 
 export default function AdminPermissionsPage() {
