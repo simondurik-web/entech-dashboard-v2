@@ -159,58 +159,28 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
         </DialogFooter>
       </DialogContent>
 
-      {/* Print styles — only the label prints, full page */}
-      <style jsx global>{`
+      {/* Print styles — injected as plain <style> so it works in App Router */}
+      {/* eslint-disable-next-line react/no-unknown-property */}
+      <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page {
-            size: letter;
-            margin: 0.5in;
-          }
+          @page { size: letter; margin: 0.5in; }
           body * { visibility: hidden !important; }
-          #label-print-area,
-          #label-print-area * {
-            visibility: visible !important;
-          }
+          #label-print-area, #label-print-area * { visibility: visible !important; }
           #label-print-area {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 7.5in !important;
-            max-width: 7.5in !important;
-            min-height: 9.5in !important;
-            border: 3px solid black !important;
-            background: white !important;
-            color: black !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            font-size: 18px !important;
+            position: fixed !important; left: 0 !important; top: 0 !important;
+            width: 7.5in !important; max-width: 7.5in !important; min-height: 9.5in !important;
+            border: 3px solid black !important; background: white !important; color: black !important;
+            margin: 0 !important; padding: 0 !important;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 18px !important;
           }
-          #label-print-area [data-label-header] {
-            min-height: 160px !important;
-            padding: 24px 32px !important;
-          }
-          #label-print-area [data-label-header] svg {
-            width: 140px !important;
-            height: 140px !important;
-          }
-          #label-print-area [data-line-label] {
-            font-size: 28px !important;
-          }
-          #label-print-area [data-line-value] {
-            font-size: 64px !important;
-          }
-          #label-print-area [data-label-body] {
-            padding: 16px 40px 24px !important;
-          }
-          #label-print-area [data-label-row] {
-            padding: 6px 0 !important;
-            font-size: 18px !important;
-            line-height: 1.8 !important;
-          }
+          #label-print-area [data-label-header] { min-height: 160px !important; padding: 24px 32px !important; }
+          #label-print-area [data-label-header] svg { width: 140px !important; height: 140px !important; }
+          #label-print-area [data-line-label] { font-size: 28px !important; }
+          #label-print-area [data-line-value] { font-size: 64px !important; }
+          #label-print-area [data-label-body] { padding: 16px 40px 24px !important; }
+          #label-print-area [data-label-row] { padding: 6px 0 !important; font-size: 18px !important; line-height: 1.8 !important; }
         }
-      `}</style>
+      `}} />
     </Dialog>
   )
 }
