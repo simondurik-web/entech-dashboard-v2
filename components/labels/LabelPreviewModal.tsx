@@ -163,22 +163,66 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
       {/* eslint-disable-next-line react/no-unknown-property */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page { size: letter; margin: 0.5in; }
-          body * { visibility: hidden !important; }
-          #label-print-area, #label-print-area * { visibility: visible !important; }
-          #label-print-area {
-            position: fixed !important; left: 0 !important; top: 0 !important;
-            width: 7.5in !important; max-width: 7.5in !important; min-height: 9.5in !important;
-            border: 3px solid black !important; background: white !important; color: black !important;
-            margin: 0 !important; padding: 0 !important;
-            -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 18px !important;
+          @page { size: letter landscape; margin: 0.4in; }
+          html, body { margin: 0 !important; padding: 0 !important; }
+          body * { visibility: hidden !important; display: none !important; }
+          #label-print-area,
+          #label-print-area * {
+            visibility: visible !important;
+            display: revert !important;
           }
-          #label-print-area [data-label-header] { min-height: 160px !important; padding: 24px 32px !important; }
-          #label-print-area [data-label-header] svg { width: 140px !important; height: 140px !important; }
-          #label-print-area [data-line-label] { font-size: 28px !important; }
-          #label-print-area [data-line-value] { font-size: 64px !important; }
-          #label-print-area [data-label-body] { padding: 16px 40px 24px !important; }
-          #label-print-area [data-label-row] { padding: 6px 0 !important; font-size: 18px !important; line-height: 1.8 !important; }
+          #label-print-area {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 9.7in !important;
+            max-width: 9.7in !important;
+            height: 7.2in !important;
+            max-height: 7.2in !important;
+            overflow: hidden !important;
+            border: 3px solid black !important;
+            background: white !important;
+            color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            font-size: 14px !important;
+            display: flex !important;
+            flex-direction: row !important;
+          }
+          /* Two-column layout: left = header+QR, right = all fields */
+          #label-print-area [data-label-header] {
+            min-height: auto !important;
+            padding: 16px 20px !important;
+            flex-shrink: 0 !important;
+            border-bottom: none !important;
+            border-right: 2px solid black !important;
+            width: 3in !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+          }
+          #label-print-area [data-label-header] svg {
+            width: 160px !important;
+            height: 160px !important;
+          }
+          #label-print-area [data-line-label] { font-size: 20px !important; }
+          #label-print-area [data-line-value] { font-size: 56px !important; }
+          #label-print-area [data-label-body] {
+            padding: 12px 24px !important;
+            flex: 1 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+          }
+          #label-print-area [data-label-row] {
+            padding: 3px 0 !important;
+            font-size: 14px !important;
+            line-height: 1.6 !important;
+          }
         }
       `}} />
     </Dialog>
