@@ -23,8 +23,10 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
   if (!label) return null
 
   const handlePrint = () => {
+    // Mark as printed via callback
     if (onPrint) onPrint(label)
-    else window.print()
+    // Always open the browser print dialog so the user can print/save as PDF
+    setTimeout(() => window.print(), 300)
   }
 
   return (
@@ -53,6 +55,7 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
         >
           {/* === HEADER: QR Code + Line Number === */}
           <div
+            data-label-header
             style={{
               display: 'grid',
               gridTemplateColumns: '100px 1fr 1fr',
@@ -74,18 +77,18 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
             </div>
 
             {/* Line Number label */}
-            <div style={{ fontSize: '18px', fontWeight: 'bold', paddingLeft: '8px' }}>
+            <div data-line-label style={{ fontSize: '18px', fontWeight: 'bold', paddingLeft: '8px' }}>
               Line Number:
             </div>
 
             {/* Line Number value — largest element */}
-            <div style={{ fontSize: '28px', fontWeight: 'bold', textAlign: 'center' }}>
+            <div data-line-value style={{ fontSize: '28px', fontWeight: 'bold', textAlign: 'center' }}>
               {label.order_line}
             </div>
           </div>
 
           {/* === BODY: Field rows === */}
-          <div style={{ padding: '4px 16px 8px' }}>
+          <div data-label-body style={{ padding: '4px 16px 8px' }}>
             {/* Customer */}
             <LabelRow label="Customer:" value={label.customer_name} />
 
@@ -156,30 +159,55 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
         </DialogFooter>
       </DialogContent>
 
-      {/* Print styles — only the label prints */}
+      {/* Print styles — only the label prints, full page */}
       <style jsx global>{`
         @media print {
-          body > *:not([data-slot="dialog-overlay"]) { display: none !important; }
-          [data-slot="dialog-overlay"] { position: static !important; background: none !important; }
-          [data-slot="dialog-content"] {
-            position: static !important;
-            box-shadow: none !important;
-            border: none !important;
-            max-width: 100% !important;
-            padding: 0 !important;
-            background: none !important;
+          @page {
+            size: letter;
+            margin: 0.5in;
           }
-          [data-slot="dialog-content"] > *:not(#label-print-area) { display: none !important; }
+          body * { visibility: hidden !important; }
+          #label-print-area,
+          #label-print-area * {
+            visibility: visible !important;
+          }
           #label-print-area {
-            display: block !important;
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 7.5in !important;
+            max-width: 7.5in !important;
+            min-height: 9.5in !important;
             border: 3px solid black !important;
             background: white !important;
             color: black !important;
-            width: 4in !important;
-            max-width: 4in !important;
             margin: 0 !important;
+            padding: 0 !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            font-size: 18px !important;
+          }
+          #label-print-area [data-label-header] {
+            min-height: 160px !important;
+            padding: 24px 32px !important;
+          }
+          #label-print-area [data-label-header] svg {
+            width: 140px !important;
+            height: 140px !important;
+          }
+          #label-print-area [data-line-label] {
+            font-size: 28px !important;
+          }
+          #label-print-area [data-line-value] {
+            font-size: 64px !important;
+          }
+          #label-print-area [data-label-body] {
+            padding: 16px 40px 24px !important;
+          }
+          #label-print-area [data-label-row] {
+            padding: 6px 0 !important;
+            font-size: 18px !important;
+            line-height: 1.8 !important;
           }
         }
       `}</style>
@@ -191,6 +219,7 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
 function LabelRow({ label, value, writeable }: { label: string; value?: string; writeable?: boolean }) {
   return (
     <div
+      data-label-row
       style={{
         display: 'flex',
         justifyContent: 'space-between',
