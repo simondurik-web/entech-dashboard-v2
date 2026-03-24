@@ -100,6 +100,7 @@ export async function POST(
       height: body.height || null,
       parts_per_pallet: body.parts_per_pallet || null,
       photo_urls: [],
+      recorded_by: body.recorded_by || null,
       recorded_by_name: body.recorded_by_name || 'Manual entry',
       edited_by_name: body.recorded_by_name || null,
       edited_at: new Date().toISOString(),
