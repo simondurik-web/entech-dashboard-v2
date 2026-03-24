@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Pencil, Trash2, Plus, Loader2, History } from 'lucide-react'
@@ -74,8 +74,13 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
       .finally(() => setLoadingAudit(false))
   }
 
+  // Auto-fill form whenever pallet changes or modal opens
+  useEffect(() => {
+    if (open && pallet) resetForm()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pallet?.id])
+
   const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen) resetForm()
     onOpenChange(isOpen)
   }
 
@@ -84,17 +89,18 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     setSaving(true)
     setError(null)
     try {
+      // Always send all field values (pre-filled from current data)
+      const payload: Record<string, unknown> = { edited_by_name: userName }
+      payload.weight = weight !== '' ? parseFloat(weight) : null
+      payload.length = length !== '' ? parseFloat(length) : null
+      payload.width = width !== '' ? parseFloat(width) : null
+      payload.height = height !== '' ? parseFloat(height) : null
+      payload.parts_per_pallet = partsPerPallet !== '' ? parseInt(partsPerPallet) : null
+
       const res = await fetch(`/api/pallet-records/${pallet.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          weight: weight ? parseFloat(weight) : null,
-          length: length ? parseFloat(length) : null,
-          width: width ? parseFloat(width) : null,
-          height: height ? parseFloat(height) : null,
-          parts_per_pallet: partsPerPallet ? parseInt(partsPerPallet) : null,
-          edited_by_name: userName,
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const data = await res.json()
