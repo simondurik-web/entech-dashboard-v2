@@ -150,8 +150,17 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
             {/* Carefully Packaged by — blank for handwriting */}
             <LabelRow label="Carefully Packaged by 🤗 :" value="" writeable />
 
-            {/* Date — with slash placeholders */}
-            <LabelRow label="Date:" value="       /       /       " writeable />
+            {/* Date — 3 equal sections for MM / DD / YYYY with wide spacing */}
+            <div data-label-row style={{ display: 'flex', alignItems: 'baseline', padding: '2px 0', fontSize: '13px', lineHeight: '1.7' }}>
+              <span style={{ flex: '0 0 30%', textAlign: 'left' }}>Date:</span>
+              <span style={{ flex: '0 0 70%', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                <span style={{ flex: 1, borderBottom: '1px solid #999', textAlign: 'center', minHeight: '20px' }}>&nbsp;</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>/</span>
+                <span style={{ flex: 1, borderBottom: '1px solid #999', textAlign: 'center', minHeight: '20px' }}>&nbsp;</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>/</span>
+                <span style={{ flex: 1, borderBottom: '1px solid #999', textAlign: 'center', minHeight: '20px' }}>&nbsp;</span>
+              </span>
+            </div>
 
             {/* Spacer before Weight/Dimension */}
             <div style={{ height: '8px' }} />
@@ -159,8 +168,17 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
             {/* Weight — blank for handwriting */}
             <LabelRow label="Weight:" value="" writeable />
 
-            {/* Dimension — with slash placeholders */}
-            <LabelRow label="Dimension:" value="       /       /       " writeable />
+            {/* Dimension — 3 equal sections for L / W / H with wide spacing */}
+            <div data-label-row style={{ display: 'flex', alignItems: 'baseline', padding: '2px 0', fontSize: '13px', lineHeight: '1.7' }}>
+              <span style={{ flex: '0 0 30%', textAlign: 'left' }}>Dimension:</span>
+              <span style={{ flex: '0 0 70%', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                <span style={{ flex: 1, borderBottom: '1px solid #999', textAlign: 'center', minHeight: '20px' }}>&nbsp;</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>/</span>
+                <span style={{ flex: 1, borderBottom: '1px solid #999', textAlign: 'center', minHeight: '20px' }}>&nbsp;</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>/</span>
+                <span style={{ flex: 1, borderBottom: '1px solid #999', textAlign: 'center', minHeight: '20px' }}>&nbsp;</span>
+              </span>
+            </div>
           </div>
         </div>
 

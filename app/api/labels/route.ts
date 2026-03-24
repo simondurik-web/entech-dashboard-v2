@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { numPackages, lastPackageQty } = calculatePackages(orderQty, partsPerPackage)
-    const qrData = generateQrData(orderLine, customerName, partNumber)
+    const qrData = generateQrData(orderLine, customerName, partNumber, undefined, numPackages)
 
     // Check if labels already exist — skip duplicate check (caller handles delete for regenerate)
     const { data: existing } = await supabaseAdmin
