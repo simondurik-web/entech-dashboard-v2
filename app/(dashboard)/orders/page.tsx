@@ -22,6 +22,10 @@ import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
+import { AssigneeEditor } from '@/components/AssigneeEditor'
+import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import type { LabelData } from '@/lib/label-utils'
+import { Tag } from 'lucide-react'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -150,7 +154,7 @@ export default function OrdersPage() {
 
 function OrdersPageContent() {
   const { t } = useI18n()
-  const { profile } = useAuth()
+  const { user, profile } = useAuth()
   const { canAccess } = usePermissions()
   const canEditPallets = canAccess('edit_pallet_records')
   const initialView = useViewFromUrl()
@@ -164,6 +168,10 @@ function OrdersPageContent() {
     new Set(['pending', 'wip', 'completed', 'staged'])
   )
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+  const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
+  const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
+  const [showLabelPreview, setShowLabelPreview] = useState(false)
+  const [labelWarning, setLabelWarning] = useState<string | null>(null)
 
   // Optimistic priority update handler
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
@@ -177,6 +185,45 @@ function OrdersPageContent() {
       return { ...updated, effectivePriority: getEffectivePriority(updated) || '-' }
     }))
   }, [])
+
+  const handleAssigneeUpdate = useCallback((line: string, newAssignee: string) => {
+    setOrders(prev => prev.map(o =>
+      o.line === line ? { ...o, assignedTo: newAssignee } : o
+    ))
+  }, [])
+
+  const handleLabelClick = useCallback(async (order: Order) => {
+    setLabelWarning(null)
+    try {
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(order.line)}`)
+      const existing = await res.json()
+      if (Array.isArray(existing) && existing.length > 0) {
+        setLabelPreview(existing[0])
+        setAllLabelsForOrder(existing)
+        setShowLabelPreview(true)
+      } else {
+        const genRes = await fetch('/api/labels', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(user ? { 'x-user-id': user.id } : {}),
+          },
+          body: JSON.stringify({ order_lines: [order.line] }),
+        })
+        const genData = await genRes.json()
+        const result = genData.results?.[0]
+        if (result?.error) { setLabelWarning(result.error); return }
+        if (result?.labels?.[0]) {
+          setLabelPreview(result.labels[0])
+          setAllLabelsForOrder(result.labels)
+          setShowLabelPreview(true)
+        }
+      }
+    } catch (e) { setLabelWarning((e as Error).message) }
+  }, [user])
+
+  const showLabels = canAccess('/labels')
+  const canAssign = canAccess('assign_orders')
 
   const defaultColumnKeys = useMemo(() => new Set([
     'line', 'ifNumber', 'poNumber', 'effectivePriority', 'dateOfRequest', 'requestedDate',
@@ -352,10 +399,45 @@ function OrdersPageContent() {
       },
     },
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
-    { key: 'assignedTo', label: t('table.assignedTo'), filterable: true },
+    {
+      key: 'assignedTo',
+      label: t('table.assignedTo'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        if (canAssign) {
+          return (
+            <AssigneeEditor
+              line={order.line}
+              currentAssignee={String(v || '')}
+              onUpdated={handleAssigneeUpdate}
+            />
+          )
+        }
+        return String(v || '')
+      },
+    },
+    // Label button column
+    ...(showLabels ? [{
+      key: 'labelAction' as keyof OrderRow & string,
+      label: '🏷️',
+      render: (_v: OrderRow[keyof OrderRow], row: OrderRow) => {
+        const order = row as unknown as Order
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleLabelClick(order) }}
+            className="rounded p-1 hover:bg-muted transition-colors"
+            title="Label"
+          >
+            <Tag className="size-4" />
+          </button>
+        )
+      },
+    }] as ColumnDef<OrderRow>[] : []),
     // Extra columns — hidden by default, available via Columns picker
     ...getExtraOrderColumns<OrderRow>(defaultColumnKeys),
-  ], [t, defaultColumnKeys])
+  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -555,6 +637,39 @@ function OrdersPageContent() {
                 onToggle={() => toggleExpanded(order)}
               />
             )
+          }}
+        />
+      )}
+
+      {/* Label warning */}
+      {labelWarning && (
+        <div className="fixed bottom-4 right-4 z-50 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg shadow-lg max-w-sm">
+          <p className="text-sm">{labelWarning}</p>
+          <button className="text-xs underline mt-1" onClick={() => setLabelWarning(null)}>Dismiss</button>
+        </div>
+      )}
+
+      {/* Label preview modal */}
+      {labelPreview && (
+        <LabelPreviewModal
+          label={labelPreview}
+          siblingLabels={allLabelsForOrder}
+          open={showLabelPreview}
+          onOpenChange={(open) => {
+            setShowLabelPreview(open)
+            if (!open) setLabelPreview(null)
+          }}
+          onPrint={(label) => {
+            if (label.id && user) {
+              fetch(`/api/labels/${label.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+                body: JSON.stringify({
+                  label_status: 'printed',
+                  printed_by_name: profile?.full_name || user.email || 'Unknown',
+                }),
+              })
+            }
           }}
         />
       )}
