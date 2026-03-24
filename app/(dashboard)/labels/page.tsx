@@ -264,6 +264,7 @@ function LabelsPageContent() {
       {/* Modals */}
       <LabelPreviewModal
         label={previewLabel}
+        siblingLabels={previewLabel ? labels.filter(l => l.order_line === previewLabel.order_line) : undefined}
         open={showPreview}
         onOpenChange={setShowPreview}
         onPrint={handlePrint}
