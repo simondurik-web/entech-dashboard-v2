@@ -38,6 +38,7 @@ interface PartRow extends Record<string, unknown> {
   category: string
   orderCount: number
   totalQty: number
+  avgPricePerPart: number
   revenue: number
   costs: number
   totalProfit: number
@@ -204,7 +205,7 @@ function SalesPartsContent() {
     const byPart: Record<string, PartRow> = {}
     for (const o of filteredOrders) {
       const k = o.partNumber || 'Unknown'
-      if (!byPart[k]) byPart[k] = { partNumber: k, category: o.category, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, totalProfit: 0, totalMarginPct: 0, orders: [] }
+      if (!byPart[k]) byPart[k] = { partNumber: k, category: o.category, orderCount: 0, totalQty: 0, avgPricePerPart: 0, revenue: 0, costs: 0, totalProfit: 0, totalMarginPct: 0, orders: [] }
       byPart[k].orderCount++
       byPart[k].totalQty += o.qty
       byPart[k].revenue += o.revenue
@@ -212,7 +213,7 @@ function SalesPartsContent() {
       byPart[k].totalProfit += o.totalProfit
       byPart[k].orders.push(o)
     }
-    return Object.values(byPart).map((p) => ({ ...p, totalMarginPct: p.revenue > 0 ? (p.totalProfit / p.revenue) * 100 : 0 }))
+    return Object.values(byPart).map((p) => ({ ...p, avgPricePerPart: p.totalQty > 0 ? p.revenue / p.totalQty : 0, totalMarginPct: p.revenue > 0 ? (p.totalProfit / p.revenue) * 100 : 0 }))
   }, [filteredOrders, data])
 
   const PART_COLUMNS: ColumnDef<PartRow>[] = useMemo(() => [
@@ -227,6 +228,7 @@ function SalesPartsContent() {
     { key: 'orderCount', label: t('table.orders'), sortable: true, render: (v) => fmtN(v as number) },
     { key: 'totalQty', label: t('table.qty'), sortable: true, render: (v) => fmtN(v as number) },
     { key: 'revenue', label: t('table.revenue'), sortable: true, render: (v) => fmt(v as number) },
+    { key: 'avgPricePerPart', label: 'Avg Price/Part', sortable: true, render: (v) => fmt(v as number) },
     { key: 'costs', label: t('salesOverview.totalCosts'), sortable: true, render: (v) => fmt(v as number) },
     { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
     { key: 'totalMarginPct', label: t('salesOverview.avgMargin'), sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{(v as number).toFixed(1)}%</span> },
