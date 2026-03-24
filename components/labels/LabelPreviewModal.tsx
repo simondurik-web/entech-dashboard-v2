@@ -407,10 +407,10 @@ function LabelRow({ label, value, writeable }: { label: string; value?: string; 
         lineHeight: '1.7',
       }}
     >
-      <span style={{ flex: '0 0 48%', textAlign: 'left' }}>{label}</span>
+      <span style={{ flex: writeable ? '0 0 30%' : '0 0 48%', textAlign: 'left' }}>{label}</span>
       <span
         style={{
-          flex: '0 0 52%',
+          flex: writeable ? '0 0 70%' : '0 0 52%',
           textAlign: 'center',
           borderBottom: writeable ? '1px solid #999' : undefined,
           minHeight: writeable ? '20px' : undefined,
