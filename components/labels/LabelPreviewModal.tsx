@@ -32,9 +32,6 @@ export function LabelPreviewModal({ label, siblingLabels, open, onOpenChange, on
   const currentLabel = labelsToPrint[currentIdx] || label
 
   const handlePrint = () => {
-    // Mark as printed via callback
-    if (onPrint) onPrint(label)
-
     let printRoot = document.getElementById('label-print-root')
     if (!printRoot) {
       printRoot = document.createElement('div')
@@ -315,7 +312,7 @@ export function LabelPreviewModal({ label, siblingLabels, open, onOpenChange, on
           )}
           <Button onClick={handlePrint}>
             <Printer className="size-4 mr-1" />
-            {t('labels.print')}
+            {labelsToPrint.length > 1 ? `Print All (${labelsToPrint.length})` : t('labels.print')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -338,6 +335,10 @@ export function LabelPreviewModal({ label, siblingLabels, open, onOpenChange, on
           }
           #label-print-root * { visibility: visible !important; }
           /* Each label page — fills the full page */
+          .label-print-page + .label-print-page {
+            page-break-before: always !important;
+            break-before: page !important;
+          }
           .label-print-page, #label-print-clone {
             position: relative !important;
             left: 0.3in !important;

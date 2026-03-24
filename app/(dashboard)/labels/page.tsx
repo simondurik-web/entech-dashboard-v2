@@ -134,18 +134,24 @@ function LabelsPageContent() {
   const handlePrint = useCallback((label: LabelData) => {
     setPreviewLabel(label)
     setShowPreview(true)
-    // Mark as printed with user name
-    if (label.id && user) {
-      fetch(`/api/labels/${label.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
-        body: JSON.stringify({
-          label_status: 'printed',
-          printed_by_name: profile?.full_name || user.email || 'Unknown',
-        }),
-      }).then(() => fetchLabels())
+    // Mark ALL sibling labels for this order as printed
+    if (user) {
+      const siblings = labels.filter(l => l.order_line === label.order_line)
+      const printedName = profile?.full_name || user.email || 'Unknown'
+      Promise.all(
+        siblings.filter(s => s.id).map(s =>
+          fetch(`/api/labels/${s.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+            body: JSON.stringify({
+              label_status: 'printed',
+              printed_by_name: printedName,
+            }),
+          })
+        )
+      ).then(() => fetchLabels())
     }
-  }, [user, profile, fetchLabels])
+  }, [user, profile, fetchLabels, labels])
 
   const columns = useMemo(() => getColumns(t, handleView, handlePrint), [t, handleView, handlePrint])
 
