@@ -338,10 +338,84 @@ export function OrderDetail({
             </div>
 
             {/* ── Pallet Records — compact collapsible table ── */}
+            {pallets.length === 0 && canEdit && (
+              <div className="rounded-md border bg-muted/20 p-3 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">No pallet records for this order</span>
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
+                        pallet_number: 1,
+                        recorded_by_name: userName,
+                      }),
+                    })
+                    if (res.ok) {
+                      // Refetch
+                      const pr = await fetch('/api/pallet-records')
+                      if (pr.ok) {
+                        const data = (await pr.json()) as PalletRecord[]
+                        const targetIf = normalize(ifNumber)
+                        const targetLine = normalize(line)
+                        setPallets(data.filter((r) => {
+                          const rIf = normalize(r.ifNumber)
+                          const oNum = normalize(r.orderNumber)
+                          if (targetIf && rIf && rIf === targetIf) return true
+                          if (targetLine && oNum && oNum === targetLine) return true
+                          return false
+                        }))
+                      }
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                >
+                  <Package className="size-3" /> Add Pallet Record
+                </button>
+              </div>
+            )}
             {pallets.length > 0 && (
               <div className="rounded-md border bg-background/60 overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-                  <span className="text-xs font-semibold">Pallet Records ({pallets.length})</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold">Pallet Records ({pallets.length})</span>
+                    {canEdit && (
+                      <button
+                        onClick={async () => {
+                          const nextNum = pallets.length + 1
+                          const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
+                              pallet_number: nextNum,
+                              recorded_by_name: userName,
+                            }),
+                          })
+                          if (res.ok) {
+                            const pr = await fetch('/api/pallet-records')
+                            if (pr.ok) {
+                              const data = (await pr.json()) as PalletRecord[]
+                              const targetIf = normalize(ifNumber)
+                              const targetLine = normalize(line)
+                              setPallets(data.filter((r) => {
+                                const rIf = normalize(r.ifNumber)
+                                const oNum = normalize(r.orderNumber)
+                                if (targetIf && rIf && rIf === targetIf) return true
+                                if (targetLine && oNum && oNum === targetLine) return true
+                                return false
+                              }))
+                            }
+                          }
+                        }}
+                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                        title="Add another pallet"
+                      >
+                        <Package className="size-3" /> + Add
+                      </button>
+                    )}
+                  </div>
                   {pallets.length > 3 && (
                     <button
                       onClick={() => setShowAllPallets(!showAllPallets)}

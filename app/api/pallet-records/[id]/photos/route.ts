@@ -59,6 +59,17 @@ export async function POST(
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
+  // Audit log
+  const uploadedBy = formData.get('uploaded_by_name') as string || 'Unknown'
+  await supabaseAdmin.from('pallet_record_audit').insert({
+    pallet_record_id: id,
+    action: 'photo_added',
+    field_name: 'Photos',
+    old_value: `${(record.photo_urls || []).length} photos`,
+    new_value: `${updatedPhotos.length} photos`,
+    performed_by_name: uploadedBy,
+  })
+
   return NextResponse.json({ photo_urls: updatedPhotos, added: publicUrl })
 }
 
@@ -68,7 +79,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const { photo_url } = await req.json()
+  const body = await req.json()
+  const { photo_url, deleted_by_name } = body as { photo_url: string; deleted_by_name?: string }
 
   if (!photo_url) {
     return NextResponse.json({ error: 'photo_url is required' }, { status: 400 })
@@ -108,6 +120,16 @@ export async function DELETE(
   } catch {
     // Storage delete is best-effort
   }
+
+  // Audit log
+  await supabaseAdmin.from('pallet_record_audit').insert({
+    pallet_record_id: id,
+    action: 'photo_deleted',
+    field_name: 'Photos',
+    old_value: `${(record.photo_urls || []).length} photos`,
+    new_value: `${updatedPhotos.length} photos`,
+    performed_by_name: deleted_by_name || 'Unknown',
+  })
 
   return NextResponse.json({ photo_urls: updatedPhotos })
 }

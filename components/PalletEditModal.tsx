@@ -3,7 +3,17 @@
 import { useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Pencil, Trash2, Plus, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, Plus, Loader2, History } from 'lucide-react'
+
+interface AuditEntry {
+  id: string
+  action: string
+  field_name: string | null
+  old_value: string | null
+  new_value: string | null
+  performed_by_name: string | null
+  created_at: string
+}
 
 export interface EditablePallet {
   id: string
@@ -39,6 +49,9 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [deletingPhoto, setDeletingPhoto] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
+  const [showAudit, setShowAudit] = useState(false)
+  const [loadingAudit, setLoadingAudit] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Reset form when pallet changes
@@ -51,6 +64,14 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     setPartsPerPallet(String(pallet.partsPerPallet || ''))
     setPhotos([...(pallet.photos || [])])
     setError(null)
+    setShowAudit(false)
+    // Fetch audit log
+    setLoadingAudit(true)
+    fetch(`/api/pallet-records/${pallet.id}/audit`)
+      .then(r => r.json())
+      .then(data => setAuditLog(Array.isArray(data) ? data : []))
+      .catch(() => setAuditLog([]))
+      .finally(() => setLoadingAudit(false))
   }
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -95,6 +116,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     try {
       const formData = new FormData()
       formData.append('file', e.target.files[0])
+      formData.append('uploaded_by_name', userName)
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
         method: 'POST',
         body: formData,
@@ -121,7 +143,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo_url: photoUrl }),
+        body: JSON.stringify({ photo_url: photoUrl, deleted_by_name: userName }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -259,13 +281,59 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
             )}
           </div>
 
-          {/* Audit info */}
-          {pallet.edited_by_name && (
-            <p className="text-xs text-muted-foreground">
-              Last edited by <span className="font-medium">{pallet.edited_by_name}</span>
-              {pallet.edited_at && <> on {new Date(pallet.edited_at).toLocaleString()}</>}
-            </p>
-          )}
+          {/* Audit trail */}
+          <div>
+            <button
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowAudit(!showAudit)}
+            >
+              <History className="size-3" />
+              {showAudit ? 'Hide' : 'Show'} Change History
+              {auditLog.length > 0 && <span className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{auditLog.length}</span>}
+            </button>
+            {showAudit && (
+              <div className="mt-2 max-h-40 overflow-y-auto rounded-md border bg-muted/30">
+                {loadingAudit ? (
+                  <div className="p-3 text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="size-3 animate-spin" /> Loading...
+                  </div>
+                ) : auditLog.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground">No changes recorded yet</p>
+                ) : (
+                  <table className="w-full text-[11px]">
+                    <thead className="sticky top-0 bg-muted/80">
+                      <tr className="border-b">
+                        <th className="text-left px-2 py-1 font-medium">When</th>
+                        <th className="text-left px-2 py-1 font-medium">Who</th>
+                        <th className="text-left px-2 py-1 font-medium">What</th>
+                        <th className="text-left px-2 py-1 font-medium">From</th>
+                        <th className="text-left px-2 py-1 font-medium">To</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLog.map((entry) => (
+                        <tr key={entry.id} className="border-b border-border/20">
+                          <td className="px-2 py-1 text-muted-foreground whitespace-nowrap">
+                            {new Date(entry.created_at).toLocaleDateString()}{' '}
+                            {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="px-2 py-1 font-medium">{entry.performed_by_name || '—'}</td>
+                          <td className="px-2 py-1">
+                            {entry.action === 'created' ? '🆕 Created' :
+                             entry.action === 'photo_added' ? '📷 Photo added' :
+                             entry.action === 'photo_deleted' ? '🗑️ Photo removed' :
+                             `✏️ ${entry.field_name}`}
+                          </td>
+                          <td className="px-2 py-1 text-muted-foreground">{entry.old_value || '—'}</td>
+                          <td className="px-2 py-1">{entry.new_value || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <DialogFooter>
