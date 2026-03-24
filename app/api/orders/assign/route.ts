@@ -51,3 +51,69 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ ok: true, line, assigned_to })
 }
+
+/** PUT — Rename an assignee across ALL orders (both Supabase & Google Sheets) */
+export async function PUT(req: NextRequest) {
+  const { old_name, new_name } = (await req.json()) as { old_name: string; new_name: string }
+  if (!old_name || !new_name) {
+    return NextResponse.json({ error: 'old_name and new_name are required' }, { status: 400 })
+  }
+
+  // Find all orders with this assignee
+  const { data: orders } = await supabaseAdmin
+    .from('dashboard_orders')
+    .select('line')
+    .eq('assigned_to', old_name)
+
+  const lines = (orders || []).map(o => String(o.line))
+
+  // Update Supabase in bulk
+  const { error: dbError } = await supabaseAdmin
+    .from('dashboard_orders')
+    .update({ assigned_to: new_name })
+    .eq('assigned_to', old_name)
+
+  if (dbError) {
+    return NextResponse.json({ error: dbError.message }, { status: 500 })
+  }
+
+  // Update Google Sheets for each order (in background — don't block the response)
+  for (const line of lines) {
+    updateAssignedTo(line, new_name).catch(() => {})
+  }
+
+  return NextResponse.json({ ok: true, renamed: lines.length, old_name, new_name })
+}
+
+/** DELETE — Remove an assignee (unassign all their orders) */
+export async function DELETE(req: NextRequest) {
+  const { name } = (await req.json()) as { name: string }
+  if (!name) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  }
+
+  // Find all orders with this assignee
+  const { data: orders } = await supabaseAdmin
+    .from('dashboard_orders')
+    .select('line')
+    .eq('assigned_to', name)
+
+  const lines = (orders || []).map(o => String(o.line))
+
+  // Clear in Supabase
+  const { error: dbError } = await supabaseAdmin
+    .from('dashboard_orders')
+    .update({ assigned_to: null })
+    .eq('assigned_to', name)
+
+  if (dbError) {
+    return NextResponse.json({ error: dbError.message }, { status: 500 })
+  }
+
+  // Clear in Google Sheets
+  for (const line of lines) {
+    updateAssignedTo(line, '').catch(() => {})
+  }
+
+  return NextResponse.json({ ok: true, unassigned: lines.length, name })
+}
