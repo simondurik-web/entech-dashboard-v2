@@ -462,6 +462,8 @@ export function OrderDetail({
                                       height: p.height,
                                       partsPerPallet: p.partsPerPallet,
                                       photos: p.photos || [],
+                                      shipmentPhotos: p.shipmentPhotos || [],
+                                      workPaperPhotos: p.workPaperPhotos || [],
                                       ifNumber: p.ifNumber,
                                       order_id: p.order_id,
                                       edited_by_name: p.edited_by_name,

@@ -24,11 +24,15 @@ export interface EditablePallet {
   height?: number | null
   partsPerPallet: string | number
   photos: string[]
+  shipmentPhotos?: string[]
+  workPaperPhotos?: string[]
   ifNumber?: string
   order_id?: string
   edited_by_name?: string
   edited_at?: string
 }
+
+type PhotoCategory = 'pallet' | 'shipment' | 'work_paper'
 
 interface PalletEditModalProps {
   pallet: EditablePallet | null
@@ -45,14 +49,18 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
   const [height, setHeight] = useState('')
   const [partsPerPallet, setPartsPerPallet] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
+  const [shipmentPhotos, setShipmentPhotos] = useState<string[]>([])
+  const [workPaperPhotos, setWorkPaperPhotos] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadingCategory, setUploadingCategory] = useState<PhotoCategory | null>(null)
   const [deletingPhoto, setDeletingPhoto] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
   const [showAudit, setShowAudit] = useState(false)
   const [loadingAudit, setLoadingAudit] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const palletFileRef = useRef<HTMLInputElement>(null)
+  const shipmentFileRef = useRef<HTMLInputElement>(null)
+  const workPaperFileRef = useRef<HTMLInputElement>(null)
 
   // Reset form when pallet changes
   const resetForm = () => {
@@ -63,6 +71,8 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     setHeight(String(pallet.height || ''))
     setPartsPerPallet(String(pallet.partsPerPallet || ''))
     setPhotos([...(pallet.photos || [])])
+    setShipmentPhotos([...(pallet.shipmentPhotos || [])])
+    setWorkPaperPhotos([...(pallet.workPaperPhotos || [])])
     setError(null)
     setShowAudit(false)
     // Fetch audit log
@@ -115,14 +125,15 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     }
   }
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, category: PhotoCategory) => {
     if (!pallet || !e.target.files?.[0]) return
-    setUploadingPhoto(true)
+    setUploadingCategory(category)
     setError(null)
     try {
       const formData = new FormData()
       formData.append('file', e.target.files[0])
       formData.append('uploaded_by_name', userName)
+      formData.append('category', category)
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
         method: 'POST',
         body: formData,
@@ -132,16 +143,19 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
         throw new Error(data.error || 'Upload failed')
       }
       const data = await res.json()
-      setPhotos(data.photo_urls)
+      if (category === 'pallet') setPhotos(data.photo_urls)
+      else if (category === 'shipment') setShipmentPhotos(data.shipment_photo_urls)
+      else if (category === 'work_paper') setWorkPaperPhotos(data.work_paper_photo_urls)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
-      setUploadingPhoto(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      setUploadingCategory(null)
+      const ref = category === 'pallet' ? palletFileRef : category === 'shipment' ? shipmentFileRef : workPaperFileRef
+      if (ref.current) ref.current.value = ''
     }
   }
 
-  const handlePhotoDelete = async (photoUrl: string) => {
+  const handlePhotoDelete = async (photoUrl: string, category: PhotoCategory) => {
     if (!pallet || !confirm('Delete this photo?')) return
     setDeletingPhoto(photoUrl)
     setError(null)
@@ -149,14 +163,18 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo_url: photoUrl, deleted_by_name: userName }),
+        body: JSON.stringify({ photo_url: photoUrl, deleted_by_name: userName, category }),
       })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Delete failed')
       }
       const data = await res.json()
-      setPhotos(data.photo_urls)
+      const columnName = category === 'shipment' ? 'shipment_photo_urls' : category === 'work_paper' ? 'work_paper_photo_urls' : 'photo_urls'
+      const updated = data[columnName] || []
+      if (category === 'pallet') setPhotos(updated)
+      else if (category === 'shipment') setShipmentPhotos(updated)
+      else if (category === 'work_paper') setWorkPaperPhotos(updated)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
     } finally {
@@ -234,58 +252,65 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
             </div>
           </div>
 
-          {/* Photos */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-muted-foreground">Photos ({photos.length})</label>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingPhoto}
-              >
-                {uploadingPhoto ? <Loader2 className="size-3 animate-spin mr-1" /> : <Plus className="size-3 mr-1" />}
-                Add Photo
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePhotoUpload}
-              />
-            </div>
-            {photos.length > 0 ? (
-              <div className="grid grid-cols-4 gap-2">
-                {photos.map((url, i) => (
-                  <div key={i} className="relative group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={url}
-                      alt={`Pallet photo ${i + 1}`}
-                      className="w-full h-20 object-cover rounded-md border"
-                      loading="lazy"
-                    />
-                    <button
-                      className="absolute top-1 right-1 bg-red-500/90 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => handlePhotoDelete(url)}
-                      disabled={deletingPhoto === url}
-                      title="Delete photo"
-                    >
-                      {deletingPhoto === url ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-3" />
-                      )}
-                    </button>
-                  </div>
-                ))}
+          {/* Photo Sections */}
+          {/* Pallet | Work Paper | Shipping photo sections */}
+          {([
+            { category: 'pallet' as PhotoCategory, label: '📦 Pallet Photos', photos: photos, ref: palletFileRef, borderCls: 'border-blue-500/20 bg-blue-500/5' },
+            { category: 'work_paper' as PhotoCategory, label: '📄 Work Paper Photos', photos: workPaperPhotos, ref: workPaperFileRef, borderCls: 'border-amber-500/20 bg-amber-500/5' },
+            { category: 'shipment' as PhotoCategory, label: '🚛 Shipping Photos', photos: shipmentPhotos, ref: shipmentFileRef, borderCls: 'border-green-500/20 bg-green-500/5' },
+          ]).map(({ category, label, photos: catPhotos, ref, borderCls }) => (
+            <div key={category} className={`rounded-lg border ${borderCls} p-2.5`}>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold">{label} ({catPhotos.length})</label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  onClick={() => ref.current?.click()}
+                  disabled={uploadingCategory === category}
+                >
+                  {uploadingCategory === category ? <Loader2 className="size-3 animate-spin mr-1" /> : <Plus className="size-3 mr-1" />}
+                  Add
+                </Button>
+                <input
+                  ref={ref}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handlePhotoUpload(e, category)}
+                />
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No photos</p>
-            )}
-          </div>
+              {catPhotos.length > 0 ? (
+                <div className="grid grid-cols-4 gap-2">
+                  {catPhotos.map((url, i) => (
+                    <div key={i} className="relative group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt={`${label} ${i + 1}`}
+                        className="w-full h-16 object-cover rounded-md border"
+                        loading="lazy"
+                      />
+                      <button
+                        className="absolute top-0.5 right-0.5 bg-red-500/90 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handlePhotoDelete(url, category)}
+                        disabled={deletingPhoto === url}
+                        title="Delete photo"
+                      >
+                        {deletingPhoto === url ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3" />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">No photos</p>
+              )}
+            </div>
+          ))}
 
           {/* Audit trail */}
           <div>

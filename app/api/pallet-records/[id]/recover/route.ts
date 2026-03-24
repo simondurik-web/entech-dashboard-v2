@@ -46,6 +46,8 @@ export async function POST(
       height: archived.height,
       parts_per_pallet: archived.parts_per_pallet,
       photo_urls: archived.photo_urls || [],
+      shipment_photo_urls: archived.shipment_photo_urls || [],
+      work_paper_photo_urls: archived.work_paper_photo_urls || [],
       recorded_by: archived.recorded_by || null,
       recorded_by_name: archived.recorded_by_name,
       edited_by: null,

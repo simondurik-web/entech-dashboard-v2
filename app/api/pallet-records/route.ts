@@ -28,6 +28,8 @@ export async function GET() {
       dimensions: r.length && r.width && r.height ? `${r.length}x${r.width}x${r.height}` : '',
       partsPerPallet: String(r.parts_per_pallet || ''),
       photos: r.photo_urls || [],
+      shipmentPhotos: r.shipment_photo_urls || [],
+      workPaperPhotos: r.work_paper_photo_urls || [],
       _source: 'app' as const,
       length: r.length,
       width: r.width,

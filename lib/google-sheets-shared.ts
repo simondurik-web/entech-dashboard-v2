@@ -120,6 +120,8 @@ export interface PalletRecord {
   order_id?: string
   edited_by_name?: string
   edited_at?: string
+  shipmentPhotos?: string[]
+  workPaperPhotos?: string[]
 }
 
 export interface ShippingRecord {
