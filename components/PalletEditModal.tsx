@@ -318,7 +318,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
                     </thead>
                     <tbody>
                       {auditLog.map((entry) => (
-                        <tr key={entry.id} className="border-b border-border/20">
+                        <tr key={entry.id} className={`border-b border-border/20 ${entry.action === 'deleted' ? 'bg-red-500/10' : entry.action === 'recovered' ? 'bg-green-500/10' : ''}`}>
                           <td className="px-2 py-1 text-muted-foreground whitespace-nowrap">
                             {new Date(entry.created_at).toLocaleDateString()}{' '}
                             {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -326,12 +326,36 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
                           <td className="px-2 py-1 font-medium">{entry.performed_by_name || '—'}</td>
                           <td className="px-2 py-1">
                             {entry.action === 'created' ? '🆕 Created' :
+                             entry.action === 'deleted' ? '🗑️ Deleted' :
+                             entry.action === 'recovered' ? '♻️ Recovered' :
                              entry.action === 'photo_added' ? '📷 Photo added' :
                              entry.action === 'photo_deleted' ? '🗑️ Photo removed' :
                              `✏️ ${entry.field_name}`}
                           </td>
-                          <td className="px-2 py-1 text-muted-foreground">{entry.old_value || '—'}</td>
-                          <td className="px-2 py-1">{entry.new_value || '—'}</td>
+                          <td className="px-2 py-1 text-muted-foreground">
+                            {entry.action === 'deleted' ? 'Full record archived' : (entry.old_value || '—')}
+                          </td>
+                          <td className="px-2 py-1">
+                            {entry.action === 'deleted' ? (
+                              <button
+                                className="text-[10px] px-1.5 py-0.5 bg-green-500/20 text-green-600 rounded hover:bg-green-500/30"
+                                onClick={async () => {
+                                  if (!pallet) return
+                                  const res = await fetch(`/api/pallet-records/${pallet.id}/recover`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ recovered_by_name: userName }),
+                                  })
+                                  if (res.ok) {
+                                    onSaved()
+                                    onOpenChange(false)
+                                  }
+                                }}
+                              >
+                                ♻️ Recover
+                              </button>
+                            ) : (entry.new_value || '—')}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

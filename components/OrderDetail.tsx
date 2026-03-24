@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
+import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2 } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
@@ -472,6 +472,37 @@ export function OrderDetail({
                                   title="Edit pallet"
                                 >
                                   <Pencil className="size-3" />
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    if (!confirm(`Delete pallet #${p.palletNumber || idx + 1}? You can recover it from the audit trail.`)) return
+                                    const res = await fetch(`/api/pallet-records/${p.id}`, {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ deleted_by_name: userName }),
+                                    })
+                                    if (res.ok) {
+                                      // Refetch
+                                      const pr = await fetch('/api/pallet-records')
+                                      if (pr.ok) {
+                                        const data = (await pr.json()) as PalletRecord[]
+                                        const targetIf = normalize(ifNumber)
+                                        const targetLine = normalize(line)
+                                        setPallets(data.filter((r) => {
+                                          const rIf = normalize(r.ifNumber)
+                                          const oNum = normalize(r.orderNumber)
+                                          if (targetIf && rIf && rIf === targetIf) return true
+                                          if (targetLine && oNum && oNum === targetLine) return true
+                                          return false
+                                        }))
+                                      }
+                                    }
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-red-500 hover:text-red-600"
+                                  title="Delete pallet"
+                                >
+                                  <Trash2 className="size-3" />
                                 </button>
                               ) : (
                                 <span className="text-muted-foreground text-[9px]" title="Sheet records are read-only">—</span>

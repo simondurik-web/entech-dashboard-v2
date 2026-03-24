@@ -1,6 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+/** DELETE — Soft-delete: archive full record to audit trail, then remove */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const body = await req.json().catch(() => ({}))
+  const userName = body.deleted_by_name || 'Unknown'
+
+  // Fetch full record before deleting (for recovery)
+  const { data: record, error: fetchErr } = await supabaseAdmin
+    .from('pallet_records')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchErr || !record) {
+    return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+  }
+
+  // Archive to audit trail with full snapshot for recovery
+  await supabaseAdmin.from('pallet_record_audit').insert({
+    pallet_record_id: id,
+    action: 'deleted',
+    field_name: null,
+    old_value: JSON.stringify(record),
+    new_value: null,
+    performed_by_name: userName,
+  })
+
+  // Delete the record
+  const { error: deleteErr } = await supabaseAdmin
+    .from('pallet_records')
+    .delete()
+    .eq('id', id)
+
+  if (deleteErr) {
+    return NextResponse.json({ error: deleteErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, deleted_id: id })
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
