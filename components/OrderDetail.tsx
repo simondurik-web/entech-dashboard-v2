@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
+import { PalletEditModal, type EditablePallet } from '@/components/PalletEditModal'
 
 interface OrderDetailProps {
   ifNumber?: string
@@ -16,6 +17,8 @@ interface OrderDetailProps {
   tirePartNum?: string
   hubPartNum?: string
   partNumber?: string
+  canEdit?: boolean
+  userName?: string
   onClose: () => void
 }
 
@@ -100,6 +103,8 @@ export function OrderDetail({
   tirePartNum,
   hubPartNum,
   partNumber,
+  canEdit = false,
+  userName = '',
   onClose,
 }: OrderDetailProps) {
   const { t } = useI18n()
@@ -107,6 +112,8 @@ export function OrderDetail({
   const [shipping, setShipping] = useState<ShippingRecord[]>([])
   const [staged, setStaged] = useState<StagedRecord[]>([])
   const [drawings, setDrawings] = useState<Drawing[]>([])
+  const [editPallet, setEditPallet] = useState<EditablePallet | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
@@ -353,6 +360,8 @@ export function OrderDetail({
                         <th className="text-left px-3 py-1 font-medium">Weight</th>
                         <th className="text-left px-3 py-1 font-medium">Dimensions</th>
                         <th className="text-left px-3 py-1 font-medium">Parts/Pallet</th>
+                        <th className="text-left px-3 py-1 font-medium">Photos</th>
+                        {canEdit && <th className="text-left px-3 py-1 font-medium"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -362,6 +371,39 @@ export function OrderDetail({
                           <td className="px-3 py-1">{p.weight || '-'} lbs</td>
                           <td className="px-3 py-1">{p.dimensions || '-'}</td>
                           <td className="px-3 py-1">{p.partsPerPallet || '-'}</td>
+                          <td className="px-3 py-1">{p.photos?.length || 0} 📷</td>
+                          {canEdit && (
+                            <td className="px-3 py-1">
+                              {p.id && p._source === 'app' ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEditPallet({
+                                      id: p.id!,
+                                      palletNumber: p.palletNumber || idx + 1,
+                                      weight: p.weight,
+                                      length: p.length,
+                                      width: p.width,
+                                      height: p.height,
+                                      partsPerPallet: p.partsPerPallet,
+                                      photos: p.photos || [],
+                                      ifNumber: p.ifNumber,
+                                      order_id: p.order_id,
+                                      edited_by_name: p.edited_by_name,
+                                      edited_at: p.edited_at,
+                                    })
+                                    setShowEditModal(true)
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-primary"
+                                  title="Edit pallet"
+                                >
+                                  <Pencil className="size-3" />
+                                </button>
+                              ) : (
+                                <span className="text-muted-foreground text-[9px]" title="Sheet records are read-only">—</span>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -372,6 +414,32 @@ export function OrderDetail({
           </div>
         )}
       </div>
+
+      {/* Pallet Edit Modal */}
+      <PalletEditModal
+        pallet={editPallet}
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        userName={userName}
+        onSaved={async () => {
+          // Refetch pallet records
+          try {
+            const res = await fetch('/api/pallet-records')
+            if (res.ok) {
+              const data = (await res.json()) as PalletRecord[]
+              const targetIf = normalize(ifNumber)
+              const targetLine = normalize(line)
+              setPallets(data.filter((r) => {
+                const rIf = normalize(r.ifNumber)
+                const oNum = normalize(r.orderNumber)
+                if (targetIf && rIf && rIf === targetIf) return true
+                if (targetLine && oNum && oNum === targetLine) return true
+                return false
+              }))
+            }
+          } catch { /* ignore */ }
+        }}
+      />
     </>
   )
 }

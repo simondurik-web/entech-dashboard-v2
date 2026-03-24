@@ -272,7 +272,7 @@ export default function NeedToPackagePage() {
 
 function NeedToPackagePageContent() {
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { canAccess } = usePermissions()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -507,6 +507,8 @@ function NeedToPackagePageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                canEdit={canAccess('edit_pallet_records')}
+                userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />
             )

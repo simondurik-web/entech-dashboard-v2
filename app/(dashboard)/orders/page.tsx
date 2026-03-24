@@ -13,6 +13,8 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
+import { usePermissions } from '@/lib/use-permissions'
+import { useAuth } from '@/lib/auth-context'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -148,6 +150,9 @@ export default function OrdersPage() {
 
 function OrdersPageContent() {
   const { t } = useI18n()
+  const { profile } = useAuth()
+  const { canAccess } = usePermissions()
+  const canEditPallets = canAccess('edit_pallet_records')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
@@ -534,6 +539,8 @@ function OrdersPageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                canEdit={canEditPallets}
+                userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />
             )
