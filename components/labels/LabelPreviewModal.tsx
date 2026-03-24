@@ -27,7 +27,6 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
     if (onPrint) onPrint(label)
 
     // Clone the label into a root-level container so it's outside the Radix portal
-    // This ensures the print CSS can show it while hiding everything else
     const source = document.getElementById('label-print-area')
     if (!source) return
 
@@ -40,11 +39,14 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
     printRoot.innerHTML = ''
     const clone = source.cloneNode(true) as HTMLElement
     clone.id = 'label-print-clone'
+    // Remove inline max-width/width so print CSS can take over
+    clone.style.maxWidth = 'none'
+    clone.style.width = '100%'
+    clone.style.margin = '0'
     printRoot.appendChild(clone)
 
     setTimeout(() => {
       window.print()
-      // Clean up after print dialog closes
       setTimeout(() => { if (printRoot) printRoot.innerHTML = '' }, 1000)
     }, 300)
   }
@@ -183,20 +185,29 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
       {/* eslint-disable-next-line react/no-unknown-property */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page { size: letter landscape; margin: 0.5in; }
+          @page { size: letter landscape; margin: 0; }
           /* Hide everything except the print root */
           body > *:not(#label-print-root) { display: none !important; visibility: hidden !important; }
-          body { margin: 0 !important; padding: 0 !important; background: white !important; }
-          #label-print-root { display: block !important; visibility: visible !important; }
+          html, body {
+            margin: 0 !important; padding: 0 !important;
+            background: white !important; width: 100% !important; height: 100% !important;
+          }
+          #label-print-root {
+            display: block !important; visibility: visible !important;
+            width: 100% !important; height: 100% !important;
+            margin: 0 !important; padding: 0 !important;
+          }
           #label-print-root * { visibility: visible !important; }
-          /* The cloned label */
+          /* The cloned label — fills the full page */
           #label-print-clone {
-            position: fixed !important;
-            left: 0.5in !important;
-            top: 0.5in !important;
-            width: 9in !important;
-            height: 6.5in !important;
-            overflow: hidden !important;
+            position: absolute !important;
+            left: 0.4in !important;
+            top: 0.3in !important;
+            width: 10.2in !important;
+            min-height: 7in !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+            overflow: visible !important;
             border: 3px solid black !important;
             background: white !important;
             color: black !important;
@@ -204,25 +215,38 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
             padding: 0 !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
-            font-size: 16px !important;
+            font-family: 'Calibri', 'Segoe UI', sans-serif !important;
           }
           #label-print-clone [data-label-header] {
-            padding: 20px 24px !important;
+            display: grid !important;
+            grid-template-columns: 140px 1fr 1fr !important;
+            align-items: center !important;
+            padding: 20px 30px !important;
+            min-height: 120px !important;
             border-bottom: 2px solid black !important;
           }
           #label-print-clone [data-label-header] svg {
             width: 120px !important;
             height: 120px !important;
           }
-          #label-print-clone [data-line-label] { font-size: 24px !important; }
-          #label-print-clone [data-line-value] { font-size: 52px !important; }
+          #label-print-clone [data-line-label] {
+            font-size: 28px !important;
+            font-weight: bold !important;
+          }
+          #label-print-clone [data-line-value] {
+            font-size: 64px !important;
+            font-weight: bold !important;
+            text-align: center !important;
+          }
           #label-print-clone [data-label-body] {
-            padding: 16px 32px !important;
+            padding: 16px 40px 20px !important;
           }
           #label-print-clone [data-label-row] {
-            padding: 4px 0 !important;
-            font-size: 16px !important;
-            line-height: 1.7 !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            padding: 5px 0 !important;
+            font-size: 18px !important;
+            line-height: 1.8 !important;
           }
         }
       `}} />
