@@ -348,7 +348,8 @@ function NeedToPackagePageContent() {
   ], [t])
 
   const showLabels = canAccess('/labels')
-  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, handleAssigneeUpdate), [t, handlePriorityUpdate, showLabels, handleLabelClick, handleAssigneeUpdate])
+  const canAssign = canAccess('assign_orders')
+  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined), [t, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 

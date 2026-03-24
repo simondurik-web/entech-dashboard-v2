@@ -28,6 +28,7 @@ const ALL_MENU_PATHS = [
   '/labels',
   // Feature permissions (not page paths)
   'manage_priority',
+  'assign_orders',
   'view_inventory_values',
   '/scheduling:edit',
   'labels:generate',
@@ -61,6 +62,7 @@ const PATH_LABELS: Record<string, string> = {
   '/admin/permissions': 'Admin: Permissions',
   '/phil-assistant': '🤖 Phil Assistant (AI)',
   'manage_priority': '🎯 Manage Priority',
+  'assign_orders': '👤 Assign Orders',
   'view_inventory_values': '💰 Inventory Values',
   '/scheduling': '📅 Scheduling',
   '/scheduling:edit': '📅 Scheduling: Edit',
