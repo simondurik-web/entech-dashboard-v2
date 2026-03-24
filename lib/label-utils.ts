@@ -7,6 +7,7 @@ export interface LabelData {
   parts_per_package: number
   num_packages: number
   packaging_type?: string
+  pallet_number?: number
   qr_data?: string
   label_status: 'pending' | 'generated' | 'emailed' | 'printed' | 'error'
   // Product details (for label printout)

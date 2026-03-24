@@ -141,8 +141,8 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
             {/* Parts per Package */}
             <LabelRow label="Parts per Package:" value={label.parts_per_package?.toLocaleString()} />
 
-            {/* Package number */}
-            <LabelRow label="Package number:" value={`of ${label.num_packages}`} />
+            {/* Package number — pre-filled with pallet_number if available */}
+            <LabelRow label="Package number:" value={label.pallet_number ? `${label.pallet_number} of ${label.num_packages}` : `of ${label.num_packages}`} />
 
             {/* Type of packaging */}
             <LabelRow label="Type of packaging" value={label.packaging_type || '—'} />

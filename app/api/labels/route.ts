@@ -98,18 +98,21 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    const { data: labels, error } = await supabaseAdmin
-      .from('labels')
-      .insert({
+    // Insert one label per pallet — each gets a unique QR code
+    const palletRows = Array.from({ length: numPackages }, (_, i) => {
+      const palletNum = i + 1
+      const partsInThis = palletNum === numPackages ? lastPackageQty : partsPerPackage
+      return {
         order_line: orderLine,
         customer_name: customerName,
         part_number: partNumber,
         order_qty: orderQty,
-        parts_per_package: partsPerPackage,
+        parts_per_package: partsInThis,
         num_packages: numPackages,
+        pallet_number: palletNum,
         packaging_type: order.packaging || order.packaging_type || null,
-        qr_data: qrData,
-        label_status: 'generated',
+        qr_data: generateQrData(orderLine, customerName, partNumber, palletNum, numPackages),
+        label_status: 'generated' as const,
         tire: order.tire || null,
         hub: order.hub || null,
         hub_style: order.hub_style || order.hub_mold || null,
@@ -119,7 +122,12 @@ export async function POST(req: NextRequest) {
         assigned_to: order.assigned_to || order.assignedTo || null,
         generated_by: userId || null,
         generated_at: new Date().toISOString(),
-      })
+      }
+    })
+
+    const { data: labels, error } = await supabaseAdmin
+      .from('labels')
+      .insert(palletRows)
       .select()
 
     if (error) {
@@ -127,14 +135,14 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    if (labels?.[0]) {
+    if (labels?.length) {
       const isCustom = custom_parts_per_package?.[orderLine] ? ' (custom packaging)' : ''
       await supabaseAdmin.from('label_activity_log').insert({
         label_id: labels[0].id,
         order_line: orderLine,
         action: 'generated',
         status: 'success',
-        notes: `Generated label with ${numPackages} packages (last package: ${lastPackageQty} parts)${isCustom}`,
+        notes: `Generated ${numPackages} pallet labels (last pallet: ${lastPackageQty} parts)${isCustom}`,
         created_by: userId || null,
       })
 

@@ -28,7 +28,10 @@ function getColumns(t: (key: string) => string, onView: (label: LabelData) => vo
     { key: 'customer_name', label: t('table.customer'), sortable: true, filterable: true },
     { key: 'part_number', label: t('table.partNumber'), sortable: true, filterable: true },
     { key: 'order_qty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
-    { key: 'num_packages', label: t('table.packages'), sortable: true, render: (v) => String(v || '-') },
+    { key: 'pallet_number', label: 'Pallet', sortable: true, render: (v, row) => {
+      const r = row as Record<string, unknown>
+      return v ? `${v} of ${r.num_packages || '?'}` : `${r.num_packages || '-'} pkg`
+    }},
     {
       key: 'label_status',
       label: t('labels.status'),
