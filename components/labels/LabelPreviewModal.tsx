@@ -201,13 +201,12 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
           /* The cloned label — fills the full page */
           #label-print-clone {
             position: absolute !important;
-            left: 0.4in !important;
-            top: 0.3in !important;
-            width: 10.2in !important;
-            min-height: 7in !important;
+            left: 0.3in !important;
+            top: 0.2in !important;
+            width: 9.4in !important;
             max-width: none !important;
             box-sizing: border-box !important;
-            overflow: visible !important;
+            overflow: hidden !important;
             border: 3px solid black !important;
             background: white !important;
             color: black !important;
@@ -219,34 +218,34 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
           }
           #label-print-clone [data-label-header] {
             display: grid !important;
-            grid-template-columns: 140px 1fr 1fr !important;
+            grid-template-columns: 130px 1fr 1fr !important;
             align-items: center !important;
-            padding: 20px 30px !important;
-            min-height: 120px !important;
+            padding: 12px 24px !important;
+            min-height: 100px !important;
             border-bottom: 2px solid black !important;
           }
           #label-print-clone [data-label-header] svg {
-            width: 120px !important;
-            height: 120px !important;
+            width: 110px !important;
+            height: 110px !important;
           }
           #label-print-clone [data-line-label] {
-            font-size: 28px !important;
+            font-size: 22px !important;
             font-weight: bold !important;
           }
           #label-print-clone [data-line-value] {
-            font-size: 64px !important;
+            font-size: 52px !important;
             font-weight: bold !important;
             text-align: center !important;
           }
           #label-print-clone [data-label-body] {
-            padding: 16px 40px 20px !important;
+            padding: 6px 36px 8px !important;
           }
           #label-print-clone [data-label-row] {
             display: flex !important;
             justify-content: space-between !important;
-            padding: 5px 0 !important;
-            font-size: 18px !important;
-            line-height: 1.8 !important;
+            padding: 1px 0 !important;
+            font-size: 16px !important;
+            line-height: 1.4 !important;
           }
         }
       `}} />
