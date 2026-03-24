@@ -49,6 +49,7 @@ interface CustomerGroupRow extends Record<string, unknown> {
   customer: string
   orderCount: number
   totalQty: number
+  avgPricePerPart: number
   revenue: number
   costs: number
   totalProfit: number
@@ -60,6 +61,7 @@ interface OrderRow extends Record<string, unknown> {
   line: string
   customer: string
   qty: number
+  pricePerPart: number
   revenue: number
   totalCost: number
   totalProfit: number
@@ -81,6 +83,7 @@ const ORDER_COLUMNS: ColumnDef<OrderRow>[] = [
   { key: 'line', label: 'Line', sortable: true, filterable: true },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
   { key: 'qty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+  { key: 'pricePerPart', label: 'Price/Part', sortable: true, render: (v) => fmt(v as number) },
   { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
   { key: 'totalCost', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
   { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt(v as number)}</span> },
@@ -92,6 +95,7 @@ const CUSTOMER_GROUP_COLUMNS: ColumnDef<CustomerGroupRow>[] = [
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
   { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
   { key: 'totalQty', label: 'Qty', sortable: true, render: (v) => fmtN(v as number) },
+  { key: 'avgPricePerPart', label: 'Avg Price/Part', sortable: true, render: (v) => fmt(v as number) },
   { key: 'revenue', label: 'Revenue', sortable: true, render: (v) => fmt(v as number) },
   { key: 'costs', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
   { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
@@ -103,6 +107,7 @@ function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storage
     line: o.line,
     customer: o.customer,
     qty: o.qty,
+    pricePerPart: o.qty > 0 ? o.revenue / o.qty : 0,
     revenue: o.revenue,
     totalCost: getOrderCost(o),
     totalProfit: o.totalProfit,
@@ -123,7 +128,8 @@ function CustomersDataTable({ customerGroups, partNumber }: { customerGroups: [s
     const revenue = orders.reduce((s, o) => s + o.revenue, 0)
     const costs = orders.reduce((s, o) => s + getOrderCost(o), 0)
     const totalProfit = orders.reduce((s, o) => s + o.totalProfit, 0)
-    return { customer, orderCount: orders.length, totalQty, revenue, costs, totalProfit, totalMarginPct: revenue > 0 ? (totalProfit / revenue) * 100 : 0, orders }
+    const avgPricePerPart = totalQty > 0 ? revenue / totalQty : 0
+    return { customer, orderCount: orders.length, totalQty, avgPricePerPart, revenue, costs, totalProfit, totalMarginPct: revenue > 0 ? (totalProfit / revenue) * 100 : 0, orders }
   }), [customerGroups])
 
   const table = useDataTable({ data: rows, columns: CUSTOMER_GROUP_COLUMNS, storageKey: `${partNumber}_customers` })
