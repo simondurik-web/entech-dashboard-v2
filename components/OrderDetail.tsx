@@ -449,6 +449,7 @@ export function OrderDetail({
                           {canEdit && (
                             <td className="px-3 py-1">
                               {p.id && p._source === 'app' ? (
+                                <>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
@@ -504,6 +505,7 @@ export function OrderDetail({
                                 >
                                   <Trash2 className="size-3" />
                                 </button>
+                                </>
                               ) : (
                                 <span className="text-muted-foreground text-[9px]" title="Sheet records are read-only">—</span>
                               )}
