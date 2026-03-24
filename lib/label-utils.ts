@@ -24,6 +24,7 @@ export interface LabelData {
   emailed_to?: string[]
   emailed_at?: string
   printed_by?: string
+  printed_by_name?: string
   printed_at?: string
   error_message?: string
   created_at?: string

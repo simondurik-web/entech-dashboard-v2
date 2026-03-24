@@ -31,6 +31,7 @@ export async function PATCH(
     updates.label_status = body.label_status
     if (body.label_status === 'printed') {
       updates.printed_by = userId || null
+      updates.printed_by_name = body.printed_by_name || null
       updates.printed_at = new Date().toISOString()
     }
   }
@@ -51,13 +52,16 @@ export async function PATCH(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Log activity
+  const userName = body.printed_by_name || userId || 'Unknown'
   if (body.label_status) {
     await supabaseAdmin.from('label_activity_log').insert({
       label_id: id,
       order_line: data.order_line,
       action: body.label_status,
       status: 'success',
-      notes: `Status changed to ${body.label_status}`,
+      notes: body.label_status === 'printed'
+        ? `Printed by ${userName}`
+        : `Status changed to ${body.label_status} by ${userName}`,
       created_by: userId || null,
     })
   }

@@ -182,6 +182,19 @@ export function LabelPreviewModal({ label, open, onOpenChange, onPrint, onEmail 
           </div>
         </div>
 
+        {/* Audit info — shown below the label, not printed */}
+        {(label.printed_by_name || label.printed_at) && (
+          <div className="bg-muted/50 rounded-lg px-3 py-2 text-sm text-muted-foreground flex items-center gap-2" data-no-print>
+            <Printer className="size-3.5" />
+            <span>
+              Printed by <span className="font-medium text-foreground">{label.printed_by_name || 'Unknown'}</span>
+              {label.printed_at && (
+                <> on {new Date(label.printed_at).toLocaleString()}</>
+              )}
+            </span>
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t('ui.close')}

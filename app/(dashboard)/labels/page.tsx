@@ -45,6 +45,24 @@ function getColumns(t: (key: string) => string, onView: (label: LabelData) => vo
     },
     { key: 'assigned_to', label: t('labels.assignedTo'), sortable: true, filterable: true, render: (v) => String(v || '-') },
     {
+      key: 'printed_by_name' as keyof LabelRow & string,
+      label: '🖨️ Printed By',
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const r = row as Record<string, unknown>
+        if (!v && !r.printed_at) return <span className="text-muted-foreground">—</span>
+        const name = String(v || 'Unknown')
+        const date = r.printed_at ? new Date(String(r.printed_at)).toLocaleString() : ''
+        return (
+          <span title={date}>
+            <span className="font-medium">{name}</span>
+            {date && <span className="text-muted-foreground text-xs ml-1">({new Date(String(r.printed_at)).toLocaleDateString()})</span>}
+          </span>
+        )
+      },
+    },
+    {
       key: 'generated_at',
       label: t('labels.generatedAt'),
       sortable: true,
@@ -84,7 +102,7 @@ export default function LabelsPage() {
 
 function LabelsPageContent() {
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { canAccess } = usePermissions()
   const [labels, setLabels] = useState<LabelData[]>([])
   const [loading, setLoading] = useState(true)
@@ -116,15 +134,18 @@ function LabelsPageContent() {
   const handlePrint = useCallback((label: LabelData) => {
     setPreviewLabel(label)
     setShowPreview(true)
-    // Mark as printed
+    // Mark as printed with user name
     if (label.id && user) {
       fetch(`/api/labels/${label.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
-        body: JSON.stringify({ label_status: 'printed' }),
+        body: JSON.stringify({
+          label_status: 'printed',
+          printed_by_name: profile?.full_name || user.email || 'Unknown',
+        }),
       }).then(() => fetchLabels())
     }
-  }, [user, fetchLabels])
+  }, [user, profile, fetchLabels])
 
   const columns = useMemo(() => getColumns(t, handleView, handlePrint), [t, handleView, handlePrint])
 
