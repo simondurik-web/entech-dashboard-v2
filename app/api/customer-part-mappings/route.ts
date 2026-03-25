@@ -79,6 +79,9 @@ export async function POST(req: NextRequest) {
       tier5_range, tier5_price, notes,
     } = body
 
+    const performedByName = body._performed_by_name || 'Unknown'
+    const performedByEmail = body._performed_by_email || ''
+
     const mappingCosts = await buildCustomerPartMappingCosts(body)
     const { internal_part_number, lowest_quoted_price, variable_cost, total_cost, sales_target, contribution_level } = mappingCosts
 
@@ -103,6 +106,20 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) throw error
+
+    // Record audit entry for creation
+    if (data) {
+      await supabaseAdmin.from('customer_part_mapping_audit').insert({
+        mapping_id: data.id,
+        action: 'created',
+        field_name: null,
+        old_value: null,
+        new_value: `${data.customers?.name || 'Unknown'} / ${data.internal_part_number}`,
+        performed_by_name: performedByName,
+        performed_by_email: performedByEmail,
+      })
+    }
+
     return NextResponse.json(data, { status: 201 })
   } catch (err: unknown) {
     if (err instanceof CustomerPartMappingValidationError) {
