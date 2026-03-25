@@ -8,6 +8,8 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import { OrderDetail } from '@/components/OrderDetail'
+import { useAuth } from '@/lib/auth-context'
+import { usePermissions } from '@/lib/use-permissions'
 import type { Order } from '@/lib/google-sheets-shared'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
@@ -59,6 +61,9 @@ export default function StagedPage() {
 
 function StagedPageContent() {
   const { t } = useI18n()
+  const { profile } = useAuth()
+  const { canAccess } = usePermissions()
+  const canEditPallets = canAccess('edit_pallet_records')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
@@ -315,6 +320,8 @@ function StagedPageContent() {
                   tirePartNum={order.tire}
                   hubPartNum={order.hub}
                   partNumber={order.partNumber}
+                  canEdit={canEditPallets}
+                  userName={profile?.full_name || ''}
                   onClose={() => setExpandedOrderKey(null)}
                 />
               )

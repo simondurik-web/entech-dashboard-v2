@@ -14,6 +14,8 @@ import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import type { Order } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
+import { useAuth } from '@/lib/auth-context'
+import { usePermissions } from '@/lib/use-permissions'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 
@@ -69,6 +71,9 @@ function ShippedPageContent() {
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
   const { t } = useI18n()
+  const { profile } = useAuth()
+  const { canAccess } = usePermissions()
+  const canEditPallets = canAccess('edit_pallet_records')
 
   const DATE_FILTERS = useMemo(() => [
     { key: 'all' as const, label: t('ui.allTime') },
@@ -259,6 +264,8 @@ function ShippedPageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                canEdit={canEditPallets}
+                userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />
             )

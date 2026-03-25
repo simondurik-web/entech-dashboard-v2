@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2 } from 'lucide-react'
+import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
 import { PalletEditModal, type EditablePallet } from '@/components/PalletEditModal'
+import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import type { LabelData } from '@/lib/label-utils'
+import { useAuth } from '@/lib/auth-context'
 
 interface OrderDetailProps {
   ifNumber?: string
@@ -118,6 +121,11 @@ export function OrderDetail({
   const [error, setError] = useState<string | null>(null)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [showAllPallets, setShowAllPallets] = useState(false)
+  const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
+  const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
+  const [showLabelPreview, setShowLabelPreview] = useState(false)
+  const [labelLoading, setLabelLoading] = useState(false)
+  const { user } = useAuth()
 
   useEffect(() => {
     let mounted = true
@@ -210,6 +218,37 @@ export function OrderDetail({
   const firstDim = pallets[0]?.dimensions || '-'
   const visiblePallets = showAllPallets ? pallets : pallets.slice(0, 3)
 
+  const handleLabelClick = async () => {
+    if (!line) return
+    setLabelLoading(true)
+    try {
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(line)}`)
+      const existing = await res.json()
+      if (Array.isArray(existing) && existing.length > 0) {
+        setLabelPreview(existing[0])
+        setAllLabelsForOrder(existing)
+        setShowLabelPreview(true)
+      } else {
+        const genRes = await fetch('/api/labels', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(user ? { 'x-user-id': user.id } : {}),
+          },
+          body: JSON.stringify({ order_lines: [line] }),
+        })
+        const genData = await genRes.json()
+        const result = genData.results?.[0]
+        if (result?.labels?.[0]) {
+          setLabelPreview(result.labels[0])
+          setAllLabelsForOrder(result.labels)
+          setShowLabelPreview(true)
+        }
+      }
+    } catch { /* ignore */ }
+    finally { setLabelLoading(false) }
+  }
+
   return (
     <>
       {/* Lightbox — portal to body so fixed positioning works even inside transformed parents */}
@@ -251,8 +290,8 @@ export function OrderDetail({
 
         {!loading && !error && (
           <div className="space-y-3">
-            {/* ── Summary chips (pallet stats + shipping) ── */}
-            {(pallets.length > 0 || isShipped) && (
+            {/* ── Summary chips (pallet stats + shipping) + Label button ── */}
+            {(pallets.length > 0 || isShipped || line) && (
               <div className="flex flex-wrap items-center gap-4 px-2 py-1.5 bg-muted/40 rounded-md text-xs">
                 {pallets.length > 0 && (
                   <>
@@ -269,6 +308,21 @@ export function OrderDetail({
                     <Chip label={t('status.shipped')} value={firstShipping.shipDate || shippedDate || '-'} />
                     <Chip label={t('table.carrier')} value={firstShipping.carrier || '-'} />
                     <Chip label={t('table.bol')} value={firstShipping.bol || '-'} />
+                  </>
+                )}
+                {/* Label Print button */}
+                {line && (
+                  <>
+                    <span className="w-px h-4 bg-border" />
+                    <button
+                      onClick={handleLabelClick}
+                      disabled={labelLoading}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary font-medium transition-colors"
+                      title="View / Print Label"
+                    >
+                      <Tag className="size-3" />
+                      {labelLoading ? 'Loading...' : 'Label'}
+                    </button>
                   </>
                 )}
               </div>
@@ -523,6 +577,19 @@ export function OrderDetail({
           </div>
         )}
       </div>
+
+      {/* Label Preview Modal */}
+      {labelPreview && (
+        <LabelPreviewModal
+          label={labelPreview}
+          siblingLabels={allLabelsForOrder}
+          open={showLabelPreview}
+          onOpenChange={(open) => {
+            setShowLabelPreview(open)
+            if (!open) setLabelPreview(null)
+          }}
+        />
+      )}
 
       {/* Pallet Edit Modal */}
       <PalletEditModal
