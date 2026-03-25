@@ -113,6 +113,7 @@ function CustomerReferencePageContent() {
   const [search, setSearch] = useState('')
   const [filterCustomer, setFilterCustomer] = useState<string>('all')
   const [filterLevel, setFilterLevel] = useState<string>('all')
+  const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
 
   // Auth
   const { profile } = useAuth()
@@ -217,6 +218,7 @@ function CustomerReferencePageContent() {
       )
       if (!match) return false
     }
+    if (showDuplicatesOnly && !isDuplicate(m)) return false
     return true
   })
 
@@ -499,6 +501,16 @@ function CustomerReferencePageContent() {
             <SelectItem value="Target Achieved">{t('customerRef.targetAchieved')}</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant={showDuplicatesOnly ? 'default' : 'outline'}
+          onClick={() => setShowDuplicatesOnly(!showDuplicatesOnly)}
+          className={showDuplicatesOnly ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+        >
+          <AlertCircle className="size-4 mr-1" /> {showDuplicatesOnly ? 'Show All' : 'Show Duplicates'}
+          {!showDuplicatesOnly && stats.duplicates > 0 && (
+            <span className="ml-1 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded-full">{stats.duplicates}</span>
+          )}
+        </Button>
         <Button variant="outline" onClick={() => { setShowAuditPanel(!showAuditPanel) }}>
           <History className="size-4 mr-1" /> Audit Trail
         </Button>
