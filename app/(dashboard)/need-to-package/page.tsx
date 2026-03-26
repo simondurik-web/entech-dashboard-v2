@@ -298,6 +298,23 @@ function NeedToPackagePageContent() {
     ))
   }, [])
 
+  const handleLabelPrint = useCallback(async (label: LabelData) => {
+    if (!user) return
+    const printedName = profile?.full_name || user.email || 'Unknown'
+    try {
+      await fetch(`/api/labels/${label.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+        body: JSON.stringify({
+          label_status: 'printed',
+          printed_by_name: printedName,
+        }),
+      })
+    } catch (e) {
+      console.error('Failed to update label status:', e)
+    }
+  }, [user, profile])
+
   const handleLabelClick = useCallback(async (order: PackageOrder) => {
     setLabelWarning(null)
     // Validate parts_per_package
@@ -553,6 +570,7 @@ function NeedToPackagePageContent() {
         label={labelPreview}
         open={showLabelPreview}
         onOpenChange={setShowLabelPreview}
+        onPrint={handleLabelPrint}
       />
     </div>
   )
