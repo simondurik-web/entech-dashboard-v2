@@ -79,7 +79,7 @@ export function CommandPalette({ items }: { items: CommandItem[] }) {
                 />
                 <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">ESC</kbd>
               </div>
-              <div className="max-h-72 overflow-y-auto p-2">
+              <div className="max-h-[min(60vh,28rem)] overflow-y-auto p-2">
                 {filtered.map((item, i) => (
                   <button
                     key={item.label}

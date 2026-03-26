@@ -8,9 +8,22 @@ export function ScrollToTop() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    // Listen to both window scroll and Lenis scroll events
     const handler = () => setVisible(window.scrollY > 500)
     window.addEventListener('scroll', handler, { passive: true })
-    return () => window.removeEventListener('scroll', handler)
+
+    // Also poll scrollY to catch Lenis smooth scroll updates
+    let raf: number
+    const poll = () => {
+      setVisible(window.scrollY > 500)
+      raf = requestAnimationFrame(poll)
+    }
+    raf = requestAnimationFrame(poll)
+
+    return () => {
+      window.removeEventListener('scroll', handler)
+      cancelAnimationFrame(raf)
+    }
   }, [])
 
   return (
