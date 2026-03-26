@@ -70,6 +70,12 @@ export function LabelPreviewModal({ label, siblingLabels, open, onOpenChange, on
 
     setTimeout(() => {
       window.print()
+      // Mark labels as printed via onPrint callback after printing
+      if (onPrint) {
+        for (const lb of labelsToPrint) {
+          onPrint(lb)
+        }
+      }
       setTimeout(() => { if (printRoot) printRoot.innerHTML = '' }, 1000)
     }, 300)
   }
