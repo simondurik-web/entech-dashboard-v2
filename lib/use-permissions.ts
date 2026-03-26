@@ -10,6 +10,9 @@ type RolePermission = {
 }
 
 let cachedPermissions: RolePermission[] | null = null
+const PATH_FALLBACKS: Record<string, string[]> = {
+  '/shipping-overview': ['/shipping-records'],
+}
 
 export function usePermissions() {
   const { profile } = useAuth()
@@ -48,6 +51,9 @@ export function usePermissions() {
       if (!rolePerm) return false
       // Exact match first
       if (rolePerm.menu_access[path] === true) return true
+      for (const fallbackPath of PATH_FALLBACKS[path] ?? []) {
+        if (rolePerm.menu_access[fallbackPath] === true) return true
+      }
       // Sub-path match: /quotes/new should match /quotes permission
       const segments = path.split("/").filter(Boolean)
       while (segments.length > 1) {
