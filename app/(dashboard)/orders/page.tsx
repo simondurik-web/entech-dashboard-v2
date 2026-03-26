@@ -175,6 +175,7 @@ function OrdersPageContent() {
   const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelWarning, setLabelWarning] = useState<string | null>(null)
+  const [printedLines, setPrintedLines] = useState<Set<string>>(new Set())
 
   // Optimistic priority update handler
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
@@ -426,11 +427,12 @@ function OrdersPageContent() {
       label: '🏷️',
       render: (_v: OrderRow[keyof OrderRow], row: OrderRow) => {
         const order = row as unknown as Order
+        const isPrinted = printedLines.has(order.line)
         return (
           <button
             onClick={(e) => { e.stopPropagation(); handleLabelClick(order) }}
-            className="rounded p-1 hover:bg-muted transition-colors"
-            title="Label"
+            className={`rounded p-1 hover:bg-muted transition-colors ${isPrinted ? 'text-green-500' : 'text-muted-foreground'}`}
+            title={isPrinted ? 'Printed ✓' : 'Print label'}
           >
             <Tag className="size-4" />
           </button>
@@ -439,7 +441,7 @@ function OrdersPageContent() {
     }] as ColumnDef<OrderRow>[] : []),
     // Extra columns — hidden by default, available via Columns picker
     ...getExtraOrderColumns<OrderRow>(defaultColumnKeys),
-  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick])
+  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick, printedLines])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -464,6 +466,18 @@ function OrdersPageContent() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Fetch printed label statuses for icon visual
+  useEffect(() => {
+    fetch('/api/labels?status=printed')
+      .then(res => res.json())
+      .then((labels: LabelData[]) => {
+        if (Array.isArray(labels)) {
+          setPrintedLines(new Set(labels.map(l => l.order_line)))
+        }
+      })
+      .catch(() => { /* non-critical */ })
+  }, [])
 
   // Auto-refresh every 5 minutes
   const autoRefresh = useAutoRefresh({
@@ -683,6 +697,7 @@ function OrdersPageContent() {
                   printed_by_name: profile?.full_name || user.email || 'Unknown',
                 }),
               })
+              setPrintedLines(prev => new Set([...prev, label.order_line]))
             }
           }}
         />

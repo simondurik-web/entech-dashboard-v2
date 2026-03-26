@@ -64,7 +64,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void, printedLines?: Set<string>): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -232,13 +232,15 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
       label: '🏷️',
       render: (_v: PackageRow[keyof PackageRow], row: PackageRow) => {
         const order = row as unknown as PackageOrder
+        const isPrinted = printedLines?.has(order.line)
         return (
           <button
             onClick={(e) => { e.stopPropagation(); onLabelClick(order) }}
-            className="rounded p-1 hover:bg-muted transition-colors"
-            title="Label"
+            className={`rounded p-1 hover:bg-muted transition-colors ${isPrinted ? 'text-green-500' : 'text-muted-foreground'}`}
+            title={isPrinted ? 'Printed ✓' : 'Print label'}
           >
             <Tag className="size-4" />
+            {isPrinted && <span className="sr-only">Printed</span>}
           </button>
         )
       },
@@ -284,6 +286,7 @@ function NeedToPackagePageContent() {
   const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelWarning, setLabelWarning] = useState<string | null>(null)
+  const [printedLines, setPrintedLines] = useState<Set<string>>(new Set())
 
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
     setOrders(prev => prev.map(o => {
@@ -310,6 +313,8 @@ function NeedToPackagePageContent() {
           printed_by_name: printedName,
         }),
       })
+      // Update local printed state for icon visual
+      setPrintedLines(prev => new Set([...prev, label.order_line]))
     } catch (e) {
       console.error('Failed to update label status:', e)
     }
@@ -366,7 +371,7 @@ function NeedToPackagePageContent() {
 
   const showLabels = canAccess('/labels')
   const canAssign = canAccess('assign_orders')
-  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined), [t, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate])
+  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined, printedLines), [t, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate, printedLines])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -374,6 +379,18 @@ function NeedToPackagePageContent() {
     const key = getOrderKey(order)
     setExpandedOrderKey((prev) => (prev === key ? null : key))
   }
+
+  // Fetch printed label statuses
+  useEffect(() => {
+    fetch('/api/labels?status=printed')
+      .then(res => res.json())
+      .then((labels: LabelData[]) => {
+        if (Array.isArray(labels)) {
+          setPrintedLines(new Set(labels.map(l => l.order_line)))
+        }
+      })
+      .catch(() => { /* non-critical */ })
+  }, [])
 
   useEffect(() => {
     Promise.all([
