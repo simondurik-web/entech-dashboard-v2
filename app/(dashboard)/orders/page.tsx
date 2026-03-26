@@ -26,6 +26,9 @@ import { AssigneeEditor } from '@/components/AssigneeEditor'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { ProgressBar } from '@/components/ui/progress-bar'
+import { DataFreshness } from '@/components/ui/data-freshness'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -391,10 +394,9 @@ function OrdersPageContent() {
       render: (v) => {
         const status = String(v || '')
         const displayLabel = statusDisplayLabel(status, t)
+        const normalized = normalizeStatus(status, '')
         return (
-          <span className={`px-2 py-0.5 text-xs rounded font-medium ${statusColor(status)}`}>
-            {displayLabel || t('ui.na')}
-          </span>
+          <StatusBadge status={normalized} label={displayLabel || t('ui.na')} />
         )
       },
     },
@@ -514,14 +516,17 @@ function OrdersPageContent() {
     <div className="p-4 pb-20">
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold">📋 {t('page.ordersData')}</h1>
-        <AutoRefreshControl
-          isEnabled={autoRefresh.isAutoRefreshEnabled}
-          onToggle={autoRefresh.toggleAutoRefresh}
-          onRefreshNow={() => fetchData(true)}
-          isRefreshing={refreshing}
-          nextRefresh={autoRefresh.nextRefresh}
-          lastRefresh={autoRefresh.lastRefresh}
-        />
+        <div className="flex items-center gap-2">
+          <DataFreshness lastUpdated={autoRefresh.lastRefresh} />
+          <AutoRefreshControl
+            isEnabled={autoRefresh.isAutoRefreshEnabled}
+            onToggle={autoRefresh.toggleAutoRefresh}
+            onRefreshNow={() => fetchData(true)}
+            isRefreshing={refreshing}
+            nextRefresh={autoRefresh.nextRefresh}
+            lastRefresh={autoRefresh.lastRefresh}
+          />
+        </div>
       </div>
       <p className="text-muted-foreground text-sm mb-4">{t('page.ordersSubtitle')}</p>
 
@@ -536,18 +541,22 @@ function OrdersPageContent() {
         <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-amber" spotlightColor="234,179,8">
           <p className="text-xs text-yellow-600">{t('stats.pending')}</p>
           <p className="text-xl font-bold text-yellow-600">{animNeedToMake}</p>
+          <ProgressBar value={totalOrders > 0 ? (needToMake / totalOrders) * 100 : 0} color="bg-yellow-500" className="mt-2" />
         </SpotlightCard>
         <SpotlightCard className="bg-teal-500/10 rounded-lg p-3 stat-card-hover" spotlightColor="20,184,166">
           <p className="text-xs text-teal-600">{t('stats.wip')}</p>
           <p className="text-xl font-bold text-teal-600">{animMaking}</p>
+          <ProgressBar value={totalOrders > 0 ? (making / totalOrders) * 100 : 0} color="bg-teal-500" className="mt-2" />
         </SpotlightCard>
         <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="16,185,129">
           <p className="text-xs text-emerald-600">{t('stats.completed')}</p>
           <p className="text-xl font-bold text-emerald-600">{animCompleted}</p>
+          <ProgressBar value={totalOrders > 0 ? (completed / totalOrders) * 100 : 0} color="bg-emerald-500" className="mt-2" />
         </SpotlightCard>
         <SpotlightCard className="bg-green-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.readyToShip')}</p>
           <p className="text-xl font-bold text-green-600">{animReadyToShip}</p>
+          <ProgressBar value={totalOrders > 0 ? (readyToShip / totalOrders) * 100 : 0} color="bg-green-500" className="mt-2" />
         </SpotlightCard>
       </div>
       </ScrollReveal>
@@ -608,6 +617,11 @@ function OrdersPageContent() {
           initialView={initialView}
           autoExport={autoExport}
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
+          rowClassName={(row) => {
+            const order = row as unknown as Order
+            const s = normalizeStatus(order.internalStatus, order.ifStatus)
+            return `row-status-${s}`
+          }}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}
           renderExpandedContent={(row) => {

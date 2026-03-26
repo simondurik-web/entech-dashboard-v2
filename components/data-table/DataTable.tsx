@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 import type { ColumnDef, DataTableViewConfig, UseDataTableReturn } from '@/lib/use-data-table'
 import { exportToCSV, exportToExcel } from '@/lib/export-utils'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ColumnFilter } from './ColumnFilter'
 import { ColumnToggle } from './ColumnToggle'
 import { ExportMenu } from './ExportMenu'
@@ -293,7 +294,12 @@ export function DataTable<T extends Record<string, unknown>>({
               })}
               {processedData.length === 0 && (
                 <tr>
-                  <td colSpan={visibleColumns.length} className="text-center text-muted-foreground py-10">No {noun}s found</td>
+                  <td colSpan={visibleColumns.length}>
+                    <EmptyState
+                      type={hasActiveFilters ? 'filtered' : 'no-data'}
+                      onClearFilters={hasActiveFilters ? clearAllFilters : undefined}
+                    />
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -303,7 +309,12 @@ export function DataTable<T extends Record<string, unknown>>({
 
       <div className="sm:hidden space-y-3">
         {processedData.map((row, i) => renderCard ? renderCard(row, i) : <DefaultCard key={i} row={row} columns={visibleColumns} className={cardClassName?.(row)} />)}
-        {processedData.length === 0 && <p className="text-center text-muted-foreground py-10">No {noun}s found</p>}
+        {processedData.length === 0 && (
+          <EmptyState
+            type={hasActiveFilters ? 'filtered' : 'no-data'}
+            onClearFilters={hasActiveFilters ? clearAllFilters : undefined}
+          />
+        )}
       </div>
     </div>
   )

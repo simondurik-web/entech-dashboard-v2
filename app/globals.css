@@ -302,3 +302,33 @@ table td { font-variant-numeric: tabular-nums; }
   from { transform: translateX(0); opacity: 1; }
   to { transform: translateX(100%); opacity: 0; }
 }
+
+/* #20 — Row status color strips */
+.row-status-pending { box-shadow: inset 3px 0 0 0 #d69e2e; }
+.row-status-wip { box-shadow: inset 3px 0 0 0 #319795; }
+.row-status-completed { box-shadow: inset 3px 0 0 0 #38a169; }
+.row-status-staged { box-shadow: inset 3px 0 0 0 #4299e1; }
+.row-status-shipped { box-shadow: inset 3px 0 0 0 #a0aec0; }
+
+/* #21 — Progress bar fill animation */
+@keyframes progress-fill {
+  from { width: 0%; }
+}
+
+/* #23 — Notification bell animations */
+@keyframes bell-ring {
+  0% { transform: rotate(0deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(8deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(2deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes badge-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.bell-ring { animation: bell-ring 0.6s ease-in-out; }
+.badge-pop { animation: badge-pop 0.3s ease-out; }
