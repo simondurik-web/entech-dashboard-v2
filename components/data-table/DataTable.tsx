@@ -2,6 +2,7 @@
 
 import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -208,7 +209,10 @@ export function DataTable<T extends Record<string, unknown>>({
                   <div className="flex items-center gap-1">
                     <span className="cursor-grab text-muted-foreground/40 hover:text-muted-foreground mr-0.5" title="Drag to reorder">⠿</span>
                     {col.sortable !== false ? (
-                      <button onClick={() => toggleSort(col.key)} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      <button
+                        onClick={() => toggleSort(col.key)}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors active:scale-95 transition-transform duration-100"
+                      >
                         {col.label}
                         <SortIcon columnKey={col.key} sortKey={sortKey} sortDir={sortDir} />
                       </button>
@@ -223,48 +227,77 @@ export function DataTable<T extends Record<string, unknown>>({
                         onHide={toggleColumn}
                       />
                     )}
+                    {/* #4 — Active filter pulsing dot */}
+                    {filters.has(col.key) && (
+                      <span
+                        className="inline-block size-1.5 rounded-full bg-primary"
+                        style={{ animation: 'pulse-dot 1.5s ease-in-out infinite' }}
+                      />
+                    )}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
-            {processedData.map((row, i) => {
-              const rowKey = getRowKey?.(row, i) ?? String(i)
-              const isExpanded = expandedRowKey === rowKey
-              const isClickable = !!onRowClick
-              return (
-                <Fragment key={rowKey}>
-                  <tr
-                    className={cn('border-b transition-colors', !isExpanded && 'hover:bg-muted/30', isClickable && 'cursor-pointer', rowClassName?.(row))}
-                    onClick={isClickable ? () => onRowClick(row, i) : undefined}
-                  >
-                    {visibleColumns.map((col) => (
-                      <td key={col.key} className="px-3 py-2">
-                        {col.render ? col.render(row[col.key], row) : formatCellValue(row[col.key])}
-                      </td>
-                    ))}
-                  </tr>
-                  {renderExpandedContent && (
-                    <tr className={cn(isExpanded && 'border-b')}>
-                      <td colSpan={visibleColumns.length} className="p-0">
-                        <div className={cn('grid transition-all duration-300 ease-out', isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
-                          <div className="overflow-hidden">
-                            {isExpanded ? <div className="bg-muted/25 px-3 py-3">{renderExpandedContent(row, i)}</div> : null}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            })}
-            {processedData.length === 0 && (
-              <tr>
-                <td colSpan={visibleColumns.length} className="text-center text-muted-foreground py-10">No {noun}s found</td>
-              </tr>
-            )}
-          </tbody>
+          <LayoutGroup>
+            <tbody>
+              {processedData.map((row, i) => {
+                const rowKey = getRowKey?.(row, i) ?? String(i)
+                const isExpanded = expandedRowKey === rowKey
+                const isClickable = !!onRowClick
+                const useLayout = i < 50
+                const RowTag = useLayout ? motion.tr : 'tr'
+                const layoutProps = useLayout ? { layout: true as const, transition: { duration: 0.2 } } : {}
+                return (
+                  <Fragment key={rowKey}>
+                    <RowTag
+                      {...layoutProps}
+                      className={cn('border-b table-row-hover', isClickable && 'cursor-pointer', rowClassName?.(row))}
+                      style={i < 25 ? { animation: `fadeSlideIn 300ms ease-out ${i * 30}ms both` } : undefined}
+                      onClick={isClickable ? () => onRowClick(row, i) : undefined}
+                    >
+                      {visibleColumns.map((col) => (
+                        <td key={col.key} className="px-3 py-2">
+                          {col.render ? col.render(row[col.key], row) : formatCellValue(row[col.key])}
+                        </td>
+                      ))}
+                    </RowTag>
+                    {renderExpandedContent && (
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.tr
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="border-b"
+                          >
+                            <td colSpan={visibleColumns.length} className="p-0">
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+                                className="overflow-hidden"
+                              >
+                                <div className="bg-muted/25 px-3 py-3">
+                                  {renderExpandedContent(row, i)}
+                                </div>
+                              </motion.div>
+                            </td>
+                          </motion.tr>
+                        )}
+                      </AnimatePresence>
+                    )}
+                  </Fragment>
+                )
+              })}
+              {processedData.length === 0 && (
+                <tr>
+                  <td colSpan={visibleColumns.length} className="text-center text-muted-foreground py-10">No {noun}s found</td>
+                </tr>
+              )}
+            </tbody>
+          </LayoutGroup>
         </table>
       </div>
 

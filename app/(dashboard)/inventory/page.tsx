@@ -957,25 +957,25 @@ function InventoryPageContent() {
       {/* Stats Row */}
       <ScrollReveal>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <SpotlightCard className="bg-muted rounded-lg p-3 border border-zinc-700/50" spotlightColor="59,130,246" style={{ borderImage: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3)) 1' }}>
+        <SpotlightCard className="bg-muted rounded-lg p-3 border border-zinc-700/50 stat-card-hover" spotlightColor="59,130,246" style={{ borderImage: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3)) 1' }}>
           <p className="text-xs text-muted-foreground">{t('inventory.totalItems')}{deptLabel}</p>
           <p className="text-xl font-bold">{animTotalItems}</p>
           <p className="text-[10px] text-muted-foreground">{productTypes} {t('inventory.productTypes')}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-red-500/10 rounded-lg p-3 border border-red-500/20" spotlightColor="239,68,68">
+        <SpotlightCard className="bg-red-500/10 rounded-lg p-3 border border-red-500/20 stat-card-hover" spotlightColor="239,68,68">
           <p className="text-xs text-red-400">{t('stats.lowStock')}{deptLabel}</p>
           <p className="text-xl font-bold text-red-400">{animLowStock}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3 border border-yellow-500/20" spotlightColor="234,179,8">
+        <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3 border border-yellow-500/20 stat-card-hover stat-card-hover-amber" spotlightColor="234,179,8">
           <p className="text-xs text-yellow-400">{t('stats.needsProduction')}{deptLabel}</p>
           <p className="text-xl font-bold text-yellow-400">{animNeedsProduction}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-green-500/10 rounded-lg p-3 border border-green-500/20" spotlightColor="34,197,94">
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3 border border-green-500/20 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
           <p className="text-xs text-green-400">{t('inventory.adequateStock')}{deptLabel}</p>
           <p className="text-xl font-bold text-green-400">{animAdequateStock}</p>
         </SpotlightCard>
         {showCosts && (
-          <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/20 col-span-2 sm:col-span-4" spotlightColor="16,185,129">
+          <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/20 col-span-2 sm:col-span-4 stat-card-hover stat-card-hover-green" spotlightColor="16,185,129">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs text-emerald-400">💰 Total Inventory Value{deptLabel}</p>

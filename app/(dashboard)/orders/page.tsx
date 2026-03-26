@@ -528,24 +528,24 @@ function OrdersPageContent() {
       {/* Stats row */}
       <ScrollReveal>
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-        <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
+        <SpotlightCard className="bg-muted rounded-lg p-3 stat-card-hover" spotlightColor="148,163,184">
           <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
           <p className="text-xl font-bold">{animTotalOrders}</p>
           <p className="text-xs text-muted-foreground">{totalUnits.toLocaleString()} {t('stats.totalUnits')}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3" spotlightColor="234,179,8">
+        <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-amber" spotlightColor="234,179,8">
           <p className="text-xs text-yellow-600">{t('stats.pending')}</p>
           <p className="text-xl font-bold text-yellow-600">{animNeedToMake}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-teal-500/10 rounded-lg p-3" spotlightColor="20,184,166">
+        <SpotlightCard className="bg-teal-500/10 rounded-lg p-3 stat-card-hover" spotlightColor="20,184,166">
           <p className="text-xs text-teal-600">{t('stats.wip')}</p>
           <p className="text-xl font-bold text-teal-600">{animMaking}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3" spotlightColor="16,185,129">
+        <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="16,185,129">
           <p className="text-xs text-emerald-600">{t('stats.completed')}</p>
           <p className="text-xl font-bold text-emerald-600">{animCompleted}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.readyToShip')}</p>
           <p className="text-xl font-bold text-green-600">{animReadyToShip}</p>
         </SpotlightCard>

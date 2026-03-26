@@ -434,19 +434,19 @@ function NeedToPackagePageContent() {
       {/* Stats row */}
       <ScrollReveal>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
+        <SpotlightCard className="bg-muted rounded-lg p-3 stat-card-hover" spotlightColor="148,163,184">
           <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
           <p className="text-xl font-bold">{animTotalOrders}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.readyToPackage')}</p>
           <p className="text-xl font-bold text-green-600">{animReadyCount}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-red-500/10 rounded-lg p-3" spotlightColor="239,68,68">
+        <SpotlightCard className="bg-red-500/10 rounded-lg p-3 stat-card-hover" spotlightColor="239,68,68">
           <p className="text-xs text-red-500">{t('stats.missingStock')}</p>
           <p className="text-xl font-bold text-red-500">{animMissingCount}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-orange-500/10 rounded-lg p-3" spotlightColor="249,115,22">
+        <SpotlightCard className="bg-orange-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-amber" spotlightColor="249,115,22">
           <p className="text-xs text-orange-500">{t('stats.urgentReady')}</p>
           <p className="text-xl font-bold text-orange-500">{animUrgentReady}</p>
         </SpotlightCard>

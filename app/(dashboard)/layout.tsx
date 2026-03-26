@@ -5,6 +5,8 @@ import { Sidebar } from "@/components/layout/Sidebar"
 import { VersionBadge } from "@/components/layout/VersionBadge"
 import { AccessGuard } from "@/components/layout/AccessGuard"
 import { PageTransition } from "@/components/ui/page-transition"
+import { ToastProvider } from "@/components/ui/toast-provider"
+import { SmoothScroll } from "@/components/ui/smooth-scroll"
 import { NotificationBell } from "@/components/NotificationBell"
 import { PanelLeft } from "lucide-react"
 import { useEffect, useState } from "react"
@@ -87,12 +89,15 @@ export default function DashboardLayout({
 
         {/* Main content - pad bottom on mobile for nav bar */}
         <main className="pb-4" style={{ zoom: zoomLevel }}>
-          <AccessGuard>
-            <PageTransition>{children}</PageTransition>
-          </AccessGuard>
+          <SmoothScroll>
+            <AccessGuard>
+              <PageTransition>{children}</PageTransition>
+            </AccessGuard>
+          </SmoothScroll>
         </main>
       </div>
 
+      <ToastProvider />
       {/* Bottom nav removed */}
       <VersionBadge />
     </div>

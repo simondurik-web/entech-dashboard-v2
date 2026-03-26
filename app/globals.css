@@ -135,6 +135,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 }
 
@@ -182,4 +183,122 @@
 }
 .animate-shake {
   animation: shake 0.5s ease-in-out;
+}
+
+/* #1 — Staggered table row entrance */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0s !important; animation-delay: 0s !important; }
+}
+
+/* #4 — Sort/filter micro-feedback */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* #5 — Stat card hover lift + glow */
+.stat-card-hover {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.stat-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.12);
+}
+.stat-card-hover-green:hover { box-shadow: 0 4px 20px rgba(56, 161, 105, 0.12); }
+.stat-card-hover-amber:hover { box-shadow: 0 4px 20px rgba(214, 158, 46, 0.12); }
+.stat-card-hover-purple:hover { box-shadow: 0 4px 20px rgba(128, 90, 213, 0.12); }
+
+/* #7 — Animated stat card borders */
+@keyframes border-rotate {
+  0% { --angle: 0deg; }
+  100% { --angle: 360deg; }
+}
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.card-glow-border {
+  position: relative;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.card-glow-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--angle), transparent 60%, rgba(59,130,246,0.3) 80%, transparent 100%);
+  animation: border-rotate 4s linear infinite;
+  z-index: -1;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+
+/* #8 — Table row hover highlight upgrade */
+.table-row-hover {
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+.table-row-hover:hover {
+  background-color: hsl(var(--muted) / 0.4);
+  box-shadow: inset 3px 0 0 0 hsl(var(--primary));
+}
+
+/* #11 — Grain texture overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+@media (prefers-reduced-motion: reduce) {
+  body::after { display: none; }
+}
+
+/* #12 — Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+.dark .glass-card {
+  background: rgba(17, 17, 17, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* #13 — Typography refinement */
+table td { font-variant-numeric: tabular-nums; }
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+@media (min-width: 640px) {
+  .page-title { font-size: 1.875rem; }
+}
+
+/* #14 — Toast animations */
+@keyframes toast-slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-slide-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
 }
