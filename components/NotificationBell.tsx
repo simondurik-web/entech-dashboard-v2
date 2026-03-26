@@ -40,6 +40,8 @@ export function NotificationBell() {
   const [fetchingNotifs, setFetchingNotifs] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const lastSeenRef = useRef<string | null>(null)
+  const [bellRinging, setBellRinging] = useState(false)
+  const prevUnreadRef = useRef(0)
 
   useEffect(() => {
     setSupported(isPushSupported())
@@ -97,6 +99,16 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
+  // Bell ring animation when new notifications arrive
+  useEffect(() => {
+    if (unreadCount > 0 && prevUnreadRef.current === 0) {
+      setBellRinging(true)
+      const timer = setTimeout(() => setBellRinging(false), 600)
+      return () => clearTimeout(timer)
+    }
+    prevUnreadRef.current = unreadCount
+  }, [unreadCount])
+
   // Mark as seen when opening
   useEffect(() => {
     if (open && notifications.length > 0) {
@@ -137,9 +149,9 @@ export function NotificationBell() {
         className="p-2 rounded-lg transition-colors relative text-muted-foreground hover:bg-muted hover:text-foreground"
         title="Notifications"
       >
-        <Bell className="size-5" />
+        <Bell className={`size-5 ${bellRinging ? 'bell-ring' : ''}`} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 leading-none">
+          <span className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 leading-none ${bellRinging ? 'badge-pop' : ''}`}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

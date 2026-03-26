@@ -7,9 +7,62 @@ import { AccessGuard } from "@/components/layout/AccessGuard"
 import { PageTransition } from "@/components/ui/page-transition"
 import { ToastProvider } from "@/components/ui/toast-provider"
 import { SmoothScroll } from "@/components/ui/smooth-scroll"
+import { BreadcrumbNav } from "@/components/ui/breadcrumb-nav"
+import { CommandPalette } from "@/components/ui/command-palette"
+import { ScrollToTop } from "@/components/ui/scroll-to-top"
 import { NotificationBell } from "@/components/NotificationBell"
-import { PanelLeft } from "lucide-react"
+import {
+  PanelLeft,
+  ClipboardList,
+  Factory,
+  Package,
+  PackageCheck,
+  Truck,
+  Archive,
+  TrendingUp,
+  Ruler,
+  Camera,
+  CalendarDays,
+  Tag,
+  Layers,
+  ClipboardCheck,
+  Users,
+  DollarSign,
+  BarChart3,
+  Wrench,
+  Settings,
+  Bell,
+  FileBarChart,
+} from "lucide-react"
 import { useEffect, useState } from "react"
+
+const commandPaletteItems = [
+  { label: 'Orders', href: '/orders', section: 'Production', icon: <ClipboardList className="size-4" /> },
+  { label: 'Need to Make', href: '/need-to-make', section: 'Production', icon: <Factory className="size-4" /> },
+  { label: 'Need to Package', href: '/need-to-package', section: 'Production', icon: <Package className="size-4" /> },
+  { label: 'Staged', href: '/staged', section: 'Production', icon: <PackageCheck className="size-4" /> },
+  { label: 'Shipped', href: '/shipped', section: 'Production', icon: <Truck className="size-4" /> },
+  { label: 'Inventory', href: '/inventory', section: 'Production', icon: <Archive className="size-4" /> },
+  { label: 'Inventory History', href: '/inventory-history', section: 'Production', icon: <TrendingUp className="size-4" /> },
+  { label: 'Drawings', href: '/drawings', section: 'Production', icon: <Ruler className="size-4" /> },
+  { label: 'Pallet Records', href: '/pallet-records', section: 'Production', icon: <Camera className="size-4" /> },
+  { label: 'Shipping Records', href: '/shipping-records', section: 'Production', icon: <Truck className="size-4" /> },
+  { label: 'Scheduling', href: '/scheduling', section: 'Production', icon: <CalendarDays className="size-4" /> },
+  { label: 'Labels', href: '/labels', section: 'Production', icon: <Tag className="size-4" /> },
+  { label: 'Bill of Materials', href: '/bom', section: 'Production', icon: <Layers className="size-4" /> },
+  { label: 'Material Requirements', href: '/material-requirements', section: 'Production', icon: <Package className="size-4" /> },
+  { label: 'FP Reference', href: '/fp-reference', section: 'Production', icon: <ClipboardCheck className="size-4" /> },
+  { label: 'Customer Reference', href: '/customer-reference', section: 'Production', icon: <Users className="size-4" /> },
+  { label: 'Quotes', href: '/quotes', section: 'Production', icon: <DollarSign className="size-4" /> },
+  { label: 'Sales Overview', href: '/sales-overview', section: 'Sales', icon: <BarChart3 className="size-4" /> },
+  { label: 'Sales by Part', href: '/sales-parts', section: 'Sales', icon: <Wrench className="size-4" /> },
+  { label: 'Sales by Customer', href: '/sales-customers', section: 'Sales', icon: <Users className="size-4" /> },
+  { label: 'Sales by Date', href: '/sales-dates', section: 'Sales', icon: <CalendarDays className="size-4" /> },
+  { label: 'User Management', href: '/admin/users', section: 'Admin', icon: <Users className="size-4" /> },
+  { label: 'Role Permissions', href: '/admin/permissions', section: 'Admin', icon: <Settings className="size-4" /> },
+  { label: 'Notifications', href: '/admin/notifications', section: 'Admin', icon: <Bell className="size-4" /> },
+  { label: 'Reports', href: '/reports', section: 'Reports', icon: <FileBarChart className="size-4" /> },
+]
 
 export default function DashboardLayout({
   children,
@@ -91,12 +144,15 @@ export default function DashboardLayout({
         <main className="pb-4" style={{ zoom: zoomLevel }}>
           <SmoothScroll>
             <AccessGuard>
+              <BreadcrumbNav />
               <PageTransition>{children}</PageTransition>
             </AccessGuard>
           </SmoothScroll>
         </main>
+        <ScrollToTop />
       </div>
 
+      <CommandPalette items={commandPaletteItems} />
       <ToastProvider />
       {/* Bottom nav removed */}
       <VersionBadge />

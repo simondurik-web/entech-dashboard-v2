@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, type ReactNode } from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronRight } from "lucide-react"
+import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 interface CollapsibleNavSectionProps {
@@ -46,22 +47,22 @@ export function CollapsibleNavSection({
       >
         <span>{expanded ? label : collapsedLabel}</span>
         {expanded && (
-          <ChevronDown
-            className={cn(
-              "size-3 transition-transform duration-200",
-              !isOpen && "-rotate-90"
-            )}
-          />
+          <motion.span
+            animate={{ rotate: isOpen ? 90 : 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <ChevronRight className="size-3" />
+          </motion.span>
         )}
       </button>
-      <div
-        className={cn(
-          "overflow-hidden transition-all duration-200 ease-out",
-          isOpen || !expanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
-        )}
+      <motion.div
+        initial={false}
+        animate={{ height: isOpen || !expanded ? 'auto' : 0 }}
+        transition={{ duration: 0.2, ease: 'easeInOut' }}
+        className="overflow-hidden"
       >
         {children}
-      </div>
+      </motion.div>
     </div>
   )
 }
