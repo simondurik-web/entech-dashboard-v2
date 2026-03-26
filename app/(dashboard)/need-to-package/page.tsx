@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/auth-context'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
+import { AssigneeEditor } from '@/components/AssigneeEditor'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -63,7 +64,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -187,7 +188,25 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
     },
     { key: 'hubMold', label: t('table.hubMold'), sortable: true, filterable: true },
     { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
-    { key: 'assignedTo', label: t('table.assignedTo'), sortable: true, filterable: true },
+    {
+      key: 'assignedTo',
+      label: t('table.assignedTo'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as PackageOrder
+        if (onAssigneeUpdate) {
+          return (
+            <AssigneeEditor
+              line={order.line}
+              currentAssignee={String(v || '')}
+              onUpdated={onAssigneeUpdate}
+            />
+          )
+        }
+        return String(v || '')
+      },
+    },
     {
       key: 'internalStatus',
       label: t('table.status'),
@@ -253,7 +272,7 @@ export default function NeedToPackagePage() {
 
 function NeedToPackagePageContent() {
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { canAccess } = usePermissions()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -271,6 +290,12 @@ function NeedToPackagePageContent() {
       if (o.line !== line) return o
       return { ...o, priorityOverride: newPriority, priorityChangedAt: new Date().toISOString() }
     }))
+  }, [])
+
+  const handleAssigneeUpdate = useCallback((line: string, newAssignee: string) => {
+    setOrders(prev => prev.map(o =>
+      o.line === line ? { ...o, assignedTo: newAssignee } : o
+    ))
   }, [])
 
   const handleLabelClick = useCallback(async (order: PackageOrder) => {
@@ -323,7 +348,8 @@ function NeedToPackagePageContent() {
   ], [t])
 
   const showLabels = canAccess('/labels')
-  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined), [t, handlePriorityUpdate, showLabels, handleLabelClick])
+  const canAssign = canAccess('assign_orders')
+  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined), [t, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -408,19 +434,19 @@ function NeedToPackagePageContent() {
       {/* Stats row */}
       <ScrollReveal>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
+        <SpotlightCard className="bg-muted rounded-lg p-3 stat-card-hover" spotlightColor="148,163,184">
           <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
           <p className="text-xl font-bold">{animTotalOrders}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.readyToPackage')}</p>
           <p className="text-xl font-bold text-green-600">{animReadyCount}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-red-500/10 rounded-lg p-3" spotlightColor="239,68,68">
+        <SpotlightCard className="bg-red-500/10 rounded-lg p-3 stat-card-hover" spotlightColor="239,68,68">
           <p className="text-xs text-red-500">{t('stats.missingStock')}</p>
           <p className="text-xl font-bold text-red-500">{animMissingCount}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-orange-500/10 rounded-lg p-3" spotlightColor="249,115,22">
+        <SpotlightCard className="bg-orange-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-amber" spotlightColor="249,115,22">
           <p className="text-xs text-orange-500">{t('stats.urgentReady')}</p>
           <p className="text-xl font-bold text-orange-500">{animUrgentReady}</p>
         </SpotlightCard>
@@ -481,6 +507,8 @@ function NeedToPackagePageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                canEdit={canAccess('edit_pallet_records')}
+                userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />
             )

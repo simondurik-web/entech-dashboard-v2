@@ -14,15 +14,17 @@ import { google } from 'googleapis'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { fetchSheetValuesByGid, loadLocalEnv } from './lib/google-sheets-auth.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ── Load .env.local ──
+loadLocalEnv()
 const envPath = path.join(__dirname, '..', '.env.local')
 const envText = fs.readFileSync(envPath, 'utf-8')
 for (const line of envText.split('\n')) {
   const m = line.match(/^([^#=]+)=(.*)$/)
-  if (m) process.env[m[1].trim()] = m[2].trim()
+  if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim()
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -107,26 +109,16 @@ async function ensureTable() {
 
 // ── Step 3: Fetch quotes from Google Sheets ──
 async function fetchQuotes() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}`
-  const res = await fetch(url)
-  const text = await res.text()
-  const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?$/)
-  if (!match) throw new Error('Failed to parse sheet')
-  const json = JSON.parse(match[1])
-  const cols = json.table.cols
-  const rows = json.table.rows
+  const values = await fetchSheetValuesByGid({ spreadsheetId: SHEET_ID, gid: GID })
+  if (values.length === 0) return []
 
-  let headers = cols.map((c, i) => c.label || `col${i}`)
-  if (headers.every(h => h.startsWith('col')) && rows.length > 0) {
-    headers = rows[0].c.map((cell, i) => cell?.v != null ? String(cell.v) : `col${i}`)
-    rows.shift()
-  }
+  const [headers, ...rows] = values
+  const normalizedHeaders = headers.map((header, index) => String(header || `col${index}`).trim())
 
   const quotes = rows.map(row => {
     const obj = {}
-    headers.forEach((h, i) => {
-      const cell = row.c?.[i]
-      obj[h] = cell?.v != null ? cell.v : ''
+    normalizedHeaders.forEach((header, i) => {
+      obj[header] = row[i] ?? ''
     })
     return obj
   }).filter(q => q['Quote Number'])

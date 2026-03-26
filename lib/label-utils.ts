@@ -7,6 +7,7 @@ export interface LabelData {
   parts_per_package: number
   num_packages: number
   packaging_type?: string
+  pallet_number?: number
   qr_data?: string
   label_status: 'pending' | 'generated' | 'emailed' | 'printed' | 'error'
   // Product details (for label printout)
@@ -23,15 +24,24 @@ export interface LabelData {
   emailed_to?: string[]
   emailed_at?: string
   printed_by?: string
+  printed_by_name?: string
   printed_at?: string
   error_message?: string
   created_at?: string
   updated_at?: string
 }
 
-export function generateQrData(line: string, customer: string, part: string): string {
-  const encoded = encodeURIComponent(`${line}|${customer}|${part}`)
-  return `${typeof window !== 'undefined' ? window.location.origin : ''}/labels?view=${encoded}`
+/**
+ * Generate QR deep-link URL for the Entech Production App.
+ * Pattern matches the Google Sheets label script:
+ *   https://entech-production-app.vercel.app/scan?line=2922&pallet=1&total=2
+ */
+export function generateQrData(line: string, _customer: string, _part: string, pallet?: number, totalPallets?: number): string {
+  const params = new URLSearchParams()
+  params.set('line', line)
+  if (pallet != null) params.set('pallet', String(pallet))
+  if (totalPallets != null) params.set('total', String(totalPallets))
+  return `https://entech-production-app.vercel.app/scan?${params.toString()}`
 }
 
 export function calculatePackages(orderQty: number, perPackage: number): { numPackages: number; lastPackageQty: number } {

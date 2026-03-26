@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Compare BOM Final Assembly data: Google Sheet vs Supabase"""
-import csv, json, sys, io, urllib.request, re
+import csv, json, subprocess, io, urllib.request
 
-# Fetch Google Sheet
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw/export?format=csv&gid=74377031"
-resp = urllib.request.urlopen(SHEET_URL)
-reader = csv.DictReader(io.TextIOWrapper(resp, encoding='utf-8'))
+csv_text = subprocess.check_output(
+    ['node', 'scripts/export-sheet.mjs', '74377031', 'csv'],
+    text=True,
+)
+reader = csv.DictReader(io.StringIO(csv_text))
 
 def parse_pct(v):
     if not v: return 0.0

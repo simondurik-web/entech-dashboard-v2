@@ -25,11 +25,17 @@ export async function POST(req: NextRequest) {
     if (targetUserId) {
       query = query.eq('user_id', targetUserId)
     } else if (targetRole) {
-      // Get user IDs with this role
+      // Get user IDs with this app-specific role
+      const { data: roleUsers } = await supabaseAdmin
+        .from('user_app_roles')
+        .select('user_id')
+        .eq('app_id', 'dashboard')
+        .eq('role', targetRole)
+      const roleUserIds = (roleUsers || []).map(r => r.user_id)
       const { data: users } = await supabaseAdmin
         .from('user_profiles')
         .select('id')
-        .eq('role', targetRole)
+        .in('id', roleUserIds.length ? roleUserIds : ['none'])
         .eq('is_active', true)
       if (users?.length) {
         query = query.in('user_id', users.map(u => u.id))

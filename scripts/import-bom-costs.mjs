@@ -1,12 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { fetchSheetRowsByGid, loadLocalEnv } from './lib/google-sheets-auth.mjs'
 
 // Load env
+loadLocalEnv()
 const envPath = path.resolve(process.cwd(), '.env.local')
 for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
   const m = line.match(/^([^#=]+)=(.*)$/)
-  if (m) process.env[m[1].trim()] = m[2].trim()
+  if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim()
 }
 
 const supabase = createClient(
@@ -27,13 +29,7 @@ const CONFIG = {
 }
 
 async function fetchBOMCosts() {
-  // Fetch the BOM Final Assembly sheet via gviz
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${BOM_FINAL_GID}`
-  const res = await fetch(url)
-  const text = await res.text()
-  // Strip JSONP wrapper
-  const json = JSON.parse(text.replace(/^[^(]*\(/, '').replace(/\);?\s*$/, ''))
-  const rows = json.table.rows
+  const rows = await fetchSheetRowsByGid({ spreadsheetId: SHEET_ID, gid: BOM_FINAL_GID })
 
   // Col 0 = Part Number (A)
   // Col 59 = Variable Cost (BH)
@@ -42,13 +38,12 @@ async function fetchBOMCosts() {
   const costMap = new Map()
 
   for (const row of rows) {
-    const cells = row.c
-    if (!cells || !cells[0]?.v) continue
-    const partNumber = String(cells[0].v).trim()
+    if (!row[0]) continue
+    const partNumber = String(row[0]).trim()
     
-    const variableCost = parseNum(cells[59]?.v)
-    const totalCost = parseNum(cells[60]?.v)
-    const salesTarget = parseNum(cells[63]?.v)
+    const variableCost = parseNum(row[59])
+    const totalCost = parseNum(row[60])
+    const salesTarget = parseNum(row[63])
 
     if (partNumber && (variableCost > 0 || totalCost > 0)) {
       costMap.set(partNumber, { variableCost, totalCost, salesTarget })

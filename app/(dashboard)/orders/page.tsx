@@ -13,6 +13,8 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
+import { usePermissions } from '@/lib/use-permissions'
+import { useAuth } from '@/lib/auth-context'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -20,6 +22,10 @@ import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
+import { AssigneeEditor } from '@/components/AssigneeEditor'
+import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import type { LabelData } from '@/lib/label-utils'
+import { Tag } from 'lucide-react'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -148,6 +154,9 @@ export default function OrdersPage() {
 
 function OrdersPageContent() {
   const { t } = useI18n()
+  const { user, profile } = useAuth()
+  const { canAccess } = usePermissions()
+  const canEditPallets = canAccess('edit_pallet_records')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
@@ -159,6 +168,10 @@ function OrdersPageContent() {
     new Set(['pending', 'wip', 'completed', 'staged'])
   )
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
+  const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
+  const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
+  const [showLabelPreview, setShowLabelPreview] = useState(false)
+  const [labelWarning, setLabelWarning] = useState<string | null>(null)
 
   // Optimistic priority update handler
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
@@ -172,6 +185,45 @@ function OrdersPageContent() {
       return { ...updated, effectivePriority: getEffectivePriority(updated) || '-' }
     }))
   }, [])
+
+  const handleAssigneeUpdate = useCallback((line: string, newAssignee: string) => {
+    setOrders(prev => prev.map(o =>
+      o.line === line ? { ...o, assignedTo: newAssignee } : o
+    ))
+  }, [])
+
+  const handleLabelClick = useCallback(async (order: Order) => {
+    setLabelWarning(null)
+    try {
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(order.line)}`)
+      const existing = await res.json()
+      if (Array.isArray(existing) && existing.length > 0) {
+        setLabelPreview(existing[0])
+        setAllLabelsForOrder(existing)
+        setShowLabelPreview(true)
+      } else {
+        const genRes = await fetch('/api/labels', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(user ? { 'x-user-id': user.id } : {}),
+          },
+          body: JSON.stringify({ order_lines: [order.line] }),
+        })
+        const genData = await genRes.json()
+        const result = genData.results?.[0]
+        if (result?.error) { setLabelWarning(result.error); return }
+        if (result?.labels?.[0]) {
+          setLabelPreview(result.labels[0])
+          setAllLabelsForOrder(result.labels)
+          setShowLabelPreview(true)
+        }
+      }
+    } catch (e) { setLabelWarning((e as Error).message) }
+  }, [user])
+
+  const showLabels = canAccess('/labels')
+  const canAssign = canAccess('assign_orders')
 
   const defaultColumnKeys = useMemo(() => new Set([
     'line', 'ifNumber', 'poNumber', 'effectivePriority', 'dateOfRequest', 'requestedDate',
@@ -347,10 +399,45 @@ function OrdersPageContent() {
       },
     },
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
-    { key: 'assignedTo', label: t('table.assignedTo'), filterable: true },
+    {
+      key: 'assignedTo',
+      label: t('table.assignedTo'),
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const order = row as unknown as Order
+        if (canAssign) {
+          return (
+            <AssigneeEditor
+              line={order.line}
+              currentAssignee={String(v || '')}
+              onUpdated={handleAssigneeUpdate}
+            />
+          )
+        }
+        return String(v || '')
+      },
+    },
+    // Label button column
+    ...(showLabels ? [{
+      key: 'labelAction' as keyof OrderRow & string,
+      label: '🏷️',
+      render: (_v: OrderRow[keyof OrderRow], row: OrderRow) => {
+        const order = row as unknown as Order
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleLabelClick(order) }}
+            className="rounded p-1 hover:bg-muted transition-colors"
+            title="Label"
+          >
+            <Tag className="size-4" />
+          </button>
+        )
+      },
+    }] as ColumnDef<OrderRow>[] : []),
     // Extra columns — hidden by default, available via Columns picker
     ...getExtraOrderColumns<OrderRow>(defaultColumnKeys),
-  ], [t, defaultColumnKeys])
+  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -441,24 +528,24 @@ function OrdersPageContent() {
       {/* Stats row */}
       <ScrollReveal>
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-        <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
+        <SpotlightCard className="bg-muted rounded-lg p-3 stat-card-hover" spotlightColor="148,163,184">
           <p className="text-xs text-muted-foreground">{t('stats.totalOrders')}</p>
           <p className="text-xl font-bold">{animTotalOrders}</p>
           <p className="text-xs text-muted-foreground">{totalUnits.toLocaleString()} {t('stats.totalUnits')}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3" spotlightColor="234,179,8">
+        <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-amber" spotlightColor="234,179,8">
           <p className="text-xs text-yellow-600">{t('stats.pending')}</p>
           <p className="text-xl font-bold text-yellow-600">{animNeedToMake}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-teal-500/10 rounded-lg p-3" spotlightColor="20,184,166">
+        <SpotlightCard className="bg-teal-500/10 rounded-lg p-3 stat-card-hover" spotlightColor="20,184,166">
           <p className="text-xs text-teal-600">{t('stats.wip')}</p>
           <p className="text-xl font-bold text-teal-600">{animMaking}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3" spotlightColor="16,185,129">
+        <SpotlightCard className="bg-emerald-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="16,185,129">
           <p className="text-xs text-emerald-600">{t('stats.completed')}</p>
           <p className="text-xl font-bold text-emerald-600">{animCompleted}</p>
         </SpotlightCard>
-        <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
+        <SpotlightCard className="bg-green-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
           <p className="text-xs text-green-600">{t('stats.readyToShip')}</p>
           <p className="text-xl font-bold text-green-600">{animReadyToShip}</p>
         </SpotlightCard>
@@ -534,6 +621,8 @@ function OrdersPageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                canEdit={canEditPallets}
+                userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />
             )
@@ -548,6 +637,39 @@ function OrdersPageContent() {
                 onToggle={() => toggleExpanded(order)}
               />
             )
+          }}
+        />
+      )}
+
+      {/* Label warning */}
+      {labelWarning && (
+        <div className="fixed bottom-4 right-4 z-50 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg shadow-lg max-w-sm">
+          <p className="text-sm">{labelWarning}</p>
+          <button className="text-xs underline mt-1" onClick={() => setLabelWarning(null)}>Dismiss</button>
+        </div>
+      )}
+
+      {/* Label preview modal */}
+      {labelPreview && (
+        <LabelPreviewModal
+          label={labelPreview}
+          siblingLabels={allLabelsForOrder}
+          open={showLabelPreview}
+          onOpenChange={(open) => {
+            setShowLabelPreview(open)
+            if (!open) setLabelPreview(null)
+          }}
+          onPrint={(label) => {
+            if (label.id && user) {
+              fetch(`/api/labels/${label.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+                body: JSON.stringify({
+                  label_status: 'printed',
+                  printed_by_name: profile?.full_name || user.email || 'Unknown',
+                }),
+              })
+            }
           }}
         />
       )}

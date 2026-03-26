@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Sync BOM Final Assembly data from Google Sheet to Supabase"""
-import csv, json, io, urllib.request
-
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw/export?format=csv&gid=74377031"
+import csv, json, io, subprocess, urllib.request
 
 def parse_pct(v):
     if not v: return 0.0
@@ -22,9 +20,11 @@ def parse_num(v):
     try: return float(v)
     except: return 0.0
 
-# Fetch Sheet
-resp = urllib.request.urlopen(SHEET_URL)
-reader = csv.DictReader(io.TextIOWrapper(resp, encoding='utf-8'))
+csv_text = subprocess.check_output(
+    ['node', 'scripts/export-sheet.mjs', '74377031', 'csv'],
+    text=True,
+)
+reader = csv.DictReader(io.StringIO(csv_text))
 
 sheet_data = {}
 for row in reader:

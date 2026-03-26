@@ -28,7 +28,10 @@ function getColumns(t: (key: string) => string, onView: (label: LabelData) => vo
     { key: 'customer_name', label: t('table.customer'), sortable: true, filterable: true },
     { key: 'part_number', label: t('table.partNumber'), sortable: true, filterable: true },
     { key: 'order_qty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
-    { key: 'num_packages', label: t('table.packages'), sortable: true, render: (v) => String(v || '-') },
+    { key: 'pallet_number', label: 'Pallet', sortable: true, render: (v, row) => {
+      const r = row as Record<string, unknown>
+      return v ? `${v} of ${r.num_packages || '?'}` : `${r.num_packages || '-'} pkg`
+    }},
     {
       key: 'label_status',
       label: t('labels.status'),
@@ -41,6 +44,24 @@ function getColumns(t: (key: string) => string, onView: (label: LabelData) => vo
       ),
     },
     { key: 'assigned_to', label: t('labels.assignedTo'), sortable: true, filterable: true, render: (v) => String(v || '-') },
+    {
+      key: 'printed_by_name' as keyof LabelRow & string,
+      label: '🖨️ Printed By',
+      sortable: true,
+      filterable: true,
+      render: (v, row) => {
+        const r = row as Record<string, unknown>
+        if (!v && !r.printed_at) return <span className="text-muted-foreground">—</span>
+        const name = String(v || 'Unknown')
+        const date = r.printed_at ? new Date(String(r.printed_at)).toLocaleString() : ''
+        return (
+          <span title={date}>
+            <span className="font-medium">{name}</span>
+            {date && <span className="text-muted-foreground text-xs ml-1">({new Date(String(r.printed_at)).toLocaleDateString()})</span>}
+          </span>
+        )
+      },
+    },
     {
       key: 'generated_at',
       label: t('labels.generatedAt'),
@@ -81,7 +102,7 @@ export default function LabelsPage() {
 
 function LabelsPageContent() {
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { canAccess } = usePermissions()
   const [labels, setLabels] = useState<LabelData[]>([])
   const [loading, setLoading] = useState(true)
@@ -113,15 +134,24 @@ function LabelsPageContent() {
   const handlePrint = useCallback((label: LabelData) => {
     setPreviewLabel(label)
     setShowPreview(true)
-    // Mark as printed
-    if (label.id && user) {
-      fetch(`/api/labels/${label.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
-        body: JSON.stringify({ label_status: 'printed' }),
-      }).then(() => fetchLabels())
+    // Mark ALL sibling labels for this order as printed
+    if (user) {
+      const siblings = labels.filter(l => l.order_line === label.order_line)
+      const printedName = profile?.full_name || user.email || 'Unknown'
+      Promise.all(
+        siblings.filter(s => s.id).map(s =>
+          fetch(`/api/labels/${s.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+            body: JSON.stringify({
+              label_status: 'printed',
+              printed_by_name: printedName,
+            }),
+          })
+        )
+      ).then(() => fetchLabels())
     }
-  }, [user, fetchLabels])
+  }, [user, profile, fetchLabels, labels])
 
   const columns = useMemo(() => getColumns(t, handleView, handlePrint), [t, handleView, handlePrint])
 
@@ -165,19 +195,19 @@ function LabelsPageContent() {
       {/* Stats */}
       <ScrollReveal>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <SpotlightCard className="bg-muted rounded-lg p-3" spotlightColor="148,163,184">
+          <SpotlightCard className="bg-muted rounded-lg p-3 stat-card-hover" spotlightColor="148,163,184">
             <p className="text-xs text-muted-foreground">{t('labels.totalLabels')}</p>
             <p className="text-xl font-bold">{animTotal}</p>
           </SpotlightCard>
-          <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3" spotlightColor="234,179,8">
+          <SpotlightCard className="bg-yellow-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-amber" spotlightColor="234,179,8">
             <p className="text-xs text-yellow-600">{t('labels.pending')}</p>
             <p className="text-xl font-bold text-yellow-600">{animPending}</p>
           </SpotlightCard>
-          <SpotlightCard className="bg-blue-500/10 rounded-lg p-3" spotlightColor="59,130,246">
+          <SpotlightCard className="bg-blue-500/10 rounded-lg p-3 stat-card-hover" spotlightColor="59,130,246">
             <p className="text-xs text-blue-600">{t('labels.generated')}</p>
             <p className="text-xl font-bold text-blue-600">{animGenerated}</p>
           </SpotlightCard>
-          <SpotlightCard className="bg-green-500/10 rounded-lg p-3" spotlightColor="34,197,94">
+          <SpotlightCard className="bg-green-500/10 rounded-lg p-3 stat-card-hover stat-card-hover-green" spotlightColor="34,197,94">
             <p className="text-xs text-green-600">{t('labels.printed')}</p>
             <p className="text-xl font-bold text-green-600">{animPrinted}</p>
           </SpotlightCard>
@@ -240,6 +270,7 @@ function LabelsPageContent() {
       {/* Modals */}
       <LabelPreviewModal
         label={previewLabel}
+        siblingLabels={previewLabel ? labels.filter(l => l.order_line === previewLabel.order_line) : undefined}
         open={showPreview}
         onOpenChange={setShowPreview}
         onPrint={handlePrint}
@@ -248,7 +279,14 @@ function LabelsPageContent() {
       <GenerateLabelsDialog
         open={showGenerate}
         onOpenChange={setShowGenerate}
-        onGenerated={fetchLabels}
+        onGenerated={(label) => {
+          fetchLabels()
+          // If a label was returned, open the preview
+          if (label) {
+            setPreviewLabel(label)
+            setShowPreview(true)
+          }
+        }}
       />
     </div>
   )

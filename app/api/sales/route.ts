@@ -2,10 +2,6 @@ import { NextResponse } from 'next/server'
 import { fetchSalesFromDB } from '@/lib/supabase-data'
 import { calculateSalesMath, getProfitPerPart, isNoOpSalesMathRow, summarizeSalesOrders } from '@/lib/sales-math'
 
-// Keep old imports for fallback
-const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
-const MAIN_DATA_GID = '290032634'
-
 export async function GET() {
   try {
     // Primary: Supabase

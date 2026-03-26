@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { useEffect, useState, useRef } from "react"
+import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import { useAuth } from "@/lib/auth-context"
@@ -159,17 +160,24 @@ export function Sidebar({
           onClick={onClose}
           title={!expanded ? (useTranslation ? t(item.tKey) : item.tKey) : undefined}
           className={cn(
-            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
+            "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
             item.sub && expanded && "ml-4 text-xs",
             item.sub && !expanded && "ml-0 text-xs",
             isActive
-              ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70"
+              ? "font-medium text-white"
               : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
           )}
         >
-          <span className="shrink-0">{item.icon}</span>
+          {isActive && (
+            <motion.div
+              layoutId="activePill"
+              className="absolute inset-0 rounded-lg bg-white/15 shadow-sm shadow-white/5 border-l-2 border-white/70"
+              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+            />
+          )}
+          <span className="relative shrink-0">{item.icon}</span>
           <span className={cn(
-            "transition-all duration-300",
+            "relative transition-all duration-300",
             expanded ? "opacity-100 w-auto" : "opacity-0 w-0"
           )}>
             {useTranslation ? t(item.tKey) : item.tKey}
@@ -254,6 +262,7 @@ export function Sidebar({
 
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4">
+            <LayoutGroup>
             {filteredProduction.length > 0 && (
               <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
                 <ul className="space-y-0.5">
@@ -292,6 +301,7 @@ export function Sidebar({
                 </ul>
               </CollapsibleNavSection>
             )}
+            </LayoutGroup>
           </nav>
 
           {/* Phil Assistant */}

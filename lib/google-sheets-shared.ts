@@ -101,6 +101,7 @@ export interface ProductionMakeItem {
 }
 
 export interface PalletRecord {
+  id?: string
   timestamp: string
   orderNumber: string
   lineNumber: string
@@ -112,6 +113,15 @@ export interface PalletRecord {
   dimensions: string
   partsPerPallet: string
   photos: string[]
+  _source?: 'sheet' | 'app'
+  length?: number | null
+  width?: number | null
+  height?: number | null
+  order_id?: string
+  edited_by_name?: string
+  edited_at?: string
+  shipmentPhotos?: string[]
+  workPaperPhotos?: string[]
 }
 
 export interface ShippingRecord {

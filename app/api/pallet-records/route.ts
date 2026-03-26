@@ -16,6 +16,7 @@ export async function GET() {
 
     // Convert Supabase pallet_records to same shape as sheet records
     const dbRecords: PalletRecord[] = (dbResult.data ?? []).map((r) => ({
+      id: r.id,
       timestamp: r.created_at || '',
       orderNumber: r.line_number || '',
       lineNumber: r.line_number || '',
@@ -27,7 +28,15 @@ export async function GET() {
       dimensions: r.length && r.width && r.height ? `${r.length}x${r.width}x${r.height}` : '',
       partsPerPallet: String(r.parts_per_pallet || ''),
       photos: r.photo_urls || [],
+      shipmentPhotos: r.shipment_photo_urls || [],
+      workPaperPhotos: r.work_paper_photo_urls || [],
       _source: 'app' as const,
+      length: r.length,
+      width: r.width,
+      height: r.height,
+      order_id: r.order_id,
+      edited_by_name: r.edited_by_name || undefined,
+      edited_at: r.edited_at || undefined,
     }))
 
     // Merge: sheet records first, then app records

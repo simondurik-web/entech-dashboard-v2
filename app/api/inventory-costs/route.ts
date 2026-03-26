@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { fetchInventoryCostsFromDB } from '@/lib/supabase-data'
-import { google } from 'googleapis'
+import { fetchSheetValues } from '@/lib/google-sheets-api'
+import { SPREADSHEET_IDS } from '@/lib/google-sheets-config'
 
 // Google Sheets fallback config
-const SHEET_ID = '1yASi9Ot4GLBw2iQLfODAvOFHBWrNE8qqYfzvUTjhrz8'
 const TAB = 'Current inventory export'
 
 function parseCurrency(val: string | undefined | null): number | null {
@@ -27,33 +27,17 @@ function findCol(headers: string[], ...patterns: string[]): number {
   return -1
 }
 
-function getAuth() {
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_BASE64) {
-    const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_BASE64, 'base64').toString())
-    return new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
-  }
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-    if (credentials.private_key) credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
-    return new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
-  }
-  return new google.auth.GoogleAuth({
-    keyFile: '/Users/simondurik/clawd/secrets/google-service-account.json',
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  })
-}
-
 async function fetchCostsFromSheets(): Promise<Record<string, {
   fusionId: string; description: string; netsuiteId: string
   cost: number | null; lowerCost: number | null; department: string; subDepartment: string
 }>> {
-  const auth = getAuth()
-  const sheets = google.sheets({ version: 'v4', auth })
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `'${TAB}'` })
-  const rows = res.data.values
+  const rows = await fetchSheetValues({
+    spreadsheetId: SPREADSHEET_IDS.inventoryCosts,
+    range: `'${TAB}'`,
+  })
   if (!rows || rows.length < 2) return {}
 
-  const headers = rows[0].map((h: string) => String(h || ''))
+  const headers = rows[0].map((h) => String(h || ''))
   const COL_FUSION_ID = findCol(headers, 'fusion id')
   const COL_DESCRIPTION = findCol(headers, 'description')
   const COL_NETSUITE_ID = findCol(headers, 'netsuite item id')

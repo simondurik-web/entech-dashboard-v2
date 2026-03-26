@@ -3,12 +3,24 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 
 const VALID_PRIORITIES = ["P1", "P2", "P3", "P4", "URGENT"]
 
+const DASHBOARD_APP_ID = "dashboard"
+
 async function getUserProfile(userId: string) {
   const { data } = await supabaseAdmin
     .from("user_profiles")
     .select("role, email, full_name, custom_permissions")
     .eq("id", userId)
     .single()
+  if (!data) return data
+
+  // Overlay app-specific role
+  const { data: appRole } = await supabaseAdmin
+    .from("user_app_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("app_id", DASHBOARD_APP_ID)
+    .single()
+  if (appRole) return { ...data, role: appRole.role }
   return data
 }
 

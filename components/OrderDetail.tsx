@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
+import { PalletEditModal, type EditablePallet } from '@/components/PalletEditModal'
+import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import type { LabelData } from '@/lib/label-utils'
+import { useAuth } from '@/lib/auth-context'
 
 interface OrderDetailProps {
   ifNumber?: string
@@ -16,6 +20,8 @@ interface OrderDetailProps {
   tirePartNum?: string
   hubPartNum?: string
   partNumber?: string
+  canEdit?: boolean
+  userName?: string
   onClose: () => void
 }
 
@@ -100,6 +106,8 @@ export function OrderDetail({
   tirePartNum,
   hubPartNum,
   partNumber,
+  canEdit = false,
+  userName = '',
   onClose,
 }: OrderDetailProps) {
   const { t } = useI18n()
@@ -107,10 +115,17 @@ export function OrderDetail({
   const [shipping, setShipping] = useState<ShippingRecord[]>([])
   const [staged, setStaged] = useState<StagedRecord[]>([])
   const [drawings, setDrawings] = useState<Drawing[]>([])
+  const [editPallet, setEditPallet] = useState<EditablePallet | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [showAllPallets, setShowAllPallets] = useState(false)
+  const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
+  const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
+  const [showLabelPreview, setShowLabelPreview] = useState(false)
+  const [labelLoading, setLabelLoading] = useState(false)
+  const { user } = useAuth()
 
   useEffect(() => {
     let mounted = true
@@ -203,6 +218,37 @@ export function OrderDetail({
   const firstDim = pallets[0]?.dimensions || '-'
   const visiblePallets = showAllPallets ? pallets : pallets.slice(0, 3)
 
+  const handleLabelClick = async () => {
+    if (!line) return
+    setLabelLoading(true)
+    try {
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(line)}`)
+      const existing = await res.json()
+      if (Array.isArray(existing) && existing.length > 0) {
+        setLabelPreview(existing[0])
+        setAllLabelsForOrder(existing)
+        setShowLabelPreview(true)
+      } else {
+        const genRes = await fetch('/api/labels', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(user ? { 'x-user-id': user.id } : {}),
+          },
+          body: JSON.stringify({ order_lines: [line] }),
+        })
+        const genData = await genRes.json()
+        const result = genData.results?.[0]
+        if (result?.labels?.[0]) {
+          setLabelPreview(result.labels[0])
+          setAllLabelsForOrder(result.labels)
+          setShowLabelPreview(true)
+        }
+      }
+    } catch { /* ignore */ }
+    finally { setLabelLoading(false) }
+  }
+
   return (
     <>
       {/* Lightbox — portal to body so fixed positioning works even inside transformed parents */}
@@ -244,8 +290,8 @@ export function OrderDetail({
 
         {!loading && !error && (
           <div className="space-y-3">
-            {/* ── Summary chips (pallet stats + shipping) ── */}
-            {(pallets.length > 0 || isShipped) && (
+            {/* ── Summary chips (pallet stats + shipping) + Label button ── */}
+            {(pallets.length > 0 || isShipped || line) && (
               <div className="flex flex-wrap items-center gap-4 px-2 py-1.5 bg-muted/40 rounded-md text-xs">
                 {pallets.length > 0 && (
                   <>
@@ -262,6 +308,21 @@ export function OrderDetail({
                     <Chip label={t('status.shipped')} value={firstShipping.shipDate || shippedDate || '-'} />
                     <Chip label={t('table.carrier')} value={firstShipping.carrier || '-'} />
                     <Chip label={t('table.bol')} value={firstShipping.bol || '-'} />
+                  </>
+                )}
+                {/* Label Print button */}
+                {line && (
+                  <>
+                    <span className="w-px h-4 bg-border" />
+                    <button
+                      onClick={handleLabelClick}
+                      disabled={labelLoading}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary font-medium transition-colors"
+                      title="View / Print Label"
+                    >
+                      <Tag className="size-3" />
+                      {labelLoading ? 'Loading...' : 'Label'}
+                    </button>
                   </>
                 )}
               </div>
@@ -331,10 +392,84 @@ export function OrderDetail({
             </div>
 
             {/* ── Pallet Records — compact collapsible table ── */}
+            {pallets.length === 0 && canEdit && (
+              <div className="rounded-md border bg-muted/20 p-3 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">No pallet records for this order</span>
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
+                        pallet_number: 1,
+                        recorded_by_name: userName,
+                      }),
+                    })
+                    if (res.ok) {
+                      // Refetch
+                      const pr = await fetch('/api/pallet-records')
+                      if (pr.ok) {
+                        const data = (await pr.json()) as PalletRecord[]
+                        const targetIf = normalize(ifNumber)
+                        const targetLine = normalize(line)
+                        setPallets(data.filter((r) => {
+                          const rIf = normalize(r.ifNumber)
+                          const oNum = normalize(r.orderNumber)
+                          if (targetIf && rIf && rIf === targetIf) return true
+                          if (targetLine && oNum && oNum === targetLine) return true
+                          return false
+                        }))
+                      }
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                >
+                  <Package className="size-3" /> Add Pallet Record
+                </button>
+              </div>
+            )}
             {pallets.length > 0 && (
               <div className="rounded-md border bg-background/60 overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-                  <span className="text-xs font-semibold">Pallet Records ({pallets.length})</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold">Pallet Records ({pallets.length})</span>
+                    {canEdit && (
+                      <button
+                        onClick={async () => {
+                          const nextNum = pallets.length + 1
+                          const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
+                              pallet_number: nextNum,
+                              recorded_by_name: userName,
+                            }),
+                          })
+                          if (res.ok) {
+                            const pr = await fetch('/api/pallet-records')
+                            if (pr.ok) {
+                              const data = (await pr.json()) as PalletRecord[]
+                              const targetIf = normalize(ifNumber)
+                              const targetLine = normalize(line)
+                              setPallets(data.filter((r) => {
+                                const rIf = normalize(r.ifNumber)
+                                const oNum = normalize(r.orderNumber)
+                                if (targetIf && rIf && rIf === targetIf) return true
+                                if (targetLine && oNum && oNum === targetLine) return true
+                                return false
+                              }))
+                            }
+                          }
+                        }}
+                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                        title="Add another pallet"
+                      >
+                        <Package className="size-3" /> + Add
+                      </button>
+                    )}
+                  </div>
                   {pallets.length > 3 && (
                     <button
                       onClick={() => setShowAllPallets(!showAllPallets)}
@@ -353,6 +488,8 @@ export function OrderDetail({
                         <th className="text-left px-3 py-1 font-medium">Weight</th>
                         <th className="text-left px-3 py-1 font-medium">Dimensions</th>
                         <th className="text-left px-3 py-1 font-medium">Parts/Pallet</th>
+                        <th className="text-left px-3 py-1 font-medium">Photos</th>
+                        {canEdit && <th className="text-left px-3 py-1 font-medium"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -362,6 +499,74 @@ export function OrderDetail({
                           <td className="px-3 py-1">{p.weight || '-'} lbs</td>
                           <td className="px-3 py-1">{p.dimensions || '-'}</td>
                           <td className="px-3 py-1">{p.partsPerPallet || '-'}</td>
+                          <td className="px-3 py-1">{p.photos?.length || 0} 📷</td>
+                          {canEdit && (
+                            <td className="px-3 py-1">
+                              {p.id && p._source === 'app' ? (
+                                <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEditPallet({
+                                      id: p.id!,
+                                      palletNumber: p.palletNumber || idx + 1,
+                                      weight: p.weight,
+                                      length: p.length,
+                                      width: p.width,
+                                      height: p.height,
+                                      partsPerPallet: p.partsPerPallet,
+                                      photos: p.photos || [],
+                                      shipmentPhotos: p.shipmentPhotos || [],
+                                      workPaperPhotos: p.workPaperPhotos || [],
+                                      ifNumber: p.ifNumber,
+                                      order_id: p.order_id,
+                                      edited_by_name: p.edited_by_name,
+                                      edited_at: p.edited_at,
+                                    })
+                                    setShowEditModal(true)
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-primary"
+                                  title="Edit pallet"
+                                >
+                                  <Pencil className="size-3" />
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    if (!confirm(`Delete pallet #${p.palletNumber || idx + 1}? You can recover it from the audit trail.`)) return
+                                    const res = await fetch(`/api/pallet-records/${p.id}`, {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ deleted_by_name: userName }),
+                                    })
+                                    if (res.ok) {
+                                      // Refetch
+                                      const pr = await fetch('/api/pallet-records')
+                                      if (pr.ok) {
+                                        const data = (await pr.json()) as PalletRecord[]
+                                        const targetIf = normalize(ifNumber)
+                                        const targetLine = normalize(line)
+                                        setPallets(data.filter((r) => {
+                                          const rIf = normalize(r.ifNumber)
+                                          const oNum = normalize(r.orderNumber)
+                                          if (targetIf && rIf && rIf === targetIf) return true
+                                          if (targetLine && oNum && oNum === targetLine) return true
+                                          return false
+                                        }))
+                                      }
+                                    }
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-red-500 hover:text-red-600"
+                                  title="Delete pallet"
+                                >
+                                  <Trash2 className="size-3" />
+                                </button>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground text-[9px]" title="Sheet records are read-only">—</span>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -372,6 +577,45 @@ export function OrderDetail({
           </div>
         )}
       </div>
+
+      {/* Label Preview Modal */}
+      {labelPreview && (
+        <LabelPreviewModal
+          label={labelPreview}
+          siblingLabels={allLabelsForOrder}
+          open={showLabelPreview}
+          onOpenChange={(open) => {
+            setShowLabelPreview(open)
+            if (!open) setLabelPreview(null)
+          }}
+        />
+      )}
+
+      {/* Pallet Edit Modal */}
+      <PalletEditModal
+        pallet={editPallet}
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        userName={userName}
+        onSaved={async () => {
+          // Refetch pallet records
+          try {
+            const res = await fetch('/api/pallet-records')
+            if (res.ok) {
+              const data = (await res.json()) as PalletRecord[]
+              const targetIf = normalize(ifNumber)
+              const targetLine = normalize(line)
+              setPallets(data.filter((r) => {
+                const rIf = normalize(r.ifNumber)
+                const oNum = normalize(r.orderNumber)
+                if (targetIf && rIf && rIf === targetIf) return true
+                if (targetLine && oNum && oNum === targetLine) return true
+                return false
+              }))
+            }
+          } catch { /* ignore */ }
+        }}
+      />
     </>
   )
 }

@@ -5,11 +5,13 @@
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { fetchSheetRowsByGid, loadLocalEnv } from './lib/google-sheets-auth.mjs'
 
+loadLocalEnv()
 const envPath = path.resolve(process.cwd(), '.env.local')
 for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
   const m = line.match(/^([^#=]+)=(.*)$/)
-  if (m) process.env[m[1].trim()] = m[2].trim()
+  if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim()
 }
 
 const supabase = createClient(
@@ -21,26 +23,21 @@ const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
 const GID = '336333220' // customerReference from google-sheets.ts
 
 function cellValue(row, col) {
-  const cell = row.c?.[col]
-  if (!cell || cell.v === null || cell.v === undefined) return ''
-  return String(cell.v).trim()
+  const cell = row[col]
+  if (cell === null || cell === undefined) return ''
+  return String(cell).trim()
 }
 
 function cellNumber(row, col) {
-  const cell = row.c?.[col]
-  if (!cell || cell.v === null || cell.v === undefined) return null
-  const raw = String(cell.v).replace(/[$,\s]/g, '')
+  const cell = row[col]
+  if (cell === null || cell === undefined) return null
+  const raw = String(cell).replace(/[$,\s]/g, '')
   const n = parseFloat(raw)
   return isNaN(n) ? null : n
 }
 
 async function fetchSheetData() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}`
-  const res = await fetch(url)
-  const text = await res.text()
-  const jsonStr = text.replace(/^[^(]*\(/, '').replace(/\);?\s*$/, '')
-  const data = JSON.parse(jsonStr)
-  return data.table.rows
+  return fetchSheetRowsByGid({ spreadsheetId: SHEET_ID, gid: GID })
 }
 
 async function main() {

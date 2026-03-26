@@ -1,19 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
-// Hardcoded super admin — cannot be demoted
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
+const DASHBOARD_APP_ID = "dashboard"
+
+async function getAppRole(userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("user_app_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("app_id", DASHBOARD_APP_ID)
+    .single()
+  return data?.role || null
+}
 
 async function isAdmin(req: NextRequest): Promise<boolean> {
   const userId = req.headers.get("x-user-id")
   if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
-    .select("role, email")
+    .select("email")
     .eq("id", userId)
     .single()
   if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
-  return profile?.role === "admin"
+  const appRole = await getAppRole(userId)
+  return appRole === "admin"
 }
 
 export async function GET(req: NextRequest) {
@@ -28,18 +39,26 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Get auth user metadata for last_sign_in
+  // Get app-specific roles
+  const { data: appRoles } = await supabaseAdmin
+    .from("user_app_roles")
+    .select("user_id, role")
+    .eq("app_id", DASHBOARD_APP_ID)
+
+  const roleMap = new Map((appRoles || []).map((r) => [r.user_id, r.role]))
+
   const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
   const authMap = new Map(authUsers?.map((u) => [u.id, u]) || [])
 
   const enriched = users?.map((u) => ({
     ...u,
+    role: roleMap.get(u.id) || u.role, // app role takes priority
     last_login: authMap.get(u.id)?.last_sign_in_at || null,
   }))
 
-  // Count users per role
+  // Count users per app-specific role
   const roleCounts: Record<string, number> = {}
-  for (const u of users ?? []) {
+  for (const u of enriched ?? []) {
     roleCounts[u.role] = (roleCounts[u.role] || 0) + 1
   }
 
@@ -56,7 +75,6 @@ export async function PUT(req: NextRequest) {
 
   if (!user_id) return NextResponse.json({ error: "Missing user id" }, { status: 400 })
 
-  // Protect super admin — cannot be demoted or deactivated
   const { data: targetUser } = await supabaseAdmin
     .from("user_profiles")
     .select("email")
@@ -71,20 +89,30 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  if (role !== undefined) updates.role = role
-  if (custom_permissions !== undefined) updates.custom_permissions = custom_permissions
-  if (is_active !== undefined) updates.is_active = is_active
+  // Write role to user_app_roles (app-specific)
+  if (role !== undefined) {
+    await supabaseAdmin
+      .from("user_app_roles")
+      .upsert(
+        { user_id, app_id: DASHBOARD_APP_ID, role, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,app_id" }
+      )
+  }
 
-  const { data, error } = await supabaseAdmin
-    .from("user_profiles")
-    .update(updates)
-    .eq("id", user_id)
-    .select()
-    .single()
+  // Write non-role fields to user_profiles (shared)
+  const profileUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (custom_permissions !== undefined) profileUpdates.custom_permissions = custom_permissions
+  if (is_active !== undefined) profileUpdates.is_active = is_active
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ user: data })
+  if (Object.keys(profileUpdates).length > 1) {
+    await supabaseAdmin.from("user_profiles").update(profileUpdates).eq("id", user_id)
+  }
+
+  // Return with app-specific role
+  const { data: profile } = await supabaseAdmin.from("user_profiles").select("*").eq("id", user_id).single()
+  const appRole = await getAppRole(user_id)
+
+  return NextResponse.json({ user: { ...profile, role: appRole || profile?.role } })
 }
 
 export async function POST(req: NextRequest) {
@@ -99,64 +127,67 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing email or role" }, { status: 400 })
   }
 
-  // Check if email already exists in profiles (case-insensitive)
   const { data: existing } = await supabaseAdmin
     .from("user_profiles")
-    .select("id, email, role")
+    .select("id, email")
     .ilike("email", email)
     .single()
 
   if (existing) {
-    // User exists — update their role instead of erroring
-    const { data: updated, error: updateErr } = await supabaseAdmin
-      .from("user_profiles")
-      .update({ role, is_active: true, updated_at: new Date().toISOString() })
-      .eq("id", existing.id)
-      .select()
-      .single()
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
-    return NextResponse.json({ user: updated })
+    // Set app-specific role
+    await supabaseAdmin
+      .from("user_app_roles")
+      .upsert(
+        { user_id: existing.id, app_id: DASHBOARD_APP_ID, role, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,app_id" }
+      )
+
+    return NextResponse.json({ user: { ...existing, role } })
   }
 
-  // Use Supabase Auth admin to create an invited user — this creates a real auth.users entry
-  // so the user_profiles FK constraint is satisfied
   const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
     email_confirm: false,
-    user_metadata: { full_name: full_name || '', pre_enrolled: true, assigned_role: role },
+    user_metadata: { full_name: full_name || '', pre_enrolled: true },
   })
 
   if (authError) {
-    // If user already exists in auth but not profiles, get their ID
     if (authError.message?.includes('already been registered') || authError.status === 422) {
       const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
       const found = authUsers?.find((u) => u.email?.toLowerCase() === email.toLowerCase())
       if (found) {
-        const { data, error } = await supabaseAdmin
+        await supabaseAdmin
           .from("user_profiles")
-          .upsert({ id: found.id, email, role, full_name: full_name || null, is_active: true }, { onConflict: 'id' })
-          .select()
-          .single()
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-        return NextResponse.json({ user: data })
+          .upsert({ id: found.id, email, role: 'visitor', full_name: full_name || null, is_active: true }, { onConflict: 'id' })
+
+        await supabaseAdmin
+          .from("user_app_roles")
+          .upsert(
+            { user_id: found.id, app_id: DASHBOARD_APP_ID, role, updated_at: new Date().toISOString() },
+            { onConflict: "user_id,app_id" }
+          )
+
+        const { data: profile } = await supabaseAdmin.from("user_profiles").select("*").eq("id", found.id).single()
+        return NextResponse.json({ user: { ...profile, role } })
       }
     }
     return NextResponse.json({ error: authError.message }, { status: 500 })
   }
 
-  // Create the profile with the real auth user ID
-  const { data, error } = await supabaseAdmin
+  const { data: profile, error } = await supabaseAdmin
     .from("user_profiles")
-    .insert({
-      id: authUser.user.id,
-      email,
-      role,
-      full_name: full_name || null,
-      is_active: true,
-    })
+    .insert({ id: authUser.user.id, email, role: 'visitor', full_name: full_name || null, is_active: true })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ user: data })
+
+  await supabaseAdmin
+    .from("user_app_roles")
+    .upsert(
+      { user_id: authUser.user.id, app_id: DASHBOARD_APP_ID, role, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,app_id" }
+    )
+
+  return NextResponse.json({ user: { ...profile, role } })
 }

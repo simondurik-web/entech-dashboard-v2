@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { fetchSheetValues } from '@/lib/google-sheets-api'
+import { SPREADSHEET_IDS } from '@/lib/google-sheets-config'
 import { getProfileFromHeader, unauthorized, forbidden } from '../_utils'
-import { google } from 'googleapis'
-
-const SHEET_ID = '1SqQeBkgzQPUqdMcOR-gIlPRk85renzqnV1bgn2C10lg'
-
-async function getAuth() {
-  const base64 = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64
-  if (!base64) throw new Error('GOOGLE_SERVICE_ACCOUNT_BASE64 not set')
-  const creds = JSON.parse(Buffer.from(base64, 'base64').toString())
-  const auth = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  })
-  return auth
-}
 
 export async function POST(req: NextRequest) {
   const profile = await getProfileFromHeader(req)
@@ -22,15 +10,11 @@ export async function POST(req: NextRequest) {
   if (profile.role !== 'admin') return forbidden()
 
   try {
-    const auth = await getAuth()
-    const sheets = google.sheets({ version: 'v4', auth })
-
     // 1. Migrate employees from "Employee Reference data" tab
-    const empRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
+    const empRows = await fetchSheetValues({
+      spreadsheetId: SPREADSHEET_IDS.scheduling,
       range: 'Employee Reference data!A1:H100',
     })
-    const empRows = empRes.data.values || []
     const employees = empRows.slice(1) // skip header
       .filter(row => row[0] && row[1]) // need ID and first name
       .map(row => ({
@@ -52,16 +36,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Migrate historical schedule data from "Long Data" tab
-    const longRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
+    const longRows = await fetchSheetValues({
+      spreadsheetId: SPREADSHEET_IDS.scheduling,
       range: 'Long Data!A1:K20000',
     })
-    const longRows = longRes.data.values || []
     const entries = longRows.slice(1) // skip header
       .filter(row => row[0] && row[5] && row[6] === '1') // need ID, date, and checked=1
       .map(row => {
         const shift = parseInt(String(row[4] || '1')) || 1
-        const hours = parseFloat(String(row[10] || '10')) || 10
         // Calculate times from shift + hours
         let start_time = '07:00'
         let end_time = '17:30'

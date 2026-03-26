@@ -1,3 +1,5 @@
+import 'server-only'
+
 // Re-export types so API routes can still import from this file
 export type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
 export { normalizeStatus } from './google-sheets-shared'
@@ -5,8 +7,8 @@ export { normalizeStatus } from './google-sheets-shared'
 // Local imports for internal use
 import type { Order, InventoryHistoryPart, InventoryHistoryData, InventoryItem, ProductionMakeItem, PalletRecord, ShippingRecord, StagedRecord, Drawing, BOMComponent, BOMItem } from './google-sheets-shared'
 import { normalizeStatus } from './google-sheets-shared'
-
-const SHEET_ID = '1bK0Ne-vX3i5wGoqyAklnyFDUNdE-WaN4Xs5XjggBSXw'
+import { fetchSheetValuesByGid } from './google-sheets-api'
+import { MAIN_SPREADSHEET_ID } from './google-sheets-config'
 
 export const GIDS = {
   orders: '290032634',
@@ -29,47 +31,12 @@ const API_CACHE_TTL_MS = 60_000
 type GvizRow = { c: Array<{ v: unknown } | null> }
 type GvizSheetData = { cols: string[]; rows: GvizRow[] }
 
-const gidToTitleCache = new Map<string, string>()
 const sheetDataCache = new Map<string, { expiresAt: number; data: GvizSheetData }>()
-
-function quoteSheetTitle(title: string): string {
-  return `'${title.replace(/'/g, "''")}'`
-}
-
-async function getSheetTitleByGid(gid: string): Promise<string> {
-  const cachedTitle = gidToTitleCache.get(gid)
-  if (cachedTitle) return cachedTitle
-
-  const sheetId = Number(gid)
-  if (!Number.isFinite(sheetId)) {
-    throw new Error(`Invalid sheet gid: ${gid}`)
-  }
-
-  const { getSheetsClient } = await import('./google-auth')
-  const sheets = getSheetsClient()
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId: SHEET_ID,
-    fields: 'sheets(properties(sheetId,title))',
-  })
-
-  for (const sheet of meta.data.sheets ?? []) {
-    const props = sheet.properties
-    if (!props?.title || props.sheetId === undefined) continue
-    gidToTitleCache.set(String(props.sheetId), props.title)
-  }
-
-  const title = gidToTitleCache.get(gid)
-  if (!title) {
-    throw new Error(`Sheet title not found for gid: ${gid}`)
-  }
-  return title
-}
 
 function toGvizShape(values: string[][]): GvizSheetData {
   if (values.length === 0) return { cols: [], rows: [] }
 
-  // First row is headers (cols), remaining rows are data
-  // This matches the old gviz behavior where table.rows excluded headers
+  // Preserve the legacy gviz contract: headers in cols, data rows only in rows.
   const cols = [...values[0]]
   const dataRows = values.slice(1)
 
@@ -85,16 +52,12 @@ async function fetchSheetDataFromApi(gid: string): Promise<GvizSheetData> {
   const cached = sheetDataCache.get(gid)
   if (cached && cached.expiresAt > now) return cached.data
 
-  const title = await getSheetTitleByGid(gid)
-  const { getSheetsClient } = await import('./google-auth')
-  const sheets = getSheetsClient()
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: quoteSheetTitle(title),
-    valueRenderOption: 'FORMATTED_VALUE',
+  const values = await fetchSheetValuesByGid({
+    spreadsheetId: MAIN_SPREADSHEET_ID,
+    gid,
+    valueRenderOption: 'UNFORMATTED_VALUE',
+    dateTimeRenderOption: 'FORMATTED_STRING',
   })
-
-  const values = (response.data.values ?? []) as string[][]
   const data = toGvizShape(values)
   sheetDataCache.set(gid, { data, expiresAt: now + API_CACHE_TTL_MS })
   return data
@@ -214,9 +177,7 @@ export async function fetchOrders(): Promise<Order[]> {
   const { rows } = await fetchSheetDataFromApi(GIDS.orders)
   const parsedRows = rows.map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
   
-  if (parsedRows.length < 2) return []
-  
-  const dataRows = parsedRows.slice(1)
+  if (parsedRows.length === 0) return []
   
   function col(row: string[], index: number): string {
     return (index >= 0 && index < row.length) ? row[index].trim() : ''
@@ -231,7 +192,7 @@ export async function fetchOrders(): Promise<Order[]> {
     return col(row, index)
   }
   
-  return dataRows
+  return parsedRows
     .map((row): Order => {
       const internalStatus = col(row, COLS.internalStatus)
       const ifStatus = col(row, COLS.ifStatus)
@@ -291,15 +252,14 @@ function parseSheetNumber(value: string): number {
 }
 
 export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
-  const { cols, rows: gvizRows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
-  const rows = gvizRows
+  const { cols, rows } = await fetchSheetDataFromApi(GIDS.inventoryHistory)
+  const normalizedRows = rows
     .map((row) => row.c.map((cell) => (cell?.v == null ? '' : String(cell.v))))
     .filter((row) =>
     row.some((cell) => cell.trim() !== '')
   )
-  if (rows.length === 0) return { dates: [], parts: [] }
+  if (normalizedRows.length === 0) return { dates: [], parts: [] }
 
-  // cols contains the header row (part number label + date columns)
   const header = cols
   const dateColumns: Array<{ index: number; date: string }> = []
 
@@ -311,9 +271,8 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryData> {
   }
 
   const parts: InventoryHistoryPart[] = []
-  // All rows are data rows now (header is in cols)
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]
+  for (let i = 0; i < normalizedRows.length; i++) {
+    const row = normalizedRows[i]
     const partNumber = (row[0] || '').trim()
     if (!partNumber) continue
 
@@ -376,7 +335,7 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
 
   // Build Fusion Export map: partNumber -> qty
   const fusionMap = new Map<string, number>()
-  for (let i = 1; i < fusion.rows.length; i++) {
+  for (let i = 0; i < fusion.rows.length; i++) {
     const row = fusion.rows[i]
     const part = cellValue(row, FUSION_COLS.partNumber).trim()
     const qty = cellNumber(row, FUSION_COLS.qty)
@@ -449,7 +408,7 @@ export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
 
   // Build Fusion Export map: partNumber -> qty
   const fusionMap = new Map<string, number>()
-  for (let i = 1; i < fusion.rows.length; i++) {
+  for (let i = 0; i < fusion.rows.length; i++) {
     const row = fusion.rows[i]
     const part = cellValue(row, FUSION_COLS.partNumber).trim()
     const qty = cellNumber(row, FUSION_COLS.qty)

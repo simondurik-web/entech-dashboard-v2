@@ -62,7 +62,6 @@ export default function SchedulingPage() {
 
 function SchedulingPageContent() {
   const { t } = useI18n()
-  const searchParams = useSearchParams()
   const { user, profile } = useAuth()
   const role = profile?.role ?? 'visitor'
 
@@ -81,10 +80,12 @@ function SchedulingPageContent() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'schedule' | 'hourspay' | 'employees' | 'audit'>('schedule')
-  const initialShift = searchParams.get('shift')
-  const [shiftFilter, setShiftFilter] = useState<number | null>(
-    initialShift === '1' ? 1 : initialShift === '2' ? 2 : null
-  )
+  const [shiftFilter, setShiftFilter] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    const s = params.get('shift')
+    return s === '1' ? 1 : s === '2' ? 2 : null
+  })
   const [departmentFilter, setDepartmentFilter] = useState<string | null>('Molding')
   const [search, setSearch] = useState('')
 
