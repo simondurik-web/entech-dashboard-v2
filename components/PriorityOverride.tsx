@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/lib/auth-context'
 import { usePermissions } from '@/lib/use-permissions'
 import { supabase } from '@/lib/supabase'
@@ -29,19 +30,45 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
 
   // Check permission: admin always, or manage_priority in role/custom permissions
   const canManage = profile?.role === 'admin' || canAccess('manage_priority')
 
-  // Close on click outside
+  // Position the dropdown when opening
+  const updatePosition = useCallback(() => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+  }, [])
+
+  // Close on click outside — listen on the whole document
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (ref.current?.contains(target)) return
+      // Also check the portal dropdown
+      const portal = document.getElementById('priority-dropdown-portal')
+      if (portal?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
+
+  // Reposition on scroll/resize
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+    const onScroll = () => setOpen(false)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [open, updatePosition])
 
   // Clear error after 3s
   useEffect(() => {
@@ -127,9 +154,11 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
         </span>
       )}
 
-      {open && (
+      {open && dropdownPos && typeof document !== 'undefined' && createPortal(
         <div
-          className="absolute z-50 top-full left-0 mt-1 bg-background border rounded-lg shadow-lg p-1 min-w-[100px]"
+          id="priority-dropdown-portal"
+          className="fixed z-[9999] bg-background border rounded-lg shadow-lg p-1 min-w-[100px]"
+          style={{ top: dropdownPos.top, left: dropdownPos.left }}
           onClick={(e) => { e.stopPropagation(); e.preventDefault() }}
         >
           {PRIORITY_OPTIONS.map((opt) => (
@@ -147,7 +176,8 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

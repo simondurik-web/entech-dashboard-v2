@@ -22,7 +22,7 @@ const ROLES: UserRole[] = ['visitor', 'regular_user', 'group_leader', 'shipping_
 const ALL_MENU_PATHS = [
   '/orders', '/need-to-make', '/need-to-package', '/staged', '/shipped',
   '/inventory', '/inventory-history', '/drawings', '/pallet-records',
-  '/shipping-records', '/fp-reference', '/staged-records',
+  '/shipping-records', '/shipping-overview', '/fp-reference', '/staged-records',
   '/sales-overview', '/sales-parts', '/sales-customers', '/sales-dates',
   '/customer-reference', '/quotes',
   '/bom', '/material-requirements', '/all-data',

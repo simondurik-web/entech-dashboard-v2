@@ -18,7 +18,7 @@ interface RolePermission {
 const ALL_MENU_PATHS = [
   '/orders', '/need-to-make', '/need-to-package', '/staged', '/shipped',
   '/inventory', '/inventory-history', '/drawings', '/pallet-records',
-  '/shipping-records', '/fp-reference', '/staged-records',
+  '/shipping-records', '/shipping-overview', '/fp-reference', '/staged-records',
   '/sales-overview', '/sales-parts', '/sales-customers', '/sales-dates',
   '/customer-reference', '/quotes',
   '/bom', '/material-requirements', '/all-data',
@@ -48,6 +48,7 @@ const PATH_LABELS: Record<string, string> = {
   '/drawings': 'Drawings',
   '/pallet-records': 'Pallet Records',
   '/shipping-records': 'Shipping Records',
+  '/shipping-overview': 'Shipping Overview',
   '/fp-reference': 'FP Reference',
   '/staged-records': 'Staged Records',
   '/sales-overview': 'Sales Overview',

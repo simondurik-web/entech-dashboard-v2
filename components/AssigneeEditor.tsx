@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, UserPlus, X, Pencil, Trash2 } from 'lucide-react'
 
 interface AssigneeEditorProps {
@@ -27,9 +28,21 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
   const [editingName, setEditingName] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [newName, setNewName] = useState('')
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+  }, [])
+
+  useEffect(() => {
+    if (open) updatePosition()
+  }, [open, updatePosition])
 
   useEffect(() => {
     if (!open) return
@@ -55,7 +68,11 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        triggerRef.current && !triggerRef.current.contains(target)
+      ) {
         setOpen(false)
         setAddMode(false)
         setEditingName(null)
@@ -63,6 +80,14 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  // Close on scroll (table scrolls away from dropdown)
+  useEffect(() => {
+    if (!open) return
+    const handler = () => { setOpen(false); setAddMode(false); setEditingName(null) }
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
   }, [open])
 
   useEffect(() => {
@@ -149,8 +174,9 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
   }
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative">
       <button
+        ref={triggerRef}
         onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-sm hover:bg-muted/60 transition-colors min-w-[80px] text-left"
         disabled={saving}
@@ -161,9 +187,11 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
         <ChevronDown className="size-3 shrink-0 opacity-50" />
       </button>
 
-      {open && (
+      {open && dropdownPos && createPortal(
         <div
-          className="absolute z-50 top-full left-0 mt-1 w-64 bg-popover border rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto"
+          ref={dropdownRef}
+          className="fixed w-64 bg-popover border rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto"
+          style={{ top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
           onClick={(e) => e.stopPropagation()}
         >
           {loading ? (
@@ -273,7 +301,8 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
               )}
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
