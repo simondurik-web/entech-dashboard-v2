@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, useCallback } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, Line, ComposedChart, AreaChart, Area,
+  CartesianGrid, Legend, Line, ComposedChart, AreaChart, Area, ReferenceLine,
 } from 'recharts'
 import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
@@ -18,6 +18,9 @@ import { AnimatedNumber } from "@/components/ui/animated-number"
 import { ScrollReveal } from "@/components/scroll-reveal"
 import { StaggeredGrid } from "@/components/ui/staggered-grid"
 import { getOrderCost } from '@/lib/sales-math'
+import { CategoryDonutChart } from '@/components/sales/CategoryDonutChart'
+import { DateRangeSelector, type DateRangeId } from '@/components/sales/DateRangeSelector'
+import { EnhancedStatCard } from '@/components/sales/EnhancedStatCard'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -678,6 +681,7 @@ function SalesDatesContent() {
   const [error, setError] = useState<string | null>(null)
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState(DEFAULT_CATEGORIES)
+  const [dateRange, setDateRange] = useState<DateRangeId>('all')
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -696,12 +700,39 @@ function SalesDatesContent() {
     return filterByCategory(data.orders, categoryFilter)
   }, [data, categoryFilter])
 
+  // ─── Filter by date range (Enhancement 9) ───
+  const dateRangeFilteredOrders = useMemo(() => {
+    if (dateRange === 'all') return filteredOrders
+    const now = new Date()
+    let cutoffMonthKey: string
+    if (dateRange === 'last3m') {
+      const d = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+      cutoffMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    } else if (dateRange === 'last6m') {
+      const d = new Date(now.getFullYear(), now.getMonth() - 6, 1)
+      cutoffMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    } else if (dateRange === 'ytd') {
+      cutoffMonthKey = `${now.getFullYear()}-01`
+    } else {
+      // last12m
+      const d = new Date(now.getFullYear(), now.getMonth() - 12, 1)
+      cutoffMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    }
+    return filteredOrders.filter((o) => {
+      const dateStr = getAttributionDate(o)
+      if (!dateStr) return false
+      const mk = getMonthKey(dateStr)
+      if (!mk) return false
+      return mk >= cutoffMonthKey
+    })
+  }, [filteredOrders, dateRange])
+
   // ─── Aggregate by month using attribution date ───
   const monthRowsRaw = useMemo(() => {
-    if (!filteredOrders.length && !data) return []
+    if (!dateRangeFilteredOrders.length && !data) return []
     const byMonth: Record<string, { orders: SalesOrder[]; shipped: number; qty: number; revenue: number; shippedTotalProfit: number; forecastTotalProfit: number; shippedRevenue: number; forecastRevenue: number; costs: number }> = {}
 
-    for (const order of filteredOrders) {
+    for (const order of dateRangeFilteredOrders) {
       const dateStr = getAttributionDate(order)
       const monthKey = dateStr ? getMonthKey(dateStr) : null
       if (!monthKey) continue
@@ -744,7 +775,7 @@ function SalesDatesContent() {
         }
       })
       .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
-  }, [filteredOrders, data])
+  }, [dateRangeFilteredOrders, data])
 
   // ─── Build lookup and compute MoM/YoY fields ───
   const monthRows: MonthRow[] = useMemo(() => {
@@ -878,13 +909,19 @@ function SalesDatesContent() {
         <CategoryFilter value={categoryFilter} onChange={setCategoryFilter} />
       </div>
 
-      {/* Stat Cards */}
+      {/* Date Range Selector (Enhancement 9) */}
+      <DateRangeSelector value={dateRange} onChange={setDateRange} />
+
+      {/* Stat Cards (Enhancement 7 — EnhancedStatCard) */}
       <StaggeredGrid className="grid grid-cols-2 lg:grid-cols-4 gap-3" stagger={100}>
-        <StatCard icon={<Package className="size-4" />} label="Orders" value={fmtN(totals.totalOrders)} sub={`${fmtN(totals.totalQty)} units`} color="bg-blue-500/10 text-blue-400" />
-        <StatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totals.totalRevenue)} color="bg-emerald-500/10 text-emerald-400" />
-        <StatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totals.totalProfit)} sub={`Margin: ${totals.totalMarginPct.toFixed(1)}%`} color={totals.totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
-        <StatCard icon={<Percent className="size-4" />} label="Margin" value={`${totals.totalMarginPct.toFixed(1)}%`} sub={`${totals.monthCount} months`} color={totals.totalMarginPct >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <EnhancedStatCard icon={<Package className="size-4" />} label="Orders" value={fmtN(totals.totalOrders)} sub={`${fmtN(totals.totalQty)} units`} color="bg-blue-500/10 text-blue-400" />
+        <EnhancedStatCard icon={<DollarSign className="size-4" />} label="Revenue" value={fmt(totals.totalRevenue)} color="bg-emerald-500/10 text-emerald-400" />
+        <EnhancedStatCard icon={<TrendingUp className="size-4" />} label="P/L" value={fmt(totals.totalProfit)} sub={`Margin: ${totals.totalMarginPct.toFixed(1)}%`} color={totals.totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
+        <EnhancedStatCard icon={<Percent className="size-4" />} label="Margin" value={`${totals.totalMarginPct.toFixed(1)}%`} sub={`${totals.monthCount} months`} color={totals.totalMarginPct >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} />
       </StaggeredGrid>
+
+      {/* Category Donut Chart (Enhancement 4) */}
+      <CategoryDonutChart orders={dateRangeFilteredOrders} />
 
       {/* Monthly P/L Breakdown Chart */}
       <ScrollReveal delay={150}>
@@ -951,7 +988,32 @@ function SalesDatesContent() {
               />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15, radius: 6 }} />
               {/* Stacked bars — shipped stack */}
-              <Bar yAxisId="left" dataKey="shippedProfit" name="Shipped Profit" stackId="shipped" fill="url(#shippedProfitGrad)" radius={[6, 6, 0, 0]} animationBegin={200} animationDuration={800} animationEasing="ease-out" />
+              <Bar
+                yAxisId="left"
+                dataKey="shippedProfit"
+                name="Shipped Profit"
+                stackId="shipped"
+                fill="url(#shippedProfitGrad)"
+                radius={[6, 6, 0, 0]}
+                animationBegin={200}
+                animationDuration={800}
+                animationEasing="ease-out"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                label={(props: any) => {
+                  const x = props.x as number
+                  const y = props.y as number
+                  const width = props.width as number
+                  const index = props.index as number
+                  const mom = chartData[index]?.revMoM
+                  if (mom === null || mom === undefined) return null
+                  const color = mom >= 0 ? '#10b981' : '#ef4444'
+                  return (
+                    <text x={x + width / 2} y={y - 8} textAnchor="middle" fill={color} fontSize={9} fontWeight={600}>
+                      {mom >= 0 ? '+' : ''}{mom.toFixed(0)}%
+                    </text>
+                  )
+                }}
+              />
               <Bar yAxisId="left" dataKey="shippedLoss" name="Shipped Loss" stackId="shipped" fill="url(#shippedLossGrad)" radius={[0, 0, 6, 6]} animationBegin={200} animationDuration={800} animationEasing="ease-out" />
               {/* Stacked bars — forecast stack */}
               <Bar yAxisId="left" dataKey="forecastProfit" name="Forecast Profit" stackId="forecast" fill="url(#forecastProfitGrad)" radius={[6, 6, 0, 0]} animationBegin={400} animationDuration={800} animationEasing="ease-out" />
@@ -960,6 +1022,17 @@ function SalesDatesContent() {
               <Line yAxisId="right" type="monotone" dataKey="shippedRevenue" name="Shipped Revenue" stroke={SHIPPED_REVENUE_COLOR} strokeWidth={2.5} dot={{ r: 3.5, fill: SHIPPED_REVENUE_COLOR, strokeWidth: 2, stroke: 'hsl(var(--card))' }} activeDot={{ r: 6, strokeWidth: 2, stroke: SHIPPED_REVENUE_COLOR, fill: 'hsl(var(--card))' }} animationBegin={600} animationDuration={1000} animationEasing="ease-out" />
               {/* Forecast Revenue — dashed line */}
               <Line yAxisId="right" type="monotone" dataKey="forecastRevenue" name="Forecast Revenue" stroke={FORECAST_REVENUE_COLOR} strokeWidth={2} strokeDasharray="6 4" dot={{ r: 3, fill: FORECAST_REVENUE_COLOR, strokeWidth: 1.5, stroke: 'hsl(var(--card))' }} activeDot={{ r: 5, strokeWidth: 2, stroke: FORECAST_REVENUE_COLOR, fill: 'hsl(var(--card))' }} animationBegin={700} animationDuration={1000} animationEasing="ease-out" />
+              {/* Avg Revenue Target line (Enhancement 10) */}
+              {totals.monthCount > 0 && (
+                <ReferenceLine
+                  yAxisId="right"
+                  y={totals.totalRevenue / totals.monthCount}
+                  stroke="#f59e0b"
+                  strokeDasharray="6 4"
+                  strokeOpacity={0.6}
+                  label={{ value: 'Avg Revenue', position: 'insideTopRight', fontSize: 10, fill: '#f59e0b' }}
+                />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
