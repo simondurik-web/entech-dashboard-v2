@@ -284,6 +284,7 @@ function NeedToPackagePageContent() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
   const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
+  const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelWarning, setLabelWarning] = useState<string | null>(null)
   const [printedLines, setPrintedLines] = useState<Set<string>>(new Set())
@@ -335,6 +336,7 @@ function NeedToPackagePageContent() {
 
       if (Array.isArray(existing) && existing.length > 0) {
         setLabelPreview(existing[0])
+        setAllLabelsForOrder(existing)
         setShowLabelPreview(true)
       } else {
         // Generate new label
@@ -354,6 +356,7 @@ function NeedToPackagePageContent() {
         }
         if (result?.labels?.[0]) {
           setLabelPreview(result.labels[0])
+          setAllLabelsForOrder(result.labels)
           setShowLabelPreview(true)
         }
       }
@@ -585,6 +588,7 @@ function NeedToPackagePageContent() {
 
       <LabelPreviewModal
         label={labelPreview}
+        siblingLabels={allLabelsForOrder}
         open={showLabelPreview}
         onOpenChange={setShowLabelPreview}
         onPrint={handleLabelPrint}
