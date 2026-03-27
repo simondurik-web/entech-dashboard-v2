@@ -403,17 +403,26 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     }
   }
 
-  // Fetch BOM costs from DB (preferred over stale Sheets-synced values)
-  const { data: bomData } = await supabase
+  // Fetch BOM costs from DB in parallel (preferred over stale Sheets-synced values in dashboard_orders).
+  // BOM has canonical per-part variable_cost, total_cost, and sales_target.
+  // If multiple rows exist for the same part_number, the most-recently-updated row wins (ORDER BY updated_at DESC).
+  const { data: bomData, error: bomError } = await supabase
     .from('bom_final_assemblies')
     .select('part_number, variable_cost, total_cost, sales_target')
+    .order('updated_at', { ascending: false })
+  if (bomError) {
+    console.error('[fetchSalesFromDB] BOM query failed — falling back to dashboard_orders cost values:', bomError.message)
+  }
   const bomMap = new Map<string, { variableCost: number; totalCost: number; salesTarget: number }>()
   for (const b of bomData || []) {
-    bomMap.set(b.part_number, {
-      variableCost: Number(b.variable_cost) || 0,
-      totalCost: Number(b.total_cost) || 0,
-      salesTarget: Number(b.sales_target) || 0,
-    })
+    // Only set first occurrence (highest updated_at wins due to ORDER BY above)
+    if (!bomMap.has(b.part_number)) {
+      bomMap.set(b.part_number, {
+        variableCost: Number(b.variable_cost) || 0,
+        totalCost: Number(b.total_cost) || 0,
+        salesTarget: Number(b.sales_target) || 0,
+      })
+    }
   }
 
   const orders: SalesOrder[] = []
@@ -428,8 +437,9 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
 
     const revenue = num(row.revenue)
     const bom = bomMap.get(str(row.part_number))
-    const variableCost = bom?.variableCost ?? (parseFloat(String(row.variable_cost ?? '').replace(/[$,]/g, '')) || 0)
-    const totalCost = bom?.totalCost ?? (parseFloat(String(row.total_cost ?? '').replace(/[$,]/g, '')) || 0)
+    // num() already strips "$" and "," so it handles the stale Sheets-synced string format safely
+    const variableCost = bom?.variableCost ?? num(row.variable_cost)
+    const totalCost = bom?.totalCost ?? num(row.total_cost)
     const rawPL = num(row.pl)
     const qty = num(row.order_qty)
     const unitPrice = num(row.unit_price)
