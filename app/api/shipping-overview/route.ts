@@ -118,7 +118,7 @@ async function fetchDashboardOrders(): Promise<OrderWithShippingFields[]> {
     return rows
       .map((row): OrderWithShippingFields => ({
         line: str(row.line),
-        category: str(row.category),
+        category: str(row.category).trim(),
         dateOfRequest: str(row.date_of_request),
         priorityLevel: num(row.priority_level),
         urgentOverride: bool(row.urgent_override),
