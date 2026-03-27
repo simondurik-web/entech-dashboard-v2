@@ -317,7 +317,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Scrollable order list */}
-            <div className="max-h-[60vh] min-[1400px]:max-h-none flex-1 min-h-0 overflow-y-auto p-5">
+            <div data-lenis-prevent className="max-h-[60vh] min-[1400px]:max-h-none flex-1 min-h-0 overflow-y-auto p-5">
               <OrderList
                 orders={staged}
                 expandedKey={expandedKey}
@@ -386,7 +386,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Scrollable order list */}
-            <div className="max-h-[60vh] min-[1400px]:max-h-none flex-1 min-h-0 overflow-y-auto p-5">
+            <div data-lenis-prevent className="max-h-[60vh] min-[1400px]:max-h-none flex-1 min-h-0 overflow-y-auto p-5">
               <OrderList
                 orders={shipped}
                 expandedKey={expandedKey}
@@ -404,7 +404,7 @@ function ShippingOverviewPageContent() {
           <DialogHeader className="shrink-0 px-6 py-4 border-b">
             <DialogTitle>📦 Pallet Load Calculator</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          <div data-lenis-prevent className="flex-1 min-h-0 overflow-y-auto p-6">
             <PalletLoadCalculator stagedOrders={stagedOrdersForCalc} />
           </div>
         </DialogContent>
