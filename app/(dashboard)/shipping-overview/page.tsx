@@ -202,11 +202,11 @@ function ShippingOverviewPageContent() {
   return (
     <div className={`min-h-screen p-4 pb-20 ${pageBg}`}>
       {/* ── Header ─────────────────────────────────────────── */}
-      <section className="overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#1e3c72_0%,#2a5298_100%)] px-6 py-8 text-white shadow-[0_18px_60px_rgba(30,60,114,0.28)]">
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+      <section className="overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#1e3c72_0%,#2a5298_100%)] px-6 py-4 text-white shadow-[0_18px_60px_rgba(30,60,114,0.28)]">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight">Shipping Dashboard</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight">Shipping Dashboard</h1>
               <p className="text-sm uppercase tracking-[0.24em] text-white/75">
                 {formatHeaderDate(data?.generatedAt ?? new Date().toISOString())}
               </p>
@@ -273,7 +273,7 @@ function ShippingOverviewPageContent() {
 
       {/* ── Two-column grid ─────────────────────────────────── */}
       {!loading && !error && data && (
-        <div className="mt-5 grid grid-cols-1 gap-5 min-[1400px]:grid-cols-2 min-[1400px]:h-[calc(100vh-260px)]">
+        <div className="mt-4 grid grid-cols-1 gap-4 min-[1400px]:grid-cols-2 min-[1400px]:h-[calc(100vh-210px)]">
           {/* ═══ Left: Ready to Ship ═══ */}
           <div className={`overflow-hidden rounded-3xl border flex flex-col ${sectionBg}`}>
             {/* Section header */}
