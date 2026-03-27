@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { fetchOrdersFromDB } from '@/lib/supabase-data'
 import { fetchOrders } from '@/lib/google-sheets'
 import { fetchPriorityOverrides, mergePriorityOverrides } from '@/lib/priority-overrides'
+import { applyAutoAssignRules } from '@/lib/auto-assign'
 
 export async function GET() {
   try {
@@ -12,6 +13,8 @@ export async function GET() {
     try {
       const orders = await fetchOrdersFromDB()
       mergePriorityOverrides(orders, overrides)
+      // Auto-assign unassigned orders based on customer rules (fire-and-forget)
+      applyAutoAssignRules(orders).catch(err => console.warn('Auto-assign error:', err))
       return NextResponse.json(orders)
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
