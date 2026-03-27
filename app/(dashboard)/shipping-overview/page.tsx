@@ -12,7 +12,7 @@ import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import type { ShippingOverviewOrder, ShippingOverviewResponse } from '@/components/shipping-overview/types'
 import type { Order } from '@/lib/google-sheets-shared'
 
-const DAY_OPTIONS = [7, 10, 14, 30, 60, 90]
+const DAY_OPTIONS = [1, 7, 10, 14, 30, 60, 90]
 
 function formatHeaderDate(value: string): string {
   const date = new Date(value)
@@ -30,13 +30,9 @@ function formatHeaderDate(value: string): string {
 function matchesSearch(order: ShippingOverviewOrder, query: string): boolean {
   const q = query.toLowerCase().trim()
   if (!q) return true
-  return [
-    order.customer,
-    order.partNumber,
-    order.ifNumber,
-    order.line,
-    order.poNumber,
-  ].some((value) => value.toLowerCase().includes(q))
+  return [order.customer, order.partNumber, order.ifNumber, order.line, order.poNumber].some((v) =>
+    v.toLowerCase().includes(q),
+  )
 }
 
 function mapToOrder(o: ShippingOverviewOrder): Order {
@@ -75,7 +71,11 @@ function mapToOrder(o: ShippingOverviewOrder): Order {
 }
 
 export default function ShippingOverviewPage() {
-  return <Suspense><ShippingOverviewPageContent /></Suspense>
+  return (
+    <Suspense>
+      <ShippingOverviewPageContent />
+    </Suspense>
+  )
 }
 
 function ShippingOverviewPageContent() {
@@ -83,16 +83,37 @@ function ShippingOverviewPageContent() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
+
+  // Per-section search and category filters
+  const [stagedSearch, setStagedSearch] = useState('')
+  const [shippedSearch, setShippedSearch] = useState('')
+  const [stagedCategories, setStagedCategories] = useState(DEFAULT_CATEGORIES)
+  const [shippedCategories, setShippedCategories] = useState(DEFAULT_CATEGORIES)
+
   const [days, setDays] = useState(10)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [isLight, setIsLight] = useState(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('shipping-overview-theme') === 'light'
   })
   const [palletOpen, setPalletOpen] = useState(false)
   const mountedRef = useRef(true)
+
+  // Toggle the global dark class so Tailwind dark: variants respond
+  useEffect(() => {
+    const html = document.documentElement
+    if (isLight) {
+      html.classList.remove('dark')
+      html.style.colorScheme = 'light'
+    } else {
+      html.classList.add('dark')
+      html.style.colorScheme = 'dark'
+    }
+    return () => {
+      html.classList.add('dark')
+      html.style.colorScheme = 'dark'
+    }
+  }, [isLight])
 
   function toggleTheme() {
     setIsLight((prev) => {
@@ -132,7 +153,7 @@ function ShippingOverviewPageContent() {
       mountedRef.current = false
       window.clearInterval(interval)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load])
 
   function handleDayChange(d: number) {
@@ -141,33 +162,42 @@ function ShippingOverviewPageContent() {
   }
 
   const staged = useMemo(
-    () => filterByCategory((data?.staged ?? []).filter((o) => matchesSearch(o, search)), categories),
-    [data?.staged, search, categories],
+    () => filterByCategory((data?.staged ?? []).filter((o) => matchesSearch(o, stagedSearch)), stagedCategories),
+    [data?.staged, stagedSearch, stagedCategories],
   )
   const shipped = useMemo(
-    () => filterByCategory((data?.shipped ?? []).filter((o) => matchesSearch(o, search)), categories),
-    [data?.shipped, search, categories],
+    () => filterByCategory((data?.shipped ?? []).filter((o) => matchesSearch(o, shippedSearch)), shippedCategories),
+    [data?.shipped, shippedSearch, shippedCategories],
   )
 
   const stagedOrdersForCalc = useMemo(() => (data?.staged ?? []).map(mapToOrder), [data?.staged])
 
-  // ── Light theme conditional classes ──────────────────────
+  // ── Conditional classes ──────────────────────────────────
   const pageBg = isLight
     ? 'bg-[#f5f7fa]'
     : 'bg-[radial-gradient(circle_at_top,_rgba(42,82,152,0.18),_transparent_45%),linear-gradient(180deg,_rgba(2,6,23,0.96),_transparent)]'
 
-  const panelBase = isLight
-    ? 'rounded-3xl border border-[#e1e8ed] bg-white shadow-sm'
-    : 'rounded-3xl border border-border/70 bg-background/90 shadow-sm backdrop-blur'
+  const sectionBg = isLight
+    ? 'bg-white border-[#e1e8ed] shadow-[0_2px_12px_rgba(0,0,0,0.08)]'
+    : 'bg-background/90 border-border/70 shadow-sm backdrop-blur'
 
-  const columnHeaderStaged = isLight ? 'text-[#1e3c72]' : 'text-blue-400'
-  const columnHeaderShipped = isLight ? 'text-[#27ae60]' : 'text-emerald-400'
+  const sectionTitleStaged = isLight ? 'text-[#1e3c72]' : 'text-blue-400'
+  const sectionTitleShipped = isLight ? 'text-[#27ae60]' : 'text-emerald-400'
+  const summaryValueStaged = isLight ? 'text-[#1e3c72]' : 'text-foreground'
+  const summaryValueShipped = isLight ? 'text-[#27ae60]' : 'text-foreground'
+  const summaryLabel = isLight ? 'text-[#7f8c8d]' : 'text-muted-foreground'
+  const summaryBorder = isLight ? 'border-[#e1e8ed]' : 'border-border/50'
 
-  const columnBg = isLight
-    ? 'rounded-2xl border border-[#e1e8ed] bg-white'
-    : 'rounded-2xl border border-border/50 bg-muted/20'
+  const searchInputBg = isLight
+    ? 'bg-white border-[#ddd] focus:border-[#2a5298] focus:ring-[#2a5298]/10'
+    : 'bg-background'
 
-  const searchBg = isLight ? 'bg-[#f5f7fa]' : 'bg-background'
+  const dayPillActive = isLight
+    ? 'border-[#27ae60] bg-[#27ae60] text-white'
+    : 'border-emerald-500 bg-emerald-500 text-white'
+  const dayPillInactive = isLight
+    ? 'border-[#e1e8ed] bg-white text-[#7f8c8d] hover:bg-[#f5f7fa]'
+    : 'border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/50'
 
   return (
     <div className={`min-h-screen p-4 pb-20 ${pageBg}`}>
@@ -182,7 +212,6 @@ function ShippingOverviewPageContent() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 self-start">
-              {/* Pallet Calculator button */}
               <button
                 type="button"
                 onClick={() => setPalletOpen(true)}
@@ -191,8 +220,6 @@ function ShippingOverviewPageContent() {
                 <span>📦</span>
                 <span>Pallet Calculator</span>
               </button>
-
-              {/* Theme toggle */}
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -202,8 +229,6 @@ function ShippingOverviewPageContent() {
                 {isLight ? <Moon className="size-4" /> : <Sun className="size-4" />}
                 <span>{isLight ? 'Dark' : 'Light'}</span>
               </button>
-
-              {/* Refresh */}
               <button
                 type="button"
                 onClick={() => void load(days, true)}
@@ -216,29 +241,20 @@ function ShippingOverviewPageContent() {
           </div>
 
           <ShippingStats
-            stats={data?.stats ?? {
-              stagedOrders: 0, stagedRevenue: 0, stagedUnits: 0,
-              shippedOrders: 0, shippedRevenue: 0, shippedUnits: 0,
-              totalRevenue: 0, totalUnits: 0,
-            }}
+            stats={
+              data?.stats ?? {
+                stagedOrders: 0,
+                stagedRevenue: 0,
+                stagedUnits: 0,
+                shippedOrders: 0,
+                shippedRevenue: 0,
+                shippedUnits: 0,
+                totalRevenue: 0,
+                totalUnits: 0,
+              }
+            }
             days={days}
           />
-        </div>
-      </section>
-
-      {/* ── Search + Category filter ────────────────────────── */}
-      <section className={`mt-5 p-4 md:p-5 ${panelBase}`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search customer, part #, IF#, line #, or PO #"
-              className={`h-11 rounded-xl pl-10 ${searchBg}`}
-            />
-          </div>
-          <CategoryFilter value={categories} onChange={setCategories} />
         </div>
       </section>
 
@@ -258,64 +274,123 @@ function ShippingOverviewPageContent() {
       {/* ── Two-column grid ─────────────────────────────────── */}
       {!loading && !error && data && (
         <div className="mt-5 grid grid-cols-1 gap-5 min-[1400px]:grid-cols-2">
-          {/* Left: Ready to Ship */}
-          <div className={`flex flex-col gap-3 p-4 md:p-5 ${panelBase}`}>
-            <div className="flex items-center justify-between">
-              <h2 className={`text-lg font-bold ${columnHeaderStaged}`}>
-                📋 Ready to Ship
-              </h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-sm font-semibold ${isLight ? 'bg-[#e8eef8] text-[#1e3c72]' : 'bg-blue-500/20 text-blue-400'}`}>
-                {staged.length}
-              </span>
+          {/* ═══ Left: Ready to Ship ═══ */}
+          <div className={`overflow-hidden rounded-3xl border ${sectionBg}`}>
+            {/* Section header */}
+            <div className={`border-b px-6 py-5 ${summaryBorder}`}>
+              <h2 className={`text-2xl font-bold ${sectionTitleStaged}`}>📦 Ready to Ship</h2>
+              <p className={`mt-1 text-xs ${summaryLabel}`}>{staged.length} orders</p>
+
+              {/* Search bar */}
+              <div className="relative mt-3">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#95a5a6]" />
+                <Input
+                  value={stagedSearch}
+                  onChange={(e) => setStagedSearch(e.target.value)}
+                  placeholder="🔍 Search orders..."
+                  className={`h-10 rounded-lg pl-10 text-sm ${searchInputBg}`}
+                />
+              </div>
+
+              {/* Category filter */}
+              <div className="mt-3">
+                <CategoryFilter value={stagedCategories} onChange={setStagedCategories} />
+              </div>
             </div>
-            <div className={`max-h-[80vh] overflow-y-auto rounded-xl ${columnBg} p-3`}>
+
+            {/* Summary stats */}
+            <div className={`grid grid-cols-2 border-b ${summaryBorder}`}>
+              <div className={`border-r p-5 text-center ${summaryBorder}`}>
+                <div className={`text-2xl font-extrabold ${summaryValueStaged}`}>
+                  {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
+                    staged.reduce((sum, o) => sum + o.revenue, 0),
+                  )}
+                </div>
+                <div className={`mt-1 text-xs font-semibold uppercase tracking-wider ${summaryLabel}`}>Total Revenue</div>
+              </div>
+              <div className="p-5 text-center">
+                <div className={`text-2xl font-extrabold ${summaryValueStaged}`}>
+                  {new Intl.NumberFormat('en-US').format(staged.reduce((sum, o) => sum + o.orderQty, 0))}
+                </div>
+                <div className={`mt-1 text-xs font-semibold uppercase tracking-wider ${summaryLabel}`}>Total Units</div>
+              </div>
+            </div>
+
+            {/* Scrollable order list */}
+            <div className="overflow-y-auto p-5" style={{ maxHeight: 'calc(100vh - 200px)' }}>
               <OrderList
                 orders={staged}
                 expandedKey={expandedKey}
-                onToggle={(key) => setExpandedKey((current) => (current === key ? null : key))}
+                onToggle={(key) => setExpandedKey((c) => (c === key ? null : key))}
                 emptyMessage="No staged orders match the current filter."
               />
             </div>
           </div>
 
-          {/* Right: Shipped */}
-          <div className={`flex flex-col gap-3 p-4 md:p-5 ${panelBase}`}>
-            <div className="flex items-center justify-between">
-              <h2 className={`text-lg font-bold ${columnHeaderShipped}`}>
-                🚚 Shipped
-              </h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-sm font-semibold ${isLight ? 'bg-[#e8f5e9] text-[#27ae60]' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                {shipped.length}
-              </span>
+          {/* ═══ Right: Shipped ═══ */}
+          <div className={`overflow-hidden rounded-3xl border ${sectionBg}`}>
+            {/* Section header */}
+            <div className={`border-b px-6 py-5 ${summaryBorder}`}>
+              <div className="flex items-center gap-3">
+                <h2 className={`text-2xl font-bold ${sectionTitleShipped}`}>🚚 Shipped (Last {days} Days)</h2>
+              </div>
+              <p className={`mt-1 text-xs ${summaryLabel}`}>{shipped.length} orders</p>
+
+              {/* Search bar */}
+              <div className="relative mt-3">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#95a5a6]" />
+                <Input
+                  value={shippedSearch}
+                  onChange={(e) => setShippedSearch(e.target.value)}
+                  placeholder="🔍 Search orders..."
+                  className={`h-10 rounded-lg pl-10 text-sm ${searchInputBg}`}
+                />
+              </div>
+
+              {/* Category filter */}
+              <div className="mt-3">
+                <CategoryFilter value={shippedCategories} onChange={setShippedCategories} />
+              </div>
+
+              {/* Day slicer */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {DAY_OPTIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => handleDayChange(d)}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${days === d ? dayPillActive : dayPillInactive}`}
+                  >
+                    {d}d
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Day slicer */}
-            <div className="flex flex-wrap gap-1.5">
-              {DAY_OPTIONS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => handleDayChange(d)}
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                    days === d
-                      ? isLight
-                        ? 'border-[#27ae60] bg-[#27ae60] text-white'
-                        : 'border-emerald-500 bg-emerald-500 text-white'
-                      : isLight
-                        ? 'border-[#e1e8ed] bg-white text-[#7f8c8d] hover:bg-[#f5f7fa]'
-                        : 'border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
+            {/* Summary stats */}
+            <div className={`grid grid-cols-2 border-b ${summaryBorder}`}>
+              <div className={`border-r p-5 text-center ${summaryBorder}`}>
+                <div className={`text-2xl font-extrabold ${summaryValueShipped}`}>
+                  {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
+                    shipped.reduce((sum, o) => sum + o.revenue, 0),
+                  )}
+                </div>
+                <div className={`mt-1 text-xs font-semibold uppercase tracking-wider ${summaryLabel}`}>Total Revenue</div>
+              </div>
+              <div className="p-5 text-center">
+                <div className={`text-2xl font-extrabold ${summaryValueShipped}`}>
+                  {new Intl.NumberFormat('en-US').format(shipped.reduce((sum, o) => sum + o.orderQty, 0))}
+                </div>
+                <div className={`mt-1 text-xs font-semibold uppercase tracking-wider ${summaryLabel}`}>Total Units</div>
+              </div>
             </div>
 
-            <div className={`max-h-[80vh] overflow-y-auto rounded-xl ${columnBg} p-3`}>
+            {/* Scrollable order list */}
+            <div className="overflow-y-auto p-5" style={{ maxHeight: 'calc(100vh - 200px)' }}>
               <OrderList
                 orders={shipped}
                 expandedKey={expandedKey}
-                onToggle={(key) => setExpandedKey((current) => (current === key ? null : key))}
+                onToggle={(key) => setExpandedKey((c) => (c === key ? null : key))}
                 emptyMessage={`No shipped orders from the last ${days} days match the current filter.`}
               />
             </div>
