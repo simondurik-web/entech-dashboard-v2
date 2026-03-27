@@ -5,11 +5,17 @@ import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
-import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { Package, Hash, DollarSign, TrendingUp, ChevronDown, ChevronRight, Users, BarChart2 } from 'lucide-react'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { getOrderCost } from '@/lib/sales-math'
+import { AnimatedNumber } from '@/components/ui/animated-number'
+import { Sparkline } from '@/components/ui/sparkline'
+import { TopCustomersBarChart } from '@/components/sales/TopCustomersBarChart'
+import { CustomerTreemap } from '@/components/sales/CustomerTreemap'
+import { CategoryDonutChart } from '@/components/sales/CategoryDonutChart'
+import { EnhancedStatCard } from '@/components/sales/EnhancedStatCard'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -91,6 +97,21 @@ const CATEGORY_CLASSES: Record<string, string> = {
   Other: 'bg-gray-500/20 text-gray-400 border-gray-500/50',
 }
 
+// ─── Sparkline helper ─────────────────────────────────────────────────────────
+
+function getLast6MonthsRevenue(orders: { shippedDate?: string; revenue: number }[]): number[] {
+  const byMonth: Record<string, number> = {}
+  for (const o of orders) {
+    if (!o.shippedDate) continue
+    const d = new Date(o.shippedDate)
+    if (isNaN(d.getTime())) continue
+    const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    byMonth[mk] = (byMonth[mk] || 0) + o.revenue
+  }
+  const sorted = Object.keys(byMonth).sort().slice(-6)
+  return sorted.map((k) => byMonth[k])
+}
+
 // ─── Customer-level columns ──────────────────────────────────────────────────
 
 const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
@@ -101,6 +122,16 @@ const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
   { key: 'costs', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
   { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
   { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{(v as number).toFixed(1)}%</span> },
+  {
+    key: 'trend',
+    label: 'Trend',
+    render: (_v, row) => {
+      const r = row as CustomerRow
+      const data = getLast6MonthsRevenue(r.orders)
+      if (data.length < 2) return <span className="text-muted-foreground text-xs">—</span>
+      return <Sparkline data={data} />
+    },
+  },
 ]
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
@@ -113,8 +144,70 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
       </div>
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-        <p className="text-xl font-bold mt-0.5">{value}</p>
+        <p className="text-xl font-bold mt-0.5"><AnimatedNumber value={value} duration={2500} /></p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Price History Tooltip ────────────────────────────────────────────────────
+
+function PriceHistoryTooltip({
+  active,
+  payload,
+  chartData,
+}: {
+  active?: boolean
+  payload?: Array<{ value: number; payload: { date: string; unitPrice: number; qty: number; line: string } }>
+  chartData: Array<{ date: string; unitPrice: number; qty: number; line: string }>
+}) {
+  if (!active || !payload?.[0]) return null
+  const current = payload[0].payload
+  const idx = chartData.findIndex((d) => d.line === current.line)
+  const prev = idx > 0 ? chartData[idx - 1] : null
+  const change = prev ? current.unitPrice - prev.unitPrice : null
+  const changePct = prev && prev.unitPrice > 0 ? ((current.unitPrice - prev.unitPrice) / prev.unitPrice) * 100 : null
+
+  return (
+    <div
+      style={{
+        backgroundColor: 'hsl(var(--popover))',
+        border: '1px solid hsl(var(--border))',
+        borderRadius: '10px',
+        fontSize: '13px',
+        padding: '10px 14px',
+        boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+        minWidth: '180px',
+      }}
+      className="space-y-1.5"
+    >
+      <p className="font-semibold text-foreground">{current.date}</p>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Unit Price</span>
+          <span className="font-semibold">{fmtPrice(current.unitPrice)}</span>
+        </div>
+        {prev && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Prev Price</span>
+            <span>{fmtPrice(prev.unitPrice)}</span>
+          </div>
+        )}
+        {change !== null && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Change</span>
+            <span className={change >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
+              {change >= 0 ? '+' : ''}
+              {fmtPrice(change)}
+              {changePct !== null && ` (${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%)`}
+            </span>
+          </div>
+        )}
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Qty</span>
+          <span>{fmtN(current.qty)}</span>
+        </div>
       </div>
     </div>
   )
@@ -144,15 +237,13 @@ function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
 
   if (chartData.length < 2) return null
 
-  // Determine price trend
   const firstPrice = chartData[0].unitPrice
   const lastPrice = chartData[chartData.length - 1].unitPrice
   const priceChange = lastPrice - firstPrice
   const pctChange = firstPrice > 0 ? (priceChange / firstPrice) * 100 : 0
   const isUp = priceChange >= 0
 
-  // Colors
-  const lineColor = isUp ? '#10b981' : '#ef4444' // emerald-500 / red-500
+  const lineColor = isUp ? '#10b981' : '#ef4444'
   const gradientId = `priceGradient_${orders[0]?.partNumber?.replace(/\W/g, '_') || 'default'}`
 
   return (
@@ -194,16 +285,13 @@ function PriceHistoryChart({ orders }: { orders: SalesOrder[] }) {
             domain={['auto', 'auto']}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: 'hsl(var(--popover))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '10px',
-              fontSize: '13px',
-              padding: '10px 14px',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
-            }}
-            formatter={(value: number | undefined) => [fmtPrice(value ?? 0), 'Unit Price']}
-            labelFormatter={(label) => label}
+            content={(props) => (
+              <PriceHistoryTooltip
+                active={props.active}
+                payload={props.payload as Parameters<typeof PriceHistoryTooltip>[0]['payload']}
+                chartData={chartData}
+              />
+            )}
             cursor={{ stroke: lineColor, strokeWidth: 1, strokeDasharray: '4 4', opacity: 0.5 }}
           />
           <ReferenceLine
@@ -303,7 +391,6 @@ function PartExpandedContent({ part }: { part: PartSummaryRow }) {
 function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
   const [expandedPart, setExpandedPart] = useState<string | null>(null)
 
-  // Group orders by part number
   const partSummaries: PartSummaryRow[] = useMemo(() => {
     const byPart: Record<string, { orders: SalesOrder[]; category: string }> = {}
     for (const o of customerRow.orders) {
@@ -515,6 +602,14 @@ function SalesCustomersContent() {
     return Object.values(byCustomer).map((c) => ({ ...c, totalMarginPct: c.revenue > 0 ? (c.totalProfit / c.revenue) * 100 : 0 }))
   }, [filteredOrders, data])
 
+  // ─── Top-level aggregates for EnhancedStatCards ───
+  const totals = useMemo(() => {
+    const totalRevenue = customerRows.reduce((s, c) => s + c.revenue, 0)
+    const totalProfit = customerRows.reduce((s, c) => s + c.totalProfit, 0)
+    const totalMarginPct = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+    return { totalRevenue, totalProfit, totalMarginPct, customerCount: customerRows.length }
+  }, [customerRows])
+
   const table = useDataTable({ data: customerRows, columns: CUSTOMER_COLUMNS, storageKey: 'sales-by-customer' })
 
   if (loading) return <TableSkeleton rows={8} />
@@ -522,6 +617,7 @@ function SalesCustomersContent() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">{t('page.salesByCustomer')}</h1>
@@ -530,6 +626,45 @@ function SalesCustomersContent() {
         <CategoryFilter value={categoryFilter} onChange={setCategoryFilter} />
       </div>
 
+      {/* Top-level Stat Cards (Enhancement 7) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <EnhancedStatCard
+          icon={<Users className="size-4" />}
+          label="Customers"
+          value={String(totals.customerCount)}
+          color="bg-blue-500/10 text-blue-400"
+        />
+        <EnhancedStatCard
+          icon={<Hash className="size-4" />}
+          label="Total Orders"
+          value={fmtN(customerRows.reduce((s, c) => s + c.orderCount, 0))}
+          color="bg-violet-500/10 text-violet-400"
+        />
+        <EnhancedStatCard
+          icon={<DollarSign className="size-4" />}
+          label="Revenue"
+          value={fmt(totals.totalRevenue)}
+          color="bg-emerald-500/10 text-emerald-400"
+        />
+        <EnhancedStatCard
+          icon={<BarChart2 className="size-4" />}
+          label="P/L"
+          value={fmt(totals.totalProfit)}
+          sub={`${totals.totalMarginPct.toFixed(1)}% margin`}
+          color={totals.totalProfit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}
+        />
+      </div>
+
+      {/* Top 10 Customers Bar Chart (Enhancement 1) */}
+      <TopCustomersBarChart customers={customerRows} />
+
+      {/* Customer Revenue Treemap (Enhancement 2) */}
+      <CustomerTreemap customers={customerRows} />
+
+      {/* Category Donut Chart (Enhancement 4) */}
+      <CategoryDonutChart orders={filteredOrders} />
+
+      {/* Customer Table */}
       <DataTable
         table={table}
         data={customerRows}
