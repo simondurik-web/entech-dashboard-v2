@@ -10,9 +10,7 @@ type RolePermission = {
 }
 
 let cachedPermissions: RolePermission[] | null = null
-const PATH_FALLBACKS: Record<string, string[]> = {
-  '/shipping-overview': ['/shipping-records'],
-}
+const PATH_FALLBACKS: Record<string, string[]> = {}
 
 export function usePermissions() {
   const { profile } = useAuth()
