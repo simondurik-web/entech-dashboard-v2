@@ -13,9 +13,9 @@ import { getOrderCost } from '@/lib/sales-math'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Sparkline } from '@/components/ui/sparkline'
 import { TopCustomersBarChart } from '@/components/sales/TopCustomersBarChart'
-import { CustomerTreemap } from '@/components/sales/CustomerTreemap'
 import { CategoryDonutChart } from '@/components/sales/CategoryDonutChart'
 import { EnhancedStatCard } from '@/components/sales/EnhancedStatCard'
+import { RevenueConcentrationModal, RevenueConcentrationButton } from '@/components/sales/RevenueConcentrationModal'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -559,6 +559,7 @@ function SalesCustomersContent() {
   const [error, setError] = useState<string | null>(null)
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState(DEFAULT_CATEGORIES)
+  const [treemapOpen, setTreemapOpen] = useState(false)
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
@@ -658,8 +659,13 @@ function SalesCustomersContent() {
       {/* Top 10 Customers Bar Chart (Enhancement 1) */}
       <TopCustomersBarChart customers={customerRows} />
 
-      {/* Customer Revenue Treemap (Enhancement 2) */}
-      <CustomerTreemap customers={customerRows} />
+      {/* Customer Revenue Concentration — Full-screen interactive treemap */}
+      <RevenueConcentrationButton onClick={() => setTreemapOpen(true)} />
+      <RevenueConcentrationModal
+        open={treemapOpen}
+        onOpenChange={setTreemapOpen}
+        customers={customerRows}
+      />
 
       {/* Category Donut Chart (Enhancement 4) */}
       <CategoryDonutChart orders={filteredOrders} />
