@@ -52,6 +52,19 @@ function str(value: unknown): string {
   return String(value)
 }
 
+const CATEGORY_MAP: Record<string, string> = {
+  'roll tech': 'Roll Tech',
+  'rolltech': 'Roll Tech',
+  'molding': 'Molding',
+  'snap pad': 'Snap Pad',
+  'snappad': 'Snap Pad',
+}
+
+function normalizeCategory(value: unknown): string {
+  const raw = str(value).trim()
+  return CATEGORY_MAP[raw.toLowerCase()] ?? raw
+}
+
 function num(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   if (value === null || value === undefined) return 0
@@ -118,7 +131,7 @@ async function fetchDashboardOrders(): Promise<OrderWithShippingFields[]> {
     return rows
       .map((row): OrderWithShippingFields => ({
         line: str(row.line),
-        category: str(row.category).trim(),
+        category: normalizeCategory(row.category),
         dateOfRequest: str(row.date_of_request),
         priorityLevel: num(row.priority_level),
         urgentOverride: bool(row.urgent_override),
