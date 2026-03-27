@@ -273,7 +273,7 @@ function ShippingOverviewPageContent() {
 
       {/* ── Two-column grid ─────────────────────────────────── */}
       {!loading && !error && data && (
-        <div className="mt-5 grid grid-cols-1 gap-5 min-[1400px]:grid-cols-2" style={{ height: 'calc(100vh - 260px)', minHeight: '400px' }}>
+        <div className="mt-5 grid grid-cols-1 gap-5 min-[1400px]:grid-cols-2 min-[1400px]:h-[calc(100vh-260px)]">
           {/* ═══ Left: Ready to Ship ═══ */}
           <div className={`overflow-hidden rounded-3xl border flex flex-col ${sectionBg}`}>
             {/* Section header */}
@@ -317,7 +317,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Scrollable order list */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-5">
+            <div className="max-h-[60vh] min-[1400px]:max-h-none flex-1 min-h-0 overflow-y-auto p-5">
               <OrderList
                 orders={staged}
                 expandedKey={expandedKey}
@@ -386,7 +386,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Scrollable order list */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-5">
+            <div className="max-h-[60vh] min-[1400px]:max-h-none flex-1 min-h-0 overflow-y-auto p-5">
               <OrderList
                 orders={shipped}
                 expandedKey={expandedKey}
