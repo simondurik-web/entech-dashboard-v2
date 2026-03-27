@@ -19,7 +19,11 @@ export interface ShippingOverviewShippingRecord {
 
 export interface ShippingOverviewSummaryStats {
   stagedOrders: number
+  stagedRevenue: number
+  stagedUnits: number
   shippedOrders: number
+  shippedRevenue: number
+  shippedUnits: number
   totalRevenue: number
   totalUnits: number
 }

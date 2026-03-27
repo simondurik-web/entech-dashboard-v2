@@ -212,7 +212,7 @@ function mergeShippingRecords(records: ShippingRecord[]): ShippingOverviewShippi
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const [orders, sheetPallets, dbPalletResult, sheetShipping, dbShippingResult] = await Promise.all([
       fetchDashboardOrders(),
@@ -309,9 +309,12 @@ export async function GET() {
       if (merged) shippingByIf.set(ifNumber, merged)
     }
 
+    const url = new URL(request.url)
+    const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 10, 1), 365)
+
     const now = new Date()
     const shippedCutoff = new Date(now)
-    shippedCutoff.setDate(shippedCutoff.getDate() - 10)
+    shippedCutoff.setDate(shippedCutoff.getDate() - days)
 
     const staged: ShippingOverviewOrder[] = []
     const shipped: ShippingOverviewOrder[] = []
@@ -377,7 +380,11 @@ export async function GET() {
       shipped,
       stats: {
         stagedOrders: staged.length,
+        stagedRevenue: staged.reduce((sum, order) => sum + order.revenue, 0),
+        stagedUnits: staged.reduce((sum, order) => sum + order.orderQty, 0),
         shippedOrders: shipped.length,
+        shippedRevenue: shipped.reduce((sum, order) => sum + order.revenue, 0),
+        shippedUnits: shipped.reduce((sum, order) => sum + order.orderQty, 0),
         totalRevenue: [...staged, ...shipped].reduce((sum, order) => sum + order.revenue, 0),
         totalUnits: [...staged, ...shipped].reduce((sum, order) => sum + order.orderQty, 0),
       },
