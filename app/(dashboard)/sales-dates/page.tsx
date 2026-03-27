@@ -246,8 +246,8 @@ function MonthlyOrdersTable({ orders, monthLabel }: { orders: SalesOrder[]; mont
       const unitPrice = o.unitPrice || (o.qty > 0 ? o.revenue / o.qty : 0)
       const totalProfitPerPart = o.qty > 0 ? o.totalProfit / o.qty : 0
       const profitPerPart = totalProfitPerPart
-      const variableCost = o.qty > 0 ? (o.variableCost || 0) * o.qty : (o.variableCost || 0)
-      const totalCost = getOrderCost(o)
+      const variableCost = o.variableCost || 0
+      const totalCost = o.totalCost || 0
       const salesTarget = o.salesTarget || unitPrice * 1.2
       return {
         category: o.category,

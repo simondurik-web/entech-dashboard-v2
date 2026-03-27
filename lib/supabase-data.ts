@@ -403,6 +403,19 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     }
   }
 
+  // Fetch BOM costs from DB (preferred over stale Sheets-synced values)
+  const { data: bomData } = await supabase
+    .from('bom_final_assemblies')
+    .select('part_number, variable_cost, total_cost, sales_target')
+  const bomMap = new Map<string, { variableCost: number; totalCost: number; salesTarget: number }>()
+  for (const b of bomData || []) {
+    bomMap.set(b.part_number, {
+      variableCost: Number(b.variable_cost) || 0,
+      totalCost: Number(b.total_cost) || 0,
+      salesTarget: Number(b.sales_target) || 0,
+    })
+  }
+
   const orders: SalesOrder[] = []
 
   for (const row of data) {
@@ -414,8 +427,9 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     if (status === 'cancelled') continue
 
     const revenue = num(row.revenue)
-    const variableCost = num(row.variable_cost)
-    const totalCost = num(row.total_cost)
+    const bom = bomMap.get(str(row.part_number))
+    const variableCost = bom?.variableCost ?? (parseFloat(String(row.variable_cost ?? '').replace(/[$,]/g, '')) || 0)
+    const totalCost = bom?.totalCost ?? (parseFloat(String(row.total_cost ?? '').replace(/[$,]/g, '')) || 0)
     const rawPL = num(row.pl)
     const qty = num(row.order_qty)
     const unitPrice = num(row.unit_price)
@@ -424,7 +438,7 @@ export async function fetchSalesFromDB(): Promise<SalesData> {
     if (isNoOpSalesMathRow({ revenue, variableCost, totalCost })) continue
     if (revenue === 0 && rawPL === 0 && totalCost === 0 && variableCost === 0) continue
 
-    const salesTarget = num(row.sales_target_20)
+    const salesTarget = bom?.salesTarget ?? num(row.sales_target_20)
     const profitPerPart = getProfitPerPart({ qty, revenue, variableCost, totalCost, unitPrice })
     const shippingCost = num(row.shipping_cost)
     const pl = salesMath.totalProfit

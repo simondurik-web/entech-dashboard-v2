@@ -346,7 +346,7 @@ function PartExpandedContent({ part }: { part: PartSummaryRow }) {
         qty: o.qty,
         unitPrice: o.qty > 0 ? o.revenue / o.qty : 0,
         revenue: o.revenue,
-        totalCost: getOrderCost(o),
+        totalCost: o.totalCost || 0,
         totalProfit: o.totalProfit,
         totalMarginPct: o.totalMarginPct,
         variableMarginPct: o.variableMarginPct,

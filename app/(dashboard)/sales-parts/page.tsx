@@ -129,7 +129,7 @@ function OrdersDataTable({ orders, storageKey }: { orders: SalesOrder[]; storage
     qty: o.qty,
     pricePerPart: o.qty > 0 ? o.revenue / o.qty : 0,
     revenue: o.revenue,
-    totalCost: getOrderCost(o),
+    totalCost: o.totalCost || 0,
     totalProfit: o.totalProfit,
     shippedDate: o.shippedDate,
     status: o.status,
