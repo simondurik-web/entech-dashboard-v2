@@ -342,7 +342,7 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
       </div>
 
       {/* Treemap + optional detail panel */}
-      <div className="flex" style={{ height: '520px' }}>
+      <div className="flex" style={{ height: '1040px' }}>
         {/* Treemap area */}
         <div ref={containerRef} className="flex-1 relative p-2 min-w-0">
           {!drillCustomer ? (

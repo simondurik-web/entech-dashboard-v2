@@ -43,7 +43,7 @@ export function TopCustomersBarChart({ customers }: Props) {
             />
             <XAxis
               type="number"
-              tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+              tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.7)' }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
@@ -51,7 +51,7 @@ export function TopCustomersBarChart({ customers }: Props) {
             <YAxis
               type="category"
               dataKey="customer"
-              tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+              tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.85)' }}
               tickLine={false}
               axisLine={false}
               width={130}
