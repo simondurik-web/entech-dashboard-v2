@@ -660,7 +660,7 @@ function SalesCustomersContent() {
       <TopCustomersBarChart customers={customerRows} />
 
       {/* Customer Revenue Concentration — Full-screen interactive treemap */}
-      <RevenueConcentrationButton onClick={() => setTreemapOpen(true)} />
+      <RevenueConcentrationButton onClick={() => setTreemapOpen(!treemapOpen)} open={treemapOpen} />
       <RevenueConcentrationModal
         open={treemapOpen}
         onOpenChange={setTreemapOpen}

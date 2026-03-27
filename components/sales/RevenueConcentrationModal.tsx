@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { X, ArrowLeft, ChevronRight } from 'lucide-react'
+import { X, ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -53,79 +53,139 @@ function getMarginColor(margin: number): string {
   return 'rgba(239,68,68,0.70)'
 }
 
-function getMarginTextColor(margin: number): string {
-  if (margin >= 10) return 'rgba(255,255,255,0.95)'
-  if (margin >= 0) return 'rgba(255,255,255,0.85)'
-  return 'rgba(255,255,255,0.95)'
-}
+// ─── Squarified Treemap Layout ───────────────────────────────────────────────
+// Bruls, Huizing, van Wijk (2000) squarified treemap algorithm.
+// Produces near-square rectangles by optimizing aspect ratios.
 
-// ─── Treemap layout (squarified) ─────────────────────────────────────────────
-
-interface TreemapRect {
+interface TreeRect {
   x: number
   y: number
   w: number
   h: number
-  value: number
   index: number
 }
 
 function squarify(
-  items: { value: number; index: number }[],
+  values: number[],
   x: number, y: number, w: number, h: number
-): TreemapRect[] {
-  if (items.length === 0) return []
-  if (items.length === 1) {
-    return [{ ...items[0], x, y, w, h }]
-  }
+): TreeRect[] {
+  if (values.length === 0) return []
 
-  const total = items.reduce((s, i) => s + i.value, 0)
+  // Create indexed items sorted descending
+  const items = values
+    .map((v, i) => ({ value: Math.max(v, 0), index: i }))
+    .filter(item => item.value > 0)
+    .sort((a, b) => b.value - a.value)
+
+  const total = items.reduce((s, it) => s + it.value, 0)
   if (total <= 0) return []
 
-  // Sort descending by value
-  const sorted = [...items].sort((a, b) => b.value - a.value)
-
-  const rects: TreemapRect[] = []
-  layoutStrip(sorted, x, y, w, h, total, rects)
+  const rects: TreeRect[] = []
+  layoutSquarified(items, x, y, w, h, total, rects)
   return rects
 }
 
-function layoutStrip(
+function layoutSquarified(
   items: { value: number; index: number }[],
   x: number, y: number, w: number, h: number,
   total: number,
-  out: TreemapRect[]
+  rects: TreeRect[]
 ) {
-  if (items.length === 0 || total <= 0) return
+  if (items.length === 0 || total <= 0 || w <= 0 || h <= 0) return
 
   if (items.length === 1) {
-    out.push({ ...items[0], x, y, w, h })
+    rects.push({ x, y, w, h, index: items[0].index })
     return
   }
 
-  // Use slice-and-dice for simplicity + readability (alternating horizontal/vertical)
-  const isHorizontal = w >= h
+  // Determine the short side of the remaining rectangle
+  const shortSide = Math.min(w, h)
+  const isHorizontal = w >= h // lay row along the short side
 
-  let runningSum = 0
-  for (const item of items) {
-    const fraction = item.value / total
-    if (isHorizontal) {
-      const cellW = w * fraction
-      out.push({ ...item, x: x + runningSum, y, w: cellW, h })
-      runningSum += cellW
+  // Greedily build a row that minimizes worst aspect ratio
+  let row: { value: number; index: number }[] = []
+  let rowSum = 0
+  let bestWorst = Infinity
+  let splitAt = 1
+
+  for (let i = 0; i < items.length; i++) {
+    const candidate = [...row, items[i]]
+    const candidateSum = rowSum + items[i].value
+    const worst = worstAspect(candidate, candidateSum, shortSide, total)
+
+    if (worst <= bestWorst) {
+      bestWorst = worst
+      row = candidate
+      rowSum = candidateSum
+      splitAt = i + 1
     } else {
-      const cellH = h * fraction
-      out.push({ ...item, x, y: y + runningSum, w, h: cellH })
-      runningSum += cellH
+      break
+    }
+  }
+
+  // Lay out the row
+  const rowFraction = rowSum / total
+  const rowThickness = isHorizontal ? w * rowFraction : h * rowFraction
+
+  let offset = 0
+  for (const item of row) {
+    const itemFraction = item.value / rowSum
+    if (isHorizontal) {
+      const cellH = h * itemFraction
+      rects.push({ x, y: y + offset, w: rowThickness, h: cellH, index: item.index })
+      offset += cellH
+    } else {
+      const cellW = w * itemFraction
+      rects.push({ x: x + offset, y, w: cellW, h: rowThickness, index: item.index })
+      offset += cellW
+    }
+  }
+
+  // Recurse on remaining items
+  const remaining = items.slice(splitAt)
+  const remainingTotal = total - rowSum
+  if (remaining.length > 0 && remainingTotal > 0) {
+    if (isHorizontal) {
+      layoutSquarified(remaining, x + rowThickness, y, w - rowThickness, h, remainingTotal, rects)
+    } else {
+      layoutSquarified(remaining, x, y + rowThickness, w, h - rowThickness, remainingTotal, rects)
     }
   }
 }
 
-// ─── Minimum size enforcement ────────────────────────────────────────────────
+function worstAspect(
+  row: { value: number }[],
+  rowSum: number,
+  shortSide: number,
+  total: number
+): number {
+  if (row.length === 0 || total <= 0 || shortSide <= 0) return Infinity
+  const rowLength = (rowSum / total) * shortSide // not exactly right but close enough
+  // Actually: the row occupies a strip. The strip width = (rowSum/total) * longSide
+  // Each item height = (item.value / rowSum) * shortSide
+  // aspect = max(stripWidth/itemHeight, itemHeight/stripWidth)
 
-const MIN_CELL_WIDTH = 120
-const MIN_CELL_HEIGHT = 60
-const CELL_GAP = 3
+  const stripWidth = shortSide * (rowSum / total) || 1
+  let worst = 0
+  for (const item of row) {
+    const itemLen = item.value > 0 ? (item.value / rowSum) * shortSide : 0.001
+    // Wait, let me re-derive. The strip is laid along shortSide.
+    // strip thickness (perpendicular) = (rowSum / total) * longSide... no.
+    // Let's just compute: area-based.
+    // Total area = shortSide * longSide proportional. Each item area proportional to value.
+    // For the strip: thickness = rowSum / total * (perpendicular dimension)
+    // Each cell: length along short side = item.value / rowSum * shortSide
+    // aspect = thickness / length or length / thickness
+    if (itemLen <= 0) continue
+    const aspect = Math.max(stripWidth / itemLen, itemLen / stripWidth)
+    if (aspect > worst) worst = aspect
+  }
+  return worst
+}
+
+// ─── Gap between cells ──────────────────────────────────────────────────────
+
+const GAP = 3
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -142,10 +202,11 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
     const measure = () => {
       setContainerSize({ w: el.clientWidth, h: el.clientHeight })
     }
-    measure()
+    // Small delay to let the expand animation finish
+    const timer = setTimeout(measure, 50)
     const ro = new ResizeObserver(measure)
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => { clearTimeout(timer); ro.disconnect() }
   }, [open])
 
   // Reset drill-down when closing
@@ -155,20 +216,6 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
       setSelectedOrder(null)
     }
   }, [open])
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (selectedOrder) setSelectedOrder(null)
-        else if (drillCustomer) setDrillCustomer(null)
-        else onOpenChange(false)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, drillCustomer, selectedOrder, onOpenChange])
 
   // ─── Data ────────────────────────────────────────────────────────────
 
@@ -192,15 +239,19 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
   // ─── Treemap rects ──────────────────────────────────────────────────
 
   const customerRects = useMemo(() => {
-    if (containerSize.w === 0) return []
-    const items = sortedCustomers.map((c, i) => ({ value: c.revenue, index: i }))
-    return squarify(items, 0, 0, containerSize.w, containerSize.h)
+    if (containerSize.w === 0 || containerSize.h === 0) return []
+    return squarify(
+      sortedCustomers.map(c => c.revenue),
+      0, 0, containerSize.w, containerSize.h
+    )
   }, [sortedCustomers, containerSize])
 
   const orderRects = useMemo(() => {
-    if (containerSize.w === 0 || !drilledCustomer) return []
-    const items = drilledOrders.map((o, i) => ({ value: o.revenue, index: i }))
-    return squarify(items, 0, 0, containerSize.w, containerSize.h)
+    if (containerSize.w === 0 || containerSize.h === 0 || !drilledCustomer) return []
+    return squarify(
+      drilledOrders.map(o => o.revenue),
+      0, 0, containerSize.w, containerSize.h
+    )
   }, [drilledOrders, drilledCustomer, containerSize])
 
   // ─── Handlers ────────────────────────────────────────────────────────
@@ -211,7 +262,7 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
   }, [])
 
   const handleOrderClick = useCallback((order: SalesOrder) => {
-    setSelectedOrder(order)
+    setSelectedOrder(prev => prev?.line === order.line ? null : order)
   }, [])
 
   const handleBack = useCallback(() => {
@@ -229,53 +280,53 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
   const totalRevenue = sortedCustomers.reduce((s, c) => s + c.revenue, 0)
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-200">
+    <div className="rounded-xl border border-white/[0.06] backdrop-blur-xl bg-white/[0.02] shadow-lg overflow-hidden animate-in slide-in-from-top-2 fade-in duration-300">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
+        <div className="flex items-center gap-2">
           {drillCustomer && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleBack}
-              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              className="gap-1 text-muted-foreground hover:text-foreground h-7 px-2"
             >
-              <ArrowLeft className="size-4" />
+              <ArrowLeft className="size-3.5" />
               Back
             </Button>
           )}
           <div>
-            <h2 className="text-lg font-semibold flex items-center gap-2">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
               Revenue Concentration
               {drillCustomer && (
                 <>
-                  <ChevronRight className="size-4 text-muted-foreground" />
+                  <ChevronRight className="size-3.5 text-muted-foreground" />
                   <span className="text-primary">{drillCustomer}</span>
                 </>
               )}
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
               {drillCustomer
                 ? `${drilledOrders.length} orders · ${fmt(drilledCustomer?.revenue || 0)} revenue`
-                : `${sortedCustomers.length} customers · ${fmt(totalRevenue)} total revenue`}
+                : `${sortedCustomers.length} customers · ${fmt(totalRevenue)} total · click a customer to drill down`}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Legend */}
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(16,185,129,0.7)' }} />
-              High margin (20%+)
+          <div className="hidden sm:flex items-center gap-2.5 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'rgba(16,185,129,0.7)' }} />
+              20%+
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(16,185,129,0.35)' }} />
-              Low margin
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'rgba(16,185,129,0.35)' }} />
+              0-20%
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(239,68,68,0.6)' }} />
-              Negative
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'rgba(239,68,68,0.55)' }} />
+              Loss
             </span>
           </div>
 
@@ -283,90 +334,122 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
             variant="ghost"
             size="icon"
             onClick={() => onOpenChange(false)}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground size-7"
           >
-            <X className="size-5" />
+            <X className="size-4" />
           </Button>
         </div>
       </div>
 
-      {/* Treemap area */}
-      <div className="flex-1 min-h-0 flex">
-        <div ref={containerRef} className="flex-1 relative overflow-auto p-3">
+      {/* Treemap + optional detail panel */}
+      <div className="flex" style={{ height: '520px' }}>
+        {/* Treemap area */}
+        <div ref={containerRef} className="flex-1 relative p-2 min-w-0">
           {!drillCustomer ? (
             /* ─── Customer-level treemap ─── */
-            <div className="relative" style={{ width: containerSize.w || '100%', height: containerSize.h || '100%' }}>
+            <div className="relative w-full h-full">
               {customerRects.map((rect) => {
                 const c = sortedCustomers[rect.index]
                 if (!c) return null
-                const cellW = Math.max(rect.w - CELL_GAP * 2, MIN_CELL_WIDTH)
-                const cellH = Math.max(rect.h - CELL_GAP * 2, MIN_CELL_HEIGHT)
                 const pct = totalRevenue > 0 ? ((c.revenue / totalRevenue) * 100).toFixed(1) : '0'
+                const cellW = rect.w - GAP * 2
+                const cellH = rect.h - GAP * 2
+                if (cellW < 2 || cellH < 2) return null
+
+                // Determine what fits in the cell
+                const showName = cellW > 40 && cellH > 20
+                const showRevenue = cellW > 60 && cellH > 36
+                const showDetail = cellW > 80 && cellH > 50
+                const fontSize = Math.max(10, Math.min(13, cellW / 10))
 
                 return (
                   <div
                     key={c.customer}
-                    className="absolute rounded-lg cursor-pointer transition-all duration-150 hover:brightness-125 hover:ring-2 hover:ring-white/20 active:scale-[0.98] flex flex-col items-center justify-center text-center p-2 overflow-hidden"
+                    className="absolute rounded-md cursor-pointer transition-all duration-150 hover:brightness-125 hover:ring-1 hover:ring-white/30 active:scale-[0.99] flex flex-col items-center justify-center text-center overflow-hidden"
                     style={{
-                      left: rect.x + CELL_GAP,
-                      top: rect.y + CELL_GAP,
+                      left: rect.x + GAP,
+                      top: rect.y + GAP,
                       width: cellW,
                       height: cellH,
                       background: getMarginColor(c.totalMarginPct),
-                      color: getMarginTextColor(c.totalMarginPct),
-                      minWidth: MIN_CELL_WIDTH,
-                      minHeight: MIN_CELL_HEIGHT,
                     }}
                     onClick={() => handleCustomerClick(c.customer)}
-                    title={`${c.customer}\nRevenue: ${fmt(c.revenue)}\nMargin: ${c.totalMarginPct.toFixed(1)}%\nOrders: ${c.orders.length}`}
+                    title={`${c.customer}\nRevenue: ${fmt(c.revenue)} (${pct}%)\nMargin: ${c.totalMarginPct.toFixed(1)}%\nOrders: ${c.orders.length}`}
                   >
-                    <span className="font-semibold text-xs leading-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
-                      {c.customer}
-                    </span>
-                    <span className="text-[11px] opacity-80 mt-0.5">{fmt(c.revenue)}</span>
-                    <span className="text-[10px] opacity-60">{pct}% · {c.totalMarginPct.toFixed(1)}% margin</span>
+                    {showName && (
+                      <span
+                        className="font-semibold leading-tight text-white/90 px-1 max-w-full truncate"
+                        style={{ fontSize }}
+                      >
+                        {c.customer}
+                      </span>
+                    )}
+                    {showRevenue && (
+                      <span className="text-white/70 mt-0.5" style={{ fontSize: Math.max(9, fontSize - 2) }}>
+                        {fmt(c.revenue)}
+                      </span>
+                    )}
+                    {showDetail && (
+                      <span className="text-white/50" style={{ fontSize: Math.max(8, fontSize - 3) }}>
+                        {pct}% · {c.totalMarginPct.toFixed(1)}% margin
+                      </span>
+                    )}
                   </div>
                 )
               })}
             </div>
           ) : (
             /* ─── Order-level treemap (drilled into customer) ─── */
-            <div className="relative" style={{ width: containerSize.w || '100%', height: containerSize.h || '100%' }}>
+            <div className="relative w-full h-full">
               {orderRects.length === 0 && (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   No orders with positive revenue
                 </div>
               )}
               {orderRects.map((rect) => {
                 const o = drilledOrders[rect.index]
                 if (!o) return null
-                const cellW = Math.max(rect.w - CELL_GAP * 2, MIN_CELL_WIDTH)
-                const cellH = Math.max(rect.h - CELL_GAP * 2, MIN_CELL_HEIGHT)
+                const cellW = rect.w - GAP * 2
+                const cellH = rect.h - GAP * 2
+                if (cellW < 2 || cellH < 2) return null
                 const isSelected = selectedOrder?.line === o.line
+
+                const showName = cellW > 40 && cellH > 20
+                const showRevenue = cellW > 60 && cellH > 36
+                const showDetail = cellW > 80 && cellH > 50
+                const fontSize = Math.max(10, Math.min(13, cellW / 10))
 
                 return (
                   <div
                     key={o.line}
-                    className={`absolute rounded-lg cursor-pointer transition-all duration-150 hover:brightness-125 flex flex-col items-center justify-center text-center p-2 overflow-hidden ${
-                      isSelected ? 'ring-2 ring-primary shadow-lg shadow-primary/20' : 'hover:ring-2 hover:ring-white/20'
+                    className={`absolute rounded-md cursor-pointer transition-all duration-150 hover:brightness-125 flex flex-col items-center justify-center text-center overflow-hidden ${
+                      isSelected ? 'ring-2 ring-primary brightness-110' : 'hover:ring-1 hover:ring-white/30'
                     }`}
                     style={{
-                      left: rect.x + CELL_GAP,
-                      top: rect.y + CELL_GAP,
+                      left: rect.x + GAP,
+                      top: rect.y + GAP,
                       width: cellW,
                       height: cellH,
                       background: getMarginColor(o.totalMarginPct),
-                      color: getMarginTextColor(o.totalMarginPct),
-                      minWidth: MIN_CELL_WIDTH,
-                      minHeight: MIN_CELL_HEIGHT,
                     }}
                     onClick={() => handleOrderClick(o)}
+                    title={`Line ${o.line} — ${o.partNumber}\nRevenue: ${fmt(o.revenue)}\nMargin: ${o.totalMarginPct.toFixed(1)}%`}
                   >
-                    <span className="font-semibold text-xs leading-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
-                      {o.partNumber}
-                    </span>
-                    <span className="text-[11px] opacity-80 mt-0.5">{fmt(o.revenue)}</span>
-                    <span className="text-[10px] opacity-60">Line {o.line} · {o.totalMarginPct.toFixed(1)}%</span>
+                    {showName && (
+                      <span className="font-semibold leading-tight text-white/90 px-1 max-w-full truncate" style={{ fontSize }}>
+                        {o.partNumber}
+                      </span>
+                    )}
+                    {showRevenue && (
+                      <span className="text-white/70 mt-0.5" style={{ fontSize: Math.max(9, fontSize - 2) }}>
+                        {fmt(o.revenue)}
+                      </span>
+                    )}
+                    {showDetail && (
+                      <span className="text-white/50" style={{ fontSize: Math.max(8, fontSize - 3) }}>
+                        Line {o.line} · {o.totalMarginPct.toFixed(1)}%
+                      </span>
+                    )}
                   </div>
                 )
               })}
@@ -376,20 +459,20 @@ export function RevenueConcentrationModal({ open, onOpenChange, customers }: Pro
 
         {/* Order detail panel (right side) */}
         {selectedOrder && (
-          <div className="w-80 border-l border-white/[0.06] p-5 shrink-0 overflow-y-auto bg-white/[0.02] animate-in slide-in-from-right-4 duration-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-sm">Order Details</h3>
+          <div className="w-72 border-l border-white/[0.06] p-4 shrink-0 overflow-y-auto bg-white/[0.02] animate-in slide-in-from-right-4 duration-200">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Order Details</h4>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-6"
+                className="size-5"
                 onClick={() => setSelectedOrder(null)}
               >
-                <X className="size-3.5" />
+                <X className="size-3" />
               </Button>
             </div>
 
-            <div className="space-y-3 text-sm">
+            <div className="space-y-2 text-sm">
               <DetailRow label="Line" value={selectedOrder.line} />
               <DetailRow label="Part Number" value={selectedOrder.partNumber} />
               <DetailRow label="Category" value={selectedOrder.category} />
@@ -436,7 +519,7 @@ function DetailRow({ label, value, valueClass }: { label: string; value: string;
 
 // ─── Trigger Button ──────────────────────────────────────────────────────────
 
-export function RevenueConcentrationButton({ onClick }: { onClick: () => void }) {
+export function RevenueConcentrationButton({ onClick, open }: { onClick: () => void; open: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -454,7 +537,7 @@ export function RevenueConcentrationButton({ onClick }: { onClick: () => void })
           <p className="text-xs text-muted-foreground">Interactive treemap — click to explore customer & order breakdown</p>
         </div>
       </div>
-      <ChevronRight className="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+      <ChevronDown className={`size-4 text-muted-foreground group-hover:text-foreground transition-all duration-200 ${open ? 'rotate-180' : ''}`} />
     </button>
   )
 }
