@@ -598,7 +598,7 @@ export default function PalletLoadCalculator({
                     placeholder={t.search}
                     className="w-full px-2 py-1 rounded border bg-background text-xs"
                   />
-                  <div className="max-h-60 overflow-y-auto space-y-0.5">
+                  <div className="max-h-60 overflow-y-auto overscroll-contain space-y-0.5">
                     {(pt.linkSource === 'staged' ? stagedOrders : pt.linkSource === 'completed' ? completedOrders : needToPackageOrders)
                       .filter((o) => {
                         if (!linkSearch.trim()) return true

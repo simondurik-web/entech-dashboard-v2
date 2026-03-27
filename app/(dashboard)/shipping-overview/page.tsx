@@ -273,11 +273,11 @@ function ShippingOverviewPageContent() {
 
       {/* ── Two-column grid ─────────────────────────────────── */}
       {!loading && !error && data && (
-        <div className="mt-5 grid grid-cols-1 gap-5 min-[1400px]:grid-cols-2">
+        <div className="mt-5 grid grid-cols-1 gap-5 min-[1400px]:grid-cols-2" style={{ height: 'calc(100vh - 260px)', minHeight: '400px' }}>
           {/* ═══ Left: Ready to Ship ═══ */}
-          <div className={`overflow-hidden rounded-3xl border ${sectionBg}`}>
+          <div className={`overflow-hidden rounded-3xl border flex flex-col ${sectionBg}`}>
             {/* Section header */}
-            <div className={`border-b px-6 py-5 ${summaryBorder}`}>
+            <div className={`shrink-0 border-b px-6 py-5 ${summaryBorder}`}>
               <h2 className={`text-2xl font-bold ${sectionTitleStaged}`}>📦 Ready to Ship</h2>
               <p className={`mt-1 text-xs ${summaryLabel}`}>{staged.length} orders</p>
 
@@ -299,7 +299,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Summary stats */}
-            <div className={`grid grid-cols-2 border-b ${summaryBorder}`}>
+            <div className={`shrink-0 grid grid-cols-2 border-b ${summaryBorder}`}>
               <div className={`border-r p-5 text-center ${summaryBorder}`}>
                 <div className={`text-2xl font-extrabold ${summaryValueStaged}`}>
                   {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
@@ -317,7 +317,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Scrollable order list */}
-            <div className="overflow-y-auto p-5" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+            <div className="flex-1 min-h-0 overflow-y-auto p-5">
               <OrderList
                 orders={staged}
                 expandedKey={expandedKey}
@@ -328,9 +328,9 @@ function ShippingOverviewPageContent() {
           </div>
 
           {/* ═══ Right: Shipped ═══ */}
-          <div className={`overflow-hidden rounded-3xl border ${sectionBg}`}>
+          <div className={`overflow-hidden rounded-3xl border flex flex-col ${sectionBg}`}>
             {/* Section header */}
-            <div className={`border-b px-6 py-5 ${summaryBorder}`}>
+            <div className={`shrink-0 border-b px-6 py-5 ${summaryBorder}`}>
               <div className="flex items-center gap-3">
                 <h2 className={`text-2xl font-bold ${sectionTitleShipped}`}>🚚 Shipped (Last {days} Days)</h2>
               </div>
@@ -368,7 +368,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Summary stats */}
-            <div className={`grid grid-cols-2 border-b ${summaryBorder}`}>
+            <div className={`shrink-0 grid grid-cols-2 border-b ${summaryBorder}`}>
               <div className={`border-r p-5 text-center ${summaryBorder}`}>
                 <div className={`text-2xl font-extrabold ${summaryValueShipped}`}>
                   {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
@@ -386,7 +386,7 @@ function ShippingOverviewPageContent() {
             </div>
 
             {/* Scrollable order list */}
-            <div className="overflow-y-auto p-5" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+            <div className="flex-1 min-h-0 overflow-y-auto p-5">
               <OrderList
                 orders={shipped}
                 expandedKey={expandedKey}
@@ -400,11 +400,13 @@ function ShippingOverviewPageContent() {
 
       {/* ── Pallet Calculator Dialog ────────────────────────── */}
       <Dialog open={palletOpen} onOpenChange={setPalletOpen}>
-        <DialogContent className="max-h-[90vh] max-w-[95vw] overflow-y-auto xl:max-w-7xl">
-          <DialogHeader>
+        <DialogContent className="flex flex-col max-h-[92vh] max-w-[95vw] xl:max-w-7xl p-0 gap-0">
+          <DialogHeader className="shrink-0 px-6 py-4 border-b">
             <DialogTitle>📦 Pallet Load Calculator</DialogTitle>
           </DialogHeader>
-          <PalletLoadCalculator stagedOrders={stagedOrdersForCalc} />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+            <PalletLoadCalculator stagedOrders={stagedOrdersForCalc} />
+          </div>
         </DialogContent>
       </Dialog>
     </div>
