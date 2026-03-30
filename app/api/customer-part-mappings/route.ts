@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
 
     const performedByName = body._performed_by_name || 'Unknown'
     const performedByEmail = body._performed_by_email || ''
+    const duplicateSourceId = body._duplicate_source_id || null
 
     const mappingCosts = await buildCustomerPartMappingCosts(body)
     const { internal_part_number, lowest_quoted_price, variable_cost, total_cost, sales_target, contribution_level } = mappingCosts
@@ -107,13 +108,13 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-    // Record audit entry for creation
+    // Record audit entry for creation or duplication
     if (data) {
       await supabaseAdmin.from('customer_part_mapping_audit').insert({
         mapping_id: data.id,
-        action: 'created',
+        action: duplicateSourceId ? 'duplicated' : 'created',
         field_name: null,
-        old_value: null,
+        old_value: duplicateSourceId ? `Cloned from ${duplicateSourceId}` : null,
         new_value: `${data.customers?.name || 'Unknown'} / ${data.internal_part_number}`,
         performed_by_name: performedByName,
         performed_by_email: performedByEmail,
