@@ -15,10 +15,27 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
-  ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle, Pencil,
+  ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle, Pencil, History,
 } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+
+// ─── Audit Types ────────────────────────────────────────────────
+
+interface BomAuditEntry {
+  id: string
+  entity_type: string
+  entity_id: string
+  action: string
+  field_name: string | null
+  old_value: string | null
+  new_value: string | null
+  performed_by_name: string | null
+  performed_by_email: string | null
+  created_at: string
+}
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -198,6 +215,7 @@ function SelectOrCreate({ value, onChange, options, placeholder, label }: {
 
 export default function BOMExplorer() {
   const { t } = useI18n()
+  const { profile } = useAuth()
   const [tab, setTab] = useState('individual')
   const [individualItems, setIndividualItems] = useState<IndividualItem[]>([])
   const [subAssemblies, setSubAssemblies] = useState<SubAssembly[]>([])
@@ -206,6 +224,14 @@ export default function BOMExplorer() {
   const [inventoryParts, setInventoryParts] = useState<{ partNumber: string; product: string }[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Audit trail states
+  const [showAuditPanel, setShowAuditPanel] = useState(false)
+  const [auditEntries, setAuditEntries] = useState<BomAuditEntry[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditFilterUser, setAuditFilterUser] = useState('')
+  const [auditFilterAction, setAuditFilterAction] = useState<string>('all')
+  const [auditFilterEntityType, setAuditFilterEntityType] = useState<string>('all')
 
   const fetchAll = useCallback(async (bust = false) => {
     setLoading(true)
@@ -233,6 +259,24 @@ export default function BOMExplorer() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  const fetchAudit = useCallback(async () => {
+    setAuditLoading(true)
+    try {
+      const params = new URLSearchParams({ limit: '200' })
+      if (auditFilterUser) params.set('performed_by', auditFilterUser)
+      if (auditFilterAction !== 'all') params.set('action', auditFilterAction)
+      if (auditFilterEntityType !== 'all') params.set('entity_type', auditFilterEntityType)
+      const res = await fetch(`/api/bom/audit?${params}`)
+      const data = await res.json()
+      setAuditEntries(data.entries || [])
+    } catch { /* ignore */ }
+    finally { setAuditLoading(false) }
+  }, [auditFilterUser, auditFilterAction, auditFilterEntityType])
+
+  useEffect(() => {
+    if (showAuditPanel) fetchAudit()
+  }, [showAuditPanel, fetchAudit])
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -250,8 +294,117 @@ export default function BOMExplorer() {
           <Button variant="outline" size="sm" onClick={() => fetchAll(true)} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowAuditPanel(!showAuditPanel)}>
+            <History className="h-4 w-4 mr-1" /> Audit Trail
+          </Button>
         </div>
       </div>
+
+      {/* Audit Trail Panel */}
+      {showAuditPanel && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold flex items-center gap-2">
+              <History className="size-4" /> BOM Change History
+            </h3>
+            <Button variant="ghost" size="sm" onClick={() => setShowAuditPanel(false)}>Close</Button>
+          </div>
+          <div className="flex gap-2 mb-3 flex-wrap">
+            <Input
+              placeholder="Filter by user..."
+              value={auditFilterUser}
+              onChange={(e) => setAuditFilterUser(e.target.value)}
+              className="max-w-[200px] text-sm"
+            />
+            <Select value={auditFilterEntityType} onValueChange={setAuditFilterEntityType}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Entity Types</SelectItem>
+                <SelectItem value="individual_item">Individual Items</SelectItem>
+                <SelectItem value="sub_assembly">Sub-Assemblies</SelectItem>
+                <SelectItem value="final_assembly">Final Assemblies</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={auditFilterAction} onValueChange={setAuditFilterAction}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                <SelectItem value="created">Created</SelectItem>
+                <SelectItem value="updated">Updated</SelectItem>
+                <SelectItem value="deleted">Deleted</SelectItem>
+                <SelectItem value="duplicated">Duplicated</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={fetchAudit} disabled={auditLoading}>
+              <RefreshCw className={`size-3 mr-1 ${auditLoading ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto">
+            {auditLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>
+            ) : auditEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">No changes recorded yet.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card z-10">
+                  <tr className="border-b text-muted-foreground text-xs">
+                    <th className="text-left px-2 py-1.5 font-medium">Date</th>
+                    <th className="text-left px-2 py-1.5 font-medium">User</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Action</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Entity Type</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Field Changed</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Old Value</th>
+                    <th className="text-left px-2 py-1.5 font-medium">New Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEntries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-border/30 hover:bg-muted/20">
+                      <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(entry.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs font-medium">
+                        {entry.performed_by_name || 'Unknown'}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Badge variant="outline" className={
+                          entry.action === 'created' ? 'bg-green-500/10 text-green-500 border-green-500/30' :
+                          entry.action === 'deleted' ? 'bg-red-500/10 text-red-500 border-red-500/30' :
+                          entry.action === 'duplicated' ? 'bg-purple-500/10 text-purple-500 border-purple-500/30' :
+                          'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                        }>
+                          {entry.action}
+                        </Badge>
+                      </td>
+                      <td className="px-2 py-1.5 text-xs">
+                        <span className={`px-1.5 py-0.5 rounded text-xs ${
+                          entry.entity_type === 'individual_item' ? 'bg-amber-500/20 text-amber-400' :
+                          entry.entity_type === 'sub_assembly' ? 'bg-blue-500/20 text-blue-400' :
+                          'bg-indigo-500/20 text-indigo-400'
+                        }`}>
+                          {entry.entity_type === 'individual_item' ? 'Individual Item' :
+                           entry.entity_type === 'sub_assembly' ? 'Sub-Assembly' : 'Final Assembly'}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-xs font-mono">{entry.field_name || '—'}</td>
+                      <td className="px-2 py-1.5 text-xs max-w-[150px] truncate text-red-400" title={entry.old_value || ''}>
+                        {entry.old_value || '—'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs max-w-[150px] truncate text-green-400" title={entry.new_value || ''}>
+                        {entry.new_value || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -290,10 +443,16 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   onRefresh: (bust?: boolean) => void
 }) {
   const { t } = useI18n()
+  const { profile } = useAuth()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editCost, setEditCost] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
+
+  const performedBy = {
+    _performed_by_name: profile?.full_name || 'Unknown',
+    _performed_by_email: profile?.email || '',
+  }
 
   const filtered = items.filter(i =>
     i.part_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -305,7 +464,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     await fetch(`/api/bom/individual-items/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cost_per_unit: Number(editCost) }),
+      body: JSON.stringify({ cost_per_unit: Number(editCost), ...performedBy }),
     })
     setEditingId(null)
     onRefresh(true)
@@ -313,7 +472,11 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
 
   const deleteItem = async (id: string) => {
     if (!confirm('Delete this item? This may affect sub-assemblies and final assemblies.')) return
-    await fetch(`/api/bom/individual-items/${id}`, { method: 'DELETE' })
+    await fetch(`/api/bom/individual-items/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(performedBy),
+    })
     onRefresh(true)
   }
 
@@ -321,11 +484,31 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     await fetch('/api/bom/individual-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...newItem, cost_per_unit: Number(newItem.cost_per_unit) }),
+      body: JSON.stringify({ ...newItem, cost_per_unit: Number(newItem.cost_per_unit), ...performedBy }),
     })
     setShowAdd(false)
     setNewItem({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
     onRefresh(true)
+  }
+
+  const duplicateItem = async (id: string, partNumber: string) => {
+    const newPart = prompt('New part number for the clone:', `${partNumber}-COPY`)
+    if (!newPart) return
+    try {
+      const res = await fetch('/api/bom/individual-items/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, new_part_number: newPart, ...performedBy }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(`Clone failed: ${body.error || res.statusText}`)
+        return
+      }
+      onRefresh(true)
+    } catch (e) {
+      alert(`Clone failed: ${e instanceof Error ? e.message : 'Network error'}`)
+    }
   }
 
   return (
@@ -437,6 +620,9 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                 <TableCell>
                   <div className="flex gap-1">
                     <EditIndividualItemDialog item={item} onSaved={() => onRefresh(true)} />
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => duplicateItem(item.id, item.part_number)} title="Clone">
+                      <Copy className="h-3 w-3" />
+                    </Button>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => deleteItem(item.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -456,6 +642,7 @@ function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }
   existingCategories: string[]
   onCreated: () => Promise<void> | void
 }) {
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -497,6 +684,8 @@ function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }
         component_part_number: component.component_part_number,
         quantity: component.quantity,
       })),
+      _performed_by_name: profile?.full_name || 'Unknown',
+      _performed_by_email: profile?.email || '',
     }
 
     try {
@@ -666,6 +855,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
   existingSubProductCategories: string[]
   onCreated: () => Promise<void> | void
 }) {
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -714,6 +904,8 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
         component_part_number: component.component_part_number,
         quantity: component.quantity,
       })),
+      _performed_by_name: profile?.full_name || 'Unknown',
+      _performed_by_email: profile?.email || '',
     }
 
     try {
@@ -931,6 +1123,7 @@ function EditIndividualItemDialog({ item, onSaved }: {
   item: IndividualItem
   onSaved: () => void
 }) {
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -947,7 +1140,7 @@ function EditIndividualItemDialog({ item, onSaved }: {
       await fetch(`/api/bom/individual-items/${item.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, cost_per_unit: Number(form.cost_per_unit) }),
+        body: JSON.stringify({ ...form, cost_per_unit: Number(form.cost_per_unit), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       onSaved()
       setOpen(false)
@@ -998,6 +1191,7 @@ function EditSubAssemblyDialog({ assembly, individualItems, existingCategories, 
   existingCategories: string[]
   onSaved: () => void
 }) {
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1030,7 +1224,7 @@ function EditSubAssemblyDialog({ assembly, individualItems, existingCategories, 
     try {
       const res = await fetch(`/api/bom/sub-assemblies/${assembly.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, components: components.map(c => ({ component_part_number: c.component_part_number, quantity: c.quantity })) }),
+        body: JSON.stringify({ ...form, components: components.map(c => ({ component_part_number: c.component_part_number, quantity: c.quantity })), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to update.')
@@ -1105,6 +1299,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
   existingSubProductCategories: string[]
   onSaved: () => void
 }) {
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1149,7 +1344,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
     try {
       const res = await fetch(`/api/bom/final-assemblies/${assembly.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, components: components.map(c => ({ component_source: c.component_source, component_part_number: c.component_part_number, quantity: c.quantity })) }),
+        body: JSON.stringify({ ...form, components: components.map(c => ({ component_source: c.component_source, component_part_number: c.component_part_number, quantity: c.quantity })), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to update.')
@@ -1235,12 +1430,18 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   onRefresh: (bust?: boolean) => void
 }) {
   const { t } = useI18n()
+  const { profile } = useAuth()
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const filtered = assemblies.filter(a =>
     a.part_number.toLowerCase().includes(search.toLowerCase()) ||
     (a.category || '').toLowerCase().includes(search.toLowerCase())
   )
+
+  const performedBy = {
+    _performed_by_name: profile?.full_name || 'Unknown',
+    _performed_by_email: profile?.email || '',
+  }
 
   const duplicate = async (id: string, partNumber: string) => {
     const newPart = prompt('New part number for the clone:', `${partNumber}-COPY`)
@@ -1249,7 +1450,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
       const res = await fetch('/api/bom/sub-assemblies/duplicate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, new_part_number: newPart }),
+        body: JSON.stringify({ id, new_part_number: newPart, ...performedBy }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -1269,7 +1470,11 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
 
   const deleteAssembly = async (id: string) => {
     if (!confirm('Delete this sub-assembly?')) return
-    await fetch(`/api/bom/sub-assemblies/${id}`, { method: 'DELETE' })
+    await fetch(`/api/bom/sub-assemblies/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(performedBy),
+    })
     onRefresh(true)
   }
 
@@ -1388,6 +1593,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   onRefresh: (bust?: boolean) => void
 }) {
   const { t } = useI18n()
+  const { profile } = useAuth()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(false)
   const [configEdits, setConfigEdits] = useState<Record<string, string>>({})
