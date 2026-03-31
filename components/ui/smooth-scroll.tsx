@@ -16,7 +16,22 @@ export function SmoothScroll({ children }: { children: React.ReactNode }) {
       requestAnimationFrame(raf)
     }
     requestAnimationFrame(raf)
-    return () => lenis.destroy()
+
+    // Pause Lenis when any Radix dialog opens (body gets data-scroll-locked)
+    const observer = new MutationObserver(() => {
+      const locked = document.body.hasAttribute('data-scroll-locked')
+      if (locked) {
+        lenis.stop()
+      } else {
+        lenis.start()
+      }
+    })
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-scroll-locked'] })
+
+    return () => {
+      observer.disconnect()
+      lenis.destroy()
+    }
   }, [])
 
   return <>{children}</>
