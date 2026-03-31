@@ -39,6 +39,7 @@ export async function POST(req: Request) {
         component_part_number: component.component_part_number,
         component_source: component.component_source,
         quantity: component.quantity,
+        quantity_formula: component.quantity_formula,
       })),
     })
 

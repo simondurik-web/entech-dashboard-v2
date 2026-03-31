@@ -28,6 +28,7 @@ type FinalAssemblyComponentInput = {
   component_part_number?: unknown
   component_source?: unknown
   quantity?: unknown
+  quantity_formula?: unknown
 }
 
 function asRecord(value: unknown) {
@@ -180,6 +181,7 @@ async function normalizeFinalAssemblyComponents(components: unknown) {
       throw new BomAuthoringError(`Invalid component_source "${rawComponentSource}".`)
     }
 
+    const quantityFormula = normalizeString(source.quantity_formula)
     const quantity = normalizeNumber(source.quantity, {
       field: `Final-assembly component ${index + 1} quantity`,
       min: 0.000001,
@@ -190,6 +192,7 @@ async function normalizeFinalAssemblyComponents(components: unknown) {
       component_part_number: componentPartNumber,
       component_source: rawComponentSource as FinalAssemblyComponentSource,
       quantity,
+      quantity_formula: quantityFormula,
       cost: 0,
       sort_order: index,
     }

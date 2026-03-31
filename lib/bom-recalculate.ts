@@ -90,6 +90,20 @@ export async function recalculateFinalAssembly(finalAssemblyId: string) {
     throw new Error(`Invalid final assembly component_source values for ${assembly.part_number}: ${[...new Set(invalidSources)].join(', ')}`)
   }
 
+  // Auto-compute quantities for components with a quantity_formula (e.g. "3/PPP")
+  const ppp = Number(assembly.parts_per_package)
+  if (ppp > 0) {
+    for (const comp of components) {
+      if (!comp.quantity_formula) continue
+      const match = String(comp.quantity_formula).match(/^(\d+(?:\.\d+)?)\/PPP$/)
+      if (!match) continue
+      const numerator = Number(match[1])
+      const quantity = numerator / ppp
+      comp.quantity = quantity
+      await supabaseAdmin.from('bom_final_assembly_components').update({ quantity }).eq('id', comp.id)
+    }
+  }
+
   // Get costs from sub assemblies and individual items
   const subParts = components.filter(c => c.component_source === 'sub_assembly').map(c => c.component_part_number)
   const indParts = components.filter(c => c.component_source === 'individual_item').map(c => c.component_part_number)

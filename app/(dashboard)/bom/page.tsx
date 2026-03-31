@@ -81,6 +81,7 @@ interface FinalAssemblyComponent {
   component_part_number: string
   component_source: string
   quantity: number
+  quantity_formula: string | null
   cost: number
   sort_order: number
 }
@@ -94,6 +95,7 @@ interface EditableFinalAssemblyComponent {
   component_source: 'sub_assembly' | 'individual_item'
   component_part_number: string
   quantity: string
+  quantity_formula: string
 }
 
 interface FinalAssembly {
@@ -872,7 +874,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
     shipping_labor_cost: '0',
   })
   const [components, setComponents] = useState<EditableFinalAssemblyComponent[]>([
-    { component_source: 'sub_assembly', component_part_number: '', quantity: '1' },
+    { component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' },
   ])
 
   const reset = () => {
@@ -888,7 +890,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
       num_employees: '1',
       shipping_labor_cost: '0',
     })
-    setComponents([{ component_source: 'sub_assembly', component_part_number: '', quantity: '1' }])
+    setComponents([{ component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' }])
     setError(null)
     setSaving(false)
   }
@@ -903,6 +905,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
         component_source: component.component_source,
         component_part_number: component.component_part_number,
         quantity: component.quantity,
+        quantity_formula: component.quantity_formula || null,
       })),
       _performed_by_name: profile?.full_name || 'Unknown',
       _performed_by_email: profile?.email || '',
@@ -1013,7 +1016,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setComponents([...components, { component_source: 'sub_assembly', component_part_number: '', quantity: '1' }])}
+                onClick={() => setComponents([...components, { component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' }])}
               >
                 <Plus className="h-4 w-4 mr-1" /> Add Component
               </Button>
@@ -1034,6 +1037,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
                             component_source: value as EditableFinalAssemblyComponent['component_source'],
                             component_part_number: '',
                             quantity: component.quantity,
+                            quantity_formula: '',
                           }
                           setComponents(next)
                         }}
@@ -1092,7 +1096,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
                         variant="ghost"
                         size="sm"
                         className="h-10 px-2 text-destructive"
-                        onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1' }] : components.filter((_, componentIndex) => componentIndex !== index))}
+                        onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' }] : components.filter((_, componentIndex) => componentIndex !== index))}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -1320,6 +1324,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
       component_source: c.component_source as 'sub_assembly' | 'individual_item',
       component_part_number: c.component_part_number,
       quantity: String(c.quantity),
+      quantity_formula: c.quantity_formula || '',
     }))
   )
 
@@ -1335,6 +1340,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
     setComponents(assembly.bom_final_assembly_components.map(c => ({
       component_source: c.component_source as 'sub_assembly' | 'individual_item',
       component_part_number: c.component_part_number, quantity: String(c.quantity),
+      quantity_formula: c.quantity_formula || '',
     })))
     setError(null)
   }
@@ -1344,7 +1350,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
     try {
       const res = await fetch(`/api/bom/final-assemblies/${assembly.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, components: components.map(c => ({ component_source: c.component_source, component_part_number: c.component_part_number, quantity: c.quantity })), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
+        body: JSON.stringify({ ...form, components: components.map(c => ({ component_source: c.component_source, component_part_number: c.component_part_number, quantity: c.quantity, quantity_formula: c.quantity_formula || null })), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to update.')
@@ -1382,7 +1388,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
           <div className="grid gap-3">
             <div className="flex items-center justify-between">
               <div><h3 className="font-semibold">Components</h3><p className="text-xs text-muted-foreground">Mix sub-assemblies and individual items.</p></div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setComponents([...components, { component_source: 'sub_assembly', component_part_number: '', quantity: '1' }])}><Plus className="h-4 w-4 mr-1" /> Add</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setComponents([...components, { component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' }])}><Plus className="h-4 w-4 mr-1" /> Add</Button>
             </div>
             <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
               {components.map((comp, i) => {
@@ -1391,7 +1397,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
                   <div key={`edit-final-comp-${i}`} className="grid gap-4 rounded-md border p-4 md:grid-cols-[170px_minmax(0,1fr)_140px_48px] items-end">
                     <div className="grid gap-2">
                       <Label>Source</Label>
-                      <Select value={comp.component_source} onValueChange={v => { const n = [...components]; n[i] = { component_source: v as 'sub_assembly' | 'individual_item', component_part_number: '', quantity: comp.quantity }; setComponents(n) }}>
+                      <Select value={comp.component_source} onValueChange={v => { const n = [...components]; n[i] = { component_source: v as 'sub_assembly' | 'individual_item', component_part_number: '', quantity: comp.quantity, quantity_formula: '' }; setComponents(n) }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>{FINAL_COMPONENT_SOURCES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                       </Select>
@@ -1404,7 +1410,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
                       </Select>
                     </div>
                     <div className="grid gap-2"><Label>Qty</Label><Input type="number" min="0.000001" step="0.0001" value={comp.quantity} onChange={e => { const n = [...components]; n[i] = { ...comp, quantity: e.target.value }; setComponents(n) }} /></div>
-                    <div className="flex items-end"><Button type="button" variant="ghost" size="sm" className="h-10 px-2 text-destructive" onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1' }] : components.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button></div>
+                    <div className="flex items-end"><Button type="button" variant="ghost" size="sm" className="h-10 px-2 text-destructive" onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' }] : components.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button></div>
                   </div>
                 )
               })}
