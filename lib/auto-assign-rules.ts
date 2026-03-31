@@ -14,6 +14,7 @@ export interface AutoAssignRule {
 export const AUTO_ASSIGN_RULES: AutoAssignRule[] = [
   { customer: 'Technoflex Intl Inc', assignee: 'Joseles' },
   { customer: 'Origen RV Accessories', assignee: 'Joseles' },
+  { customer: 'Amazon Fulfillment Center', assignee: 'Joseles' },
 ]
 
 /**
