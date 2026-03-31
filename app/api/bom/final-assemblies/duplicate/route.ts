@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: Request) {
   try {
-    const { id, new_part_number } = await req.json()
+    const { id, new_part_number, _performed_by_name, _performed_by_email } = await req.json()
 
     const { data: original, error } = await supabaseAdmin
       .from('bom_final_assemblies')
@@ -40,6 +40,18 @@ export async function POST(req: Request) {
         component_source: component.component_source,
         quantity: component.quantity,
       })),
+    })
+
+    // Audit log
+    await supabaseAdmin.from('bom_audit').insert({
+      entity_type: 'final_assembly',
+      entity_id: duplicatedAssembly.id,
+      action: 'duplicated',
+      field_name: null,
+      old_value: `Cloned from ${original.part_number}`,
+      new_value: duplicatedAssembly.part_number,
+      performed_by_name: _performed_by_name || null,
+      performed_by_email: _performed_by_email || null,
     })
 
     return NextResponse.json(duplicatedAssembly)

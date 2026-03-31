@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select'
 import {
   Search, Plus, Users, AlertTriangle, TrendingUp, Target,
-  RefreshCw, History, Trash2, AlertCircle,
+  RefreshCw, History, Trash2, AlertCircle, Copy, Pencil,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { DataTable } from '@/components/data-table'
@@ -33,6 +33,7 @@ import { getContributionColor, computeContributionLevel } from '@/lib/cost-confi
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { toast } from '@/lib/use-toast'
 
 interface Customer {
   id: string
@@ -276,6 +277,27 @@ function CustomerReferencePageContent() {
       filterable: true,
       render: (v) => v ? <Badge variant="outline" className={getContributionColor(v as string)}>{v as string}</Badge> : <span className="text-muted-foreground">—</span>,
     },
+    {
+      key: 'id' as keyof MappingRow & string,
+      label: '',
+      sortable: false,
+      render: (_, row) => {
+        const m = row as unknown as PartMapping
+        return (
+          <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(m)} title="Edit">
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleDuplicate(m)} title="Duplicate" disabled={saving}>
+              <Copy className="h-3 w-3" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => { setDeleteTarget(m); setShowDeleteDialog(true) }} title="Delete">
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        )
+      },
+    },
   ]
 
   const table = useDataTable({
@@ -351,6 +373,45 @@ function CustomerReferencePageContent() {
       setDeleteTarget(null)
       fetchData()
     } catch { /* ignore */ } finally { setSaving(false) }
+  }
+
+  const handleDuplicate = async (m: PartMapping) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/customer-part-mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: m.customer_id,
+          customer_part_number: (m.customer_part_number || '') + '-COPY',
+          internal_part_number: m.internal_part_number,
+          category: m.category || '',
+          packaging: m.packaging || '',
+          package_quantity: m.package_quantity,
+          tier1_range: m.tier1_range || '', tier1_price: m.tier1_price,
+          tier2_range: m.tier2_range || '', tier2_price: m.tier2_price,
+          tier3_range: m.tier3_range || '', tier3_price: m.tier3_price,
+          tier4_range: m.tier4_range || '', tier4_price: m.tier4_price,
+          tier5_range: m.tier5_range || '', tier5_price: m.tier5_price,
+          notes: m.notes || '',
+          _performed_by_name: profile?.full_name || 'Unknown',
+          _performed_by_email: profile?.email || '',
+          _duplicate_source_id: m.id,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to duplicate')
+      }
+      const newMapping = await res.json()
+      await fetchData()
+      // Open edit dialog for the new entry
+      const fresh = mappings.find(x => x.id === newMapping.id) || newMapping
+      openEdit({ ...fresh, customers: m.customers } as PartMapping)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to duplicate'
+      toast({ title: 'Duplicate failed', description: msg, type: 'error' })
+    } finally { setSaving(false) }
   }
 
   const openEdit = (m: PartMapping) => {
