@@ -33,6 +33,7 @@ import { getContributionColor, computeContributionLevel } from '@/lib/cost-confi
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { toast } from '@/lib/use-toast'
 
 interface Customer {
   id: string
@@ -382,7 +383,7 @@ function CustomerReferencePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_id: m.customer_id,
-          customer_part_number: m.customer_part_number ? `${m.customer_part_number}-COPY` : '',
+          customer_part_number: (m.customer_part_number || '') + '-COPY',
           internal_part_number: m.internal_part_number,
           category: m.category || '',
           packaging: m.packaging || '',
@@ -398,7 +399,10 @@ function CustomerReferencePageContent() {
           _duplicate_source_id: m.id,
         }),
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to duplicate')
+      }
       const newMapping = await res.json()
       await fetchData()
       // Open edit dialog for the new entry
@@ -406,7 +410,7 @@ function CustomerReferencePageContent() {
       openEdit({ ...fresh, customers: m.customers } as PartMapping)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to duplicate'
-      alert(`Duplicate failed: ${msg}`)
+      toast({ title: 'Duplicate failed', description: msg, type: 'error' })
     } finally { setSaving(false) }
   }
 
