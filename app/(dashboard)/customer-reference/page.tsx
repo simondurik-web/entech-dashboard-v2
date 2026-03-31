@@ -382,8 +382,8 @@ function CustomerReferencePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_id: m.customer_id,
-          customer_part_number: m.customer_part_number || '',
-          internal_part_number: `${m.internal_part_number}-COPY`,
+          customer_part_number: m.customer_part_number ? `${m.customer_part_number}-COPY` : '',
+          internal_part_number: m.internal_part_number,
           category: m.category || '',
           packaging: m.packaging || '',
           package_quantity: m.package_quantity,
@@ -404,7 +404,10 @@ function CustomerReferencePageContent() {
       // Open edit dialog for the new entry
       const fresh = mappings.find(x => x.id === newMapping.id) || newMapping
       openEdit({ ...fresh, customers: m.customers } as PartMapping)
-    } catch { /* ignore */ } finally { setSaving(false) }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to duplicate'
+      alert(`Duplicate failed: ${msg}`)
+    } finally { setSaving(false) }
   }
 
   const openEdit = (m: PartMapping) => {
