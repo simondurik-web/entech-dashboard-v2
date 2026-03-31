@@ -137,6 +137,11 @@
     @apply bg-background text-foreground;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
+  /* Lock body scroll when Radix dialog is open */
+  body[data-scroll-locked] {
+    overflow: hidden !important;
+    touch-action: none;
+  }
 }
 
 /* Category color utilities */
