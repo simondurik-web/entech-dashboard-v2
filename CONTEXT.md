@@ -156,6 +156,7 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 - Final status reported: production live with lower Vercel CPU usage.
 2026-03-16 [NIGHTLY]: Ecosystem watch — Vercel next-forge 6 and Flags agent tooling continue pushing agent-native app scaffolding and rollout control; Supabase changelog emphasizes AI-assisted table filters plus Storage performance/security work. No app code changes made.
 2026-03-17 [NIGHTLY]: Watch items — Vercel now supports LiteLLM server on Vercel AI Gateway, which could simplify future internal assistant routing. Supabase also formalized recursive Edge Function rate limits, so future agent/job chains should stay queue-based rather than function-to-function fan-out. No app code changes made.
+2026-04-07 12:43: Simon explicitly approved the cross-project handoff from `work-email-rolltech` into this dashboard project to begin the first RollTech Customer Action Center UI scope. Approved initial scope only: queue screen, bucket counts, action list, selected-thread detail panel, quick state-change actions, and digest preview panel. RollTech Phase 8 validation passed 8/9 checks on 1,854 emails; remaining known issue is edge-case thread rollups.
 
 
 ## 🚨 CRITICAL: DataTable Standard (2026-02-19)
@@ -258,3 +259,5 @@ The "Views" button (currently shows "Soon") should allow:
 - Claude Code OAuth expired - fell back to Codex + Gemini for reviews
 - Exec policy changed to "full" - production deploys now gated by conversation approval
 - Deployment approval rule established: must message Simon and get explicit "yes" before pushing to main
+2026-03-31 [AUTO-SUMMARY]: Customer Reference duplicate button bug fixed — root cause was `-COPY` appended to internal P/N causing API validation failure, error silently swallowed. Fix: `-COPY` goes on customer P/N instead, errors now show toast notifications. Vercel staging deploy was broken (canceled build had staging alias) — manually reassigned alias. Simon approved and fix pushed to production.
+2026-03-31 [AUTO-SUMMARY]: BOM auto-quantity formulas deployed (PR #81, branch `review/bom-auto-qty`). 880 packaging components tagged with formulas. Quantities auto-calculate from `parts_per_package` using patterns: PALLET=1/PPP, CLEARFILMCOVER=3/PPP, BAG=1/PPP, FILM-STRETCH=500/PPP. Manual components (KWH, LABOR) untouched. Amazon Fulfillment Center orders now auto-assign to Joseles (same as Origen RV and Technoflex). Modal scroll bug fixed — Lenis smooth scroll was hijacking wheel events globally; now pauses when Radix dialog opens via `data-scroll-locked` attribute.
