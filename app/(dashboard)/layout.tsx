@@ -34,11 +34,14 @@ import {
   Settings,
   Bell,
   FileBarChart,
+  Inbox,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { usePermissions } from "@/lib/use-permissions"
 
-const commandPaletteItems = [
+const baseCommandPaletteItems = [
   { label: 'Orders', href: '/orders', section: 'Production', icon: <ClipboardList className="size-4" /> },
+  { label: 'RollTech Action Center', href: '/rolltech-actions', section: 'Production', icon: <Inbox className="size-4" /> },
   { label: 'Need to Make', href: '/need-to-make', section: 'Production', icon: <Factory className="size-4" /> },
   { label: 'Need to Package', href: '/need-to-package', section: 'Production', icon: <Package className="size-4" /> },
   { label: 'Staged', href: '/staged', section: 'Production', icon: <PackageCheck className="size-4" /> },
@@ -71,9 +74,14 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const { canAccess } = usePermissions()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
+  const commandPaletteItems = useMemo(
+    () => baseCommandPaletteItems.filter((item) => !item.href || canAccess(item.href)),
+    [canAccess]
+  )
 
   useEffect(() => {
     const stored = localStorage.getItem("dashboard-zoom")
