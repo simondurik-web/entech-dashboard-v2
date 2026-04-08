@@ -41,6 +41,7 @@ import {
   FileBarChart,
   ChevronRight,
   Bell,
+  Inbox,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -55,6 +56,7 @@ type NavItem = {
 
 const productionItems: NavItem[] = [
   { tKey: "nav.ordersData", href: "/orders", icon: <ClipboardList className="size-4" /> },
+  { tKey: "RollTech Action Center", href: "/rolltech-actions", icon: <Inbox className="size-4" /> },
   { tKey: "nav.productionMake", href: "/need-to-make", icon: <Factory className="size-4" />, sub: true },
   { tKey: "nav.ordersQueue", href: "/need-to-package", icon: <Package className="size-4" />, sub: true },
   { tKey: "nav.ordersStaged", href: "/staged", icon: <PackageCheck className="size-4" />, sub: true },

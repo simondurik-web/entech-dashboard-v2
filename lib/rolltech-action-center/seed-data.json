@@ -1,0 +1,2229 @@
+{
+  "bucket_counts": {
+    "shipping_release_coordination": 34,
+    "resolved": 94,
+    "needs_review": 9,
+    "waiting_on_customer": 139,
+    "needs_reply_today": 5,
+    "ready_to_process": 5,
+    "noise": 42
+  },
+  "records": [
+    {
+      "action_record_id": "act_2af37622cf0998bb_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIpMP4KvCsxCgBRr3a-uB7s=",
+      "thread_subject": "Entech Wheels",
+      "subject_normalized": "entech wheels",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "shipping_release_coordination",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Send pricing for PO 5986 / part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-10-31T18:51:03Z",
+      "last_inbound_at": "2025-10-31T18:51:03Z",
+      "last_outbound_at": "2025-10-31T18:38:48Z",
+      "due_at": "2025-10-31T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-11-01T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "owner_identified",
+        "shipping_signal",
+        "part_number_present",
+        "attachment_present",
+        "logistics_only",
+        "pricing_request",
+        "urgency",
+        "close_phrase",
+        "po_number_present",
+        "po_received"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Nick Salvucci Anthony Welded Products, Inc. Office: (877) 721-7211 Mobile: (661) 301-6955 Email: nic...",
+      "latest_outbound_snippet": "This load has been picked up! Sheryl Draus Customer Service Entech, Inc. a. 10440 County Road 2 Midd...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [
+          "5986"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_218cfa1efeb6f2ce_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAJaODypFO0okmZ38-_waIvw=",
+      "thread_subject": "Carolina Southern order",
+      "subject_normalized": "carolina southern order",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "shipping_release_coordination",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Handle shipping coordination for part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-02-17T13:48:18Z",
+      "last_inbound_at": "2026-02-17T13:48:18Z",
+      "last_outbound_at": "2026-02-17T13:42:06Z",
+      "due_at": "2026-02-17T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-02-18T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "urgency",
+        "owner_identified",
+        "shipping_signal",
+        "close_phrase",
+        "part_number_present",
+        "attachment_present"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Doug Eck- Owner The Cart Guy llc Cell (316) 640-6725 deck2150@gmail.com<mailto:deck2150@gmail.com> d...",
+      "latest_outbound_snippet": "Good morning, Doug, This will ship out today. -Philip Get Outlook for Mac <https://aka.ms/GetOutlook...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_7fa3d4ed65c4e8ea_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQALiHPwRPD0DGg7NNi1mKNkM=",
+      "thread_subject": "Re: Purchase Order 22775 from Jake, Connor & Crew",
+      "subject_normalized": "purchase order 22775 from jake, connor & crew",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "shipping_release_coordination",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Provide lead time for PO 22775 / part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-02-25T18:04:13Z",
+      "last_inbound_at": "2026-02-25T18:04:13Z",
+      "last_outbound_at": "2026-02-25T17:58:59Z",
+      "due_at": "2026-02-25T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-02-26T22:00:00+00:00",
+      "confidence": 0.95,
+      "signals": [
+        "po_received",
+        "attachment_present",
+        "close_phrase",
+        "shipping_signal",
+        "urgency",
+        "owner_identified",
+        "part_number_present",
+        "po_number_present",
+        "lead_time_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Our broker advised the part #\u2019s would be required but will confirm should these need to be added. we...",
+      "latest_outbound_snippet": "Please let me know if this works. Thank you. Philip Habecker Entech, Inc. a. 10440 County Road 2 Mid...",
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "22775"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_3fdb54793793a5d9_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAAdn3Z_S1NZAi5uy4i04bJc=",
+      "thread_subject": "RE: Roll Tech Acquisition",
+      "subject_normalized": "roll tech acquisition",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "shipping_release_coordination",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Send pricing for part 574.822.9107, 643.208.1330.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-12-18T18:26:09Z",
+      "last_inbound_at": "2025-12-18T18:26:09Z",
+      "last_outbound_at": "2025-12-18T17:54:07Z",
+      "due_at": "2025-12-18T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-12-19T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "close_phrase",
+        "shipping_signal",
+        "owner_identified",
+        "urgency",
+        "part_number_present",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "[P&H Logo] Carrie Egan Director Supply Chain Toll Free: 800-354-8622 Cell: 817-734-4579 Office: 817-...",
+      "latest_outbound_snippet": "Attn: Matt Aten P& H Casters 807 Harris Rd Arlington, TX 76001 12x12x12.5 12lbs FedEx tracking 47822...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107",
+          "643.208.1330"
+        ],
+        "tracking_numbers": [
+          "478220670156",
+          "478220670167"
+        ]
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_2ac49887ac325b15_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQACJfXXTlak9cjeqFuj3gJo0=",
+      "thread_subject": "TOTER PO 20PO11118547 ENTECH",
+      "subject_normalized": "toter po 20po11118547 entech",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "shipping_release_coordination",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Provide lead time for PO 11118547 / part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-02-25T20:30:45Z",
+      "last_inbound_at": "2026-02-25T20:30:45Z",
+      "last_outbound_at": "2026-02-25T15:10:40Z",
+      "due_at": "2026-02-25T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-02-26T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "po_number_present",
+        "po_received",
+        "attachment_present",
+        "close_phrase",
+        "owner_identified",
+        "shipping_signal",
+        "urgency",
+        "part_number_present",
+        "lead_time_request",
+        "logistics_only"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Berta Paine Wastequip Transportation Planner Cell: 830-488-8780 Office:830-422-3093 Email:bpaine@Was...",
+      "latest_outbound_snippet": "Let me know if this works for now.",
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "11118547"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_cedb1d72dac34d66_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQADeARIVD7kXyqOE7u3HsZUU=",
+      "thread_subject": "FW: PO 2426",
+      "subject_normalized": "po 2426",
+      "status": "resolved",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "resolved",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Thread resolved, no open ask remains for PO 2426.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2026-03-18T17:00:36Z",
+      "last_inbound_at": "2026-03-18T16:48:28Z",
+      "last_outbound_at": "2026-03-18T17:00:36Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.9,
+      "signals": [
+        "logistics_only",
+        "close_phrase",
+        "shipping_signal",
+        "po_number_present",
+        "po_received",
+        "pricing_request",
+        "urgency",
+        "attachment_present",
+        "owner_identified"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Have a wonderful day! Jennifer Strand B&W Manufacturing Info@liftconveyor.com 760-347-3200 800-225-0...",
+      "latest_outbound_snippet": "Got the BOL. We should be good to go. Thank you so much. \ud83d\ude0a Get Outlook for Mac <https://aka.ms/GetOu...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [
+          "2426"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_a516dbbffee21000_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAHMHn4bLumtCsf16n8oH-9Q=",
+      "thread_subject": "Wheels",
+      "subject_normalized": "wheels",
+      "status": "resolved",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "resolved",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Thread resolved, no open ask remains for PO 226630 / part 574.822.9107.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2025-11-19T18:01:38Z",
+      "last_inbound_at": "2025-11-11T18:42:33Z",
+      "last_outbound_at": "2025-11-19T18:01:38Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.9,
+      "signals": [
+        "close_phrase",
+        "shipping_signal",
+        "owner_identified",
+        "po_number_present",
+        "po_received",
+        "part_number_present",
+        "urgency",
+        "logistics_only",
+        "attachment_present",
+        "lead_time_request",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Keith Fegley COO Rescue 42, Inc. Direct: (530) 586-3640 Toll Free: (888) 42-RESCUE Phone: (530) 891-...",
+      "latest_outbound_snippet": "Thank you, Sheryl. Get Outlook for Mac <https://aka.ms/GetOutlookForMac> From: Sheryl Draus <Sheryl....",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [
+          "226630"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_4b4fc430f671e9ca_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAEdyG042FEpHlPDf0t5UKQc=",
+      "thread_subject": "Remin PO - Jan 16 2026",
+      "subject_normalized": "remin po - jan 16 2026",
+      "status": "resolved",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "resolved",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Thread resolved, no open ask remains.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2026-02-05T17:16:40Z",
+      "last_inbound_at": "2026-02-05T17:05:30Z",
+      "last_outbound_at": "2026-02-05T17:16:40Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.9,
+      "signals": [
+        "owner_identified",
+        "close_phrase",
+        "attachment_present",
+        "shipping_signal",
+        "logistics_only",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Thanks! Heather Remin Laboratories, Inc. (d.b.a. Remin Kart-a-Bag) 510 Manhattan Road Joliet, IL 604...",
+      "latest_outbound_snippet": "Confirmed. Thank you! -Philip Get Outlook for Mac <https://aka.ms/GetOutlookForMac> From: sales <sal...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_f8a6e853b8102848_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQADn4ZFI9JyFMkh27uKgYRDQ=",
+      "thread_subject": "Attached Is Updated PO32445",
+      "subject_normalized": "attached is updated po32445",
+      "status": "resolved",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "resolved",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Thread resolved, no open ask remains for PO 32445 / part 216.472.1578, 574.822.9107.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2026-03-24T14:25:14Z",
+      "last_inbound_at": "2026-03-24T13:26:14Z",
+      "last_outbound_at": "2026-03-24T14:25:14Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.9,
+      "signals": [
+        "logistics_only",
+        "close_phrase",
+        "shipping_signal",
+        "urgency",
+        "owner_identified",
+        "po_number_present",
+        "po_received",
+        "part_number_present",
+        "lead_time_request",
+        "attachment_present",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Did you end up using the below shipping instructions for this order? Please use the below link to ro...",
+      "latest_outbound_snippet": "Thank you, Amy. We did. We reached back out yesterday, and it is picking up today with R&L Carriers....",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [
+          "32445"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "216.472.1578",
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_7ece9d1fda548ccd_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAKqzaHhFVkDcvzNt2tkHFEg=",
+      "thread_subject": "Re: P/O 135289",
+      "subject_normalized": "p/o 135289",
+      "status": "resolved",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "resolved",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Thread resolved, no open ask remains for part 574.822.9107.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2025-11-06T16:10:35Z",
+      "last_inbound_at": "2025-11-06T16:07:00Z",
+      "last_outbound_at": "2025-11-06T16:10:35Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.9,
+      "signals": [
+        "close_phrase",
+        "shipping_signal",
+        "owner_identified",
+        "urgency",
+        "part_number_present",
+        "pricing_request",
+        "lead_time_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "I will get create a blanket P/O for these and send it over shortly. Can you please provide us with a...",
+      "latest_outbound_snippet": "Sounds good. Thank you. It shipped 11/4 - so I would bet it shows up today. Philip Habecker Entech, ...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_cb05c5f3b31c284c_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAGDTnKg4TfdFqBPv7n78FKA=",
+      "thread_subject": "Orders entered",
+      "subject_normalized": "orders entered",
+      "status": "needs_review",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "needs_review",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "customer_service",
+      "customer_name": null,
+      "action_summary": "Investigate quality/complaint issue.",
+      "last_meaningful_direction": "unknown",
+      "last_meaningful_at": "2025-10-06T20:53:12Z",
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": "2025-10-06T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-10-07T22:00:00+00:00",
+      "confidence": 0.3,
+      "signals": [
+        "urgency",
+        "owner_identified",
+        "complaint_quality"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": "post_sale_issue",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_5409ebb2f33065f3_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAPmv5E75cwpIrcAKbZRt_Jk=",
+      "thread_subject": "Schaefer Letter",
+      "subject_normalized": "schaefer letter",
+      "status": "needs_review",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "needs_review",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "customer_service",
+      "customer_name": null,
+      "action_summary": "Send pricing.",
+      "last_meaningful_direction": "unknown",
+      "last_meaningful_at": "2025-12-12T13:59:20Z",
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": "2025-12-15T22:00:00+00:00",
+      "due_reason": "New pricing/lead-time request.",
+      "stale_after_at": "2025-12-16T22:00:00+00:00",
+      "confidence": 0.3,
+      "signals": [
+        "owner_identified",
+        "close_phrase",
+        "complaint_quality",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": "post_sale_issue",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_69a10be196e86136_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAFuZ4cJtiU3vtrzk3SBED0E=",
+      "thread_subject": "Certificate of Origin ",
+      "subject_normalized": "certificate of origin",
+      "status": "needs_review",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "needs_review",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Review: Certificate of Origin for part 574.822.9107, 648.208.1530.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-10-30T20:54:45Z",
+      "last_inbound_at": "2025-10-30T20:54:45Z",
+      "last_outbound_at": "2025-10-30T20:49:43Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.6,
+      "signals": [
+        "attachment_present",
+        "owner_identified",
+        "part_number_present",
+        "close_phrase"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Jeff Krause Operations Manager Consolidated Truck and Caster 314-771-6102",
+      "latest_outbound_snippet": "Let me know if this works. Philip Habecker Entech, Inc. a. 10440 County Road 2 Middlebury, IN 46540 ...",
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107",
+          "648.208.1530"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_449931efe35f7192_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAPbrwUL2cUjtg-lbPmJ9nT4=",
+      "thread_subject": "Product Info",
+      "subject_normalized": "product info",
+      "status": "needs_review",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "needs_review",
+      "owner_hint": null,
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Review: Product Info.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-09-03T13:23:41Z",
+      "last_inbound_at": "2025-09-03T13:23:41Z",
+      "last_outbound_at": "2025-09-03T13:12:16Z",
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.5,
+      "signals": [
+        "close_phrase"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "[cid:image002.png@01DC1CB4.68B86C00]",
+      "latest_outbound_snippet": "Hello David, Unfortunately, we have not yet updated the product catalog. I can tell you that we do h...",
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_b4eef5974e75e960_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAFmsl8jn0YdFjI5IuB_f3yA=",
+      "thread_subject": "RE: P/AV",
+      "subject_normalized": "p/av",
+      "status": "needs_review",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "needs_review",
+      "owner_hint": null,
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Review: RE: P/AV.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-09-03T13:27:35Z",
+      "last_inbound_at": "2025-09-03T13:27:35Z",
+      "last_outbound_at": null,
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.5,
+      "signals": [],
+      "open_question": null,
+      "latest_inbound_snippet": "We have been ordering (1280) per PO. Still $6.48?",
+      "latest_outbound_snippet": null,
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_c9c2a7d394e03a7a_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAEfw1NsOPPNOnNcu2oLiEng=",
+      "thread_subject": "Account Update: New Contact",
+      "subject_normalized": "account update: new contact",
+      "status": "waiting_on_customer",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "waiting_on_customer",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Awaiting customer response for PO 57170 / part 574.822.9107, 681.201.2211.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2025-09-09T16:18:40Z",
+      "last_inbound_at": "2025-09-03T19:25:13Z",
+      "last_outbound_at": "2025-09-09T16:18:40Z",
+      "due_at": "2025-09-09T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-09-10T22:00:00+00:00",
+      "confidence": 0.9,
+      "signals": [
+        "owner_identified",
+        "part_number_present",
+        "close_phrase",
+        "pricing_request",
+        "lead_time_request",
+        "follow_up",
+        "attachment_present",
+        "logistics_only",
+        "shipping_signal",
+        "urgency",
+        "po_number_present",
+        "po_received"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "E",
+      "latest_outbound_snippet": "Hello Emil, You should see these samples tomorrow. [image.png]",
+      "thread_stage": "rfq",
+      "reference_numbers": {
+        "po_numbers": [
+          "57170"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107",
+          "681.201.2211",
+          "682.201.1611"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_1bd95b26c2516f8d_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAPNZ1ip5aodCjKWR6270OL4=",
+      "thread_subject": "The Cart Guy Load",
+      "subject_normalized": "the cart guy load",
+      "status": "waiting_on_customer",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "waiting_on_customer",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Awaiting customer response for part 574.822.9107.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2026-02-05T14:22:20Z",
+      "last_inbound_at": null,
+      "last_outbound_at": "2026-02-05T14:22:20Z",
+      "due_at": "2026-02-05T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-02-06T22:00:00+00:00",
+      "confidence": 0.9,
+      "signals": [
+        "close_phrase",
+        "shipping_signal",
+        "owner_identified",
+        "urgency",
+        "part_number_present"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": "Yes, this will pick up today! Sheryl Draus Customer Service Experience Entech, Inc. [image.png] a. 1...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_db36c35a6ba0812a_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAP2O8QlU69pPoPZ0oGTLmNA=",
+      "thread_subject": "PO 243551",
+      "subject_normalized": "po 243551",
+      "status": "waiting_on_customer",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "waiting_on_customer",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Awaiting customer response for PO 243551, 248541 / part 574.822.9107.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2026-02-18T16:04:43Z",
+      "last_inbound_at": "2026-02-18T14:25:47Z",
+      "last_outbound_at": "2026-02-18T16:04:43Z",
+      "due_at": "2026-02-18T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-02-19T22:00:00+00:00",
+      "confidence": 0.9,
+      "signals": [
+        "owner_identified",
+        "shipping_signal",
+        "po_number_present",
+        "po_received",
+        "close_phrase",
+        "attachment_present",
+        "urgency",
+        "part_number_present",
+        "follow_up",
+        "lead_time_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Has PO# 248541 shipped yet? Thanks! Jake Hunter Branch Manager [cid:email-logo-9-7-one-monroe-logo_0...",
+      "latest_outbound_snippet": "Hello Jake, Yes. It shipped 2/12/26 on TForce. [image.png]",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [
+          "243551",
+          "248541"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_a2f23c65839a1177_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAERUztzaSE9lnQvX4djKTZk=",
+      "thread_subject": "FW: Upcoming Wheel Needs",
+      "subject_normalized": "upcoming wheel needs",
+      "status": "waiting_on_customer",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "waiting_on_customer",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Awaiting customer response for PO 043739, 043767 / part 209.365.1365, 574.822.9107.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2025-10-09T15:02:15Z",
+      "last_inbound_at": "2025-10-09T13:53:28Z",
+      "last_outbound_at": "2025-10-09T15:02:15Z",
+      "due_at": "2025-10-09T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-10-10T22:00:00+00:00",
+      "confidence": 0.9,
+      "signals": [
+        "logistics_only",
+        "shipping_signal",
+        "owner_identified",
+        "lead_time_request",
+        "part_number_present",
+        "urgency",
+        "close_phrase",
+        "pricing_request",
+        "po_number_present",
+        "attachment_present",
+        "sample_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "From: Sheryl Draus <Sheryl.draus@4entech.com> Sent: Thursday, October 9, 2025 9:44 AM To: Gordon Cas...",
+      "latest_outbound_snippet": "Gordon, Does this afternoon work to talk? Philip Habecker Entech, Inc. a. 10440 County Road 2 Middle...",
+      "thread_stage": "shipping",
+      "reference_numbers": {
+        "po_numbers": [
+          "043739",
+          "043767"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "209.365.1365",
+          "574.822.9107",
+          "619.261.1931",
+          "619.308.2211",
+          "681.201.2211",
+          "704.333.2907"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_590d20e8f0db7d58_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAEgNJ2V1DkTWsDQBVDCdvkY=",
+      "thread_subject": "Re: Motion Industries Quote request FL04 Plant City, FL OCN 710836",
+      "subject_normalized": "motion industries quote request fl04 plant city, fl ocn 710836",
+      "status": "waiting_on_customer",
+      "priority": "high",
+      "action_needed": false,
+      "queue_bucket": "waiting_on_customer",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "shipping",
+      "customer_name": null,
+      "action_summary": "Awaiting customer response for part 574.822.9107, 643.256.1930.",
+      "last_meaningful_direction": "outbound_rolltech",
+      "last_meaningful_at": "2026-01-12T19:06:59Z",
+      "last_inbound_at": "2026-01-12T18:40:10Z",
+      "last_outbound_at": "2026-01-12T19:06:59Z",
+      "due_at": "2026-01-12T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-01-13T22:00:00+00:00",
+      "confidence": 0.9,
+      "signals": [
+        "attachment_present",
+        "owner_identified",
+        "pricing_request",
+        "close_phrase",
+        "urgency",
+        "lead_time_request",
+        "part_number_present",
+        "shipping_signal"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Please quote the below items and quantity with price, availability, and any tariffs that may apply. ...",
+      "latest_outbound_snippet": "Hello Ismael, Please see the attached quote for pricing. Let me know if you have any questions.",
+      "thread_stage": "rfq",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107",
+          "643.256.1930",
+          "644.254.1930"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_9efcb9602c41ec53_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQABWL4Myke_JJvpS2JJt859s=",
+      "thread_subject": "FW: Request for Quote for NPOR 13658 - Full Assembly",
+      "subject_normalized": "request for quote for npor 13658 - full assembly",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "needs_reply_today",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Send pricing.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-09-10T21:58:03Z",
+      "last_inbound_at": "2025-09-10T21:58:03Z",
+      "last_outbound_at": "2025-09-10T19:47:15Z",
+      "due_at": "2025-09-10T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-09-11T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "urgency",
+        "close_phrase",
+        "pricing_request",
+        "attachment_present",
+        "owner_identified",
+        "follow_up"
+      ],
+      "open_question": "Best regards, Denise Denise Shimandle Purchasing Manager \u200b\u200b\u200b\u200b Martin Wheel Div. of Americana Develop...",
+      "latest_inbound_snippet": "Best regards, Denise Denise Shimandle Purchasing Manager \u200b\u200b\u200b\u200b Martin Wheel Div. of Americana Develop...",
+      "latest_outbound_snippet": "Hello Denise, I've attached our quote for 644.306.353, which has an 850lb load rating, and 1.375\" in...",
+      "thread_stage": "rfq",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_34a071e6da86341b_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAHJKSmWYkk-Kutpq0NzknbU=",
+      "thread_subject": "wheel request",
+      "subject_normalized": "wheel request",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "needs_reply_today",
+      "owner_hint": null,
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Send pricing.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-01-14T13:44:03Z",
+      "last_inbound_at": "2026-01-14T13:44:03Z",
+      "last_outbound_at": "2026-01-14T13:42:47Z",
+      "due_at": "2026-01-14T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-01-15T22:00:00+00:00",
+      "confidence": 0.65,
+      "signals": [
+        "attachment_present",
+        "urgency",
+        "close_phrase",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Doug Eck- Owner The Cart Guy llc Cell (316) 640-6725 deck2150@gmail.com<mailto:deck2150@gmail.com> d...",
+      "latest_outbound_snippet": "Thanks, Doug. Please see the attached quote. We could get these out to you by the end of January, if...",
+      "thread_stage": "rfq",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_faec18208841c828_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAGCyHH2cm6lBjOM70CMU20A=",
+      "thread_subject": "Your message couldn't be delivered",
+      "subject_normalized": "your message couldn't be delivered",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "needs_reply_today",
+      "owner_hint": null,
+      "owner_bucket": "customer_service",
+      "customer_name": null,
+      "action_summary": "Fix bad recipient address and resend.",
+      "last_meaningful_direction": "system",
+      "last_meaningful_at": "2025-08-28T17:34:30Z",
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": "2025-08-28T22:00:00+00:00",
+      "due_reason": "Undeliverable notice requires same-day fix.",
+      "stale_after_at": "2025-08-29T22:00:00+00:00",
+      "confidence": 0.4,
+      "signals": [
+        "attachment_present",
+        "complaint_quality",
+        "undeliverable"
+      ],
+      "open_question": "[Logo] Your message couldn't be delivered The message you sent to noreply@cascadeng.com<mailto:norep...",
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": "post_sale_issue",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_628225c34bc76fda_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQABHR95lc_k2BskPb5M1T_Pw=",
+      "thread_subject": "Sand Springs order",
+      "subject_normalized": "sand springs order",
+      "status": "needs_internal_action",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "needs_reply_today",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Send pricing.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-03-27T20:14:11Z",
+      "last_inbound_at": "2026-03-27T20:14:11Z",
+      "last_outbound_at": "2026-03-27T20:00:07Z",
+      "due_at": "2026-03-30T22:00:00+00:00",
+      "due_reason": "New pricing/lead-time request.",
+      "stale_after_at": "2026-03-31T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "owner_identified",
+        "close_phrase",
+        "attachment_present",
+        "pricing_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Sent from my iPhone",
+      "latest_outbound_snippet": "Thank you, Doug! We've got it entered. We've had some massive orders come in recently. I think it's ...",
+      "thread_stage": "rfq",
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_844acab201a7e598_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQACln9IOgXopDgM4-tJsnVhQ=",
+      "thread_subject": "Conveyer & Caster New PO# 30900",
+      "subject_normalized": "conveyer & caster new po# 30900",
+      "status": "needs_internal_action",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "needs_reply_today",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Confirm pricing and lead time for PO 30900 / part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-11-11T19:08:21Z",
+      "last_inbound_at": "2025-11-11T19:08:21Z",
+      "last_outbound_at": "2025-11-11T19:04:16Z",
+      "due_at": "2025-11-12T22:00:00+00:00",
+      "due_reason": "New pricing/lead-time request.",
+      "stale_after_at": "2025-11-13T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "po_number_present",
+        "po_received",
+        "pricing_request",
+        "close_phrase",
+        "part_number_present",
+        "attachment_present",
+        "logistics_only",
+        "owner_identified",
+        "lead_time_request"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Sam Russell \u200b\u200b\u200b\u200b Inside Sales Coordinator | Conveyer & Caster https://www.cc-efi.com<https://www.cc-...",
+      "latest_outbound_snippet": "Hello Sam, Just double checking if 12/12/25 works for you as a completion date.",
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "30900"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_aea78dd3fd8b018b_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAImj-0Z_JIZLkNmPggNy9rw=",
+      "thread_subject": "FW: Help needed  PO 4501352458  Entech - Complete Customs Documents                     FW: ***URGEN...",
+      "subject_normalized": "help needed  po 4501352458  entech - complete customs documents                     fw: ***urgent***...",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "ready_to_process",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Process new PO for PO 4501352458 / part 262.560.5436, 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-08-26T15:06:54Z",
+      "last_inbound_at": "2025-08-26T15:06:54Z",
+      "last_outbound_at": "2025-08-26T14:45:53Z",
+      "due_at": "2025-08-26T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2025-08-27T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "close_phrase",
+        "urgency",
+        "po_number_present",
+        "po_received",
+        "part_number_present",
+        "attachment_present",
+        "owner_identified"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Jennifer Ritzow ORBIS Corporation Office: 262.560.5436",
+      "latest_outbound_snippet": "Please find attached USMCA form and updated commercial invoice. Please let me know if you need anyth...",
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "4501352458"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "262.560.5436",
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_00efff3e7e4282b2_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAMF84HMlKzVPjGyOJYO8VWM=",
+      "thread_subject": "PO 251305",
+      "subject_normalized": "po 251305",
+      "status": "needs_internal_action",
+      "priority": "high",
+      "action_needed": true,
+      "queue_bucket": "ready_to_process",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Provide lead time for PO 251305 / part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-03-16T19:37:28Z",
+      "last_inbound_at": "2026-03-16T19:37:28Z",
+      "last_outbound_at": "2026-03-16T19:34:01Z",
+      "due_at": "2026-03-16T22:00:00+00:00",
+      "due_reason": "Explicit urgency in thread.",
+      "stale_after_at": "2026-03-17T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "po_number_present",
+        "po_received",
+        "close_phrase",
+        "urgency",
+        "owner_identified",
+        "part_number_present",
+        "lead_time_request",
+        "attachment_present"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Kristen Morales Purchasing [cid:email-logo-9-7-one-monroe-logo_045e9f61-ff19-4af9-94e6-e6dbeb10d4f7....",
+      "latest_outbound_snippet": "Hello Kristen, We've got this order ready to go. 1 pallet 48x40x14; 265 lbs. Ready for us to reach o...",
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "251305"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_d55004d79b745036_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIaTm-cxE-hHgc15suvi3iM=",
+      "thread_subject": "RE: Conveyer & Caster New PO30874",
+      "subject_normalized": "conveyer & caster new po30874",
+      "status": "needs_internal_action",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "ready_to_process",
+      "owner_hint": null,
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Process new PO for PO 30874.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2025-11-05T20:52:29Z",
+      "last_inbound_at": "2025-11-05T20:52:29Z",
+      "last_outbound_at": null,
+      "due_at": "2025-11-06T22:00:00+00:00",
+      "due_reason": "New PO requires confirmation.",
+      "stale_after_at": "2025-11-07T22:00:00+00:00",
+      "confidence": 0.65,
+      "signals": [
+        "po_number_present",
+        "po_received"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "That will work for us.",
+      "latest_outbound_snippet": null,
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "30874"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_11f1994258cde39f_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIzgFqFbBBxFj93OLCPt3oA=",
+      "thread_subject": "Re: Conveyer & Caster New PO23800 PO32800",
+      "subject_normalized": "conveyer & caster new po23800 po32800",
+      "status": "needs_internal_action",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "ready_to_process",
+      "owner_hint": null,
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Process new PO for PO 23800, 32800 / part 216.472.1573.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-03-23T13:43:49Z",
+      "last_inbound_at": "2026-03-23T13:43:49Z",
+      "last_outbound_at": null,
+      "due_at": "2026-03-24T22:00:00+00:00",
+      "due_reason": "New PO requires confirmation.",
+      "stale_after_at": "2026-03-25T22:00:00+00:00",
+      "confidence": 0.65,
+      "signals": [
+        "attachment_present",
+        "close_phrase",
+        "po_number_present",
+        "po_received",
+        "part_number_present"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Thanks, Dave Gareau \u200b\u200b\u200b\u200b VP of Operations | Conveyer & Caster 216.472.1573<tel:216.472.1573> https:/...",
+      "latest_outbound_snippet": null,
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "23800",
+          "32800"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "216.472.1573"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_d11ec6bae14c5318_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAI47SufRvKtPkMTs0cRvTqU=",
+      "thread_subject": "Re: Conveyer & Caster New PO23800 PO32800",
+      "subject_normalized": "conveyer & caster new po23800 po32800",
+      "status": "needs_internal_action",
+      "priority": "medium",
+      "action_needed": true,
+      "queue_bucket": "ready_to_process",
+      "owner_hint": "Philip Habecker",
+      "owner_bucket": "sales",
+      "customer_name": null,
+      "action_summary": "Process new PO for PO 23800, 32800 / part 574.822.9107.",
+      "last_meaningful_direction": "inbound_customer",
+      "last_meaningful_at": "2026-03-23T13:47:03Z",
+      "last_inbound_at": "2026-03-23T13:47:03Z",
+      "last_outbound_at": null,
+      "due_at": "2026-03-24T22:00:00+00:00",
+      "due_reason": "New PO requires confirmation.",
+      "stale_after_at": "2026-03-25T22:00:00+00:00",
+      "confidence": 0.75,
+      "signals": [
+        "attachment_present",
+        "owner_identified",
+        "po_number_present",
+        "po_received",
+        "part_number_present"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": "Philip Habecker Entech, Inc. a. 10440 County Road 2 Middlebury, IN 46540 t. 574.822.9107 ext 418 d. ...",
+      "latest_outbound_snippet": null,
+      "thread_stage": "po_received",
+      "reference_numbers": {
+        "po_numbers": [
+          "23800",
+          "32800"
+        ],
+        "quote_numbers": [],
+        "part_numbers": [
+          "574.822.9107"
+        ],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": false
+    },
+    {
+      "action_record_id": "act_7b38ff88944e4e08_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAH5Uq7h3NntCuZUwE_39bps=",
+      "thread_subject": "",
+      "subject_normalized": "",
+      "status": "no_action_reference",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "noise",
+      "owner_hint": null,
+      "owner_bucket": null,
+      "customer_name": null,
+      "action_summary": "Logistics paperwork only, suppress from active queue.",
+      "last_meaningful_direction": "unknown",
+      "last_meaningful_at": null,
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.2,
+      "signals": [],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_5c8598d43d542d79_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAI3GWnByphJOhWjqz3v7mUI=",
+      "thread_subject": "Test Email",
+      "subject_normalized": "test email",
+      "status": "no_action_reference",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "noise",
+      "owner_hint": null,
+      "owner_bucket": null,
+      "customer_name": null,
+      "action_summary": "Logistics paperwork only, suppress from active queue.",
+      "last_meaningful_direction": "unknown",
+      "last_meaningful_at": null,
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.2,
+      "signals": [],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_dc8dba4f7dc17d97_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAC4eMYqHXpNKq8sCS4xELuQ=",
+      "thread_subject": "Cascade Eng. Schedule: 37ENT000 for  Date: 111125",
+      "subject_normalized": "cascade eng. schedule: 37ent000 for  date: 111125",
+      "status": "no_action_reference",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "noise",
+      "owner_hint": null,
+      "owner_bucket": null,
+      "customer_name": null,
+      "action_summary": "Logistics paperwork only, suppress from active queue.",
+      "last_meaningful_direction": "system",
+      "last_meaningful_at": "2025-11-11T18:32:41Z",
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.2,
+      "signals": [
+        "attachment_present",
+        "close_phrase"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_913a025b0b8a5d50_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAJI7p2FarcVHnZsqBAoEB78=",
+      "thread_subject": "",
+      "subject_normalized": "",
+      "status": "no_action_reference",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "noise",
+      "owner_hint": null,
+      "owner_bucket": null,
+      "customer_name": null,
+      "action_summary": "Logistics paperwork only, suppress from active queue.",
+      "last_meaningful_direction": "unknown",
+      "last_meaningful_at": null,
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.2,
+      "signals": [],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": false,
+      "is_noise_suppressed": true
+    },
+    {
+      "action_record_id": "act_9c61ffea2c5861c8_mvp_v1",
+      "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAOLRQPn8-MlBsfRHM3e5P9Y=",
+      "thread_subject": "Cascade Eng. Schedule: 37ENT000 for  Date: 082825",
+      "subject_normalized": "cascade eng. schedule: 37ent000 for  date: 082825",
+      "status": "no_action_reference",
+      "priority": "low",
+      "action_needed": false,
+      "queue_bucket": "noise",
+      "owner_hint": null,
+      "owner_bucket": null,
+      "customer_name": null,
+      "action_summary": "Logistics paperwork only, suppress from active queue.",
+      "last_meaningful_direction": "system",
+      "last_meaningful_at": "2025-08-28T20:00:18Z",
+      "last_inbound_at": null,
+      "last_outbound_at": null,
+      "due_at": null,
+      "due_reason": null,
+      "stale_after_at": null,
+      "confidence": 0.2,
+      "signals": [
+        "attachment_present",
+        "close_phrase"
+      ],
+      "open_question": null,
+      "latest_inbound_snippet": null,
+      "latest_outbound_snippet": null,
+      "thread_stage": null,
+      "reference_numbers": {
+        "po_numbers": [],
+        "quote_numbers": [],
+        "part_numbers": [],
+        "tracking_numbers": []
+      },
+      "has_attachments": true,
+      "is_noise_suppressed": true
+    }
+  ],
+  "daily_digest": {
+    "digest_type": "daily",
+    "digest_date": "2026-04-06",
+    "generated_at": "2026-04-07T04:22:36.338505+00:00",
+    "total_active": 192,
+    "total_suppressed": 136,
+    "total_items_surfaced": 91,
+    "sections": [
+      {
+        "title": "Needs reply first",
+        "count": 26,
+        "items": [
+          {
+            "subject": "FW: Help needed  PO 4501352458  Entech - Complete Customs Documents                     FW: ***URGEN...",
+            "summary": "Process new PO for PO 4501352458 / part 262.560.5436, 574.822.9107.",
+            "priority": "high",
+            "reference": "PO 4501352458 | PART 262.560.5436, 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAImj-0Z_JIZLkNmPggNy9rw=",
+            "due_reason": "Explicit urgency in thread.",
+            "open_question": null,
+            "has_attachments": true,
+            "confidence": 0.75,
+            "signals": [
+              "close_phrase",
+              "urgency",
+              "po_number_present",
+              "po_received",
+              "part_number_present",
+              "attachment_present",
+              "owner_identified"
+            ]
+          },
+          {
+            "subject": "Your message couldn't be delivered",
+            "summary": "Fix bad recipient address and resend.",
+            "priority": "high",
+            "reference": null,
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAGCyHH2cm6lBjOM70CMU20A=",
+            "due_reason": "Undeliverable notice requires same-day fix.",
+            "open_question": "[Logo] Your message couldn't be delivered The message you sent to noreply@cascadeng.com<mailto:norep...",
+            "has_attachments": true,
+            "confidence": 0.4,
+            "signals": [
+              "attachment_present",
+              "complaint_quality",
+              "undeliverable"
+            ]
+          },
+          {
+            "subject": "FW: Request for Quote for NPOR 13658 - Full Assembly",
+            "summary": "Send pricing.",
+            "priority": "high",
+            "reference": null,
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQABWL4Myke_JJvpS2JJt859s=",
+            "due_reason": "Explicit urgency in thread.",
+            "open_question": "Best regards, Denise Denise Shimandle Purchasing Manager \u200b\u200b\u200b\u200b Martin Wheel Div. of Americana Develop...",
+            "has_attachments": true,
+            "confidence": 0.75,
+            "signals": [
+              "urgency",
+              "close_phrase",
+              "pricing_request",
+              "attachment_present",
+              "owner_identified",
+              "follow_up"
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Internal blockers",
+        "count": 0,
+        "items": []
+      },
+      {
+        "title": "Orders ready to process",
+        "count": 5,
+        "items": [
+          {
+            "subject": "RE: Conveyer & Caster New PO30874",
+            "summary": "Process new PO for PO 30874.",
+            "priority": "medium",
+            "reference": "PO 30874",
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIaTm-cxE-hHgc15suvi3iM=",
+            "due_reason": "New PO requires confirmation.",
+            "open_question": null,
+            "has_attachments": false,
+            "confidence": 0.65,
+            "signals": [
+              "po_number_present",
+              "po_received"
+            ]
+          },
+          {
+            "subject": "FW: Help needed  PO 4501352458  Entech - Complete Customs Documents                     FW: ***URGEN...",
+            "summary": "Process new PO for PO 4501352458 / part 262.560.5436, 574.822.9107.",
+            "priority": "high",
+            "reference": "PO 4501352458 | PART 262.560.5436, 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAImj-0Z_JIZLkNmPggNy9rw=",
+            "due_reason": "Explicit urgency in thread.",
+            "open_question": null,
+            "has_attachments": true,
+            "confidence": 0.75,
+            "signals": [
+              "close_phrase",
+              "urgency",
+              "po_number_present",
+              "po_received",
+              "part_number_present",
+              "attachment_present",
+              "owner_identified"
+            ]
+          },
+          {
+            "subject": "PO 251305",
+            "summary": "Provide lead time for PO 251305 / part 574.822.9107.",
+            "priority": "high",
+            "reference": "PO 251305 | PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAMF84HMlKzVPjGyOJYO8VWM=",
+            "due_reason": "Explicit urgency in thread.",
+            "open_question": null,
+            "has_attachments": true,
+            "confidence": 0.75,
+            "signals": [
+              "po_number_present",
+              "po_received",
+              "close_phrase",
+              "urgency",
+              "owner_identified",
+              "part_number_present",
+              "lead_time_request",
+              "attachment_present"
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Ship / release watch",
+        "count": 34,
+        "items": [
+          {
+            "subject": "Entech Wheels",
+            "summary": "Send pricing for PO 5986 / part 574.822.9107.",
+            "priority": "high",
+            "reference": "PO 5986 | PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIpMP4KvCsxCgBRr3a-uB7s=",
+            "due_reason": "Explicit urgency in thread.",
+            "open_question": null,
+            "has_attachments": true,
+            "confidence": 0.75,
+            "signals": [
+              "owner_identified",
+              "shipping_signal",
+              "part_number_present",
+              "attachment_present",
+              "logistics_only",
+              "pricing_request",
+              "urgency",
+              "close_phrase",
+              "po_number_present",
+              "po_received"
+            ]
+          },
+          {
+            "subject": "Carolina Southern order",
+            "summary": "Handle shipping coordination for part 574.822.9107.",
+            "priority": "high",
+            "reference": "PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAJaODypFO0okmZ38-_waIvw=",
+            "due_reason": "Explicit urgency in thread.",
+            "open_question": null,
+            "has_attachments": true,
+            "confidence": 0.75,
+            "signals": [
+              "urgency",
+              "owner_identified",
+              "shipping_signal",
+              "close_phrase",
+              "part_number_present",
+              "attachment_present"
+            ]
+          },
+          {
+            "subject": "Purchase Order # 133618",
+            "summary": "Send pricing for part 574.822.9107.",
+            "priority": "medium",
+            "reference": "PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQABb4K4DSOkLgkBC5eLSPnn4=",
+            "due_reason": "New pricing/lead-time request.",
+            "open_question": "Please ship FedEx rt collect TLS Service QUOTE# F0626942CM04 Please make sure both of these pcs of i...",
+            "has_attachments": true,
+            "confidence": 0.95,
+            "signals": [
+              "logistics_only",
+              "pricing_request",
+              "close_phrase",
+              "shipping_signal",
+              "po_received",
+              "owner_identified",
+              "part_number_present",
+              "attachment_present"
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Quietly resolved",
+        "count": 26,
+        "items": [
+          {
+            "subject": "Unknown thread",
+            "summary": "Logistics paperwork only, suppress from active queue.",
+            "priority": "low",
+            "reference": null,
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAH5Uq7h3NntCuZUwE_39bps=",
+            "has_attachments": false
+          },
+          {
+            "subject": "Test Email",
+            "summary": "Logistics paperwork only, suppress from active queue.",
+            "priority": "low",
+            "reference": null,
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAI3GWnByphJOhWjqz3v7mUI=",
+            "has_attachments": false
+          },
+          {
+            "subject": "Unknown thread",
+            "summary": "Logistics paperwork only, suppress from active queue.",
+            "priority": "low",
+            "reference": null,
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAJI7p2FarcVHnZsqBAoEB78=",
+            "has_attachments": false
+          }
+        ]
+      }
+    ],
+    "digest_version": "1.0.0"
+  },
+  "weekly_digest": {
+    "digest_type": "weekly",
+    "week_ending": "2026-04-06",
+    "generated_at": "2026-04-07T04:22:36.338820+00:00",
+    "total_records": 328,
+    "total_active": 192,
+    "total_suppressed": 136,
+    "open_commitments": {
+      "total": 192,
+      "buckets": {
+        "needs_reply_today": [
+          {
+            "subject": "FW: Request for Quote for NPOR 13658 - Full Assembly",
+            "summary": "Send pricing.",
+            "priority": "high",
+            "status": "needs_internal_action",
+            "queue_bucket": "needs_reply_today",
+            "reference": null,
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQABWL4Myke_JJvpS2JJt859s=",
+            "confidence": 0.75,
+            "signals": [
+              "urgency",
+              "close_phrase",
+              "pricing_request",
+              "attachment_present",
+              "owner_identified",
+              "follow_up"
+            ],
+            "has_attachments": false
+          },
+          {
+            "subject": "Sand Springs order",
+            "summary": "Send pricing.",
+            "priority": "medium",
+            "status": "needs_internal_action",
+            "queue_bucket": "needs_reply_today",
+            "reference": null,
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQABHR95lc_k2BskPb5M1T_Pw=",
+            "confidence": 0.75,
+            "signals": [
+              "owner_identified",
+              "close_phrase",
+              "attachment_present",
+              "pricing_request"
+            ],
+            "has_attachments": false
+          }
+        ],
+        "ready_to_process": [
+          {
+            "subject": "RE: Conveyer & Caster New PO30874",
+            "summary": "Process new PO for PO 30874.",
+            "priority": "medium",
+            "status": "needs_internal_action",
+            "queue_bucket": "ready_to_process",
+            "reference": "PO 30874",
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIaTm-cxE-hHgc15suvi3iM=",
+            "confidence": 0.65,
+            "signals": [
+              "po_number_present",
+              "po_received"
+            ],
+            "has_attachments": false
+          },
+          {
+            "subject": "FW: Help needed  PO 4501352458  Entech - Complete Customs Documents                     FW: ***URGEN...",
+            "summary": "Process new PO for PO 4501352458 / part 262.560.5436, 574.822.9107.",
+            "priority": "high",
+            "status": "needs_internal_action",
+            "queue_bucket": "ready_to_process",
+            "reference": "PO 4501352458 | PART 262.560.5436, 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAImj-0Z_JIZLkNmPggNy9rw=",
+            "confidence": 0.75,
+            "signals": [
+              "close_phrase",
+              "urgency",
+              "po_number_present",
+              "po_received",
+              "part_number_present",
+              "attachment_present",
+              "owner_identified"
+            ],
+            "has_attachments": false
+          }
+        ],
+        "shipping_release_coordination": [
+          {
+            "subject": "Entech Wheels",
+            "summary": "Send pricing for PO 5986 / part 574.822.9107.",
+            "priority": "high",
+            "status": "needs_internal_action",
+            "queue_bucket": "shipping_release_coordination",
+            "reference": "PO 5986 | PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIpMP4KvCsxCgBRr3a-uB7s=",
+            "confidence": 0.75,
+            "signals": [
+              "owner_identified",
+              "shipping_signal",
+              "part_number_present",
+              "attachment_present",
+              "logistics_only",
+              "pricing_request",
+              "urgency",
+              "close_phrase",
+              "po_number_present",
+              "po_received"
+            ],
+            "has_attachments": false
+          },
+          {
+            "subject": "Carolina Southern order",
+            "summary": "Handle shipping coordination for part 574.822.9107.",
+            "priority": "high",
+            "status": "needs_internal_action",
+            "queue_bucket": "shipping_release_coordination",
+            "reference": "PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAJaODypFO0okmZ38-_waIvw=",
+            "confidence": 0.75,
+            "signals": [
+              "urgency",
+              "owner_identified",
+              "shipping_signal",
+              "close_phrase",
+              "part_number_present",
+              "attachment_present"
+            ],
+            "has_attachments": false
+          }
+        ],
+        "waiting_on_customer": [
+          {
+            "subject": "Account Update: New Contact",
+            "summary": "Awaiting customer response for PO 57170 / part 574.822.9107, 681.201.2211.",
+            "priority": "high",
+            "status": "waiting_on_customer",
+            "queue_bucket": "waiting_on_customer",
+            "reference": "PO 57170 | PART 574.822.9107, 681.201.2211, 682.201.1611",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAEfw1NsOPPNOnNcu2oLiEng=",
+            "confidence": 0.9,
+            "signals": [
+              "owner_identified",
+              "part_number_present",
+              "close_phrase",
+              "pricing_request",
+              "lead_time_request",
+              "follow_up",
+              "attachment_present",
+              "logistics_only",
+              "shipping_signal",
+              "urgency",
+              "po_number_present",
+              "po_received"
+            ],
+            "has_attachments": false
+          },
+          {
+            "subject": "The Cart Guy Load",
+            "summary": "Awaiting customer response for part 574.822.9107.",
+            "priority": "high",
+            "status": "waiting_on_customer",
+            "queue_bucket": "waiting_on_customer",
+            "reference": "PART 574.822.9107",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAPNZ1ip5aodCjKWR6270OL4=",
+            "confidence": 0.9,
+            "signals": [
+              "close_phrase",
+              "shipping_signal",
+              "owner_identified",
+              "urgency",
+              "part_number_present"
+            ],
+            "has_attachments": false
+          }
+        ],
+        "needs_review": [
+          {
+            "subject": "Certificate of Origin ",
+            "summary": "Review: Certificate of Origin for part 574.822.9107, 648.208.1530.",
+            "priority": "medium",
+            "status": "needs_review",
+            "queue_bucket": "needs_review",
+            "reference": "PART 574.822.9107, 648.208.1530",
+            "owner_hint": "Philip Habecker",
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAFuZ4cJtiU3vtrzk3SBED0E=",
+            "confidence": 0.6,
+            "signals": [
+              "attachment_present",
+              "owner_identified",
+              "part_number_present",
+              "close_phrase"
+            ],
+            "has_attachments": false
+          },
+          {
+            "subject": "Product Info",
+            "summary": "Review: Product Info.",
+            "priority": "medium",
+            "status": "needs_review",
+            "queue_bucket": "needs_review",
+            "reference": null,
+            "owner_hint": null,
+            "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAPbrwUL2cUjtg-lbPmJ9nT4=",
+            "confidence": 0.5,
+            "signals": [
+              "close_phrase"
+            ],
+            "has_attachments": false
+          }
+        ]
+      }
+    },
+    "at_risk": {
+      "count": 186,
+      "items": [
+        {
+          "subject": "Your message couldn't be delivered",
+          "summary": "Fix bad recipient address and resend.",
+          "priority": "high",
+          "status": "needs_internal_action",
+          "queue_bucket": "needs_reply_today",
+          "reference": null,
+          "owner_hint": null,
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAGCyHH2cm6lBjOM70CMU20A=",
+          "confidence": 0.4,
+          "signals": [
+            "attachment_present",
+            "complaint_quality",
+            "undeliverable"
+          ],
+          "risk_reasons": [
+            "high priority, needs action",
+            "overdue",
+            "stale \u2014 no recent activity",
+            "low confidence (40%)",
+            "undeliverable notice"
+          ],
+          "has_attachments": false
+        },
+        {
+          "subject": "PO # 184779 - please ship per instructions",
+          "summary": "Fix bad recipient address and resend for PO 184779 / part 574.822.9107.",
+          "priority": "high",
+          "status": "needs_internal_action",
+          "queue_bucket": "shipping_release_coordination",
+          "reference": "PO 184779 | PART 574.822.9107",
+          "owner_hint": "Philip Habecker",
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAIcWXocvichKkMYfBd65bZ0=",
+          "confidence": 0.75,
+          "signals": [
+            "close_phrase",
+            "shipping_signal",
+            "owner_identified",
+            "po_number_present",
+            "po_received",
+            "part_number_present",
+            "undeliverable",
+            "complaint_quality",
+            "attachment_present"
+          ],
+          "risk_reasons": [
+            "high priority, needs action",
+            "overdue",
+            "stale \u2014 no recent activity",
+            "undeliverable notice"
+          ],
+          "has_attachments": false
+        },
+        {
+          "subject": "Re: Conveyer & Caster New PO32004",
+          "summary": "Fix bad recipient address and resend for PO 32004 / part 216.472.1578, 574.822.9107.",
+          "priority": "high",
+          "status": "needs_internal_action",
+          "queue_bucket": "shipping_release_coordination",
+          "reference": "PO 32004 | PART 216.472.1578, 574.822.9107",
+          "owner_hint": "Philip Habecker",
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQALuMELyqfohEgFKYYH84yiU=",
+          "confidence": 0.8,
+          "signals": [
+            "close_phrase",
+            "shipping_signal",
+            "urgency",
+            "owner_identified",
+            "po_number_present",
+            "po_received",
+            "part_number_present",
+            "attachment_present",
+            "complaint_quality",
+            "undeliverable"
+          ],
+          "risk_reasons": [
+            "high priority, needs action",
+            "overdue",
+            "stale \u2014 no recent activity",
+            "undeliverable notice"
+          ],
+          "has_attachments": false
+        }
+      ]
+    },
+    "new_business": {
+      "rfq_threads": [
+        {
+          "subject": "Need Price & Lead ",
+          "summary": "Send pricing for part 574.822.9107, 640.255.2633.",
+          "priority": "high",
+          "status": "needs_internal_action",
+          "queue_bucket": "shipping_release_coordination",
+          "reference": "PART 574.822.9107, 640.255.2633",
+          "owner_hint": "Philip Habecker",
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAJT9bWTuhEZqlxoVtzu7H4A=",
+          "confidence": 0.75,
+          "signals": [
+            "pricing_request",
+            "owner_identified",
+            "close_phrase",
+            "complaint_quality",
+            "shipping_signal",
+            "part_number_present",
+            "urgency",
+            "sample_request",
+            "follow_up"
+          ],
+          "has_attachments": false
+        },
+        {
+          "subject": "2026-03-27.3 RE NEW RUSH Order-133676   RE  Entech P  --1008147 8'' rubber wheel  - IPL St-Damien",
+          "summary": "Awaiting customer response.",
+          "priority": "high",
+          "status": "waiting_on_customer",
+          "queue_bucket": "waiting_on_customer",
+          "reference": null,
+          "owner_hint": "Philip Habecker",
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAMkW5PHG4VlJn7wTHhoo7UI=",
+          "confidence": 0.9,
+          "signals": [
+            "urgency",
+            "owner_identified",
+            "shipping_signal",
+            "pricing_request",
+            "attachment_present"
+          ],
+          "has_attachments": false
+        }
+      ],
+      "order_threads": [
+        {
+          "subject": "Purchase Order 22516 from Jake, Connor & Crew",
+          "summary": "Awaiting customer response for part 574.822.9107, 681.201.2211.",
+          "priority": "high",
+          "status": "waiting_on_customer",
+          "queue_bucket": "waiting_on_customer",
+          "reference": "PART 574.822.9107, 681.201.2211, 683.201.2211",
+          "owner_hint": "Philip Habecker",
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAOCKipAsJ0ZgromldO7kwgE=",
+          "confidence": 0.75,
+          "signals": [
+            "close_phrase",
+            "shipping_signal",
+            "owner_identified",
+            "po_received",
+            "part_number_present",
+            "urgency",
+            "sample_request",
+            "complaint_quality",
+            "lead_time_request",
+            "attachment_present"
+          ],
+          "has_attachments": false
+        },
+        {
+          "subject": "PO 257030",
+          "summary": "Awaiting customer response for PO 257030.",
+          "priority": "medium",
+          "status": "waiting_on_customer",
+          "queue_bucket": "waiting_on_customer",
+          "reference": "PO 257030",
+          "owner_hint": null,
+          "thread_key": "AAQkAGJhOGJkYzY2LTYyYjAtNGVhMC1hYThiLTRkMTNiZDA4NThlOQAQAMTX0MDiMkZLjwVINx1veVk=",
+          "confidence": 0.8,
+          "signals": [
+            "po_number_present",
+            "po_received",
+            "attachment_present"
+          ],
+          "has_attachments": false
+        }
+      ],
+      "active_accounts": [
+        "Purchase Order 22516 from",
+        "Need Price & Lead",
+        "PO 257030",
+        "2026-03-27.3 RE NEW RUSH",
+        "PO 255630"
+      ],
+      "total_new_business": 17
+    },
+    "throughput": {
+      "resolved_count": 136,
+      "active_count": 192,
+      "newly_resolved_count": null,
+      "new_thread_count": null,
+      "resolved_threads": [],
+      "newly_resolved_threads": []
+    },
+    "noise_report": {
+      "total_suppressed": 136,
+      "noise_count": 42,
+      "resolved_count": 94,
+      "suppression_rate": 0.41,
+      "noise_threads": [],
+      "resolved_threads": []
+    },
+    "digest_version": "1.0.0"
+  }
+}
