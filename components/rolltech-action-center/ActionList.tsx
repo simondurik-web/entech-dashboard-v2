@@ -2,8 +2,9 @@
 
 import { cn } from "@/lib/utils"
 import type { ActionRecord } from "@/lib/rolltech-action-center/types"
-import { BUCKET_CONFIG, PRIORITY_CONFIG, SIGNAL_BADGES } from "@/lib/rolltech-action-center/types"
+import { BUCKET_CONFIG, PRIORITY_CONFIG, SIGNAL_BADGES, getDisplayName } from "@/lib/rolltech-action-center/types"
 import { Paperclip, AlertTriangle } from "lucide-react"
+import { useEffect, useRef, useCallback } from "react"
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return ""
@@ -24,6 +25,37 @@ interface ActionListProps {
 }
 
 export function ActionList({ records, selectedId, onSelect }: ActionListProps) {
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Keyboard navigation: ArrowUp/Down/j/k to move, Escape to deselect
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (records.length === 0) return
+      const currentIdx = selectedId ? records.findIndex((r) => r.action_record_id === selectedId) : -1
+
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault()
+        const nextIdx = currentIdx < records.length - 1 ? currentIdx + 1 : 0
+        onSelect(records[nextIdx].action_record_id)
+        listRef.current?.querySelector(`[data-record-id="${records[nextIdx].action_record_id}"]`)?.scrollIntoView({ block: "nearest" })
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault()
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : records.length - 1
+        onSelect(records[prevIdx].action_record_id)
+        listRef.current?.querySelector(`[data-record-id="${records[prevIdx].action_record_id}"]`)?.scrollIntoView({ block: "nearest" })
+      } else if (e.key === "Escape") {
+        e.preventDefault()
+        if (selectedId) onSelect(selectedId) // toggles off via parent handler
+      }
+    },
+    [records, selectedId, onSelect]
+  )
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [handleKeyDown])
+
   if (records.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
@@ -33,12 +65,13 @@ export function ActionList({ records, selectedId, onSelect }: ActionListProps) {
   }
 
   return (
-    <div className="divide-y">
+    <div ref={listRef} role="listbox" aria-label="Action records" className="divide-y">
       {records.map((record) => {
         const isSelected = record.action_record_id === selectedId
         const bucket = BUCKET_CONFIG[record.queue_bucket]
         const priority = PRIORITY_CONFIG[record.priority]
         const age = timeAgo(record.last_meaningful_at)
+        const displayName = getDisplayName(record)
         const refNums = [
           ...record.reference_numbers.po_numbers.map((p) => `PO ${p}`),
           ...record.reference_numbers.part_numbers.slice(0, 1),
@@ -51,20 +84,25 @@ export function ActionList({ records, selectedId, onSelect }: ActionListProps) {
           .map((s) => SIGNAL_BADGES[s])
 
         return (
-          <button
+          <div
             key={record.action_record_id}
+            role="option"
+            aria-selected={isSelected}
+            data-record-id={record.action_record_id}
+            tabIndex={0}
             onClick={() => onSelect(record.action_record_id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(record.action_record_id) } }}
             className={cn(
-              "flex w-full flex-col gap-1 px-3 py-2.5 text-left transition-colors",
+              "flex w-full cursor-pointer flex-col gap-1 px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
               isSelected
                 ? "bg-primary/5 border-l-2 border-primary"
                 : "hover:bg-accent/50 border-l-2 border-transparent"
             )}
           >
-            {/* Row 1: subject + age */}
+            {/* Row 1: display name + age */}
             <div className="flex items-start gap-2">
               <span className="flex-1 truncate text-sm font-medium leading-tight">
-                {record.thread_subject}
+                {displayName}
               </span>
               {age && (
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -138,7 +176,7 @@ export function ActionList({ records, selectedId, onSelect }: ActionListProps) {
                 </span>
               )}
             </div>
-          </button>
+          </div>
         )
       })}
     </div>

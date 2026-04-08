@@ -1,8 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import type { ActionRecord } from "@/lib/rolltech-action-center/types"
-import { BUCKET_CONFIG, PRIORITY_CONFIG, SIGNAL_BADGES } from "@/lib/rolltech-action-center/types"
+import { BUCKET_CONFIG, PRIORITY_CONFIG, SIGNAL_BADGES, getDisplayName } from "@/lib/rolltech-action-center/types"
 import { QuickActions } from "./QuickActions"
 import {
   Paperclip,
@@ -12,6 +13,8 @@ import {
   AlertTriangle,
   Hash,
   X,
+  ChevronsUpDown,
+  Clock,
 } from "lucide-react"
 
 function formatDate(dateStr: string | null): string {
@@ -37,8 +40,10 @@ interface ActionDetailProps {
 }
 
 export function ActionDetail({ record, onClose }: ActionDetailProps) {
+  const [threadExpanded, setThreadExpanded] = useState(false)
   const bucket = BUCKET_CONFIG[record.queue_bucket]
   const priority = PRIORITY_CONFIG[record.priority]
+  const displayName = getDisplayName(record)
   const allRefs = [
     ...record.reference_numbers.po_numbers.map((p) => ({ type: "PO", value: p })),
     ...record.reference_numbers.part_numbers.map((p) => ({ type: "Part", value: p })),
@@ -51,9 +56,10 @@ export function ActionDetail({ record, onClose }: ActionDetailProps) {
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-tight">{record.thread_subject}</h3>
-          {record.customer_name && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{record.customer_name}</p>
+          <h3 className="text-sm font-semibold leading-tight">{displayName}</h3>
+          {/* Show original subject as subtitle only when displayName differs */}
+          {displayName !== record.thread_subject && (
+            <p className="mt-0.5 text-xs text-muted-foreground truncate">{record.thread_subject}</p>
           )}
         </div>
         <button
@@ -71,12 +77,20 @@ export function ActionDetail({ record, onClose }: ActionDetailProps) {
         </span>
         <span className={cn("text-xs font-medium", bucket.color)}>{bucket.label}</span>
         {record.thread_stage && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground uppercase">
-            {record.thread_stage}
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide">
+            {record.thread_stage.replace(/_/g, " ")}
           </span>
         )}
-        <span className="text-[10px] text-muted-foreground">
-          {Math.round(record.confidence * 100)}% confidence
+        {record.owner_bucket && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground capitalize">
+            {record.owner_bucket}
+          </span>
+        )}
+        <span className={cn(
+          "ml-auto text-[10px] tabular-nums",
+          record.confidence < 0.5 ? "text-amber-500 font-medium" : "text-muted-foreground"
+        )}>
+          {Math.round(record.confidence * 100)}%
         </span>
       </div>
 
@@ -85,6 +99,14 @@ export function ActionDetail({ record, onClose }: ActionDetailProps) {
         <p className="text-xs font-medium text-muted-foreground mb-0.5">Next Action</p>
         <p className="text-sm">{record.action_summary}</p>
       </div>
+
+      {/* Stale warning */}
+      {record.stale_after_at && new Date(record.stale_after_at) < new Date() && (
+        <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-gray-700 dark:bg-gray-800/30 text-xs text-muted-foreground">
+          <Clock className="size-3.5 shrink-0" />
+          <span>Stale since {formatDate(record.stale_after_at)} — may need re-triage</span>
+        </div>
+      )}
 
       {/* Due / risk */}
       {record.due_at && (
@@ -176,15 +198,24 @@ export function ActionDetail({ record, onClose }: ActionDetailProps) {
         </div>
       )}
 
-      {/* Latest messages */}
+      {/* Latest messages — toggleable full-thread view */}
       {(record.latest_inbound_snippet || record.latest_outbound_snippet) && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1.5">Latest Context</p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Latest Context</p>
+            <button
+              onClick={() => setThreadExpanded((v) => !v)}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronsUpDown className="size-3" />
+              {threadExpanded ? "Collapse" : "Full thread"}
+            </button>
+          </div>
           <div className="space-y-2">
             {record.latest_inbound_snippet && (
               <div className="rounded-md border-l-2 border-green-400 bg-green-50/50 px-3 py-2 dark:bg-green-900/10">
                 <p className="text-[10px] font-medium text-green-600 dark:text-green-400 mb-0.5">Inbound</p>
-                <p className="text-xs text-foreground/70 line-clamp-3">
+                <p className={cn("text-xs text-foreground/70", !threadExpanded && "line-clamp-3")}>
                   {record.latest_inbound_snippet}
                 </p>
               </div>
@@ -192,7 +223,7 @@ export function ActionDetail({ record, onClose }: ActionDetailProps) {
             {record.latest_outbound_snippet && (
               <div className="rounded-md border-l-2 border-blue-400 bg-blue-50/50 px-3 py-2 dark:bg-blue-900/10">
                 <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 mb-0.5">Outbound</p>
-                <p className="text-xs text-foreground/70 line-clamp-3">
+                <p className={cn("text-xs text-foreground/70", !threadExpanded && "line-clamp-3")}>
                   {record.latest_outbound_snippet}
                 </p>
               </div>

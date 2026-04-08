@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
-import type { ActionRecord, QueueBucket } from "./types"
+import { useState, useMemo, useCallback, useEffect, useRef } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
+import type { QueueBucket } from "./types"
 import { BUCKET_CONFIG } from "./types"
 import {
   SEED_ACTION_RECORDS,
@@ -12,12 +13,29 @@ import {
 
 export type ViewMode = "queue" | "daily-digest" | "weekly-digest"
 
+const VALID_BUCKETS = new Set<string>(Object.keys(BUCKET_CONFIG))
+const VALID_VIEWS = new Set<string>(["queue", "daily-digest", "weekly-digest"])
+
+function parseBucketParam(v: string | null): QueueBucket | "all" {
+  if (!v || v === "all") return "all"
+  return VALID_BUCKETS.has(v) ? (v as QueueBucket) : "all"
+}
+
+function parseViewParam(v: string | null): ViewMode {
+  if (!v) return "queue"
+  return VALID_VIEWS.has(v) ? (v as ViewMode) : "queue"
+}
+
 export function useActionCenter() {
-  const [activeBucket, setActiveBucket] = useState<QueueBucket | "all">("all")
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const isInitialMount = useRef(true)
+
+  // Read initial state from URL
+  const [activeBucket, setActiveBucket] = useState<QueueBucket | "all">(() => parseBucketParam(searchParams.get("bucket")))
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("selected"))
   const [search, setSearch] = useState("")
-  const [viewMode, setViewMode] = useState<ViewMode>("queue")
-  const [hasAutoSelected, setHasAutoSelected] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>(() => parseViewParam(searchParams.get("view")))
 
   // Use seed data — will be replaced by API fetch later
   const records = SEED_ACTION_RECORDS
@@ -62,28 +80,17 @@ export function useActionCenter() {
     return result
   }, [records, activeBucket, search])
 
-  useEffect(() => {
-    if (viewMode !== "queue") return
-
-    if (filteredRecords.length === 0) {
-      if (selectedId !== null) setSelectedId(null)
-      return
-    }
-
-    if (!hasAutoSelected) {
-      setSelectedId((current) => current ?? filteredRecords[0].action_record_id)
-      setHasAutoSelected(true)
-      return
-    }
-
-    if (selectedId && !filteredRecords.some((record) => record.action_record_id === selectedId)) {
-      setSelectedId(filteredRecords[0].action_record_id)
-    }
-  }, [filteredRecords, hasAutoSelected, selectedId, viewMode])
+  // Derive effective selection: auto-select first item when nothing valid is selected
+  const effectiveSelectedId = useMemo(() => {
+    if (viewMode !== "queue") return selectedId
+    if (filteredRecords.length === 0) return null
+    if (selectedId && filteredRecords.some((r) => r.action_record_id === selectedId)) return selectedId
+    return filteredRecords[0].action_record_id
+  }, [viewMode, selectedId, filteredRecords])
 
   const selectedRecord = useMemo(
-    () => (selectedId ? records.find((r) => r.action_record_id === selectedId) ?? null : null),
-    [records, selectedId]
+    () => (effectiveSelectedId ? records.find((r) => r.action_record_id === effectiveSelectedId) ?? null : null),
+    [records, effectiveSelectedId]
   )
 
   const activeCount = useMemo(
@@ -104,7 +111,7 @@ export function useActionCenter() {
   return {
     activeBucket,
     setActiveBucket,
-    selectedId,
+    selectedId: effectiveSelectedId,
     selectedRecord,
     handleSelectRecord,
     search,

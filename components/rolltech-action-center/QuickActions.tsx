@@ -24,13 +24,13 @@ interface QuickActionsProps {
 
 export function QuickActions({ record }: QuickActionsProps) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <p className="text-xs font-medium text-muted-foreground">
           Quick Actions
         </p>
-        <span className="rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-          Read-only preview
+        <span className="rounded-full border border-dashed border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+          Preview only
         </span>
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -44,19 +44,29 @@ export function QuickActions({ record }: QuickActionsProps) {
               disabled
               aria-disabled="true"
               className={cn(
-                "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium opacity-80",
+                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
                 isCurrent
-                  ? "border-primary/30 bg-primary/5 text-primary cursor-default"
-                  : "border-border bg-muted/40 text-muted-foreground"
+                  ? "border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20 cursor-default"
+                  : "border-border bg-background text-muted-foreground cursor-not-allowed opacity-60"
               )}
-              title="Preview only. No write path is wired in this pass."
+              title={isCurrent ? `Current status: ${label}` : "Preview only — write path not wired yet"}
             >
               {icon}
-              {isCurrent ? `Current: ${label}` : label}
+              {isCurrent ? (
+                <>
+                  <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+                  {label}
+                </>
+              ) : label}
             </button>
           )
         })}
       </div>
+      {record.open_question && (
+        <p className="text-[10px] text-muted-foreground/70 italic">
+          Tip: resolve the open question before changing status.
+        </p>
+      )}
     </div>
   )
 }

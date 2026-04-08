@@ -1,5 +1,6 @@
 "use client"
 
+import { useRef, useCallback, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import type { QueueBucket } from "@/lib/rolltech-action-center/types"
 import { BUCKET_CONFIG } from "@/lib/rolltech-action-center/types"
@@ -33,17 +34,40 @@ interface BucketRailProps {
 }
 
 export function BucketRail({ activeBucket, onSelect, bucketCounts, sortedBuckets }: BucketRailProps) {
+  const railRef = useRef<HTMLDivElement>(null)
   const totalActive = Object.entries(bucketCounts)
     .filter(([k]) => k !== "resolved" && k !== "noise")
     .reduce((sum, [, v]) => sum + v, 0)
 
+  // All bucket items: "all" + sorted buckets
+  const allItems = useMemo<(QueueBucket | "all")[]>(() => ["all", ...sortedBuckets], [sortedBuckets])
+
+  const handleRailKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return
+      e.preventDefault()
+      const currentIdx = allItems.indexOf(activeBucket)
+      const nextIdx =
+        e.key === "ArrowDown"
+          ? (currentIdx + 1) % allItems.length
+          : (currentIdx - 1 + allItems.length) % allItems.length
+      onSelect(allItems[nextIdx])
+      // Focus the next button
+      const buttons = railRef.current?.querySelectorAll<HTMLButtonElement>("button")
+      buttons?.[nextIdx]?.focus()
+    },
+    [activeBucket, allItems, onSelect]
+  )
+
   return (
-    <div className="flex flex-col gap-0.5">
+    <div ref={railRef} className="flex flex-col gap-0.5" role="listbox" aria-label="Queue buckets" onKeyDown={handleRailKeyDown}>
       {/* All active */}
       <button
+        role="option"
+        aria-selected={activeBucket === "all"}
         onClick={() => onSelect("all")}
         className={cn(
-          "flex items-center justify-between rounded-md px-2.5 py-2 text-sm transition-colors",
+          "flex items-center justify-between rounded-md px-2.5 py-2 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
           activeBucket === "all"
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -63,9 +87,11 @@ export function BucketRail({ activeBucket, onSelect, bucketCounts, sortedBuckets
         return (
           <button
             key={bucket}
+            role="option"
+            aria-selected={isActive}
             onClick={() => onSelect(bucket)}
             className={cn(
-              "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+              "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
               isActive
                 ? "bg-primary/10 text-primary font-medium"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground"

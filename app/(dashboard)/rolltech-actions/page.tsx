@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, Component, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { useActionCenter } from "@/lib/rolltech-action-center/use-action-center"
@@ -18,6 +18,7 @@ import {
   CalendarDays,
   RefreshCw,
   Inbox,
+  AlertCircle,
 } from "lucide-react"
 
 function KpiBar({
@@ -276,10 +277,69 @@ function ActionCenterContent() {
   )
 }
 
+function LoadingSkeleton() {
+  return (
+    <div className="flex h-[calc(100vh-7rem)] flex-col gap-3 p-4 animate-pulse">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-6 w-56 rounded bg-muted" />
+          <div className="mt-1.5 h-3 w-40 rounded bg-muted" />
+        </div>
+        <div className="h-8 w-36 rounded-lg bg-muted" />
+      </div>
+      <div className="h-12 rounded-lg border bg-card" />
+      <div className="h-9 rounded-md bg-muted" />
+      <div className="flex flex-1 gap-3 overflow-hidden">
+        <div className="hidden md:block w-44 shrink-0 rounded-lg border bg-card" />
+        <div className="flex-1 rounded-lg border bg-card" />
+        <div className="hidden lg:block w-80 shrink-0 rounded-lg border bg-card" />
+      </div>
+    </div>
+  )
+}
+
+class ActionCenterErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-[calc(100vh-7rem)] flex-col items-center justify-center gap-4 p-8 text-center">
+          <div className="rounded-full border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+            <AlertCircle className="size-6 text-red-500" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Action Center failed to load</p>
+            <p className="text-xs text-muted-foreground max-w-md">
+              {this.state.error.message}
+            </p>
+          </div>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function RollTechActionsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading action center...</div>}>
-      <ActionCenterContent />
-    </Suspense>
+    <ActionCenterErrorBoundary>
+      <Suspense fallback={<LoadingSkeleton />}>
+        <ActionCenterContent />
+      </Suspense>
+    </ActionCenterErrorBoundary>
   )
 }

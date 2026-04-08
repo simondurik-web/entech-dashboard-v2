@@ -121,9 +121,25 @@ function DailyView({ digest }: { digest: DailyDigest }) {
 
   return (
     <div className="space-y-1">
+      {/* Summary stat strip */}
+      <div className="flex items-center gap-4 rounded-md bg-muted/50 px-3 py-2 mb-1">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-semibold tabular-nums">{digest.total_items_surfaced}</span>
+          <span className="text-[10px] text-muted-foreground">surfaced</span>
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-semibold tabular-nums">{digest.total_active}</span>
+          <span className="text-[10px] text-muted-foreground">active</span>
+        </div>
+        <div className="flex items-baseline gap-1.5 ml-auto">
+          <span className="text-sm font-semibold tabular-nums text-muted-foreground">{digest.total_suppressed}</span>
+          <span className="text-[10px] text-muted-foreground">suppressed</span>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
         <span>{digest.digest_date}</span>
-        <span>{digest.total_active} active / {digest.total_suppressed} suppressed</span>
+        <span>v{digest.digest_version}</span>
       </div>
 
       {digest.sections.map((section, idx) => (
@@ -149,6 +165,11 @@ function DailyView({ digest }: { digest: DailyDigest }) {
 }
 
 function WeeklyView({ digest }: { digest: WeeklyDigest }) {
+  const throughputDelta =
+    digest.throughput.newly_resolved_count != null && digest.throughput.new_thread_count != null
+      ? digest.throughput.newly_resolved_count - digest.throughput.new_thread_count
+      : null
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
@@ -157,7 +178,7 @@ function WeeklyView({ digest }: { digest: WeeklyDigest }) {
       </div>
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <div className="rounded-md border px-2.5 py-2">
           <p className="text-lg font-semibold tabular-nums">{digest.total_active}</p>
           <p className="text-[10px] text-muted-foreground">Active</p>
@@ -167,14 +188,27 @@ function WeeklyView({ digest }: { digest: WeeklyDigest }) {
           <p className="text-[10px] text-muted-foreground">Resolved</p>
         </div>
         <div className="rounded-md border px-2.5 py-2">
-          <p className="text-lg font-semibold tabular-nums">{digest.at_risk.count}</p>
+          <p className={cn("text-lg font-semibold tabular-nums", digest.at_risk.count > 0 ? "text-red-500" : "")}>{digest.at_risk.count}</p>
           <p className="text-[10px] text-muted-foreground">At Risk</p>
         </div>
         <div className="rounded-md border px-2.5 py-2">
           <p className="text-lg font-semibold tabular-nums">{digest.new_business.total_new_business}</p>
-          <p className="text-[10px] text-muted-foreground">New Business</p>
+          <p className="text-[10px] text-muted-foreground">New Biz</p>
         </div>
       </div>
+
+      {/* Throughput mini-bar */}
+      {throughputDelta !== null && (
+        <div className="flex items-center gap-3 rounded-md border px-3 py-2 text-xs">
+          <TrendingUp className={cn("size-3.5", throughputDelta >= 0 ? "text-green-500" : "text-amber-500")} />
+          <span className="text-muted-foreground">
+            {digest.throughput.newly_resolved_count ?? 0} resolved / {digest.throughput.new_thread_count ?? 0} new this week
+          </span>
+          <span className={cn("ml-auto font-medium tabular-nums", throughputDelta >= 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>
+            {throughputDelta >= 0 ? "+" : ""}{throughputDelta} net
+          </span>
+        </div>
+      )}
 
       {/* At-risk threads */}
       {digest.at_risk.count > 0 && (
@@ -186,6 +220,43 @@ function WeeklyView({ digest }: { digest: WeeklyDigest }) {
           {digest.at_risk.items.map((item, i) => (
             <DigestItemRow key={i} item={item} />
           ))}
+        </CollapsibleSection>
+      )}
+
+      {/* New business */}
+      {digest.new_business.total_new_business > 0 && (
+        <CollapsibleSection
+          title="New Business"
+          count={digest.new_business.total_new_business}
+          icon={<Briefcase className="size-3 text-green-500" />}
+          defaultOpen={false}
+        >
+          {digest.new_business.rfq_threads.length > 0 && (
+            <div className="py-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+                RFQs ({digest.new_business.rfq_threads.length})
+              </p>
+              {digest.new_business.rfq_threads.slice(0, 3).map((item, i) => (
+                <DigestItemRow key={i} item={item} />
+              ))}
+            </div>
+          )}
+          {digest.new_business.order_threads.length > 0 && (
+            <div className="py-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+                Orders ({digest.new_business.order_threads.length})
+              </p>
+              {digest.new_business.order_threads.slice(0, 3).map((item, i) => (
+                <DigestItemRow key={i} item={item} />
+              ))}
+            </div>
+          )}
+          {digest.new_business.active_accounts.length > 0 && (
+            <p className="text-[10px] text-muted-foreground py-1">
+              Active accounts: {digest.new_business.active_accounts.slice(0, 5).join(", ")}
+              {digest.new_business.active_accounts.length > 5 && ` +${digest.new_business.active_accounts.length - 5} more`}
+            </p>
+          )}
         </CollapsibleSection>
       )}
 
@@ -204,14 +275,20 @@ function WeeklyView({ digest }: { digest: WeeklyDigest }) {
             {items.slice(0, 2).map((item, i) => (
               <DigestItemRow key={i} item={item} />
             ))}
+            {items.length > 2 && (
+              <p className="text-[10px] text-muted-foreground py-0.5">+{items.length - 2} more</p>
+            )}
           </div>
         ))}
       </CollapsibleSection>
 
       {/* Noise/suppression */}
       <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
-        <p className="font-medium">Suppression Report</p>
-        <p className="text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <VolumeX className="size-3 text-muted-foreground" />
+          <p className="font-medium">Suppression Report</p>
+        </div>
+        <p className="text-muted-foreground mt-0.5">
           {digest.noise_report.total_suppressed} suppressed ({Math.round(digest.noise_report.suppression_rate * 100)}% rate)
           — {digest.noise_report.noise_count} noise, {digest.noise_report.resolved_count} resolved
         </p>
