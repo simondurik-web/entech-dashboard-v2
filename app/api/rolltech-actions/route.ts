@@ -38,13 +38,6 @@ export async function GET() {
       .from("v_action_center_queue")
       .select("*")
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const records = (rawRecords ?? []).map((r: any) => ({
-      ...r,
-      priority: r.effective_priority ?? r.priority ?? "low",
-      status: r.effective_status ?? r.status ?? "open",
-    }))
-
     if (error) {
       console.error("[rolltech-actions] Supabase query error:", error)
       return NextResponse.json(
@@ -52,6 +45,13 @@ export async function GET() {
         { status: 502 }
       )
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const records = (rawRecords ?? []).map((r: any) => ({
+      ...r,
+      priority: (r.effective_priority ?? r.machine_priority ?? r.priority ?? "low") as string,
+      status: (r.effective_status ?? r.machine_status ?? r.status ?? "open") as string,
+    }))
 
 
     // Compute bucket counts from live data

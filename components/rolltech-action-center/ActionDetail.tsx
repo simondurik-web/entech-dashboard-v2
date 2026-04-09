@@ -57,7 +57,7 @@ export function ActionDetail({
   const effective = threadDetail ?? record
   const [threadExpanded, setThreadExpanded] = useState(false)
   const bucket = BUCKET_CONFIG[effective.queue_bucket]
-  const priority = PRIORITY_CONFIG[effective.priority]
+  const priority = PRIORITY_CONFIG[effective.priority] ?? PRIORITY_CONFIG["low"]
   const displayName = getDisplayName(effective)
   const allRefs = [
     ...effective.reference_numbers.po_numbers.map((p) => ({ type: "PO", value: p })),

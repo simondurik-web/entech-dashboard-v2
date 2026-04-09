@@ -69,7 +69,7 @@ export function ActionList({ records, selectedId, onSelect }: ActionListProps) {
       {records.map((record) => {
         const isSelected = record.action_record_id === selectedId
         const bucket = BUCKET_CONFIG[record.queue_bucket]
-        const priority = PRIORITY_CONFIG[record.priority]
+        const priority = PRIORITY_CONFIG[record.priority] ?? PRIORITY_CONFIG["low"]
         const age = timeAgo(record.last_meaningful_at)
         const displayName = getDisplayName(record)
         const refNums = [
