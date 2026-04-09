@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import type { QueueBucket } from "@/lib/rolltech-action-center/types"
 
@@ -22,7 +23,16 @@ interface MutatePayload {
   note?: string
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Auth guard — require x-user-id header set by the session middleware/layout
+  const userId = req.headers.get("x-user-id")
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    )
+  }
+
   try {
     const body = (await req.json()) as Partial<MutatePayload>
 
@@ -55,7 +65,7 @@ export async function POST(req: Request) {
       .insert({
         thread_key: body.thread_key,
         action_type: body.action_type,
-        performed_by: body.performed_by ?? "dashboard:system",
+        performed_by: body.performed_by ?? userId,
         previous_bucket: current?.queue_bucket ?? null,
         note: body.note ?? null,
       })

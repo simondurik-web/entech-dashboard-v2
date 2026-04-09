@@ -262,6 +262,7 @@ function ActionCenterContent() {
             <div className="hidden lg:block w-80 shrink-0 overflow-y-auto rounded-lg border bg-card p-3">
               {selectedRecord ? (
                 <ActionDetail
+                  key={selectedRecord.thread_key}
                   record={selectedRecord}
                   onClose={() => handleSelectRecord(selectedRecord.action_record_id)}
                   threadDetail={threadDetail}
@@ -296,6 +297,7 @@ function ActionCenterContent() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <ActionDetail
+                  key={selectedRecord.thread_key}
                   record={selectedRecord}
                   onClose={() => handleSelectRecord(selectedRecord.action_record_id)}
                   threadDetail={threadDetail}
