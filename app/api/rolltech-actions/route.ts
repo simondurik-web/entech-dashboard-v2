@@ -31,10 +31,19 @@ const EMPTY_BUCKET_COUNTS: Record<QueueBucket, number> = {
 export async function GET() {
   try {
     // Fetch all action records from the live view
-    const { data: records, error } = await supabaseAdmin
+    // The view uses effective_priority / effective_status columns;
+    // we remap them to priority / status to match ActionRecord type.
+    const { data: rawRecords, error } = await supabaseAdmin
       .schema("work_email")
       .from("v_action_center_queue")
       .select("*")
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const records = (rawRecords ?? []).map((r: any) => ({
+      ...r,
+      priority: r.effective_priority ?? r.priority ?? "low",
+      status: r.effective_status ?? r.status ?? "open",
+    }))
 
     if (error) {
       console.error("[rolltech-actions] Supabase query error:", error)
@@ -43,6 +52,7 @@ export async function GET() {
         { status: 502 }
       )
     }
+
 
     // Compute bucket counts from live data
     const bucketCounts = { ...EMPTY_BUCKET_COUNTS }
@@ -54,7 +64,7 @@ export async function GET() {
     }
 
     const response: ActionCenterResponse = {
-      records: (records ?? []) as ActionRecord[],
+      records: records as ActionRecord[],
       bucket_counts: bucketCounts,
       // Digests are not yet available in Supabase views — placeholder nulls.
       // Phase 5+ will wire v_action_center_daily_digest / weekly_digest views.

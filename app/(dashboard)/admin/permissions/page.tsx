@@ -26,6 +26,7 @@ const ALL_MENU_PATHS = [
   '/phil-assistant',
   '/scheduling',
   '/labels',
+  '/rolltech-actions',
   // Feature permissions (not page paths)
   'manage_priority',
   'assign_orders',
@@ -70,6 +71,7 @@ const PATH_LABELS: Record<string, string> = {
   '/scheduling': '📅 Scheduling',
   '/scheduling:edit': '📅 Scheduling: Edit',
   '/labels': 'Labels',
+  '/rolltech-actions': '📬 RollTech Action Center',
   'labels:generate': '🏷️ Generate Labels',
   'labels:print': '🖨️ Print Labels',
   'labels:settings': '⚙️ Label Settings',
