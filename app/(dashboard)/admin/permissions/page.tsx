@@ -16,7 +16,7 @@ interface RolePermission {
 }
 
 const ALL_MENU_PATHS = [
-  '/orders', '/need-to-make', '/need-to-package', '/staged', '/shipped',
+  '/orders', '/rolltech-actions', '/need-to-make', '/need-to-package', '/staged', '/shipped',
   '/inventory', '/inventory-history', '/drawings', '/pallet-records',
   '/shipping-records', '/shipping-overview', '/fp-reference', '/staged-records',
   '/sales-overview', '/sales-parts', '/sales-customers', '/sales-dates',
@@ -39,6 +39,7 @@ const ALL_MENU_PATHS = [
 
 const PATH_LABELS: Record<string, string> = {
   '/orders': 'Orders',
+  '/rolltech-actions': '🎯 RollTech Action Center',
   '/need-to-make': 'Need to Make',
   '/need-to-package': 'Need to Package',
   '/staged': 'Staged',
