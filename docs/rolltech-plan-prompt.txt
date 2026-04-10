@@ -1,0 +1,11 @@
+Analyze the current state of the RollTech Action Center in this repo.
+Context:
+- Milestone 1 is done: real RollTech data is loaded in Supabase.
+- Milestone 2A is done: queue, counts, and digests are already reading live data.
+- Milestone 2B is done: the per-thread API route exists, the hook-side thread detail fetch is in the repo, the detail panel UI pass-through/render is done.
+- Milestone 3 (Write path) is partly done / blocked: Write path wiring is complete in the UI (mutating state, onMutate, mutate API route stubbed). Writes are blocked pending Phase 5 table confirmation (need to confirm underlying writable table(s) in `work_email` schema and RLS policies, then implement `app/api/rolltech-actions/mutate/route.ts` body).
+- Recent fix: Stage 2 deterministic signal extractor (`scripts/signal-extract.py`) was built. Needs wiring into the ingest pipeline.
+
+Your task:
+Provide a phase-by-phase implementation plan to reach a fully connected working system (reads, writes, DB persistence, and ingest pipeline wiring) that can be tested on staging. The plan must identify which phases can be delegated to parallel sub-agents (Codex/Sonnet) to speed up the process.
+Write the complete plan to docs/rolltech-completion-plan.md. Do not modify any other files.

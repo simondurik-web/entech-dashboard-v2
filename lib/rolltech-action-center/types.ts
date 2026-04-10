@@ -168,6 +168,31 @@ export const PRIORITY_CONFIG: Record<ActionPriority, { label: string; color: str
   low: { label: "Low", color: "text-gray-500 dark:text-gray-400", bg: "bg-gray-100 dark:bg-gray-800" },
 }
 
+/**
+ * Derive a short display name for an action record.
+ * Prefers customer_name when available; otherwise falls back to a cleaned
+ * version of thread_subject (strips Re/Fwd prefixes, trims common noise).
+ */
+export function getDisplayName(record: Pick<ActionRecord, "customer_name" | "thread_subject">): string {
+  if (record.customer_name) return record.customer_name
+
+  let name = record.thread_subject
+  // Strip Re:/Fwd:/FW: chains
+  name = name.replace(/^(?:(?:re|fwd?)\s*:\s*)+/i, "").trim()
+  // If subject starts with a recognizable "Company - ..." or "Company:" pattern, use just the company part
+  const dashMatch = name.match(/^([^-–—]+?)\s*[-–—]\s+/)
+  if (dashMatch && dashMatch[1].length >= 3 && dashMatch[1].length <= 60) {
+    return dashMatch[1].trim()
+  }
+  // Truncate long subjects
+  if (name.length > 50) name = name.slice(0, 47) + "…"
+  return name || "Unknown Thread"
+}
+
+// Spec mapping: 'Waiting on RollTech / Production' → needs_internal_decision bucket
+// These threads require an internal decision or action from the RollTech/Production team
+// before they can progress. The queue_bucket value "needs_internal_decision" covers this case.
+
 export const SIGNAL_BADGES: Record<string, { label: string; variant: "default" | "destructive" | "outline" }> = {
   pricing_request: { label: "RFQ", variant: "outline" },
   po_received: { label: "PO", variant: "default" },

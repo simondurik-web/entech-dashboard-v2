@@ -1,7 +1,8 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, Component, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
+import { usePermissions } from "@/lib/use-permissions"
 import { Input } from "@/components/ui/input"
 import { useActionCenter } from "@/lib/rolltech-action-center/use-action-center"
 import { BucketRail } from "@/components/rolltech-action-center/BucketRail"
@@ -16,8 +17,8 @@ import {
   LayoutList,
   Calendar,
   CalendarDays,
-  RefreshCw,
   Inbox,
+  AlertCircle,
 } from "lucide-react"
 
 function KpiBar({
@@ -148,33 +149,49 @@ function ActionCenterContent() {
     sortedBuckets,
     dailyDigest,
     weeklyDigest,
+    isLoading,
+    error,
+    threadDetail,
+    threadDetailLoading,
+    onMutate,
+    mutating,
+    lastMutateDryRun,
   } = useActionCenter()
+
+  if (isLoading) return <LoadingSkeleton />
+
+  if (error) {
+    return (
+      <div className="flex h-[calc(100vh-7rem)] flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="rounded-full border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+          <AlertCircle className="size-6 text-red-500" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-semibold">Failed to load action center</p>
+          <p className="text-xs text-muted-foreground max-w-md">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
   const shownCount =
     viewMode === "queue"
       ? filteredRecords.length
       : viewMode === "daily-digest"
-        ? dailyDigest.total_items_surfaced
-        : weeklyDigest.total_records
+        ? (dailyDigest?.total_items_surfaced ?? 0)
+        : (weeklyDigest?.total_records ?? 0)
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-3 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold">RollTech Action Center</h1>
+          <h1 className="text-xl font-bold">Sales Action Center</h1>
           <p className="text-xs text-muted-foreground">
-            Seed data preview only. {shownCount} items shown, no writes enabled.
+            {shownCount} items · live queue data · {lastMutateDryRun === false ? "actions are live" : "quick actions are dry-run only"}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle mode={viewMode} onSelect={setViewMode} />
-          <button
-            disabled
-            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground opacity-50 cursor-not-allowed"
-            title="Sync not wired — using seed data"
-          >
-            <RefreshCw className="size-3" />
-            Sync
-          </button>
         </div>
       </div>
 
@@ -182,16 +199,26 @@ function ActionCenterContent() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <KpiBar bucketCounts={bucketCounts} />
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span>Daily {dailyDigest.digest_date}</span>
-            <span className="hidden sm:inline">•</span>
-            <span>Week ending {weeklyDigest.week_ending}</span>
+            {dailyDigest && <span>Daily {dailyDigest.digest_date}</span>}
+            {dailyDigest && weeklyDigest && <span className="hidden sm:inline">•</span>}
+            {weeklyDigest && <span>Week ending {weeklyDigest.week_ending}</span>}
+            {!dailyDigest && !weeklyDigest && <span>Digests not yet available</span>}
           </div>
         </div>
       </div>
 
       {viewMode !== "queue" && (
         <div className="flex-1 overflow-y-auto rounded-lg border bg-card p-4">
-          <DigestPreview daily={dailyDigest} weekly={weeklyDigest} />
+          {dailyDigest && weeklyDigest ? (
+            <DigestPreview daily={dailyDigest} weekly={weeklyDigest} />
+          ) : (
+            <div className="flex h-full min-h-[10rem] flex-col items-center justify-center gap-2 text-center">
+              <Calendar className="size-5 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Digest data is not yet available from the live API.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -235,8 +262,14 @@ function ActionCenterContent() {
             <div className="hidden lg:block w-80 shrink-0 overflow-y-auto rounded-lg border bg-card p-3">
               {selectedRecord ? (
                 <ActionDetail
+                  key={selectedRecord.thread_key}
                   record={selectedRecord}
                   onClose={() => handleSelectRecord(selectedRecord.action_record_id)}
+                  threadDetail={threadDetail}
+                  threadDetailLoading={threadDetailLoading}
+                  onMutate={onMutate}
+                  mutating={mutating}
+                  isDryRun={lastMutateDryRun}
                 />
               ) : (
                 <div className="flex h-full min-h-[20rem] flex-col items-center justify-center gap-3 text-center">
@@ -264,8 +297,14 @@ function ActionCenterContent() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <ActionDetail
+                  key={selectedRecord.thread_key}
                   record={selectedRecord}
                   onClose={() => handleSelectRecord(selectedRecord.action_record_id)}
+                  threadDetail={threadDetail}
+                  threadDetailLoading={threadDetailLoading}
+                  onMutate={onMutate}
+                  mutating={mutating}
+                  isDryRun={lastMutateDryRun}
                 />
               </div>
             </div>
@@ -276,10 +315,84 @@ function ActionCenterContent() {
   )
 }
 
-export default function RollTechActionsPage() {
+function LoadingSkeleton() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading action center...</div>}>
-      <ActionCenterContent />
-    </Suspense>
+    <div className="flex h-[calc(100vh-7rem)] flex-col gap-3 p-4 animate-pulse">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-6 w-56 rounded bg-muted" />
+          <div className="mt-1.5 h-3 w-40 rounded bg-muted" />
+        </div>
+        <div className="h-8 w-36 rounded-lg bg-muted" />
+      </div>
+      <div className="h-12 rounded-lg border bg-card" />
+      <div className="h-9 rounded-md bg-muted" />
+      <div className="flex flex-1 gap-3 overflow-hidden">
+        <div className="hidden md:block w-44 shrink-0 rounded-lg border bg-card" />
+        <div className="flex-1 rounded-lg border bg-card" />
+        <div className="hidden lg:block w-80 shrink-0 rounded-lg border bg-card" />
+      </div>
+    </div>
+  )
+}
+
+class ActionCenterErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-[calc(100vh-7rem)] flex-col items-center justify-center gap-4 p-8 text-center">
+          <div className="rounded-full border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+            <AlertCircle className="size-6 text-red-500" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Action Center failed to load</p>
+            <p className="text-xs text-muted-foreground max-w-md">
+              {this.state.error.message}
+            </p>
+          </div>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+export default function RollTechActionsPage() {
+  const { canAccess } = usePermissions()
+
+  if (!canAccess('/rolltech-actions')) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
+          <h2 className="mb-2 text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">
+            You do not have permission to view the Sales Action Center.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <ActionCenterErrorBoundary>
+      <Suspense fallback={<LoadingSkeleton />}>
+        <ActionCenterContent />
+      </Suspense>
+    </ActionCenterErrorBoundary>
   )
 }
