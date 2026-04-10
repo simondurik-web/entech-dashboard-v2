@@ -2,6 +2,7 @@
 
 import { Suspense, Component, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
+import { usePermissions } from "@/lib/use-permissions"
 import { Input } from "@/components/ui/input"
 import { useActionCenter } from "@/lib/rolltech-action-center/use-action-center"
 import { BucketRail } from "@/components/rolltech-action-center/BucketRail"
@@ -16,7 +17,6 @@ import {
   LayoutList,
   Calendar,
   CalendarDays,
-  RefreshCw,
   Inbox,
   AlertCircle,
 } from "lucide-react"
@@ -185,7 +185,7 @@ function ActionCenterContent() {
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-3 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold">RollTech Action Center</h1>
+          <h1 className="text-xl font-bold">Sales Action Center</h1>
           <p className="text-xs text-muted-foreground">
             {shownCount} items · live queue data · {lastMutateDryRun === false ? "actions are live" : "quick actions are dry-run only"}
           </p>
@@ -373,6 +373,21 @@ class ActionCenterErrorBoundary extends Component<
 }
 
 export default function RollTechActionsPage() {
+  const { canAccess } = usePermissions()
+
+  if (!canAccess('/rolltech-actions')) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
+          <h2 className="mb-2 text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">
+            You do not have permission to view the Sales Action Center.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <ActionCenterErrorBoundary>
       <Suspense fallback={<LoadingSkeleton />}>

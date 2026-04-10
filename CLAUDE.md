@@ -1,7 +1,31 @@
+## Agent Performance Tips
+
+### Hidden/Deferred Tools — Use Explicitly
+Claude Code has 18+ tools that are hidden by default and require discovery. Reference them directly to skip the lookup step:
+- **EnterWorktreeTool / ExitWorktreeTool** — Git worktree isolation for safe parallel work
+- **LSPTool** — Use for goToDefinition, findReferences, hover, documentSymbol, workspaceSymbol, goToImplementation, prepareCallHierarchy, incomingCalls, outgoingCalls
+- **WebFetchTool** — URL fetching with AI content extraction (15-min cache)
+- **NotebookEditTool** — Jupyter notebook manipulation if needed
+
+### Tool Execution Order
+- **Read-only tools run concurrently** (max 10): Grep, FileRead, Glob — batch these first
+- **Write tools run serially**: FileEdit, FileWrite — do all reads before writes for speed
+
+### Thinking Escalation
+Use these keywords to control reasoning depth:
+- `think` — standard reasoning
+- `think hard` — deeper analysis
+- `think harder` — significant reasoning budget
+- `ultrathink` — maximum reasoning, allocates up to 30 min deep thinking
+
+### Tool Output Limits
+- BashTool caps at 30K chars, GrepTool at 20K chars
+- If you need full output from large commands, pipe to a file first, then read specific sections
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **entech-dashboard-v2** (2406 symbols, 5582 relationships, 191 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **entech-dashboard-v2** (2422 symbols, 5602 relationships, 192 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
