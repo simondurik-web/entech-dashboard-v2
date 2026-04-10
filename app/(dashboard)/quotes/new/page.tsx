@@ -116,6 +116,28 @@ export default function NewQuotePage() {
     }])
   }, [itemCounter])
 
+  const addAllProducts = useCallback(() => {
+    const existingProductIds = new Set(items.map(i => i.product?.id).filter(Boolean))
+    const newProducts = products.filter(p => !existingProductIds.has(p.id))
+    if (newProducts.length === 0) return
+    let counter = itemCounter
+    const newItems: QuoteItem[] = newProducts.map(product => {
+      counter++
+      const tiers = parseTiers(product)
+      return {
+        id: counter,
+        product,
+        displayMode: 'tiers' as const,
+        quantity: 0,
+        unitPrice: 0,
+        total: 0,
+        tiers,
+      }
+    })
+    setItemCounter(counter)
+    setItems(prev => [...prev, ...newItems])
+  }, [products, items, itemCounter])
+
   const removeItem = useCallback((id: number) => {
     setItems(prev => prev.filter(i => i.id !== id))
   }, [])
@@ -319,13 +341,22 @@ export default function NewQuotePage() {
           </div>
         ))}
 
-        <button
-          onClick={addItem}
-          disabled={!selectedCustomer || products.length === 0}
-          className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          ➕ Add Product
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={addItem}
+            disabled={!selectedCustomer || products.length === 0}
+            className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ➕ Add Product
+          </button>
+          <button
+            onClick={addAllProducts}
+            disabled={!selectedCustomer || products.length === 0}
+            className="px-4 py-2 bg-blue-900/40 border border-blue-700 rounded text-sm text-blue-300 hover:bg-blue-800/60 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ➕➕ Add All Products
+          </button>
+        </div>
       </div>
 
       {/* Notes */}
