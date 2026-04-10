@@ -40,7 +40,7 @@ const ALL_MENU_PATHS = [
 
 const PATH_LABELS: Record<string, string> = {
   '/orders': 'Orders',
-  '/rolltech-actions': '🎯 RollTech Action Center',
+  '/rolltech-actions': '📬 Sales Action Center',
   '/need-to-make': 'Need to Make',
   '/need-to-package': 'Need to Package',
   '/staged': 'Staged',
@@ -72,7 +72,6 @@ const PATH_LABELS: Record<string, string> = {
   '/scheduling': '📅 Scheduling',
   '/scheduling:edit': '📅 Scheduling: Edit',
   '/labels': 'Labels',
-  '/rolltech-actions': '📬 RollTech Action Center',
   'labels:generate': '🏷️ Generate Labels',
   'labels:print': '🖨️ Print Labels',
   'labels:settings': '⚙️ Label Settings',

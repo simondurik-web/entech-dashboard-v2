@@ -185,7 +185,7 @@ function ActionCenterContent() {
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-3 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold">RollTech Action Center</h1>
+          <h1 className="text-xl font-bold">Sales Action Center</h1>
           <p className="text-xs text-muted-foreground">
             {shownCount} items · live queue data · {lastMutateDryRun === false ? "actions are live" : "quick actions are dry-run only"}
           </p>
@@ -381,7 +381,7 @@ export default function RollTechActionsPage() {
         <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
           <h2 className="mb-2 text-xl font-semibold">Access Denied</h2>
           <p className="text-muted-foreground">
-            You do not have permission to view the RollTech Action Center.
+            You do not have permission to view the Sales Action Center.
           </p>
         </div>
       </div>

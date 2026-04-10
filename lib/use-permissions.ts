@@ -11,7 +11,7 @@ type RolePermission = {
 
 let cachedPermissions: RolePermission[] | null = null
 const PATH_FALLBACKS: Record<string, string[]> = {
-  "/rolltech-actions": ["/orders"],
+  // No fallbacks — each path must be explicitly granted
 }
 
 export function usePermissions() {
