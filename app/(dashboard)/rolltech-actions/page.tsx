@@ -17,7 +17,6 @@ import {
   LayoutList,
   Calendar,
   CalendarDays,
-  RefreshCw,
   Inbox,
   AlertCircle,
 } from "lucide-react"
@@ -150,13 +149,37 @@ function ActionCenterContent() {
     sortedBuckets,
     dailyDigest,
     weeklyDigest,
+    isLoading,
+    error,
+    threadDetail,
+    threadDetailLoading,
+    onMutate,
+    mutating,
+    lastMutateDryRun,
   } = useActionCenter()
+
+  if (isLoading) return <LoadingSkeleton />
+
+  if (error) {
+    return (
+      <div className="flex h-[calc(100vh-7rem)] flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="rounded-full border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+          <AlertCircle className="size-6 text-red-500" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-semibold">Failed to load action center</p>
+          <p className="text-xs text-muted-foreground max-w-md">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
   const shownCount =
     viewMode === "queue"
       ? filteredRecords.length
       : viewMode === "daily-digest"
-        ? dailyDigest.total_items_surfaced
-        : weeklyDigest.total_records
+        ? (dailyDigest?.total_items_surfaced ?? 0)
+        : (weeklyDigest?.total_records ?? 0)
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-3 p-4">
@@ -164,19 +187,11 @@ function ActionCenterContent() {
         <div>
           <h1 className="text-xl font-bold">RollTech Action Center</h1>
           <p className="text-xs text-muted-foreground">
-            Seed data preview only. {shownCount} items shown, no writes enabled.
+            {shownCount} items · live queue data · {lastMutateDryRun === false ? "actions are live" : "quick actions are dry-run only"}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle mode={viewMode} onSelect={setViewMode} />
-          <button
-            disabled
-            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground opacity-50 cursor-not-allowed"
-            title="Sync not wired — using seed data"
-          >
-            <RefreshCw className="size-3" />
-            Sync
-          </button>
         </div>
       </div>
 
@@ -184,16 +199,26 @@ function ActionCenterContent() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <KpiBar bucketCounts={bucketCounts} />
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span>Daily {dailyDigest.digest_date}</span>
-            <span className="hidden sm:inline">•</span>
-            <span>Week ending {weeklyDigest.week_ending}</span>
+            {dailyDigest && <span>Daily {dailyDigest.digest_date}</span>}
+            {dailyDigest && weeklyDigest && <span className="hidden sm:inline">•</span>}
+            {weeklyDigest && <span>Week ending {weeklyDigest.week_ending}</span>}
+            {!dailyDigest && !weeklyDigest && <span>Digests not yet available</span>}
           </div>
         </div>
       </div>
 
       {viewMode !== "queue" && (
         <div className="flex-1 overflow-y-auto rounded-lg border bg-card p-4">
-          <DigestPreview daily={dailyDigest} weekly={weeklyDigest} />
+          {dailyDigest && weeklyDigest ? (
+            <DigestPreview daily={dailyDigest} weekly={weeklyDigest} />
+          ) : (
+            <div className="flex h-full min-h-[10rem] flex-col items-center justify-center gap-2 text-center">
+              <Calendar className="size-5 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Digest data is not yet available from the live API.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -237,8 +262,14 @@ function ActionCenterContent() {
             <div className="hidden lg:block w-80 shrink-0 overflow-y-auto rounded-lg border bg-card p-3">
               {selectedRecord ? (
                 <ActionDetail
+                  key={selectedRecord.thread_key}
                   record={selectedRecord}
                   onClose={() => handleSelectRecord(selectedRecord.action_record_id)}
+                  threadDetail={threadDetail}
+                  threadDetailLoading={threadDetailLoading}
+                  onMutate={onMutate}
+                  mutating={mutating}
+                  isDryRun={lastMutateDryRun}
                 />
               ) : (
                 <div className="flex h-full min-h-[20rem] flex-col items-center justify-center gap-3 text-center">
@@ -266,8 +297,14 @@ function ActionCenterContent() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <ActionDetail
+                  key={selectedRecord.thread_key}
                   record={selectedRecord}
                   onClose={() => handleSelectRecord(selectedRecord.action_record_id)}
+                  threadDetail={threadDetail}
+                  threadDetailLoading={threadDetailLoading}
+                  onMutate={onMutate}
+                  mutating={mutating}
+                  isDryRun={lastMutateDryRun}
                 />
               </div>
             </div>

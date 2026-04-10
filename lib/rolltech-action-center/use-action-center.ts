@@ -2,19 +2,25 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import type { QueueBucket } from "./types"
+import type { ActionRecord, QueueBucket, DailyDigest, WeeklyDigest } from "./types"
 import { BUCKET_CONFIG } from "./types"
-import {
-  SEED_ACTION_RECORDS,
-  SEED_BUCKET_COUNTS,
-  SEED_DAILY_DIGEST,
-  SEED_WEEKLY_DIGEST,
-} from "./seed-data"
+import { toast } from "@/lib/use-toast"
 
 export type ViewMode = "queue" | "daily-digest" | "weekly-digest"
 
 const VALID_BUCKETS = new Set<string>(Object.keys(BUCKET_CONFIG))
 const VALID_VIEWS = new Set<string>(["queue", "daily-digest", "weekly-digest"])
+
+const EMPTY_BUCKET_COUNTS: Record<QueueBucket, number> = {
+  needs_reply_today: 0,
+  needs_internal_decision: 0,
+  ready_to_process: 0,
+  shipping_release_coordination: 0,
+  waiting_on_customer: 0,
+  needs_review: 0,
+  resolved: 0,
+  noise: 0,
+}
 
 function parseBucketParam(v: string | null): QueueBucket | "all" {
   if (!v || v === "all") return "all"
@@ -24,6 +30,13 @@ function parseBucketParam(v: string | null): QueueBucket | "all" {
 function parseViewParam(v: string | null): ViewMode {
   if (!v) return "queue"
   return VALID_VIEWS.has(v) ? (v as ViewMode) : "queue"
+}
+
+interface ApiResponse {
+  records: ActionRecord[]
+  bucket_counts: Record<QueueBucket, number>
+  daily_digest: DailyDigest | null
+  weekly_digest: WeeklyDigest | null
 }
 
 export function useActionCenter() {
@@ -37,11 +50,62 @@ export function useActionCenter() {
   const [search, setSearch] = useState("")
   const [viewMode, setViewMode] = useState<ViewMode>(() => parseViewParam(searchParams.get("view")))
 
-  // Use seed data — will be replaced by API fetch later
-  const records = SEED_ACTION_RECORDS
-  const bucketCounts = SEED_BUCKET_COUNTS
-  const dailyDigest = SEED_DAILY_DIGEST
-  const weeklyDigest = SEED_WEEKLY_DIGEST
+  // Live API state
+  const [records, setRecords] = useState<ActionRecord[]>([])
+  const [bucketCounts, setBucketCounts] = useState<Record<QueueBucket, number>>(EMPTY_BUCKET_COUNTS)
+  const [dailyDigest, setDailyDigest] = useState<DailyDigest | null>(null)
+  const [weeklyDigest, setWeeklyDigest] = useState<WeeklyDigest | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Thread detail state (fresh single-record fetch for selected thread)
+  const [threadDetail, setThreadDetail] = useState<ActionRecord | null>(null)
+  const [threadDetailLoading, setThreadDetailLoading] = useState(false)
+
+  // Mutate state
+  const mutatingRef = useRef(false)
+  const [mutating, setMutating] = useState(false)
+  const [lastMutateDryRun, setLastMutateDryRun] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchData() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const [queueRes, digestsRes] = await Promise.all([
+          fetch("/api/rolltech-actions"),
+          fetch("/api/rolltech-actions/digests").catch(() => null),
+        ])
+        if (!queueRes.ok) {
+          const body = await queueRes.json().catch(() => ({}))
+          throw new Error(body.error ?? `API returned ${queueRes.status}`)
+        }
+        const data: ApiResponse = await queueRes.json()
+        if (cancelled) return
+        setRecords(data.records)
+        setBucketCounts(data.bucket_counts)
+
+        // Digests from dedicated endpoint; fall back to main response (null) on failure
+        let daily = data.daily_digest
+        let weekly = data.weekly_digest
+        if (digestsRes?.ok) {
+          const digests = await digestsRes.json().catch(() => ({}))
+          daily = digests.daily_digest ?? daily
+          weekly = digests.weekly_digest ?? weekly
+        }
+        setDailyDigest(daily)
+        setWeeklyDigest(weekly)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Failed to load action center")
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    fetchData()
+    return () => { cancelled = true }
+  }, [])
 
   const filteredRecords = useMemo(() => {
     let result = records
@@ -104,6 +168,92 @@ export function useActionCenter() {
     )
   }, [])
 
+  // Fetch thread detail whenever the selected thread changes
+  useEffect(() => {
+    const threadKey = selectedRecord?.thread_key
+    if (!threadKey) {
+      setThreadDetail(null)
+      return
+    }
+    let cancelled = false
+    setThreadDetailLoading(true)
+    fetch(`/api/rolltech-actions/${encodeURIComponent(threadKey)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        setThreadDetail((data.record as ActionRecord) ?? null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setThreadDetail(null)
+      })
+      .finally(() => {
+        if (!cancelled) setThreadDetailLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedRecord?.thread_key])
+
+  const onMutate = useCallback(
+    async (actionType: string) => {
+      const threadKey = selectedRecord?.thread_key
+      if (!threadKey || mutatingRef.current) return
+      mutatingRef.current = true
+      setMutating(true)
+      try {
+        const res = await fetch("/api/rolltech-actions/mutate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ thread_key: threadKey, action_type: actionType }),
+        })
+        const data = await res.json()
+        if (res.ok && data.ok) {
+          setLastMutateDryRun(data.dry_run ?? false)
+          const bucketLabel = BUCKET_CONFIG[actionType as QueueBucket]?.label ?? actionType
+          toast({
+            title: data.dry_run ? "Dry run: action recorded locally" : `Moved to ${bucketLabel}`,
+            description: data.dry_run ? `Would move to "${bucketLabel}" — writes not yet live` : undefined,
+            type: data.dry_run ? "info" : "success",
+          })
+          // Optimistic local update — reflect the bucket change immediately.
+          setRecords((prev) =>
+            prev.map((r) =>
+              r.thread_key === threadKey
+                ? { ...r, queue_bucket: actionType as QueueBucket }
+                : r
+            )
+          )
+          // Recompute bucket counts from updated records
+          setBucketCounts((prev) => {
+            const counts = { ...prev }
+            const oldBucket = selectedRecord?.queue_bucket
+            if (oldBucket && oldBucket in counts) counts[oldBucket]--
+            const newBucket = actionType as QueueBucket
+            if (newBucket in counts) counts[newBucket]++
+            return counts
+          })
+        } else {
+          toast({
+            title: "Action failed",
+            description: data.error ?? `Server returned ${res.status}`,
+            type: "error",
+          })
+        }
+      } catch (err) {
+        toast({
+          title: "Network error",
+          description: "Could not reach the server. Check your connection.",
+          type: "error",
+        })
+      } finally {
+        mutatingRef.current = false
+        setMutating(false)
+      }
+    },
+    [selectedRecord?.thread_key, selectedRecord?.queue_bucket]
+  )
+
   const handleSelectRecord = useCallback((id: string) => {
     setSelectedId((prev) => (prev === id ? null : id))
   }, [])
@@ -124,5 +274,12 @@ export function useActionCenter() {
     activeCount,
     dailyDigest,
     weeklyDigest,
+    isLoading,
+    error,
+    threadDetail,
+    threadDetailLoading,
+    onMutate,
+    mutating,
+    lastMutateDryRun,
   }
 }
