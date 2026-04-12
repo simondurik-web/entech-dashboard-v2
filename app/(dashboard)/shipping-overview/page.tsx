@@ -36,6 +36,25 @@ function matchesSearch(order: ShippingOverviewOrder, query: string): boolean {
 }
 
 function mapToOrder(o: ShippingOverviewOrder): Order {
+  // Extract pallet data from the first pallet record
+  const firstPallet = o.pallets?.[0]
+  let palletWidth = 0
+  let palletLength = 0
+  let palletWeightEach = 0
+
+  if (firstPallet?.dimensions) {
+    // Parse dimensions like "48x40" or "48x40x10"
+    const dims = firstPallet.dimensions.toLowerCase().split('x').map((d) => parseInt(d.trim(), 10))
+    if (dims.length >= 2) {
+      palletWidth = dims[0] || 0
+      palletLength = dims[1] || 0
+    }
+  }
+
+  if (firstPallet?.weight && typeof firstPallet.weight === 'number') {
+    palletWeightEach = firstPallet.weight
+  }
+
   return {
     line: o.line,
     category: o.category,
@@ -51,7 +70,7 @@ function mapToOrder(o: ShippingOverviewOrder): Order {
     orderQty: o.orderQty,
     packaging: '',
     partsPerPackage: 0,
-    numPackages: 0,
+    numPackages: o.palletCount > 0 ? o.palletCount : 0,
     fusionInventory: 0,
     hubMold: '',
     tire: '',
@@ -67,6 +86,9 @@ function mapToOrder(o: ShippingOverviewOrder): Order {
     priorityOverride: null,
     priorityChangedBy: null,
     priorityChangedAt: null,
+    palletWidth,
+    palletLength,
+    palletWeightEach,
   }
 }
 
