@@ -39,30 +39,58 @@ function mapToOrder(o: ShippingOverviewOrder): Order & { pallets?: Array<{ width
   // Extract all pallet configurations (grouped by dimensions and weight)
   const palletConfigs = new Map<string, { width: number; length: number; weight: number; count: number }>()
   
+  // Debug logging
+  console.log(`[mapToOrder] Processing order ${o.ifNumber} (line: ${o.line}):`, {
+    palletCount: o.palletCount,
+    pallets: o.pallets?.length || 0,
+    palletData: o.pallets?.map(p => ({
+      dimensions: p.dimensions,
+      weight: p.weight,
+      palletNumber: p.palletNumber,
+      source: p.source,
+    }))
+  })
+  
   for (const pallet of o.pallets || []) {
     const key = `${pallet.dimensions}::${pallet.weight}`
     let width = 0, length = 0
     
+    console.log(`[mapToOrder] Processing pallet:`, {
+      key,
+      dimensions: pallet.dimensions,
+      weight: pallet.weight,
+    })
+    
     if (pallet.dimensions) {
-      const dims = pallet.dimensions.toLowerCase().split('x').map((d) => parseInt(d.trim(), 10))
+      const dims = pallet.dimensions.toLowerCase().split('x').map((d) => {
+        const parsed = parseInt(d.trim(), 10)
+        console.log(`[mapToOrder] Parsed dimension "${d}" as ${parsed}`)
+        return parsed
+      })
       if (dims.length >= 2) {
         width = dims[0] || 0
         length = dims[1] || 0
+        console.log(`[mapToOrder] Set width=${width}, length=${length} from dims`, dims)
       }
     }
     
     if (palletConfigs.has(key)) {
       const existing = palletConfigs.get(key)!
       existing.count++
+      console.log(`[mapToOrder] Incrementing count for ${key} to ${existing.count}`)
     } else {
-      palletConfigs.set(key, {
+      const config = {
         width,
         length,
         weight: typeof pallet.weight === 'number' ? pallet.weight : 0,
         count: 1,
-      })
+      }
+      palletConfigs.set(key, config)
+      console.log(`[mapToOrder] Created new config for ${key}:`, config)
     }
   }
+  
+  console.log(`[mapToOrder] Final configs for ${o.ifNumber}:`, Array.from(palletConfigs.entries()))
   
   const configsArray = Array.from(palletConfigs.values())
   const firstConfig = configsArray[0] || { width: 0, length: 0, weight: 0, count: 0 }
