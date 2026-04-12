@@ -29,6 +29,25 @@ Created: 2026-02-07
 - `staging` = Preview deployment (gets a unique URL)
 - Both share the same env vars and API
 
+### **CRITICAL — ALWAYS USE THESE EXACT BRANCHES (2026-04-12)**
+
+**Staging Branch (for TESTING):**
+- Branch name: `staging` (NOT `redeploy/add-all-products` or any other branch)
+- Staging URL: https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app
+- Git command: `git push origin staging` (push to `staging`, not `main`)
+
+**Production Branch (for LIVE):**
+- Branch name: `main`
+- Production URL: https://entech-dashboard-v2.vercel.app
+- Git command: `git push origin main`
+
+**NEVER make this mistake again (2026-04-12):**
+- ❌ Committing to wrong branch and assuming it will deploy to staging
+- ❌ Creating new temporary branches instead of using `staging`
+- ❌ Pushing to `main` without explicit approval from Simon
+- ✅ **Always push to `staging` branch for testing**
+- ✅ **Always verify the branch is `origin/staging` before claiming it's deployed**
+
 ## Scope
 
 Modern Next.js replacement for the Molding Operations Dashboard. Migrating from static HTML/Google Sheets to:
@@ -38,6 +57,45 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 - Future: Supabase backend, Google OAuth, write capabilities
 
 ## Current Status
+
+**Phase 4 Complete** - Sales Action Center (RollTech email queue) live in production.
+
+---
+
+## ✅ Sales Action Center — Shipped to Production (2026-04-10)
+
+### What it is
+Live email thread queue for `rolltech.sales@4entech.com` emails. AI-processed, stored in Supabase `work_email` schema, displayed as an action-oriented queue.
+
+### Features
+- **Queue view** — 504 live threads, bucketed by priority type: Reply Today, Internal, Process, Shipping, Wait Cost
+- **Detail panel** — thread enrichment: customer, PO, parts, urgency, next action, signals, timeline
+- **Digest view** — daily/weekly AI summaries of email activity
+- **Quick Actions** — Reply Needed, Waiting on Internal, Waiting on Customer, Ready to Process, Resolve, Mark Noise (dry-run in production until write path is approved)
+- **Permission guard** — only users with explicit `/rolltech-actions` permission see the page; removed `/orders` fallback that leaked access to all visitors
+
+### Data pipeline
+- Emails → Gmail (rolltech.sales@4entech.com) → `work-email-rolltech` background service → Supabase `work_email` schema
+- Tables: `actions`, `action_events`, `v_action_center_queue` (view)
+- API routes: `/api/rolltech-actions/queue`, `/api/rolltech-actions/thread/[id]`, `/api/rolltech-actions/mutate`
+
+### Naming
+- Route: `/rolltech-actions` (unchanged — avoids breaking bookmarks/permissions)
+- Display name: **Sales Action Center** (renamed from RollTech Action Center per Simon 2026-04-10)
+
+### Auth / Supabase
+- Supabase Site URL is still set to `snappad-portal.vercel.app` — needs manual change in Supabase Auth → URL Configuration to `entech-dashboard-v2.vercel.app` if login redirect is ever wrong. (Simon flagged, not changed yet.)
+
+### Deployment history (2026-04-08 → 2026-04-10)
+1. RollTech Supabase schema + data seeded (Milestone 1)
+2. Queue API + live reads (Milestone 2A)
+3. Thread detail fetch + hook wiring (Milestone 2B)
+4. Write path wiring — QuickActions renders, onMutate wired (Milestone 3)
+5. Permission bug fix — removed `/orders` fallback, guests no longer see the page
+6. Renamed to Sales Action Center everywhere
+7. Staging verified → promoted to production 2026-04-10
+
+---
 
 **Phase 3 Complete** - All 16 pages built with auto-refresh and photo lightbox.
 
@@ -115,6 +173,8 @@ Modern Next.js replacement for the Molding Operations Dashboard. Migrating from 
 **Simon's directive:** Move fast. This becomes the primary dashboard. HTML dashboard frozen (no new features). All new features go here. Eventually add write-back to stop using spreadsheet for edits.
 
 ## Recent Activity
+
+2026-04-09 [AUTO-SUMMARY]: RollTech Action Center staging review found the current page was still largely seed/mock-driven, with search limited to local sample data, customer_name mostly null, and phone numbers being misclassified as part numbers upstream. Simon approved an Opus-driven implementation plan to finish the real staging version, with 15-minute milestone checks via cron. Active implementation phases launched included fixing part-number extraction, deriving customer/contact fields from canonical email data, and wiring a live `/api/rolltech-actions` route before staging QA.
 
 2026-02-19: DataTable standard applied to ALL tables. Custom Views/Reports feature with Supabase backend. Photo lightbox zoom (3x default, 8x max). Reports page in sidebar with full DataTable, inline editable name/notes, direct CSV/Excel export.
 2026-02-19: Google OAuth fix, admin panel fixes, super admin hardcoded, photos merge (Sheets+Supabase), sales password removed, EN/ES translation expansion.
