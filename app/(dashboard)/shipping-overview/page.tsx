@@ -35,26 +35,38 @@ function matchesSearch(order: ShippingOverviewOrder, query: string): boolean {
   )
 }
 
-function mapToOrder(o: ShippingOverviewOrder): Order {
-  // Extract pallet data from the first pallet record
-  const firstPallet = o.pallets?.[0]
-  let palletWidth = 0
-  let palletLength = 0
-  let palletWeightEach = 0
-
-  if (firstPallet?.dimensions) {
-    // Parse dimensions like "48x40" or "48x40x10"
-    const dims = firstPallet.dimensions.toLowerCase().split('x').map((d) => parseInt(d.trim(), 10))
-    if (dims.length >= 2) {
-      palletWidth = dims[0] || 0
-      palletLength = dims[1] || 0
+function mapToOrder(o: ShippingOverviewOrder): Order & { pallets?: Array<{ width: number; length: number; weight: number; count: number }> } {
+  // Extract all pallet configurations (grouped by dimensions and weight)
+  const palletConfigs = new Map<string, { width: number; length: number; weight: number; count: number }>()
+  
+  for (const pallet of o.pallets || []) {
+    const key = `${pallet.dimensions}::${pallet.weight}`
+    let width = 0, length = 0
+    
+    if (pallet.dimensions) {
+      const dims = pallet.dimensions.toLowerCase().split('x').map((d) => parseInt(d.trim(), 10))
+      if (dims.length >= 2) {
+        width = dims[0] || 0
+        length = dims[1] || 0
+      }
+    }
+    
+    if (palletConfigs.has(key)) {
+      const existing = palletConfigs.get(key)!
+      existing.count++
+    } else {
+      palletConfigs.set(key, {
+        width,
+        length,
+        weight: typeof pallet.weight === 'number' ? pallet.weight : 0,
+        count: 1,
+      })
     }
   }
-
-  if (firstPallet?.weight && typeof firstPallet.weight === 'number') {
-    palletWeightEach = firstPallet.weight
-  }
-
+  
+  const configsArray = Array.from(palletConfigs.values())
+  const firstConfig = configsArray[0] || { width: 0, length: 0, weight: 0, count: 0 }
+  
   return {
     line: o.line,
     category: o.category,
@@ -86,9 +98,10 @@ function mapToOrder(o: ShippingOverviewOrder): Order {
     priorityOverride: null,
     priorityChangedBy: null,
     priorityChangedAt: null,
-    palletWidth,
-    palletLength,
-    palletWeightEach,
+    palletWidth: firstConfig.width,
+    palletLength: firstConfig.length,
+    palletWeightEach: firstConfig.weight,
+    pallets: configsArray.length > 1 ? configsArray : undefined, // Only include if multiple configs
   }
 }
 

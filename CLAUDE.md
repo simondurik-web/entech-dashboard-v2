@@ -22,10 +22,76 @@ Use these keywords to control reasoning depth:
 - BashTool caps at 30K chars, GrepTool at 20K chars
 - If you need full output from large commands, pipe to a file first, then read specific sections
 
+# CLAUDE.md — entech-dashboard-v2
+> Auto-enriched: 2026-04-09
+
+## What this project is
+The primary Entech Molding Operations Dashboard — a Next.js app replacing the legacy HTML/Google Sheets dashboard used daily by Entech factory employees. Covers orders, inventory, production, shipping, sales analytics, BOM, scheduling, and a new RollTech Customer Action Center.
+
+## Tech stack
+- **Framework:** Next.js 16 (App Router), React 19, TypeScript
+- **UI:** Tailwind CSS v4, shadcn/ui, Radix UI, Framer Motion, Lenis
+- **Data:** Google Sheets API v4 (read) + Supabase PostgreSQL (primary, write)
+- **Hosting:** Vercel — `main` = production, `staging` = preview
+- **Auth:** Google OAuth via Supabase
+- **Other:** ExcelJS, @react-pdf/renderer, Chart.js, Recharts, web-push, QRCode
+
+## Key files in this folder
+- `CONTEXT.md` — full project context, deployment rules, DataTable standard, all recent activity
+- `HANDOFF.md` — resume prompt for new sessions
+- `PROGRESS.md` — detailed progress log
+- `PARITY-PLAN.md` — feature parity checklist
+- `SUPABASE-MIGRATION-PLAN.md` — read before touching data layer
+- `CODING-POLICY.md` — mandatory agent coding policy
+- `AGENTS.md` — agent coordination notes
+- `app/` — Next.js app directory (16+ pages, API routes)
+- `lib/supabase.ts` + `lib/supabase-data.ts` — Supabase client + typed data layer
+- `lib/export-utils.ts` — global Excel/CSV export formatting
+- `components/` — shared UI components including DataTable
+
+## Active tasks / current status
+Most recent (2026-04-09): RollTech Action Center implementation — fixing part-number extraction, deriving customer/contact fields, wiring live `/api/rolltech-actions` route. Simon approved Opus-driven implementation plan with 15-min milestone checks.
+
+Supabase tables: `dashboard_orders` (2698), `inventory` (999), `production_totals` (1077), `inventory_reference` (709), `inventory_history` (107K), `saved_views`, `audit_trail`, plus scheduling tables. Sync every 5 min from Google Sheets.
+
+## Connections to other systems
+- **Production:** https://entech-dashboard-v2.vercel.app
+- **Staging:** entech-dashboard-v2-git-staging-*.vercel.app
+- **Dev:** `cd ~/clawd/projects/entech-dashboard-v2 && npm run dev` (port 3000)
+- **Supabase:** mqfjmzqeccufqhisqpij.supabase.co
+- **Google Sheets service account:** `marco-workspace@gen-lang-client-0968965845.iam.gserviceaccount.com`
+- **Sheets sync script:** `~/clawd/projects/molding/db-migration/sync_sheets_to_db.py`
+- **OpenClaw** — cron every 5 min for push notifications (urgent/staged order changes)
+
+## People involved
+- **Simon Durik** — owner, approves all production deploys
+- **Marco** — developer / agent coordinator (must follow CODING-POLICY.md — no direct coding, delegate to agents)
+- **Phil** — dashboard end user (employee)
+- **Joseles** — worker (Amazon Fulfillment Center, Origen RV, Technoflex orders auto-assigned)
+
+## Rules for this project
+- **NEVER push directly to `main`** — always ask Simon; must get explicit "yes" before pushing to production
+- **All new features go to `staging` first**, verified before merging to main
+- **All code changes must go through agent fleet review** (codex + gemini + claude-code) before pushing — no exceptions, even small fixes
+- **Git workflow:** `feat/branch` → PR → `gh pr create --base staging` → review → Simon approval → `git merge staging && git push origin main`
+- **EVERY table must use the full DataTable toolbar** (search, reset, views, columns, export, sort, filter, drag reorder) — no exceptions, including sub-tables and sub-sub-tables
+- **Never write directly to Supabase when Google Sheet is source of truth** — sync overwrites Supabase every 5 min; write to Sheet directly for source-of-truth data
+- **Never put raw API keys in code** — Google auto-revokes them
+- **If something breaks, revert immediately** — never chain speculative fixes
+- Excel export: currency → `$#,##0.00`, numbers → `#,##0`, right-aligned (`lib/export-utils.ts`)
+- Supabase anon-key schema/OpenAPI deprecated 2026-04-08 — do not rely on client-side `/rest/v1/` schema introspection
+
+## Notes
+- Simon uses voice-to-text — transcription may have artifacts, understand intent
+- Lead with results, not process narration
+- After significant work, write to Open Brain: `curl -s -X POST http://127.0.0.1:8889/memory/write -H "Content-Type: application/json" -d '{"content":"...","category":"action","channel":"claude-code","importance":7}'`
+- BOM auto-quantity formulas: PALLET=1/PPP, CLEARFILMCOVER=3/PPP, BAG=1/PPP, FILM-STRETCH=500/PPP
+- Custom Report Builder is tabled — Simon chose Option 3 (templates) for future build
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **entech-dashboard-v2** (2422 symbols, 5602 relationships, 192 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **entech-dashboard-v2** (2643 symbols, 6097 relationships, 210 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

@@ -174,6 +174,7 @@ Live email thread queue for `rolltech.sales@4entech.com` emails. AI-processed, s
 
 ## Recent Activity
 
+2026-04-12 [NIGHTLY]: Waffle-chart research produced one clear recommendation for dashboard KPI cards: if we add yield/scrap visualization, start with the tiny zero-dependency `waffle-chart` package for 2-3 value cards (good/scrap/downtime) instead of adopting a heavy chart stack. Re-evaluate `@nivo/waffle` only if V2 wants a broader unified charting system with legends/theming/canvas variants.
 2026-04-09 [AUTO-SUMMARY]: RollTech Action Center staging review found the current page was still largely seed/mock-driven, with search limited to local sample data, customer_name mostly null, and phone numbers being misclassified as part numbers upstream. Simon approved an Opus-driven implementation plan to finish the real staging version, with 15-minute milestone checks via cron. Active implementation phases launched included fixing part-number extraction, deriving customer/contact fields from canonical email data, and wiring a live `/api/rolltech-actions` route before staging QA.
 
 2026-02-19: DataTable standard applied to ALL tables. Custom Views/Reports feature with Supabase backend. Photo lightbox zoom (3x default, 8x max). Reports page in sidebar with full DataTable, inline editable name/notes, direct CSV/Excel export.
