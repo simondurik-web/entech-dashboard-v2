@@ -401,6 +401,14 @@ export async function GET(request: Request) {
         + (shipping?.paperworkPhotos.length ?? 0)
         + (shipping?.closeUpPhotos.length ?? 0)
 
+      // Extract pallet dimensions for calculator (from first pallet if available)
+      const firstPallet = pallets[0]
+      const dimensions = firstPallet?.dimensions || ''
+      const dims = dimensions.split('x').map((d) => parseInt(d.trim(), 10))
+      const palletWidth = dims[0] || 48
+      const palletLength = dims[1] || 40
+      const palletWeightEach = firstPallet?.weight || 0
+
       const overviewOrder: ShippingOverviewOrder = {
         line: order.line,
         ifNumber: order.ifNumber,
@@ -425,6 +433,10 @@ export async function GET(request: Request) {
         dimensionsSummary,
         shipping,
         shippingPhotoCount,
+        // Pallet calculator enrichment
+        palletWidth,
+        palletLength,
+        palletWeightEach,
       }
 
       if (status === 'staged') {
