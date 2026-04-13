@@ -243,18 +243,34 @@ export async function GET(request: Request) {
       'closeUpPhotos',
     ])
 
-    const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => ({
-      id: record.id,
-      timestamp: record.created_at || '',
-      orderNumber: record.line_number || '',
-      lineNumber: record.line_number || '',
-      palletNumber: String(record.pallet_number || ''),
-      customer: '',
-      ifNumber: record.order_id?.replace(/^IF/i, '') ? `IF${record.order_id.replace(/^IF/i, '')}` : '',
-      category: '',
-      weight: String(record.weight || ''),
-      dimensions: record.length && record.width && record.height ? `${record.length}x${record.width}x${record.height}` : '',
-      partsPerPallet: String(record.parts_per_pallet || ''),
+    const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => {
+      const dimensions = record.length && record.width && record.height ? `${record.length}x${record.width}x${record.height}` : ''
+      // Debug logging for pallet records from database
+      if (record.order_id?.includes('152642')) {
+        console.log('[shipping-overview API] Pallet record for IF152642:', {
+          id: record.id,
+          line_number: record.line_number,
+          order_id: record.order_id,
+          pallet_number: record.pallet_number,
+          length: record.length,
+          width: record.width,
+          height: record.height,
+          weight: record.weight,
+          dimensions,
+        })
+      }
+      return {
+        id: record.id,
+        timestamp: record.created_at || '',
+        orderNumber: record.line_number || '',
+        lineNumber: record.line_number || '',
+        palletNumber: String(record.pallet_number || ''),
+        customer: '',
+        ifNumber: record.order_id?.replace(/^IF/i, '') ? `IF${record.order_id.replace(/^IF/i, '')}` : '',
+        category: '',
+        weight: String(record.weight || ''),
+        dimensions,
+        partsPerPallet: String(record.parts_per_pallet || ''),
       photos: record.photo_urls || [],
       shipmentPhotos: record.shipment_photo_urls || [],
       workPaperPhotos: record.work_paper_photo_urls || [],
@@ -297,6 +313,12 @@ export async function GET(request: Request) {
       palletGroups.set(line, group)
     }
 
+    // Debug logging for pallet groups
+    console.log('[shipping-overview API] Pallet groups summary:', {
+      totalLines: palletGroups.size,
+      sampleLines: Array.from(palletGroups.keys()).slice(0, 5),
+    })
+
     const palletsByLine = new Map<string, ShippingOverviewPallet[]>()
     for (const [line, records] of palletGroups) {
       const hasAppRecords = records.some((record) => record._source === 'app')
@@ -304,7 +326,24 @@ export async function GET(request: Request) {
         ? records.filter((record) => record._source === 'app')
         : records
 
-      palletsByLine.set(line, keptRecords.map(toOverviewPallet))
+      const overviewPallets = keptRecords.map(toOverviewPallet)
+      palletsByLine.set(line, overviewPallets)
+
+      // Debug logging for lines with IF152642
+      if (records.some(r => r.ifNumber?.includes('152642'))) {
+        console.log('[shipping-overview API] Pallet group for IF152642:', {
+          line,
+          recordCount: records.length,
+          hasAppRecords,
+          keptRecordsCount: keptRecords.length,
+          overviewPallets: overviewPallets.map(p => ({
+            palletNumber: p.palletNumber,
+            dimensions: p.dimensions,
+            weight: p.weight,
+            source: p.source,
+          })),
+        })
+      }
     }
 
     const shippingByIf = new Map<string, ShippingOverviewShippingRecord>()
@@ -338,6 +377,22 @@ export async function GET(request: Request) {
       const ifNumber = normalizeIfNumber(order.ifNumber)
       const pallets = palletsByLine.get(line) ?? []
       const shipping = shippingByIf.get(ifNumber) ?? null
+
+      // Debug logging for IF152642
+      if (ifNumber?.includes('152642')) {
+        console.log('[shipping-overview API] Processing order IF152642:', {
+          line,
+          ifNumber,
+          normalizedLine: line,
+          palletsFound: pallets.length,
+          pallets: pallets.map(p => ({
+            palletNumber: p.palletNumber,
+            dimensions: p.dimensions,
+            weight: p.weight,
+            source: p.source,
+          })),
+        })
+      }
 
       const totalPalletWeight = pallets.reduce((sum, pallet) => sum + pallet.weight, 0)
       const dimensionsSummary = uniqueStrings(pallets.map((pallet) => pallet.dimensions)).join(', ')
