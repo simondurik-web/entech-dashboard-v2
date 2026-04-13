@@ -33,6 +33,7 @@ function matchesSearch(order: ShippingOverviewOrder, query: string): boolean {
   return [order.customer, order.partNumber, order.ifNumber, order.line, order.poNumber].some((v) =>
     v.toLowerCase().includes(q),
   )
+}
 
 export default function ShippingOverviewPage() {
   return (

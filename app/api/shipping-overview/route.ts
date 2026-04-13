@@ -245,7 +245,6 @@ export async function GET(request: Request) {
 
     const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => {
       const dimensions = record.length && record.width && record.height ? `${record.length}x${record.width}x${record.height}` : ''
-      }
       return {
         id: record.id,
         timestamp: record.created_at || '',
@@ -268,7 +267,8 @@ export async function GET(request: Request) {
       order_id: record.order_id,
       edited_by_name: record.edited_by_name || undefined,
       edited_at: record.edited_at || undefined,
-    }))
+    }
+  })
 
     const dbShipping: ShippingRecord[] = (dbShippingResult.data ?? []).map((record) => ({
       timestamp: record.created_at || '',
