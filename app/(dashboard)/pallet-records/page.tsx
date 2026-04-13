@@ -126,7 +126,7 @@ function PalletRecordsPageContent() {
     // Category
     if (categoryFilter !== 'all') {
       result = result.filter(r => {
-        const cat = r.category.toLowerCase()
+        const cat = (r.category || '').toLowerCase()
         switch (categoryFilter) {
           case 'rolltech': return cat.includes('roll')
           case 'molding': return cat.includes('molding')
@@ -150,10 +150,10 @@ function PalletRecordsPageContent() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       result = result.filter(r =>
-        r.ifNumber.toLowerCase().includes(q) ||
-        r.customer.toLowerCase().includes(q) ||
-        r.lineNumber?.toLowerCase().includes(q) ||
-        r.orderNumber?.toLowerCase().includes(q)
+        (r.ifNumber || '').toLowerCase().includes(q) ||
+        (r.customer || '').toLowerCase().includes(q) ||
+        (r.lineNumber || '').toLowerCase().includes(q) ||
+        (r.orderNumber || '').toLowerCase().includes(q)
       )
     }
 
