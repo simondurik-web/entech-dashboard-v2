@@ -52,6 +52,10 @@ export interface ShippingOverviewOrder {
   dimensionsSummary: string
   shipping: ShippingOverviewShippingRecord | null
   shippingPhotoCount: number
+  // Pallet calculator enrichment (extracted from pallets array)
+  palletWidth?: number
+  palletLength?: number
+  palletWeightEach?: number
 }
 
 export interface ShippingOverviewResponse {

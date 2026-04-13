@@ -243,18 +243,20 @@ export async function GET(request: Request) {
       'closeUpPhotos',
     ])
 
-    const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => ({
-      id: record.id,
-      timestamp: record.created_at || '',
-      orderNumber: record.line_number || '',
-      lineNumber: record.line_number || '',
-      palletNumber: String(record.pallet_number || ''),
-      customer: '',
-      ifNumber: record.order_id?.replace(/^IF/i, '') ? `IF${record.order_id.replace(/^IF/i, '')}` : '',
-      category: '',
-      weight: String(record.weight || ''),
-      dimensions: record.length && record.width && record.height ? `${record.length}x${record.width}x${record.height}` : '',
-      partsPerPallet: String(record.parts_per_pallet || ''),
+    const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => {
+      const dimensions = record.length && record.width && record.height ? `${record.length}x${record.width}x${record.height}` : ''
+      return {
+        id: record.id,
+        timestamp: record.created_at || '',
+        orderNumber: record.line_number || '',
+        lineNumber: record.line_number || '',
+        palletNumber: String(record.pallet_number || ''),
+        customer: '',
+        ifNumber: record.order_id?.replace(/^IF/i, '') ? `IF${record.order_id.replace(/^IF/i, '')}` : '',
+        category: '',
+        weight: String(record.weight || ''),
+        dimensions,
+        partsPerPallet: String(record.parts_per_pallet || ''),
       photos: record.photo_urls || [],
       shipmentPhotos: record.shipment_photo_urls || [],
       workPaperPhotos: record.work_paper_photo_urls || [],
@@ -265,7 +267,8 @@ export async function GET(request: Request) {
       order_id: record.order_id,
       edited_by_name: record.edited_by_name || undefined,
       edited_at: record.edited_at || undefined,
-    }))
+    }
+  })
 
     const dbShipping: ShippingRecord[] = (dbShippingResult.data ?? []).map((record) => ({
       timestamp: record.created_at || '',
@@ -304,7 +307,8 @@ export async function GET(request: Request) {
         ? records.filter((record) => record._source === 'app')
         : records
 
-      palletsByLine.set(line, keptRecords.map(toOverviewPallet))
+      const overviewPallets = keptRecords.map(toOverviewPallet)
+      palletsByLine.set(line, overviewPallets)
     }
 
     const shippingByIf = new Map<string, ShippingOverviewShippingRecord>()
@@ -346,6 +350,14 @@ export async function GET(request: Request) {
         + (shipping?.paperworkPhotos.length ?? 0)
         + (shipping?.closeUpPhotos.length ?? 0)
 
+      // Extract pallet dimensions for calculator (from first pallet if available)
+      const firstPallet = pallets[0]
+      const dimensions = firstPallet?.dimensions || ''
+      const dims = dimensions.split('x').map((d) => parseInt(d.trim(), 10))
+      const palletWidth = dims[0] || 48
+      const palletLength = dims[1] || 40
+      const palletWeightEach = firstPallet?.weight || 0
+
       const overviewOrder: ShippingOverviewOrder = {
         line: order.line,
         ifNumber: order.ifNumber,
@@ -370,6 +382,10 @@ export async function GET(request: Request) {
         dimensionsSummary,
         shipping,
         shippingPhotoCount,
+        // Pallet calculator enrichment
+        palletWidth,
+        palletLength,
+        palletWeightEach,
       }
 
       if (status === 'staged') {

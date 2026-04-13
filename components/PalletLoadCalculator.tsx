@@ -376,8 +376,35 @@ export default function PalletLoadCalculator({
       const fillL = hasData && order.palletLength ? order.palletLength : 40
       const fillWeight = order.palletWeightEach || 0
 
-      // Pallet already has an order → create NEW pallet type for this order
+      // Check if order has multiple pallet configurations
+      const hasMultipleConfigs = 'pallets' in order && Array.isArray((order as any).pallets) && (order as any).pallets.length > 0
+      const palletConfigs = hasMultipleConfigs ? (order as any).pallets as Array<{ width: number; length: number; weight: number; count: number }> : null
+
+      // Pallet already has an order → create NEW pallet type(s) for this order
       if (pt.linkedOrderKeys.length > 0) {
+        // If order has pallet configurations, create pallet types based on them
+        if (palletConfigs && palletConfigs.length > 0) {
+          const newPallets = palletConfigs.map((config, i) => {
+            const ci = (prev.length + i) % PLC_COLORS.length
+            return {
+              id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${i}`,
+              label: order.customer ? `${order.customer.substring(0, 20)} (${config.width}"x${config.length}")` : `Pallet ${prev.length + i + 1}`,
+              colorIdx: ci,
+              width: config.width,
+              length: config.length,
+              qty: config.count,
+              weightEach: config.weight,
+              orientation: 'auto' as const,
+              doubleStack: false,
+              linkMode: true,
+              linkedOrderKeys: [orderKey],
+              linkSource: pt.linkSource,
+            } as PalletType
+          })
+          return [...prev, ...newPallets]
+        }
+
+        // Single pallet configuration - create one pallet type
         const ci = prev.length % PLC_COLORS.length
         const palletCount = order.numPackages > 0 ? Math.ceil(order.numPackages) : 1
         const newPt: PalletType = {
@@ -398,6 +425,30 @@ export default function PalletLoadCalculator({
       }
 
       // Selecting order on empty pallet
+      // If order has pallet configurations, create pallet types based on them and clear the empty one
+      if (palletConfigs && palletConfigs.length > 0) {
+        const newPallets = palletConfigs.map((config, i) => {
+          const ci = (prev.length + i) % PLC_COLORS.length
+          return {
+            id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${i}`,
+            label: order.customer ? `${order.customer.substring(0, 20)} (${config.width}"x${config.length}")` : `Pallet ${prev.length + i + 1}`,
+            colorIdx: ci,
+            width: config.width,
+            length: config.length,
+            qty: config.count,
+            weightEach: config.weight,
+            orientation: 'auto' as const,
+            doubleStack: false,
+            linkMode: true,
+            linkedOrderKeys: [orderKey],
+            linkSource: pt.linkSource,
+          } as PalletType
+        })
+        // Clear the empty pallet and add the new ones
+        return prev.map((p, i) => (i === idx ? { ...p, qty: 0 } : p)).concat(newPallets)
+      }
+
+      // Single pallet configuration - update the empty pallet
       const palletCount = order.numPackages > 0 ? Math.ceil(order.numPackages) : 1
       return prev.map((p, i) =>
         i === idx
