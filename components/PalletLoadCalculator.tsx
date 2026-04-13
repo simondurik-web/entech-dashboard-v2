@@ -382,8 +382,8 @@ export default function PalletLoadCalculator({
 
       // Pallet already has an order → create NEW pallet type(s) for this order
       if (pt.linkedOrderKeys.length > 0) {
-        // If order has multiple pallet configurations, create multiple pallet types
-        if (palletConfigs && palletConfigs.length > 1) {
+        // If order has pallet configurations, create pallet types based on them
+        if (palletConfigs && palletConfigs.length > 0) {
           const newPallets = palletConfigs.map((config, i) => {
             const ci = (prev.length + i) % PLC_COLORS.length
             return {
@@ -425,8 +425,8 @@ export default function PalletLoadCalculator({
       }
 
       // Selecting order on empty pallet
-      // If order has multiple pallet configurations, create multiple pallet types and clear the empty one
-      if (palletConfigs && palletConfigs.length > 1) {
+      // If order has pallet configurations, create pallet types based on them and clear the empty one
+      if (palletConfigs && palletConfigs.length > 0) {
         const newPallets = palletConfigs.map((config, i) => {
           const ci = (prev.length + i) % PLC_COLORS.length
           return {
