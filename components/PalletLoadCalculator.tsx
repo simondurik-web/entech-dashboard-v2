@@ -376,9 +376,30 @@ export default function PalletLoadCalculator({
       const fillL = hasData && order.palletLength ? order.palletLength : 40
       const fillWeight = order.palletWeightEach || 0
 
-      // Check if order has multiple pallet configurations
-      const hasMultipleConfigs = 'pallets' in order && Array.isArray((order as any).pallets) && (order as any).pallets.length > 0
-      const palletConfigs = hasMultipleConfigs ? (order as any).pallets as Array<{ width: number; length: number; weight: number; count: number }> : null
+      // Build pallet configs from order's pallet records
+      // Each pallet record has { dimensions: "48x40x42", weight: 1134, ... }
+      // Group identical dims into configs: { width, length, weight, count }
+      type PalletRecord = { dimensions?: string; weight?: number; width?: number; length?: number }
+      const rawPallets: PalletRecord[] = ('pallets' in order && Array.isArray((order as any).pallets)) ? (order as any).pallets : []
+      const palletConfigs = rawPallets.length > 0
+        ? (() => {
+            const groups = new Map<string, { width: number; length: number; weight: number; count: number }>()
+            for (const p of rawPallets) {
+              let w = 48, l = 40
+              if (p.width && p.length) {
+                w = p.width; l = p.length
+              } else if (p.dimensions) {
+                const parts = String(p.dimensions).split('x')
+                if (parts.length >= 2) { w = Number(parts[0]) || 48; l = Number(parts[1]) || 40 }
+              }
+              const wt = p.weight || fillWeight || 0
+              const key = `${w}x${l}x${wt}`
+              const existing = groups.get(key)
+              if (existing) { existing.count++ } else { groups.set(key, { width: w, length: l, weight: wt, count: 1 }) }
+            }
+            return Array.from(groups.values())
+          })()
+        : null
 
       // Pallet already has an order → create NEW pallet type(s) for this order
       if (pt.linkedOrderKeys.length > 0) {
@@ -679,10 +700,10 @@ export default function PalletLoadCalculator({
                               onChange={() => toggleOrderLink(pt.id, key, o)}
                             />
                             <span>
-                              {o.ifNumber} — {o.customer} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : `${o.orderQty} pcs`}
+                              {o.ifNumber} — {o.customer} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : (Array.isArray((o as any).pallets) && (o as any).pallets.length > 0 ? `${(o as any).pallets.length} pallets` : `${o.orderQty} pcs`)}
                               {o.palletWidth && o.palletLength ? ` · ${o.palletWidth}×${o.palletLength}"` : ''}
                               {o.palletWeightEach ? ` · ${o.palletWeightEach} lbs` : ''}
-                              {!o.palletWidth && !o.palletWeightEach && pt.linkSource !== 'package' ? ' · no dims' : ''}
+                              {!o.palletWidth && !o.palletWeightEach && !Array.isArray((o as any).pallets) && pt.linkSource !== 'package' ? ' · no dims' : ''}
                             </span>
                             {isLinkedElsewhere && (
                               <span className="text-muted-foreground">

@@ -208,6 +208,8 @@ function ShippingOverviewPageContent() {
         palletWidth: pd ? pd.w : 0,
         palletLength: pd ? pd.l : 0,
         palletWeightEach: pd ? pd.avgWeight : 0,
+        // Pass raw pallet records so PalletLoadCalculator can group them into configs
+        ...(Array.isArray((o as any).pallets) ? { pallets: (o as any).pallets } : {}),
       } as Order
     })
   }, [data?.staged, palletEnrichment])
