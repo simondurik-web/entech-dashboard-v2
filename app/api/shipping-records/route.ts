@@ -36,7 +36,41 @@ export async function GET() {
       closeUpPhotos: r.closeup_photos || [],
     }))
 
-    return NextResponse.json([...resolvedSheet, ...dbRecords])
+    // Enrich customer names from dashboard_orders using IF# lookup
+    const allRecords = [...resolvedSheet, ...dbRecords]
+    const ifNumbersToLookup = [...new Set(
+      allRecords
+        .filter(r => (!r.customer || !r.customer.trim()) && r.ifNumber && r.ifNumber.trim())
+        .map(r => r.ifNumber.trim().toUpperCase())
+    )]
+
+    if (ifNumbersToLookup.length > 0) {
+      const { data: orders } = await supabaseAdmin
+        .from('dashboard_orders')
+        .select('if_number,customer,line')
+        .in('if_number', ifNumbersToLookup)
+
+      if (orders && orders.length > 0) {
+        const customerMap = new Map<string, { customer: string; line: string }>()
+        for (const o of orders) {
+          const key = o.if_number?.toUpperCase()
+          if (key && o.customer) {
+            customerMap.set(key, { customer: o.customer, line: o.line || '' })
+          }
+        }
+
+        for (const r of allRecords) {
+          if ((!r.customer || !r.customer.trim()) && r.ifNumber) {
+            const info = customerMap.get(r.ifNumber.trim().toUpperCase())
+            if (info) {
+              r.customer = info.customer
+            }
+          }
+        }
+      }
+    }
+
+    return NextResponse.json(allRecords)
   } catch (error) {
     console.error('Failed to fetch shipping records:', error)
     return NextResponse.json(
