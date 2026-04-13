@@ -35,41 +35,6 @@ function matchesSearch(order: ShippingOverviewOrder, query: string): boolean {
   )
 }
 
-function mapToOrder(o: ShippingOverviewOrder): Order {
-  return {
-    line: o.line,
-    category: o.category,
-    dateOfRequest: '',
-    priorityLevel: 0,
-    urgentOverride: false,
-    ifNumber: o.ifNumber,
-    ifStatus: '',
-    internalStatus: 'staged',
-    poNumber: o.poNumber,
-    customer: o.customer,
-    partNumber: o.partNumber,
-    orderQty: o.orderQty,
-    packaging: '',
-    partsPerPackage: 0,
-    numPackages: 0,
-    fusionInventory: 0,
-    hubMold: '',
-    tire: '',
-    hasTire: false,
-    hub: '',
-    hasHub: false,
-    bearings: '',
-    requestedDate: o.requestedDate,
-    daysUntilDue: o.daysUntilDue,
-    assignedTo: '',
-    shippedDate: o.shippedDate,
-    dailyCapacity: 0,
-    priorityOverride: null,
-    priorityChangedBy: null,
-    priorityChangedAt: null,
-  }
-}
-
 export default function ShippingOverviewPage() {
   return (
     <Suspense>
@@ -170,7 +135,82 @@ function ShippingOverviewPageContent() {
     [data?.shipped, shippedSearch, shippedCategories],
   )
 
-  const stagedOrdersForCalc = useMemo(() => (data?.staged ?? []).map(mapToOrder), [data?.staged])
+  // Fetch pallet records separately for PalletLoadCalculator enrichment
+  // (same pattern as staged/Ready to Ship page — ensures calculator gets correct data)
+  const [palletEnrichment, setPalletEnrichment] = useState<Map<string, { avgWeight: number; w: number; l: number; count: number }>>(new Map())
+
+  useEffect(() => {
+    fetch('/api/pallet-records')
+      .then(r => r.ok ? r.json() : [])
+      .then((recs: Array<{ lineNumber: string; orderNumber?: string; weight: string; dimensions: string }>) => {
+        const grouped = new Map<string, typeof recs>()
+        for (const pr of recs) {
+          const key = (pr.lineNumber || '').trim() || (pr.orderNumber || '').trim()
+          if (!key) continue
+          const arr = grouped.get(key) || []
+          arr.push(pr)
+          grouped.set(key, arr)
+        }
+        const byLine = new Map<string, { avgWeight: number; w: number; l: number; count: number }>()
+        for (const [line, records] of grouped) {
+          const totalW = records.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0)
+          const avgWeight = records.length > 0 ? Math.round(totalW / records.length) : 0
+          let w = 0, l = 0
+          const firstDims = records.find(p => p.dimensions)?.dimensions || ''
+          if (firstDims) {
+            const parts = firstDims.split(/x/i).map(s => parseFloat(s.trim()))
+            if (parts.length >= 2) { w = parts[0] || 0; l = parts[1] || 0 }
+          }
+          byLine.set(line, { avgWeight, w, l, count: records.length })
+        }
+        setPalletEnrichment(byLine)
+      })
+      .catch(() => {})
+  }, [data?.staged]) // re-fetch when staged data changes
+
+  const stagedOrdersForCalc = useMemo(() => {
+    const staged = data?.staged ?? []
+    return staged.map(o => {
+      // Look up pallet enrichment by line number (same as staged page)
+      const pd = palletEnrichment.get((o.line || '').toString().trim())
+        || palletEnrichment.get((o.ifNumber || '').trim())
+      return {
+        line: o.line,
+        category: o.category,
+        dateOfRequest: '',
+        priorityLevel: 0,
+        urgentOverride: false,
+        ifNumber: o.ifNumber,
+        ifStatus: '',
+        internalStatus: 'staged',
+        poNumber: o.poNumber,
+        customer: o.customer,
+        partNumber: o.partNumber,
+        orderQty: o.orderQty,
+        packaging: '',
+        partsPerPackage: 0,
+        numPackages: pd ? pd.count : (o.palletCount > 0 ? o.palletCount : 0),
+        fusionInventory: 0,
+        hubMold: '',
+        tire: '',
+        hasTire: false,
+        hub: '',
+        hasHub: false,
+        bearings: '',
+        requestedDate: o.requestedDate,
+        daysUntilDue: o.daysUntilDue ?? 0,
+        assignedTo: '',
+        shippedDate: o.shippedDate,
+        dailyCapacity: 0,
+        priorityOverride: null,
+        priorityChangedBy: null,
+        priorityChangedAt: null,
+        palletWidth: pd ? pd.w : 0,
+        palletLength: pd ? pd.l : 0,
+        palletWeightEach: pd ? pd.avgWeight : 0,
+      } as Order
+    })
+  }, [data?.staged, palletEnrichment])
 
   // ── Conditional classes ──────────────────────────────────
   const pageBg = isLight
