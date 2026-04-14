@@ -27,8 +27,11 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: Phot
     )
   }
 
-  const visiblePhotos = photos.slice(0, maxVisible)
-  const hiddenCount = photos.length - maxVisible
+  // Ensure all photos are strings (defensive against object values from data)
+  const safePhotos = photos.map((p) => typeof p === 'string' ? p : String(p ?? ''))
+
+  const visiblePhotos = safePhotos.slice(0, maxVisible)
+  const hiddenCount = safePhotos.length - maxVisible
 
   const baseSize = { sm: 40, md: 56, lg: 80 }[size]
 
@@ -95,7 +98,7 @@ export function PhotoGrid({ photos, maxVisible = 4, size = 'md', context }: Phot
 
       {lightboxOpen && (
         <Lightbox
-          images={photos}
+          images={safePhotos}
           initialIndex={currentIndex}
           onClose={() => { setLightboxOpen(false); setOriginRect(null) }}
           context={context}

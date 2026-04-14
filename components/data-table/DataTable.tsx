@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw } from 'lucide-react'
-import { Fragment, isValidElement, useEffect, useRef, useState } from 'react'
+import { Fragment, isValidElement, Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -40,6 +40,29 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   disableAnimation?: boolean
 }
 
+/** Per-row error boundary so one bad row doesn't crash the whole table */
+class RowErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) {
+      return <tr><td colSpan={99} className="px-3 py-2 text-xs text-destructive">Error rendering row</td></tr>
+    }
+    return this.props.children
+  }
+}
+
+class CardErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) {
+      return <Card className="border-l-4 border-l-red-500"><CardContent className="p-4"><p className="text-red-500 text-sm">Error rendering record</p></CardContent></Card>
+    }
+    return this.props.children
+  }
+}
+
 function SortIcon({ columnKey, sortKey, sortDir }: {
   columnKey: string
   sortKey: string | null
@@ -47,6 +70,71 @@ function SortIcon({ columnKey, sortKey, sortDir }: {
 }) {
   if (sortKey !== columnKey || !sortDir) return <ArrowUpDown className="size-3 text-muted-foreground" />
   return sortDir === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
+}
+
+function TableRow<T extends Record<string, unknown>>({ row, index: i, visibleColumns, disableAnimation, expandedRowKey, onRowClick, renderExpandedContent, rowClassName, getRowKey }: {
+  row: T
+  index: number
+  visibleColumns: ColumnDef<T>[]
+  disableAnimation: boolean
+  expandedRowKey?: string | null
+  onRowClick?: (row: T, index: number) => void
+  renderExpandedContent?: (row: T, index: number) => ReactNode
+  rowClassName?: (row: T) => string
+  getRowKey?: (row: T, index: number) => string
+}) {
+  const rowKey = getRowKey?.(row, i) ?? String(i)
+  const isExpanded = expandedRowKey === rowKey
+  const isClickable = !!onRowClick
+  const useLayout = !disableAnimation && i < 50
+  const RowTag = useLayout ? motion.tr : 'tr'
+  const layoutProps = useLayout ? { layout: true as const, transition: { duration: 0.2 } } : {}
+  return (
+    <Fragment>
+      <RowTag
+        {...layoutProps}
+        className={cn('border-b table-row-hover', isClickable && 'cursor-pointer', rowClassName?.(row))}
+        style={i < 25 ? { animation: `fadeSlideIn 300ms ease-out ${i * 30}ms both` } : undefined}
+        onClick={isClickable ? () => onRowClick(row, i) : undefined}
+      >
+        {visibleColumns.map((col) => {
+          try {
+            const cellValue = col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])
+            return <td key={col.key} className="px-3 py-2">{cellValue}</td>
+          } catch (err) {
+            console.error(`Error rendering column "${col.key}":`, err, 'row:', row, 'value:', row[col.key])
+            return <td key={col.key} className="px-3 py-2 text-destructive">Error</td>
+          }
+        })}
+      </RowTag>
+      {renderExpandedContent && (
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.tr
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="border-b"
+            >
+              <td colSpan={visibleColumns.length} className="p-0">
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  className="overflow-hidden"
+                >
+                  <div className="bg-muted/25 px-3 py-3">
+                    {renderExpandedContent(row, i)}
+                  </div>
+                </motion.div>
+              </td>
+            </motion.tr>
+          )}
+        </AnimatePresence>
+      )}
+    </Fragment>
+  )
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -153,6 +241,16 @@ export function DataTable<T extends Record<string, unknown>>({
     dragSourceIndex.current = null
   }
 
+  // Only render the view appropriate for the screen size to avoid wasted React work
+  // and prevent hidden-view errors from crashing the visible view
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -196,7 +294,8 @@ export function DataTable<T extends Record<string, unknown>>({
         {hasActiveFilters && ` (filtered from ${data.length})`}
       </p>
 
-      <div className="hidden sm:block rounded-md border overflow-auto">
+      {(!isMobile) && (
+      <div className="rounded-md border overflow-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -252,57 +351,20 @@ export function DataTable<T extends Record<string, unknown>>({
           </thead>
           <tbody>
             {processedData.map((row, i) => {
-              const rowKey = getRowKey?.(row, i) ?? String(i)
-              const isExpanded = expandedRowKey === rowKey
-              const isClickable = !!onRowClick
-              const useLayout = !disableAnimation && i < 50
-              const RowTag = useLayout ? motion.tr : 'tr'
-              const layoutProps = useLayout ? { layout: true as const, transition: { duration: 0.2 } } : {}
               return (
-                <Fragment key={rowKey}>
-                  <RowTag
-                    {...layoutProps}
-                    className={cn('border-b table-row-hover', isClickable && 'cursor-pointer', rowClassName?.(row))}
-                    style={i < 25 ? { animation: `fadeSlideIn 300ms ease-out ${i * 30}ms both` } : undefined}
-                    onClick={isClickable ? () => onRowClick(row, i) : undefined}
-                  >
-                    {visibleColumns.map((col) => {
-                      try {
-                        const cellValue = col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])
-                        return <td key={col.key} className="px-3 py-2">{cellValue}</td>
-                      } catch (err) {
-                        console.error(`Error rendering column "${col.key}":`, err, 'row:', row, 'value:', row[col.key])
-                        return <td key={col.key} className="px-3 py-2 text-destructive">Error</td>
-                      }
-                    })}
-                  </RowTag>
-                  {renderExpandedContent && (
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.tr
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          className="border-b"
-                        >
-                          <td colSpan={visibleColumns.length} className="p-0">
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-                              className="overflow-hidden"
-                            >
-                              <div className="bg-muted/25 px-3 py-3">
-                                {renderExpandedContent(row, i)}
-                              </div>
-                            </motion.div>
-                          </td>
-                        </motion.tr>
-                      )}
-                    </AnimatePresence>
-                  )}
-                </Fragment>
+                <RowErrorBoundary key={getRowKey?.(row, i) ?? i}>
+                <TableRow
+                  row={row}
+                  index={i}
+                  visibleColumns={visibleColumns}
+                  disableAnimation={disableAnimation}
+                  expandedRowKey={expandedRowKey}
+                  onRowClick={onRowClick}
+                  renderExpandedContent={renderExpandedContent}
+                  rowClassName={rowClassName}
+                  getRowKey={getRowKey}
+                />
+                </RowErrorBoundary>
               )
             })}
             {processedData.length === 0 && (
@@ -318,9 +380,15 @@ export function DataTable<T extends Record<string, unknown>>({
           </tbody>
         </table>
       </div>
+      )}
 
-      <div className="sm:hidden space-y-3">
-        {processedData.map((row, i) => renderCard ? renderCard(row, i) : <DefaultCard key={i} row={row} columns={visibleColumns} className={cardClassName?.(row)} />)}
+      {isMobile && (
+      <div className="space-y-3">
+        {processedData.map((row, i) => (
+          <CardErrorBoundary key={i}>
+            {renderCard ? renderCard(row, i) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />}
+          </CardErrorBoundary>
+        ))}
         {processedData.length === 0 && (
           <EmptyState
             type={hasActiveFilters ? 'filtered' : 'no-data'}
@@ -328,6 +396,7 @@ export function DataTable<T extends Record<string, unknown>>({
           />
         )}
       </div>
+      )}
     </div>
   )
 }
@@ -337,12 +406,12 @@ function DefaultCard<T extends Record<string, unknown>>({ row, columns, classNam
   return (
     <Card className={cn('border-l-4', className)}>
       <CardContent className="pt-4 pb-3 px-4 space-y-2">
-        {first && <p className="font-semibold">{first.render ? first.render(row[first.key], row) : formatCellValue(row[first.key])}</p>}
+        {first && <p className="font-semibold">{first.render ? safeCellRender(first.render(row[first.key], row)) : formatCellValue(row[first.key])}</p>}
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           {rest.map((col) => (
             <div key={col.key}>
               <span className="text-muted-foreground">{col.label}</span>
-              <p className="font-medium">{col.render ? col.render(row[col.key], row) : formatCellValue(row[col.key])}</p>
+              <p className="font-medium">{col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])}</p>
             </div>
           ))}
         </div>
