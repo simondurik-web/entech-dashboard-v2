@@ -12,6 +12,7 @@ import { Search } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import type { PalletRecord } from '@/lib/google-sheets-shared'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'All' },
@@ -43,6 +44,19 @@ function formatDate(d: Date | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+function safeString(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value.toLocaleString()
+  if (typeof value === 'boolean') return value.toString()
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
 function toDateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -67,7 +81,11 @@ const COLUMNS: ColumnDef<PalletRow>[] = [
 ]
 
 export default function PalletRecordsPage() {
-  return <Suspense><PalletRecordsPageContent /></Suspense>
+  return (
+    <ErrorBoundary>
+      <Suspense><PalletRecordsPageContent /></Suspense>
+    </ErrorBoundary>
+  )
 }
 
 function PalletRecordsPageContent() {
@@ -283,10 +301,10 @@ function PalletRecordsPageContent() {
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-lg">{record.customer || 'Unknown'}</CardTitle>
+                      <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
-                        IF# {ifNum}{record.lineNumber ? ` • Line ${record.lineNumber}` : ''} • Pallet #{record.palletNumber}
+                        IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
                       </p>
                     </div>
                     <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
@@ -296,22 +314,22 @@ function PalletRecordsPageContent() {
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                     <div>
                       <span className="text-muted-foreground">{t('table.weight')}</span>
-                      <p className="font-semibold">{String(record.weight || '-')}</p>
+                      <p className="font-semibold">{safeString(record.weight)}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t('table.dimensions')}</span>
-                      <p className="font-semibold text-xs">{String(record.dimensions || '-')}</p>
+                      <p className="font-semibold text-xs">{safeString(record.dimensions)}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
-                      <p className="font-semibold">{String(record.partsPerPallet || '-')}</p>
+                      <p className="font-semibold">{safeString(record.partsPerPallet)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
-                      {String(record.category || 'Uncategorized')}
+                      {safeString(record.category) || 'Uncategorized'}
                     </span>
-                    {record.orderNumber && <span>{t('table.orders')}: {String(record.orderNumber)}</span>}
+                    {record.orderNumber && <span>{t('table.orders')}: {safeString(record.orderNumber)}</span>}
                   </div>
                   <PhotoGrid photos={Array.isArray(record.photos) ? record.photos : []} size="md" context={{ ifNumber: ifNum }} />
                 </CardContent>
