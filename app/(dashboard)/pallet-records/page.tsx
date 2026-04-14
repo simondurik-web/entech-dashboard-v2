@@ -306,22 +306,79 @@ function PalletRecordsPageContent() {
       {error && <p className="text-center text-destructive py-10">{error}</p>}
 
       {!loading && !error && (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">Debug mode: {filtered.length} records</p>
-          {filtered.slice(0, 10).map((record, i) => (
-            <Card key={record.ifNumber || i} className="border-l-4 border-l-green-500">
-              <CardContent className="p-4">
-                <p className="font-semibold">{String(record.customer || 'Unknown')}</p>
-                <p className="text-sm text-muted-foreground">
-                  IF# {String(record.ifNumber || '-')} • Pallet #{String(record.palletNumber || '-')}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Category: {String(record.category || 'N/A')} • Weight: {String(record.weight || 'N/A')}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <DataTable table={table} data={filtered} noun="pallet" exportFilename="pallet-records.csv"
+          page="pallet-records"
+          initialView={initialView}
+          autoExport={autoExport}
+          disableAnimation
+          cardClassName={() => 'border-l-4 border-l-green-500'}
+          renderCard={(row, i) => {
+            try {
+              const record = row as unknown as PalletRow
+              // Add defensive checks for record properties
+              if (!record || typeof record !== 'object') {
+                return (
+                  <Card key={`invalid-${i}`} className="border-l-4 border-l-red-500">
+                    <CardContent className="p-4">
+                      <p className="text-red-500 text-sm">Invalid record data</p>
+                    </CardContent>
+                  </Card>
+                )
+              }
+              const ifNum = String(record.ifNumber || '')
+              const isB2B = ifNum.toUpperCase().startsWith('B2B')
+              return (
+                <Card key={`${ifNum || 'unknown'}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
+                          IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                      <div>
+                        <span className="text-muted-foreground">{t('table.weight')}</span>
+                        <p className="font-semibold">{safeString(record.weight)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('table.dimensions')}</span>
+                        <p className="font-semibold text-xs">{safeString(record.dimensions)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
+                        <p className="font-semibold">{safeString(record.partsPerPallet)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                      <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
+                        {safeString(record.category) || 'Uncategorized'}
+                      </span>
+                      {record.orderNumber && <span>{t('table.orders')}: {safeString(record.orderNumber)}</span>}
+                    </div>
+                    <PhotoGrid photos={Array.isArray(record.photos) ? record.photos : []} size="md" context={{ ifNumber: ifNum }} />
+                  </CardContent>
+                </Card>
+              )
+            } catch (err) {
+              // Log the error but don't crash the whole page
+              console.error('Error rendering pallet card:', err, row)
+              return (
+                <Card key={`error-${i}`} className="border-l-4 border-l-red-500">
+                  <CardContent className="p-4">
+                    <p className="text-red-500 text-sm">Error rendering record</p>
+                  </CardContent>
+                </Card>
+              )
+            }
+          }}
+        />
       )}
     </div>
   )

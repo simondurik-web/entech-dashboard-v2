@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw } from 'lucide-react'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, isValidElement, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -224,7 +224,14 @@ export function DataTable<T extends Record<string, unknown>>({
                     {col.filterable !== false && (
                       <ColumnFilter
                         columnKey={col.key}
-                        data={data.map((row) => row[col.key])}
+                        data={data.map((row) => {
+                          const val = row[col.key]
+                          // Convert objects/arrays to strings for filtering
+                          if (typeof val === 'object' && val !== null) {
+                            return Array.isArray(val) ? val.map(String).join(', ') : String(val)
+                          }
+                          return val
+                        })}
                         activeFilter={filters.get(col.key)}
                         onApply={setFilter}
                         onClear={clearFilter}
@@ -259,11 +266,15 @@ export function DataTable<T extends Record<string, unknown>>({
                     style={i < 25 ? { animation: `fadeSlideIn 300ms ease-out ${i * 30}ms both` } : undefined}
                     onClick={isClickable ? () => onRowClick(row, i) : undefined}
                   >
-                    {visibleColumns.map((col) => (
-                      <td key={col.key} className="px-3 py-2">
-                        {col.render ? col.render(row[col.key], row) : formatCellValue(row[col.key])}
-                      </td>
-                    ))}
+                    {visibleColumns.map((col) => {
+                      try {
+                        const cellValue = col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])
+                        return <td key={col.key} className="px-3 py-2">{cellValue}</td>
+                      } catch (err) {
+                        console.error(`Error rendering column "${col.key}":`, err, 'row:', row, 'value:', row[col.key])
+                        return <td key={col.key} className="px-3 py-2 text-destructive">Error</td>
+                      }
+                    })}
                   </RowTag>
                   {renderExpandedContent && (
                     <AnimatePresence>
@@ -348,4 +359,14 @@ function formatCellValue(value: unknown): string {
     try { return JSON.stringify(value) } catch { return '[object]' }
   }
   return String(value)
+}
+
+/** Ensures render() output is a valid React child — catches plain objects that would cause error #300 */
+function safeCellRender(node: React.ReactNode): React.ReactNode {
+  if (node === null || node === undefined) return '-'
+  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') return node
+  if (isValidElement(node)) return node
+  if (Array.isArray(node)) return node.map((n, i) => <Fragment key={i}>{safeCellRender(n)}</Fragment>)
+  // Plain object — not a valid React child
+  return formatCellValue(node)
 }
