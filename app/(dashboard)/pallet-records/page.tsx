@@ -272,6 +272,7 @@ function PalletRecordsPageContent() {
           page="pallet-records"
           initialView={initialView}
           autoExport={autoExport}
+          disableAnimation
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const record = row as unknown as PalletRow
