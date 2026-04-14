@@ -139,7 +139,7 @@ function PalletRecordsPageContent() {
     // Order type (IF vs B2B)
     if (orderTypeFilter !== 'all') {
       result = result.filter(r => {
-        const ifUpper = r.ifNumber.toUpperCase()
+        const ifUpper = (r.ifNumber || '').toUpperCase()
         if (orderTypeFilter === 'if') return ifUpper.startsWith('IF')
         if (orderTypeFilter === 'b2b') return ifUpper.startsWith('B2B')
         return true
@@ -163,8 +163,8 @@ function PalletRecordsPageContent() {
   const table = useDataTable({ data: filtered, columns: COLUMNS, storageKey: 'pallet-records' })
 
   const totalPallets = filtered.length
-  const totalWithPhotos = filtered.filter(r => r.photos.length > 0).length
-  const totalPhotos = filtered.reduce((sum, r) => sum + r.photos.length, 0)
+  const totalWithPhotos = filtered.filter(r => Array.isArray(r.photos) && r.photos.length > 0).length
+  const totalPhotos = filtered.reduce((sum, r) => sum + (Array.isArray(r.photos) ? r.photos.length : 0), 0)
 
   return (
     <div className="p-4 pb-20">
