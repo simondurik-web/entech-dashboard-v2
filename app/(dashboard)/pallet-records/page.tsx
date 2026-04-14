@@ -120,7 +120,10 @@ function PalletRecordsPageContent() {
       const res = await fetch('/api/pallet-records')
       if (!res.ok) throw new Error('Failed to fetch pallet records')
       const data: PalletRecord[] = await res.json()
-      const parsed: PalletRow[] = data.map((r) => ({ ...r, _parsed: parseGSheetsDate(r.timestamp) }))
+      // Add defensive checks for each record
+      const parsed: PalletRow[] = data
+        .filter((r): r is PalletRecord => r != null && typeof r === 'object')
+        .map((r) => ({ ...r, _parsed: parseGSheetsDate(r.timestamp) }))
       parsed.sort((a, b) => (b._parsed?.getTime() ?? 0) - (a._parsed?.getTime() ?? 0))
       setRecords(parsed)
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to fetch') }
@@ -135,11 +138,22 @@ function PalletRecordsPageContent() {
   const uniqueCustomers = useMemo(() => new Set(records.map(r => r.customer).filter(Boolean)), [records])
 
   const filtered = useMemo(() => {
-    let result = records
+    // Guard against invalid records
+    let result = records.filter((r): r is PalletRow => r != null && typeof r === 'object')
 
-    // Date range
-    if (startDate) { const s = new Date(startDate + 'T00:00:00'); result = result.filter(r => r._parsed && r._parsed >= s) }
-    if (endDate) { const e = new Date(endDate + 'T23:59:59'); result = result.filter(r => r._parsed && r._parsed <= e) }
+    // Date range - add NaN check for invalid dates
+    if (startDate) {
+      const s = new Date(startDate + 'T00:00:00')
+      if (!isNaN(s.getTime())) {
+        result = result.filter(r => r._parsed && !isNaN(r._parsed.getTime()) && r._parsed >= s)
+      }
+    }
+    if (endDate) {
+      const e = new Date(endDate + 'T23:59:59')
+      if (!isNaN(e.getTime())) {
+        result = result.filter(r => r._parsed && !isNaN(r._parsed.getTime()) && r._parsed <= e)
+      }
+    }
 
     // Category
     if (categoryFilter !== 'all') {
@@ -164,15 +178,21 @@ function PalletRecordsPageContent() {
       })
     }
 
-    // Search (IF#, customer, line number)
+    // Search (IF#, customer, line number) - add defensive checks
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
-      result = result.filter(r =>
-        (r.ifNumber || '').toLowerCase().includes(q) ||
-        (r.customer || '').toLowerCase().includes(q) ||
-        (r.lineNumber || '').toLowerCase().includes(q) ||
-        (r.orderNumber || '').toLowerCase().includes(q)
-      )
+      result = result.filter(r => {
+        try {
+          return (
+            String(r.ifNumber || '').toLowerCase().includes(q) ||
+            String(r.customer || '').toLowerCase().includes(q) ||
+            String(r.lineNumber || '').toLowerCase().includes(q) ||
+            String(r.orderNumber || '').toLowerCase().includes(q)
+          )
+        } catch {
+          return false
+        }
+      })
     }
 
     return result
@@ -293,48 +313,70 @@ function PalletRecordsPageContent() {
           disableAnimation
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
-            const record = row as unknown as PalletRow
-            const ifNum = String(record.ifNumber || '')
-            const isB2B = ifNum.toUpperCase().startsWith('B2B')
-            return (
-              <Card key={`${record.ifNumber}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
-                        IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
-                      </p>
+            try {
+              const record = row as unknown as PalletRow
+              // Add defensive checks for record properties
+              if (!record || typeof record !== 'object') {
+                return (
+                  <Card key={`invalid-${i}`} className="border-l-4 border-l-red-500">
+                    <CardContent className="p-4">
+                      <p className="text-red-500 text-sm">Invalid record data</p>
+                    </CardContent>
+                  </Card>
+                )
+              }
+              const ifNum = String(record.ifNumber || '')
+              const isB2B = ifNum.toUpperCase().startsWith('B2B')
+              return (
+                <Card key={`${ifNum || 'unknown'}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
+                          IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-2 text-sm mb-3">
-                    <div>
-                      <span className="text-muted-foreground">{t('table.weight')}</span>
-                      <p className="font-semibold">{safeString(record.weight)}</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                      <div>
+                        <span className="text-muted-foreground">{t('table.weight')}</span>
+                        <p className="font-semibold">{safeString(record.weight)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('table.dimensions')}</span>
+                        <p className="font-semibold text-xs">{safeString(record.dimensions)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
+                        <p className="font-semibold">{safeString(record.partsPerPallet)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">{t('table.dimensions')}</span>
-                      <p className="font-semibold text-xs">{safeString(record.dimensions)}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                      <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
+                        {safeString(record.category) || 'Uncategorized'}
+                      </span>
+                      {record.orderNumber && <span>{t('table.orders')}: {safeString(record.orderNumber)}</span>}
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
-                      <p className="font-semibold">{safeString(record.partsPerPallet)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                    <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
-                      {safeString(record.category) || 'Uncategorized'}
-                    </span>
-                    {record.orderNumber && <span>{t('table.orders')}: {safeString(record.orderNumber)}</span>}
-                  </div>
-                  <PhotoGrid photos={Array.isArray(record.photos) ? record.photos : []} size="md" context={{ ifNumber: ifNum }} />
-                </CardContent>
-              </Card>
-            )
+                    <PhotoGrid photos={Array.isArray(record.photos) ? record.photos : []} size="md" context={{ ifNumber: ifNum }} />
+                  </CardContent>
+                </Card>
+              )
+            } catch (err) {
+              // Log the error but don't crash the whole page
+              console.error('Error rendering pallet card:', err, row)
+              return (
+                <Card key={`error-${i}`} className="border-l-4 border-l-red-500">
+                  <CardContent className="p-4">
+                    <p className="text-red-500 text-sm">Error rendering record</p>
+                  </CardContent>
+                </Card>
+              )
+            }
           }}
         />
       )}
