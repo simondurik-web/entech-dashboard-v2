@@ -41,6 +41,32 @@ export async function DELETE(
     return NextResponse.json({ error: deleteErr.message }, { status: 500 })
   }
 
+  // Check if order status should revert to 'Work in Progress'
+  try {
+    const lineNumber = record.line_number
+    if (lineNumber) {
+      const { count: remaining } = await supabaseAdmin
+        .from('pallet_records')
+        .select('*', { count: 'exact', head: true })
+        .eq('line_number', lineNumber)
+
+      const { data: order } = await supabaseAdmin
+        .from('dashboard_orders')
+        .select('num_pallets')
+        .eq('line', lineNumber)
+        .single()
+
+      if (order && remaining !== null && remaining < (order.num_pallets ?? 0)) {
+        await supabaseAdmin
+          .from('dashboard_orders')
+          .update({ internal_status: 'Work in Progress' })
+          .eq('line', lineNumber)
+      }
+    }
+  } catch (statusErr) {
+    console.error('Failed to update order status after pallet delete:', statusErr)
+  }
+
   return NextResponse.json({ ok: true, deleted_id: id })
 }
 
