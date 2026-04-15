@@ -41,27 +41,35 @@ export async function DELETE(
     return NextResponse.json({ error: deleteErr.message }, { status: 500 })
   }
 
-  // Check if order status should revert to 'Work in Progress'
+  // Revert order status to 'Work in Progress' when pallets are deleted
+  // (only if current status indicates completion, e.g. "Ready to Ship", "Palletized")
   try {
     const lineNumber = record.line_number
     if (lineNumber) {
-      const { count: remaining } = await supabaseAdmin
-        .from('pallet_records')
-        .select('*', { count: 'exact', head: true })
-        .eq('line_number', lineNumber)
-
       const { data: order } = await supabaseAdmin
         .from('dashboard_orders')
-        .select('num_pallets')
-        .eq('line', lineNumber)
+        .select('work_order_status')
+        .eq('line', String(lineNumber))
         .single()
 
-      if (order && remaining !== null && remaining < (order.num_pallets ?? 0)) {
+      const completedStatuses = ['ready to ship', 'palletized', 'completed', 'done']
+      const currentStatus = (order?.work_order_status || '').toLowerCase().trim()
+
+      if (order && completedStatuses.includes(currentStatus)) {
+        console.log(`[pallet-delete] Reverting order line=${lineNumber} from "${order.work_order_status}" to "Work in Progress"`)
         await supabaseAdmin
           .from('dashboard_orders')
-          .update({ internal_status: 'Work in Progress' })
-          .eq('line', lineNumber)
+          .update({ work_order_status: 'Work in Progress' })
+          .eq('line', String(lineNumber))
+      } else {
+        console.log(`[pallet-delete] Order line=${lineNumber} status="${order?.work_order_status || 'not found'}" — no revert needed`)
       }
+    } else {
+      console.log(`[pallet-delete] Record id=${id} has no line_number — cannot check order status`)
+    }
+  } catch (statusErr) {
+    console.error('Failed to update order status after pallet delete:', statusErr)
+  }
     }
   } catch (statusErr) {
     console.error('Failed to update order status after pallet delete:', statusErr)
