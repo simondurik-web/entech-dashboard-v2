@@ -12,6 +12,7 @@ import { Search } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import type { PalletRecord } from '@/lib/google-sheets-shared'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const CATEGORY_FILTERS = [
   { key: 'all', label: 'All' },
@@ -43,6 +44,19 @@ function formatDate(d: Date | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+function safeString(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value.toLocaleString()
+  if (typeof value === 'boolean') return value.toString()
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
 function toDateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -54,11 +68,11 @@ const COLUMNS: ColumnDef<PalletRow>[] = [
   { key: 'lineNumber', label: 'Line #', sortable: true, filterable: true, render: (v) => (v as string) || '-' },
   { key: 'palletNumber', label: 'Pallet #', sortable: true },
   { key: 'category', label: 'Category', sortable: true, filterable: true },
-  { key: 'weight', label: 'Weight', sortable: true },
-  { key: 'dimensions', label: 'Dimensions' },
-  { key: 'partsPerPallet', label: 'Parts/Pallet' },
+  { key: 'weight', label: 'Weight', sortable: true, filterable: false },
+  { key: 'dimensions', label: 'Dimensions', filterable: false },
+  { key: 'partsPerPallet', label: 'Parts/Pallet', filterable: false },
   {
-    key: 'photos', label: 'Photos',
+    key: 'photos', label: 'Photos', sortable: false, filterable: false,
     render: (_v, row) => {
       const r = row as PalletRow
       return <PhotoGrid photos={r.photos} size="sm" maxVisible={3} context={{ ifNumber: r.ifNumber }} />
@@ -67,7 +81,11 @@ const COLUMNS: ColumnDef<PalletRow>[] = [
 ]
 
 export default function PalletRecordsPage() {
-  return <Suspense><PalletRecordsPageContent /></Suspense>
+  return (
+    <ErrorBoundary>
+      <Suspense><PalletRecordsPageContent /></Suspense>
+    </ErrorBoundary>
+  )
 }
 
 function PalletRecordsPageContent() {
@@ -126,7 +144,7 @@ function PalletRecordsPageContent() {
     // Category
     if (categoryFilter !== 'all') {
       result = result.filter(r => {
-        const cat = r.category.toLowerCase()
+        const cat = (r.category || '').toLowerCase()
         switch (categoryFilter) {
           case 'rolltech': return cat.includes('roll')
           case 'molding': return cat.includes('molding')
@@ -139,7 +157,7 @@ function PalletRecordsPageContent() {
     // Order type (IF vs B2B)
     if (orderTypeFilter !== 'all') {
       result = result.filter(r => {
-        const ifUpper = r.ifNumber.toUpperCase()
+        const ifUpper = (r.ifNumber || '').toUpperCase()
         if (orderTypeFilter === 'if') return ifUpper.startsWith('IF')
         if (orderTypeFilter === 'b2b') return ifUpper.startsWith('B2B')
         return true
@@ -150,10 +168,10 @@ function PalletRecordsPageContent() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       result = result.filter(r =>
-        r.ifNumber.toLowerCase().includes(q) ||
-        r.customer.toLowerCase().includes(q) ||
-        r.lineNumber?.toLowerCase().includes(q) ||
-        r.orderNumber?.toLowerCase().includes(q)
+        (r.ifNumber || '').toLowerCase().includes(q) ||
+        (r.customer || '').toLowerCase().includes(q) ||
+        (r.lineNumber || '').toLowerCase().includes(q) ||
+        (r.orderNumber || '').toLowerCase().includes(q)
       )
     }
 
@@ -163,8 +181,8 @@ function PalletRecordsPageContent() {
   const table = useDataTable({ data: filtered, columns: COLUMNS, storageKey: 'pallet-records' })
 
   const totalPallets = filtered.length
-  const totalWithPhotos = filtered.filter(r => r.photos.length > 0).length
-  const totalPhotos = filtered.reduce((sum, r) => sum + r.photos.length, 0)
+  const totalWithPhotos = filtered.filter(r => Array.isArray(r.photos) && r.photos.length > 0).length
+  const totalPhotos = filtered.reduce((sum, r) => sum + (Array.isArray(r.photos) ? r.photos.length : 0), 0)
 
   return (
     <div className="p-4 pb-20">
@@ -272,19 +290,21 @@ function PalletRecordsPageContent() {
           page="pallet-records"
           initialView={initialView}
           autoExport={autoExport}
+          disableAnimation
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const record = row as unknown as PalletRow
-            const isB2B = record.ifNumber.toUpperCase().startsWith('B2B')
+            const ifNum = String(record.ifNumber || '')
+            const isB2B = ifNum.toUpperCase().startsWith('B2B')
             return (
               <Card key={`${record.ifNumber}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-lg">{record.customer || 'Unknown'}</CardTitle>
+                      <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
-                        IF# {record.ifNumber}{record.lineNumber ? ` • Line ${record.lineNumber}` : ''} • Pallet #{record.palletNumber}
+                        IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
                       </p>
                     </div>
                     <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
@@ -294,24 +314,24 @@ function PalletRecordsPageContent() {
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                     <div>
                       <span className="text-muted-foreground">{t('table.weight')}</span>
-                      <p className="font-semibold">{record.weight || '-'}</p>
+                      <p className="font-semibold">{safeString(record.weight)}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t('table.dimensions')}</span>
-                      <p className="font-semibold text-xs">{record.dimensions || '-'}</p>
+                      <p className="font-semibold text-xs">{safeString(record.dimensions)}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
-                      <p className="font-semibold">{record.partsPerPallet || '-'}</p>
+                      <p className="font-semibold">{safeString(record.partsPerPallet)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
-                      {record.category || 'Uncategorized'}
+                      {safeString(record.category) || 'Uncategorized'}
                     </span>
-                    {record.orderNumber && <span>{t('table.orders')}: {record.orderNumber}</span>}
+                    {record.orderNumber && <span>{t('table.orders')}: {safeString(record.orderNumber)}</span>}
                   </div>
-                  <PhotoGrid photos={record.photos} size="md" context={{ ifNumber: record.ifNumber }} />
+                  <PhotoGrid photos={Array.isArray(record.photos) ? record.photos : []} size="md" context={{ ifNumber: ifNum }} />
                 </CardContent>
               </Card>
             )

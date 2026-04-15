@@ -133,6 +133,7 @@ export function OrderDetail({
       try {
         setLoading(true)
         setError(null)
+        setPallets([])
         const requests: Promise<Response>[] = [
           fetch('/api/pallet-records'),
           fetch('/api/drawings'),

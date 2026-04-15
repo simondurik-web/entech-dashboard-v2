@@ -124,7 +124,7 @@ function ShippingRecordsPageContent() {
     if (endDate) { const e = new Date(endDate + 'T23:59:59'); result = result.filter(r => r._parsed && r._parsed <= e) }
     if (categoryFilter !== 'all') {
       result = result.filter(r => {
-        const cat = r.category.toLowerCase()
+        const cat = (r.category || '').toLowerCase()
         switch (categoryFilter) {
           case 'rolltech': return cat.includes('roll')
           case 'molding': return cat.includes('molding')
@@ -135,17 +135,17 @@ function ShippingRecordsPageContent() {
     }
     if (orderTypeFilter !== 'all') {
       result = result.filter(r => {
-        const ifUpper = r.ifNumber.toUpperCase()
+        const ifUpper = (r.ifNumber || '').toUpperCase()
         return orderTypeFilter === 'if' ? ifUpper.startsWith('IF') : ifUpper.startsWith('B2B')
       })
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       result = result.filter(r =>
-        r.ifNumber.toLowerCase().includes(q) ||
-        r.customer.toLowerCase().includes(q) ||
-        r.carrier?.toLowerCase().includes(q) ||
-        r.bol?.toLowerCase().includes(q)
+        (r.ifNumber || '').toLowerCase().includes(q) ||
+        (r.customer || '').toLowerCase().includes(q) ||
+        (r.carrier || '').toLowerCase().includes(q) ||
+        (r.bol || '').toLowerCase().includes(q)
       )
     }
     return result
@@ -284,17 +284,18 @@ function ShippingRecordsPageContent() {
           cardClassName={() => 'border-l-4 border-l-green-500'}
           renderCard={(row, i) => {
             const record = row as unknown as ShippingRow
-            const isB2B = record.ifNumber.toUpperCase().startsWith('B2B')
+            const ifNum = String(record.ifNumber || '')
+            const isB2B = ifNum.toUpperCase().startsWith('B2B')
             const photos = getAllPhotos(record, photoTypeFilter)
             return (
-              <Card key={`${record.ifNumber}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
+              <Card key={`${ifNum}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg">{record.customer || 'Unknown'}</CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
-                        IF# {record.ifNumber} • {record.carrier || 'Unknown carrier'}
+                        IF# {ifNum} • {record.carrier || 'Unknown carrier'}
                       </p>
                     </div>
                     <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600">{t('status.shipped')}</span>
@@ -308,7 +309,7 @@ function ShippingRecordsPageContent() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t('table.bol')}</span>
-                      <p className="font-semibold text-xs">{record.bol || '-'}</p>
+                      <p className="font-semibold text-xs">{String(record.bol || '-')}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t('table.pallets')}</span>
@@ -317,10 +318,10 @@ function ShippingRecordsPageContent() {
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
-                      {record.category || 'Uncategorized'}
+                      {String(record.category || 'Uncategorized')}
                     </span>
                   </div>
-                  <PhotoGrid photos={photos} size="md" context={{ ifNumber: record.ifNumber }} />
+                  <PhotoGrid photos={Array.isArray(photos) ? photos : []} size="md" context={{ ifNumber: ifNum }} />
                 </CardContent>
               </Card>
             )

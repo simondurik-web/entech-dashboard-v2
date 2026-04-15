@@ -34,6 +34,7 @@ Created: 2026-02-07
 **Staging Branch (for TESTING):**
 - Branch name: `staging` (NOT `redeploy/add-all-products` or any other branch)
 - Staging URL: https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app
+- Orders page: https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/orders
 - Git command: `git push origin staging` (push to `staging`, not `main`)
 
 **Production Branch (for LIVE):**

@@ -2,7 +2,7 @@
 
 import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -36,6 +36,8 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   autoExport?: 'csv' | 'xlsx' | null
   /** Custom Excel export function — overrides default exportToExcel */
   onExcelExport?: (data: T[], columns: { key: keyof T & string; label: string }[], filename: string) => Promise<void>
+  /** Disable framer-motion layout animations (recommended for large data sets or when browser extensions may interfere) */
+  disableAnimation?: boolean
 }
 
 function SortIcon({ columnKey, sortKey, sortDir }: {
@@ -63,6 +65,7 @@ export function DataTable<T extends Record<string, unknown>>({
   initialView,
   autoExport,
   onExcelExport,
+  disableAnimation = false,
 }: DataTableProps<T>) {
   const { t } = useI18n()
   const {
@@ -240,70 +243,68 @@ export function DataTable<T extends Record<string, unknown>>({
               ))}
             </tr>
           </thead>
-          <LayoutGroup>
-            <tbody>
-              {processedData.map((row, i) => {
-                const rowKey = getRowKey?.(row, i) ?? String(i)
-                const isExpanded = expandedRowKey === rowKey
-                const isClickable = !!onRowClick
-                const useLayout = i < 50
-                const RowTag = useLayout ? motion.tr : 'tr'
-                const layoutProps = useLayout ? { layout: true as const, transition: { duration: 0.2 } } : {}
-                return (
-                  <Fragment key={rowKey}>
-                    <RowTag
-                      {...layoutProps}
-                      className={cn('border-b table-row-hover', isClickable && 'cursor-pointer', rowClassName?.(row))}
-                      style={i < 25 ? { animation: `fadeSlideIn 300ms ease-out ${i * 30}ms both` } : undefined}
-                      onClick={isClickable ? () => onRowClick(row, i) : undefined}
-                    >
-                      {visibleColumns.map((col) => (
-                        <td key={col.key} className="px-3 py-2">
-                          {col.render ? col.render(row[col.key], row) : formatCellValue(row[col.key])}
-                        </td>
-                      ))}
-                    </RowTag>
-                    {renderExpandedContent && (
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.tr
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="border-b"
-                          >
-                            <td colSpan={visibleColumns.length} className="p-0">
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-                                className="overflow-hidden"
-                              >
-                                <div className="bg-muted/25 px-3 py-3">
-                                  {renderExpandedContent(row, i)}
-                                </div>
-                              </motion.div>
-                            </td>
-                          </motion.tr>
-                        )}
-                      </AnimatePresence>
-                    )}
-                  </Fragment>
-                )
-              })}
-              {processedData.length === 0 && (
-                <tr>
-                  <td colSpan={visibleColumns.length}>
-                    <EmptyState
-                      type={hasActiveFilters ? 'filtered' : 'no-data'}
-                      onClearFilters={hasActiveFilters ? clearAllFilters : undefined}
-                    />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </LayoutGroup>
+          <tbody>
+            {processedData.map((row, i) => {
+              const rowKey = getRowKey?.(row, i) ?? String(i)
+              const isExpanded = expandedRowKey === rowKey
+              const isClickable = !!onRowClick
+              const useLayout = !disableAnimation && i < 50
+              const RowTag = useLayout ? motion.tr : 'tr'
+              const layoutProps = useLayout ? { layout: true as const, transition: { duration: 0.2 } } : {}
+              return (
+                <Fragment key={rowKey}>
+                  <RowTag
+                    {...layoutProps}
+                    className={cn('border-b table-row-hover', isClickable && 'cursor-pointer', rowClassName?.(row))}
+                    style={i < 25 ? { animation: `fadeSlideIn 300ms ease-out ${i * 30}ms both` } : undefined}
+                    onClick={isClickable ? () => onRowClick(row, i) : undefined}
+                  >
+                    {visibleColumns.map((col) => (
+                      <td key={col.key} className="px-3 py-2">
+                        {col.render ? col.render(row[col.key], row) : formatCellValue(row[col.key])}
+                      </td>
+                    ))}
+                  </RowTag>
+                  {renderExpandedContent && (
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.tr
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="border-b"
+                        >
+                          <td colSpan={visibleColumns.length} className="p-0">
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+                              className="overflow-hidden"
+                            >
+                              <div className="bg-muted/25 px-3 py-3">
+                                {renderExpandedContent(row, i)}
+                              </div>
+                            </motion.div>
+                          </td>
+                        </motion.tr>
+                      )}
+                    </AnimatePresence>
+                  )}
+                </Fragment>
+              )
+            })}
+            {processedData.length === 0 && (
+              <tr>
+                <td colSpan={visibleColumns.length}>
+                  <EmptyState
+                    type={hasActiveFilters ? 'filtered' : 'no-data'}
+                    onClearFilters={hasActiveFilters ? clearAllFilters : undefined}
+                  />
+                </td>
+              </tr>
+            )}
+          </tbody>
         </table>
       </div>
 
@@ -342,5 +343,9 @@ function DefaultCard<T extends Record<string, unknown>>({ row, columns, classNam
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return '-'
   if (typeof value === 'number') return value.toLocaleString()
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) return value.map(String).join(', ')
+    try { return JSON.stringify(value) } catch { return '[object]' }
+  }
   return String(value)
 }
