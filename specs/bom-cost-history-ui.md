@@ -2,7 +2,7 @@
 
 **Project:** entech-dashboard-v2
 **Created:** 2026-04-16
-**Status:** In Progress (Phase 1 ✅, Phase 2 ✅, Phase 3 🔄)
+**Status:** In Progress (Phase 1 ✅, Phase 2 ✅, Phase 3 ✅, Phase 4 🔄)
 **Priority:** Medium
 
 ---
@@ -374,13 +374,16 @@ export function CostHistoryChart({ history, height = 200 }: CostHistoryChartProp
 - **Actual time:** ~15 minutes
 - **Completed:** 2026-04-16 08:27 EDT
 
-### Phase 3: Cost History Table (Sub-Assemblies)
-1. Add "History" button to sub-assemblies table
-2. Create expandable row component
-3. Display cost history table
-4. Add "View Component Changes" link
-5. Test with real data
-6. **Estimated time:** 4-5 hours
+### Phase 3: Cost History Table (Sub-Assemblies) ✅ COMPLETE
+- [x] Add "History" button to sub-assemblies table
+- [x] Create expandable row component
+- [x] Display cost history table (date, field, old/new values, % change)
+- [x] Add "View Component Changes" link
+- [x] Test with real data
+- [x] Mutually exclusive with detail expansion
+- **Estimated time:** 4-5 hours
+- **Actual time:** ~15 minutes
+- **Completed:** 2026-04-16 08:33 EDT
 
 ### Phase 4: Cost History Table (Final Assemblies)
 1. Repeat Phase 3 for final assemblies
