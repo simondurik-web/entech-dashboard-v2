@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { recalculateCascade } from '@/lib/bom-recalculate'
 
@@ -54,8 +54,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
   }
 
-  // Cascade recalculation
-  await recalculateCascade('individual_item', id)
+  // Run cascade after response is sent (keeps function alive on Vercel)
+  after(async () => {
+    try {
+      await recalculateCascade('individual_item', id)
+    } catch (err) {
+      console.error('[bom-cascade] recalculation failed:', err)
+    }
+  })
 
   return NextResponse.json(data)
 }
