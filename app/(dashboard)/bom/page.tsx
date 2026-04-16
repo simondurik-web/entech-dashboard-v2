@@ -1483,6 +1483,127 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
 
 // ─── Tab 2: Sub Assemblies ───────────────────────────────────────
 
+interface CostHistoryEntry {
+  id: string
+  changed_at: string
+  changed_field: string
+  old_value: number
+  new_value: number
+  pct_change: number
+  cause_item_id?: string
+  cause_item_part_number?: string
+}
+
+interface CostHistoryResponse {
+  itemId: string
+  itemType: string
+  partNumber: string
+  history: CostHistoryEntry[]
+  stats: {
+    first_cost: number
+    last_cost: number
+    total_changes: number
+    overall_pct_change: number
+  }
+}
+
+function CostHistoryPanel({ data, loading, error, onViewComponents }: {
+  data: CostHistoryResponse | null
+  loading: boolean
+  error: string | null
+  onViewComponents?: () => void
+}) {
+  if (loading) {
+    return (
+      <div className="py-6 text-center text-muted-foreground text-sm">
+        <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
+        Loading cost history...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="py-4 text-center text-destructive text-sm">
+        <AlertTriangle className="h-4 w-4 inline mr-1" />
+        {error}
+      </div>
+    )
+  }
+
+  if (!data || data.history.length === 0) {
+    return (
+      <div className="py-4 text-center text-muted-foreground text-sm">
+        No cost history recorded for this item.
+      </div>
+    )
+  }
+
+  const { history, stats } = data
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-sm flex items-center gap-1.5">
+          <History className="h-4 w-4" />
+          Cost History ({stats.total_changes} change{stats.total_changes !== 1 ? 's' : ''})
+        </h4>
+        {stats.total_changes > 0 && (
+          <div className="text-xs text-muted-foreground">
+            Overall: {fmt(stats.first_cost)} → {fmt(stats.last_cost)}{' '}
+            <span className={stats.overall_pct_change > 0 ? 'text-red-400' : stats.overall_pct_change < 0 ? 'text-green-400' : ''}>
+              ({stats.overall_pct_change > 0 ? '+' : ''}{stats.overall_pct_change.toFixed(2)}%)
+            </span>
+          </div>
+        )}
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Field</TableHead>
+            <TableHead className="text-right">Old Value</TableHead>
+            <TableHead className="text-right">New Value</TableHead>
+            <TableHead className="text-right">% Change</TableHead>
+            <TableHead>Cause</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {history.map(entry => {
+            const date = new Date(entry.changed_at)
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            return (
+              <TableRow key={entry.id}>
+                <TableCell className="text-xs">{dateStr}</TableCell>
+                <TableCell className="text-xs capitalize">{entry.changed_field.replace(/_/g, ' ')}</TableCell>
+                <TableCell className="text-right text-xs">{entry.old_value ? fmt(entry.old_value) : '—'}</TableCell>
+                <TableCell className="text-right text-xs">{fmt(entry.new_value)}</TableCell>
+                <TableCell className="text-right text-xs">
+                  {entry.old_value ? (
+                    <span className={entry.pct_change > 0 ? 'text-red-400' : entry.pct_change < 0 ? 'text-green-400' : ''}>
+                      {entry.pct_change > 0 ? '+' : ''}{entry.pct_change.toFixed(2)}%
+                    </span>
+                  ) : '—'}
+                </TableCell>
+                <TableCell className="text-xs font-mono">
+                  {entry.cause_item_part_number || '—'}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+      {onViewComponents && (
+        <div className="pt-1">
+          <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onViewComponents}>
+            View Component Changes →
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   assemblies: SubAssembly[]
   individualItems: IndividualItem[]
@@ -1492,6 +1613,41 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   const { t } = useI18n()
   const { profile } = useAuth()
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [costHistoryId, setCostHistoryId] = useState<string | null>(null)
+  const [costHistoryData, setCostHistoryData] = useState<CostHistoryResponse | null>(null)
+  const [costHistoryLoading, setCostHistoryLoading] = useState(false)
+  const [costHistoryError, setCostHistoryError] = useState<string | null>(null)
+
+  const fetchCostHistory = useCallback(async (id: string) => {
+    setCostHistoryLoading(true)
+    setCostHistoryError(null)
+    setCostHistoryData(null)
+    try {
+      const res = await fetch(`/api/bom/sub/${id}/cost-history`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to fetch cost history (${res.status})`)
+      }
+      const data: CostHistoryResponse = await res.json()
+      setCostHistoryData(data)
+    } catch (e) {
+      setCostHistoryError(e instanceof Error ? e.message : 'Failed to fetch cost history')
+    } finally {
+      setCostHistoryLoading(false)
+    }
+  }, [])
+
+  const toggleCostHistory = useCallback((id: string) => {
+    if (costHistoryId === id) {
+      setCostHistoryId(null)
+      setCostHistoryData(null)
+      setCostHistoryError(null)
+    } else {
+      setCostHistoryId(id)
+      setExpandedId(null)
+      fetchCostHistory(id)
+    }
+  }, [costHistoryId, fetchCostHistory])
 
   const filtered = assemblies.filter(a =>
     a.part_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -1563,7 +1719,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
           <TableBody>
             {filtered.map(a => (
               <Fragment key={a.id}>
-                <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
+                <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedId(expandedId === a.id ? null : a.id); if (costHistoryId) setCostHistoryId(null) }}>
                   <TableCell>
                     {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   </TableCell>
@@ -1579,6 +1735,9 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                   <TableCell className="text-right font-semibold">{fmt(a.total_cost)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                      <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === a.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(a.id)} title="Cost History">
+                        <History className="h-3 w-3" />
+                      </Button>
                       <EditSubAssemblyDialog assembly={a} individualItems={individualItems} existingCategories={existingCategories} onSaved={() => onRefresh(true)} />
                       <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
                         <RefreshCw className="h-3 w-3" />
@@ -1592,6 +1751,22 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                     </div>
                   </TableCell>
                 </TableRow>
+                {costHistoryId === a.id && (
+                  <TableRow key={`${a.id}-history`}>
+                    <TableCell colSpan={8} className="bg-muted/30 p-4">
+                      <CostHistoryPanel
+                        data={costHistoryData}
+                        loading={costHistoryLoading}
+                        error={costHistoryError}
+                        onViewComponents={() => {
+                          // Navigate to individual items tab showing this assembly's components
+                          setCostHistoryId(null)
+                          setExpandedId(a.id)
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
                 {expandedId === a.id && (
                   <TableRow key={`${a.id}-detail`}>
                     <TableCell colSpan={8} className="bg-muted/30 p-4">
