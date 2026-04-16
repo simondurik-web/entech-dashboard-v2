@@ -452,6 +452,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   const [editingLeadTimeId, setEditingLeadTimeId] = useState<string | null>(null)
   const [editLeadTime, setEditLeadTime] = useState('')
   const [savingLeadTime, setSavingLeadTime] = useState(false)
+  const savingLeadTimeRef = useRef(false)
   const leadTimeCancelledRef = useRef(false)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
@@ -478,10 +479,11 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   }
 
   const saveLeadTime = async (id: string) => {
-    if (savingLeadTime || leadTimeCancelledRef.current) return
+    if (savingLeadTimeRef.current || leadTimeCancelledRef.current) return
     const trimmed = editLeadTime.trim()
     const value = trimmed === '' ? null : Number(trimmed)
     if (value !== null && (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0)) return
+    savingLeadTimeRef.current = true
     setSavingLeadTime(true)
     try {
       const res = await fetch(`/api/bom/individual-items/${id}/update-lead-time`, {
@@ -499,6 +501,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     } catch (e) {
       alert(`Failed to save lead time: ${e instanceof Error ? e.message : 'Network error'}`)
     } finally {
+      savingLeadTimeRef.current = false
       setSavingLeadTime(false)
     }
   }
@@ -662,7 +665,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                         onChange={e => setEditLeadTime(e.target.value)}
                         className="w-20 h-7 text-right"
                         onKeyDown={e => {
-                          if (e.key === 'Enter') { e.currentTarget.blur(); saveLeadTime(item.id) }
+                          if (e.key === 'Enter') e.currentTarget.blur()
                           if (e.key === 'Escape') { leadTimeCancelledRef.current = true; setEditingLeadTimeId(null) }
                         }}
                         onBlur={() => { if (!leadTimeCancelledRef.current) saveLeadTime(item.id); leadTimeCancelledRef.current = false }}
