@@ -2,7 +2,7 @@
 
 **Project:** entech-dashboard-v2
 **Created:** 2026-04-16
-**Status:** In Progress (Phase 1 ✅, Phase 2 ✅, Phase 3 ✅, Phase 4 🔄)
+**Status:** In Progress (Phase 1 ✅, Phase 2 ✅, Phase 3 ✅, Phase 4 ✅)
 **Priority:** Medium
 
 ---
@@ -385,10 +385,17 @@ export function CostHistoryChart({ history, height = 200 }: CostHistoryChartProp
 - **Actual time:** ~15 minutes
 - **Completed:** 2026-04-16 08:33 EDT
 
-### Phase 4: Cost History Table (Final Assemblies)
-1. Repeat Phase 3 for final assemblies
-2. Test cost propagation
-3. **Estimated time:** 3-4 hours
+### Phase 4: Cost History Table (Final Assemblies) ✅ COMPLETE
+- [x] Add cost history state (costHistoryId, data, loading, error)
+- [x] Add fetchCostHistory and toggleCostHistory callbacks (using `/api/bom/final/[id]/cost-history`)
+- [x] Add History button to final assemblies action column
+- [x] Add CostHistoryPanel expandable row (reuses same component from Phase 3)
+- [x] Mutual exclusion: clicking row detail dismisses cost history and vice versa
+- [x] "View Component Changes" links back to detail expansion
+- [x] TypeScript compiles clean
+- **Estimated time:** 3-4 hours
+- **Actual time:** ~5 minutes
+- **Completed:** 2026-04-16
 
 ### Phase 5: Chart Visualization
 1. Create `CostHistoryChart` component
