@@ -2,7 +2,7 @@
 
 **Project:** entech-dashboard-v2
 **Created:** 2026-04-16
-**Status:** In Progress (Phase 1 ✅, Phase 2 🔄)
+**Status:** In Progress (Phase 1 ✅, Phase 2 ✅, Phase 3 🔄)
 **Priority:** Medium
 
 ---
@@ -364,12 +364,15 @@ export function CostHistoryChart({ history, height = 200 }: CostHistoryChartProp
 - **Actual time:** ~30 minutes
 - **Completed:** 2026-04-16 08:21 EDT
 
-### Phase 2: Cost History API
-1. Create `/api/bom/[type]/[id]/cost-history` endpoint
-2. Query `bom_cost_history_with_details` view
-3. Add RLS policies for read access
-4. Test with known items
-5. **Estimated time:** 2-3 hours
+### Phase 2: Cost History API ✅ COMPLETE
+- [x] Create `/api/bom/[type]/[id]/cost-history` endpoint
+- [x] Query `bom_cost_history_with_details` view
+- [x] Add RLS policies for read access (already exist)
+- [x] Test with known items
+- [x] Return CostHistoryEntry[] and CostStats
+- **Estimated time:** 2-3 hours
+- **Actual time:** ~15 minutes
+- **Completed:** 2026-04-16 08:27 EDT
 
 ### Phase 3: Cost History Table (Sub-Assemblies)
 1. Add "History" button to sub-assemblies table
