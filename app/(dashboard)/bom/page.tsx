@@ -452,6 +452,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   const [editingLeadTimeId, setEditingLeadTimeId] = useState<string | null>(null)
   const [editLeadTime, setEditLeadTime] = useState('')
   const [savingLeadTime, setSavingLeadTime] = useState(false)
+  const leadTimeCancelledRef = useRef(false)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
 
@@ -477,20 +478,26 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   }
 
   const saveLeadTime = async (id: string) => {
+    if (savingLeadTime || leadTimeCancelledRef.current) return
     const trimmed = editLeadTime.trim()
-    const value = trimmed === '' ? null : parseInt(trimmed, 10)
-    if (value !== null && (isNaN(value) || value <= 0 || !Number.isInteger(value))) return
+    const value = trimmed === '' ? null : Number(trimmed)
+    if (value !== null && (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0)) return
     setSavingLeadTime(true)
     try {
-      await fetch(`/api/bom/individual-items/${id}/update-lead-time`, {
+      const res = await fetch(`/api/bom/individual-items/${id}/update-lead-time`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_time: value }),
+        body: JSON.stringify({ lead_time: value, ...performedBy }),
       })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(`Failed to save lead time: ${body.error || res.statusText}`)
+        return
+      }
       setEditingLeadTimeId(null)
       onRefresh(true)
     } catch (e) {
-      console.error('Failed to save lead time', e)
+      alert(`Failed to save lead time: ${e instanceof Error ? e.message : 'Network error'}`)
     } finally {
       setSavingLeadTime(false)
     }
@@ -655,10 +662,10 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                         onChange={e => setEditLeadTime(e.target.value)}
                         className="w-20 h-7 text-right"
                         onKeyDown={e => {
-                          if (e.key === 'Enter') saveLeadTime(item.id)
-                          if (e.key === 'Escape') setEditingLeadTimeId(null)
+                          if (e.key === 'Enter') { e.currentTarget.blur(); saveLeadTime(item.id) }
+                          if (e.key === 'Escape') { leadTimeCancelledRef.current = true; setEditingLeadTimeId(null) }
                         }}
-                        onBlur={() => saveLeadTime(item.id)}
+                        onBlur={() => { if (!leadTimeCancelledRef.current) saveLeadTime(item.id); leadTimeCancelledRef.current = false }}
                         disabled={savingLeadTime}
                         autoFocus
                         placeholder="-"
@@ -1481,7 +1488,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
   )
 }
 
-// ─── Tab 2: Sub Assemblies ───────────────────────────────────────
+// ─── Cost History Hook ───────────────────────────────────────────
 
 interface CostHistoryEntry {
   id: string
@@ -1604,41 +1611,40 @@ function CostHistoryPanel({ data, loading, error, onViewComponents }: {
   )
 }
 
-function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
-  assemblies: SubAssembly[]
-  individualItems: IndividualItem[]
-  search: string
-  onRefresh: (bust?: boolean) => void
-}) {
-  const { t } = useI18n()
-  const { profile } = useAuth()
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+function useCostHistory(typePrefix: 'sub' | 'final') {
   const [costHistoryId, setCostHistoryId] = useState<string | null>(null)
   const [costHistoryData, setCostHistoryData] = useState<CostHistoryResponse | null>(null)
   const [costHistoryLoading, setCostHistoryLoading] = useState(false)
   const [costHistoryError, setCostHistoryError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const fetchCostHistory = useCallback(async (id: string) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setCostHistoryLoading(true)
     setCostHistoryError(null)
     setCostHistoryData(null)
     try {
-      const res = await fetch(`/api/bom/sub/${id}/cost-history`)
+      const res = await fetch(`/api/bom/${typePrefix}/${id}/cost-history`, { signal: controller.signal })
+      if (controller.signal.aborted) return
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body.error || `Failed to fetch cost history (${res.status})`)
       }
       const data: CostHistoryResponse = await res.json()
-      setCostHistoryData(data)
+      if (!controller.signal.aborted) setCostHistoryData(data)
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       setCostHistoryError(e instanceof Error ? e.message : 'Failed to fetch cost history')
     } finally {
-      setCostHistoryLoading(false)
+      if (!controller.signal.aborted) setCostHistoryLoading(false)
     }
-  }, [])
+  }, [typePrefix])
 
-  const toggleCostHistory = useCallback((id: string) => {
+  const toggleCostHistory = useCallback((id: string, setExpandedId: (id: string | null) => void) => {
     if (costHistoryId === id) {
+      abortRef.current?.abort()
       setCostHistoryId(null)
       setCostHistoryData(null)
       setCostHistoryError(null)
@@ -1648,6 +1654,29 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
       fetchCostHistory(id)
     }
   }, [costHistoryId, fetchCostHistory])
+
+  const dismiss = useCallback(() => {
+    abortRef.current?.abort()
+    setCostHistoryId(null)
+    setCostHistoryData(null)
+    setCostHistoryError(null)
+  }, [])
+
+  return { costHistoryId, costHistoryData, costHistoryLoading, costHistoryError, toggleCostHistory, dismiss }
+}
+
+// ─── Tab 2: Sub Assemblies ───────────────────────────────────────
+
+function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
+  assemblies: SubAssembly[]
+  individualItems: IndividualItem[]
+  search: string
+  onRefresh: (bust?: boolean) => void
+}) {
+  const { t } = useI18n()
+  const { profile } = useAuth()
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { costHistoryId, costHistoryData, costHistoryLoading, costHistoryError, toggleCostHistory, dismiss: dismissCostHistory } = useCostHistory('sub')
 
   const filtered = assemblies.filter(a =>
     a.part_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -1719,7 +1748,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
           <TableBody>
             {filtered.map(a => (
               <Fragment key={a.id}>
-                <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedId(expandedId === a.id ? null : a.id); if (costHistoryId) setCostHistoryId(null) }}>
+                <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedId(expandedId === a.id ? null : a.id); if (costHistoryId) dismissCostHistory() }}>
                   <TableCell>
                     {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   </TableCell>
@@ -1735,7 +1764,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                   <TableCell className="text-right font-semibold">{fmt(a.total_cost)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                      <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === a.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(a.id)} title="Cost History">
+                      <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === a.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(a.id, setExpandedId)} title="Cost History">
                         <History className="h-3 w-3" />
                       </Button>
                       <EditSubAssemblyDialog assembly={a} individualItems={individualItems} existingCategories={existingCategories} onSaved={() => onRefresh(true)} />
@@ -1759,8 +1788,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                         loading={costHistoryLoading}
                         error={costHistoryError}
                         onViewComponents={() => {
-                          // Navigate to individual items tab showing this assembly's components
-                          setCostHistoryId(null)
+                          dismissCostHistory()
                           setExpandedId(a.id)
                         }}
                       />
@@ -1832,41 +1860,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(false)
   const [configEdits, setConfigEdits] = useState<Record<string, string>>({})
-  const [costHistoryId, setCostHistoryId] = useState<string | null>(null)
-  const [costHistoryData, setCostHistoryData] = useState<CostHistoryResponse | null>(null)
-  const [costHistoryLoading, setCostHistoryLoading] = useState(false)
-  const [costHistoryError, setCostHistoryError] = useState<string | null>(null)
-
-  const fetchCostHistory = useCallback(async (id: string) => {
-    setCostHistoryLoading(true)
-    setCostHistoryError(null)
-    setCostHistoryData(null)
-    try {
-      const res = await fetch(`/api/bom/final/${id}/cost-history`)
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.error || `Failed to fetch cost history (${res.status})`)
-      }
-      const data: CostHistoryResponse = await res.json()
-      setCostHistoryData(data)
-    } catch (e) {
-      setCostHistoryError(e instanceof Error ? e.message : 'Failed to fetch cost history')
-    } finally {
-      setCostHistoryLoading(false)
-    }
-  }, [])
-
-  const toggleCostHistory = useCallback((id: string) => {
-    if (costHistoryId === id) {
-      setCostHistoryId(null)
-      setCostHistoryData(null)
-      setCostHistoryError(null)
-    } else {
-      setCostHistoryId(id)
-      setExpandedId(null)
-      fetchCostHistory(id)
-    }
-  }, [costHistoryId, fetchCostHistory])
+  const { costHistoryId, costHistoryData, costHistoryLoading, costHistoryError, toggleCostHistory, dismiss: dismissCostHistory } = useCostHistory('final')
 
   const filtered = assemblies.filter(a =>
     a.part_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -1993,7 +1987,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
             <TableBody>
               {filtered.map(a => (
                 <Fragment key={a.id}>
-                  <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedId(expandedId === a.id ? null : a.id); if (costHistoryId) setCostHistoryId(null) }}>
+                  <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedId(expandedId === a.id ? null : a.id); if (costHistoryId) dismissCostHistory() }}>
                     <TableCell>
                       {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                     </TableCell>
@@ -2010,7 +2004,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                     <TableCell className="text-right font-semibold text-green-400">{fmt(a.sales_target)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === a.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(a.id)} title="Cost History">
+                        <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === a.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(a.id, setExpandedId)} title="Cost History">
                           <History className="h-3 w-3" />
                         </Button>
                         <EditFinalAssemblyDialog assembly={a} subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onSaved={() => onRefresh(true)} />
@@ -2034,7 +2028,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                           loading={costHistoryLoading}
                           error={costHistoryError}
                           onViewComponents={() => {
-                            setCostHistoryId(null)
+                            dismissCostHistory()
                             setExpandedId(a.id)
                           }}
                         />

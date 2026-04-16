@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+// Note: Auth is enforced client-side via AccessGuard (consistent with all BOM API routes).
+// Server-side auth for BOM routes is tracked as a future improvement.
+
 const VALID_TYPES = ['individual', 'sub', 'final'] as const
 type ItemType = (typeof VALID_TYPES)[number]
-
-// Database item_type values match the URL param directly
-const TYPE_MAP: Record<ItemType, string> = {
-  individual: 'individual',
-  sub: 'sub',
-  final: 'final',
-}
 
 // Map short type names to their source tables for part_number lookup
 const TABLE_MAP: Record<ItemType, string> = {
@@ -57,7 +53,6 @@ export async function GET(
   }
 
   const itemType = type as ItemType
-  const dbItemType = TYPE_MAP[itemType]
   const tableName = TABLE_MAP[itemType]
 
   try {
@@ -77,7 +72,7 @@ export async function GET(
       .from('bom_cost_history_with_details')
       .select('*')
       .eq('bom_item_id', id)
-      .eq('item_type', dbItemType)
+      .eq('item_type', itemType)
       .order('changed_at', { ascending: false })
 
     if (historyError) {
@@ -111,8 +106,9 @@ export async function GET(
       }
     })
 
-    // Compute stats
-    const stats: CostStats = computeStats(entries)
+    // Compute stats using only total_cost entries to avoid mixing unrelated fields
+    const totalCostEntries = entries.filter(e => e.changed_field === 'total_cost')
+    const stats: CostStats = computeStats(totalCostEntries.length > 0 ? totalCostEntries : entries)
 
     return NextResponse.json(
       {
@@ -122,9 +118,7 @@ export async function GET(
         history: entries,
         stats,
       },
-      {
-        headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' },
-      }
+      { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

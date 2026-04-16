@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { recalculateCascade } from '@/lib/bom-recalculate'
 
-const AUDIT_FIELDS = ['part_number', 'description', 'cost_per_unit', 'unit', 'supplier']
+const AUDIT_FIELDS = ['part_number', 'description', 'cost_per_unit', 'unit', 'supplier', 'lead_time']
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
