@@ -1832,6 +1832,41 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(false)
   const [configEdits, setConfigEdits] = useState<Record<string, string>>({})
+  const [costHistoryId, setCostHistoryId] = useState<string | null>(null)
+  const [costHistoryData, setCostHistoryData] = useState<CostHistoryResponse | null>(null)
+  const [costHistoryLoading, setCostHistoryLoading] = useState(false)
+  const [costHistoryError, setCostHistoryError] = useState<string | null>(null)
+
+  const fetchCostHistory = useCallback(async (id: string) => {
+    setCostHistoryLoading(true)
+    setCostHistoryError(null)
+    setCostHistoryData(null)
+    try {
+      const res = await fetch(`/api/bom/final/${id}/cost-history`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to fetch cost history (${res.status})`)
+      }
+      const data: CostHistoryResponse = await res.json()
+      setCostHistoryData(data)
+    } catch (e) {
+      setCostHistoryError(e instanceof Error ? e.message : 'Failed to fetch cost history')
+    } finally {
+      setCostHistoryLoading(false)
+    }
+  }, [])
+
+  const toggleCostHistory = useCallback((id: string) => {
+    if (costHistoryId === id) {
+      setCostHistoryId(null)
+      setCostHistoryData(null)
+      setCostHistoryError(null)
+    } else {
+      setCostHistoryId(id)
+      setExpandedId(null)
+      fetchCostHistory(id)
+    }
+  }, [costHistoryId, fetchCostHistory])
 
   const filtered = assemblies.filter(a =>
     a.part_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -1958,7 +1993,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
             <TableBody>
               {filtered.map(a => (
                 <Fragment key={a.id}>
-                  <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
+                  <TableRow key={a.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedId(expandedId === a.id ? null : a.id); if (costHistoryId) setCostHistoryId(null) }}>
                     <TableCell>
                       {expandedId === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                     </TableCell>
@@ -1975,6 +2010,9 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                     <TableCell className="text-right font-semibold text-green-400">{fmt(a.sales_target)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === a.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(a.id)} title="Cost History">
+                          <History className="h-3 w-3" />
+                        </Button>
                         <EditFinalAssemblyDialog assembly={a} subAssemblies={subAssemblies} individualItems={individualItems} existingProductCategories={existingProductCategories} existingSubProductCategories={existingSubProductCategories} onSaved={() => onRefresh(true)} />
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => recalculate(a.id)} title="Recalculate">
                           <RefreshCw className="h-3 w-3" />
@@ -1988,6 +2026,21 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                       </div>
                     </TableCell>
                   </TableRow>
+                  {costHistoryId === a.id && (
+                    <TableRow key={`${a.id}-history`}>
+                      <TableCell colSpan={9} className="bg-muted/30 p-4">
+                        <CostHistoryPanel
+                          data={costHistoryData}
+                          loading={costHistoryLoading}
+                          error={costHistoryError}
+                          onViewComponents={() => {
+                            setCostHistoryId(null)
+                            setExpandedId(a.id)
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {expandedId === a.id && (
                     <TableRow key={`${a.id}-detail`}>
                       <TableCell colSpan={9} className="bg-muted/30 p-4">
