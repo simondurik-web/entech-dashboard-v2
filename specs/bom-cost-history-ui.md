@@ -2,7 +2,7 @@
 
 **Project:** entech-dashboard-v2
 **Created:** 2026-04-16
-**Status:** Planning
+**Status:** In Progress (Phase 1 ✅, Phase 2 🔄)
 **Priority:** Medium
 
 ---
@@ -355,11 +355,14 @@ export function CostHistoryChart({ history, height = 200 }: CostHistoryChartProp
 
 ## Implementation Order
 
-### Phase 1: Lead Time (Quick Win)
-1. Add lead_time column to individual items table
-2. Create API endpoint for updating lead time
-3. Test inline editing
-4. **Estimated time:** 2-3 hours
+### Phase 1: Lead Time (Quick Win) ✅ COMPLETE
+- [x] Add lead_time column to individual items table
+- [x] Create API endpoint for updating lead time
+- [x] Add inline edit support with validation (positive integer or null)
+- [x] Test inline editing
+- **Estimated time:** 2-3 hours
+- **Actual time:** ~30 minutes
+- **Completed:** 2026-04-16 08:21 EDT
 
 ### Phase 2: Cost History API
 1. Create `/api/bom/[type]/[id]/cost-history` endpoint
