@@ -29,6 +29,11 @@ function normalize(value: string | undefined): string {
   return (value || '').trim().toLowerCase()
 }
 
+/** Strip IF/if prefix and normalize for comparison */
+function normalizeIf(value: string | undefined): string {
+  return normalize(value).replace(/^if\s*/i, '')
+}
+
 /** Drawing thumbnails with hover-enlarge */
 function DrawingThumbs({ drawings, onOpen }: { drawings: { main?: Drawing | null; tire?: Drawing | null; hub?: Drawing | null }; onOpen: (url: string) => void }) {
   const [hovered, setHovered] = useState<number | null>(null)
@@ -133,6 +138,7 @@ export function OrderDetail({
       try {
         setLoading(true)
         setError(null)
+        setPallets([])
         const requests: Promise<Response>[] = [
           fetch('/api/pallet-records'),
           fetch('/api/drawings'),
@@ -151,20 +157,22 @@ export function OrderDetail({
         const stagedData = (await stagedRes.json()) as StagedRecord[]
         const shippingData = shippingRes ? ((await shippingRes.json()) as ShippingRecord[]) : []
 
-        const targetIf = normalize(ifNumber)
+        const targetIf = normalizeIf(ifNumber)
         const targetLine = normalize(line)
 
         if (!mounted) return
         setPallets(palletData.filter((r) => {
-          const rIf = normalize(r.ifNumber)
-          const oNum = normalize(r.orderNumber)
+          const rIf = normalizeIf(r.ifNumber)
+          const rLine = normalize(r.lineNumber)
+          // Primary: match by IF number (strip IF prefix for consistent comparison)
           if (targetIf && rIf && rIf === targetIf) return true
-          if (targetLine && oNum && oNum === targetLine) return true
+          // Fallback: match by lineNumber only (NOT orderNumber which may contain IF#)
+          if (targetLine && rLine && rLine === targetLine) return true
           return false
         }))
-        setStaged(stagedData.filter((r) => normalize(r.ifNumber) === targetIf))
+        setStaged(stagedData.filter((r) => normalizeIf(r.ifNumber) === targetIf))
         setShipping(shippingData.filter((r) => {
-          if (targetIf && normalize(r.ifNumber) === targetIf) return true
+          if (targetIf && normalizeIf(r.ifNumber) === targetIf) return true
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const rLine = normalize((r as any).lineNumber)
           if (targetLine && rLine && rLine === targetLine) return true
@@ -411,13 +419,13 @@ export function OrderDetail({
                       const pr = await fetch('/api/pallet-records')
                       if (pr.ok) {
                         const data = (await pr.json()) as PalletRecord[]
-                        const targetIf = normalize(ifNumber)
+                        const targetIf = normalizeIf(ifNumber)
                         const targetLine = normalize(line)
                         setPallets(data.filter((r) => {
-                          const rIf = normalize(r.ifNumber)
-                          const oNum = normalize(r.orderNumber)
+                          const rIf = normalizeIf(r.ifNumber)
+                          const rLine = normalize(r.lineNumber)
                           if (targetIf && rIf && rIf === targetIf) return true
-                          if (targetLine && oNum && oNum === targetLine) return true
+                          if (targetLine && rLine && rLine === targetLine) return true
                           return false
                         }))
                       }
@@ -451,13 +459,13 @@ export function OrderDetail({
                             const pr = await fetch('/api/pallet-records')
                             if (pr.ok) {
                               const data = (await pr.json()) as PalletRecord[]
-                              const targetIf = normalize(ifNumber)
+                              const targetIf = normalizeIf(ifNumber)
                               const targetLine = normalize(line)
                               setPallets(data.filter((r) => {
-                                const rIf = normalize(r.ifNumber)
-                                const oNum = normalize(r.orderNumber)
+                                const rIf = normalizeIf(r.ifNumber)
+                                const rLine = normalize(r.lineNumber)
                                 if (targetIf && rIf && rIf === targetIf) return true
-                                if (targetLine && oNum && oNum === targetLine) return true
+                                if (targetLine && rLine && rLine === targetLine) return true
                                 return false
                               }))
                             }
@@ -544,13 +552,13 @@ export function OrderDetail({
                                       const pr = await fetch('/api/pallet-records')
                                       if (pr.ok) {
                                         const data = (await pr.json()) as PalletRecord[]
-                                        const targetIf = normalize(ifNumber)
+                                        const targetIf = normalizeIf(ifNumber)
                                         const targetLine = normalize(line)
                                         setPallets(data.filter((r) => {
-                                          const rIf = normalize(r.ifNumber)
-                                          const oNum = normalize(r.orderNumber)
+                                          const rIf = normalizeIf(r.ifNumber)
+                                          const rLine = normalize(r.lineNumber)
                                           if (targetIf && rIf && rIf === targetIf) return true
-                                          if (targetLine && oNum && oNum === targetLine) return true
+                                          if (targetLine && rLine && rLine === targetLine) return true
                                           return false
                                         }))
                                       }
@@ -603,13 +611,13 @@ export function OrderDetail({
             const res = await fetch('/api/pallet-records')
             if (res.ok) {
               const data = (await res.json()) as PalletRecord[]
-              const targetIf = normalize(ifNumber)
+              const targetIf = normalizeIf(ifNumber)
               const targetLine = normalize(line)
               setPallets(data.filter((r) => {
-                const rIf = normalize(r.ifNumber)
-                const oNum = normalize(r.orderNumber)
+                const rIf = normalizeIf(r.ifNumber)
+                const rLine = normalize(r.lineNumber)
                 if (targetIf && rIf && rIf === targetIf) return true
-                if (targetLine && oNum && oNum === targetLine) return true
+                if (targetLine && rLine && rLine === targetLine) return true
                 return false
               }))
             }
