@@ -70,10 +70,6 @@ export async function DELETE(
   } catch (statusErr) {
     console.error('Failed to update order status after pallet delete:', statusErr)
   }
-    }
-  } catch (statusErr) {
-    console.error('Failed to update order status after pallet delete:', statusErr)
-  }
 
   return NextResponse.json({ ok: true, deleted_id: id })
 }
