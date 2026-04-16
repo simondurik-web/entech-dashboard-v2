@@ -46,6 +46,7 @@ interface IndividualItem {
   cost_per_unit: number
   unit: string
   supplier: string | null
+  lead_time: number | null
 }
 
 interface SubAssemblyComponent {
@@ -448,6 +449,9 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   const { profile } = useAuth()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editCost, setEditCost] = useState('')
+  const [editingLeadTimeId, setEditingLeadTimeId] = useState<string | null>(null)
+  const [editLeadTime, setEditLeadTime] = useState('')
+  const [savingLeadTime, setSavingLeadTime] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
 
@@ -470,6 +474,26 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     })
     setEditingId(null)
     onRefresh(true)
+  }
+
+  const saveLeadTime = async (id: string) => {
+    const trimmed = editLeadTime.trim()
+    const value = trimmed === '' ? null : parseInt(trimmed, 10)
+    if (value !== null && (isNaN(value) || value <= 0 || !Number.isInteger(value))) return
+    setSavingLeadTime(true)
+    try {
+      await fetch(`/api/bom/individual-items/${id}/update-lead-time`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_time: value }),
+      })
+      setEditingLeadTimeId(null)
+      onRefresh(true)
+    } catch (e) {
+      console.error('Failed to save lead time', e)
+    } finally {
+      setSavingLeadTime(false)
+    }
   }
 
   const deleteItem = async (id: string) => {
@@ -584,6 +608,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
               <TableHead className="text-right">{t('bom.costPerUnit')}</TableHead>
               <TableHead>{t('bom.unit')}</TableHead>
               <TableHead>Supplier</TableHead>
+              <TableHead className="text-right">Lead Time</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -619,6 +644,35 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                 </TableCell>
                 <TableCell>{item.unit}</TableCell>
                 <TableCell className="text-muted-foreground">{item.supplier}</TableCell>
+                <TableCell className="text-right">
+                  {editingLeadTimeId === item.id ? (
+                    <div className="flex items-center gap-1 justify-end">
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={editLeadTime}
+                        onChange={e => setEditLeadTime(e.target.value)}
+                        className="w-20 h-7 text-right"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveLeadTime(item.id)
+                          if (e.key === 'Escape') setEditingLeadTimeId(null)
+                        }}
+                        onBlur={() => saveLeadTime(item.id)}
+                        disabled={savingLeadTime}
+                        autoFocus
+                        placeholder="-"
+                      />
+                    </div>
+                  ) : (
+                    <span
+                      className="cursor-pointer hover:text-primary hover:underline"
+                      onClick={() => { setEditingLeadTimeId(item.id); setEditLeadTime(item.lead_time != null ? String(item.lead_time) : '') }}
+                    >
+                      {item.lead_time != null ? `${item.lead_time}d` : '-'}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     <EditIndividualItemDialog item={item} onSaved={() => onRefresh(true)} />
