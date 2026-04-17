@@ -63,11 +63,23 @@ jobs:
       - name: Point staging alias at new deployment
         run: |
           set -euo pipefail
+          DPL_ID="${{ steps.wait.outputs.deployment_id }}"
           DPL_URL="${{ steps.wait.outputs.deployment_url }}"
-          echo "Aliasing $STAGING_ALIAS -> $DPL_URL"
-          curl -sS -X POST \
-            "https://api.vercel.com/v2/deployments/$DPL_URL/aliases?teamId=$TEAM_ID" \
+          echo "Aliasing $STAGING_ALIAS -> $DPL_ID ($DPL_URL)"
+          # POST /v2/deployments/:id/aliases — :id must be the dpl_... id,
+          # not the deployment URL (URL-form returns 404).
+          response=$(curl -sS -w "\nHTTP_CODE:%{http_code}" -X POST \
+            "https://api.vercel.com/v2/deployments/$DPL_ID/aliases?teamId=$TEAM_ID" \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"alias\": \"$STAGING_ALIAS\"}" \
-            | jq '{oldDeploymentId, uid, alias}'
+            -d "{\"alias\": \"$STAGING_ALIAS\"}")
+          body=$(echo "$response" | sed '$d')
+          code=$(echo "$response" | tail -1 | sed 's/HTTP_CODE://')
+          echo "HTTP $code"
+          echo "$body" | jq '.' || echo "$body"
+          # 200 = aliased, 409 not_modified = already pointing there (idempotent success)
+          case "$code" in
+            200|201) echo "Alias updated." ;;
+            409) echo "Alias already points to this deployment." ;;
+            *) echo "Failed with HTTP $code"; exit 1 ;;
+          esac
