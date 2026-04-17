@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { attributeCostHistory } from '@/lib/bom-cost-history-attribution'
 
 // Note: Auth is enforced client-side via AccessGuard (consistent with all BOM API routes).
 // Server-side auth for BOM routes is tracked as a future improvement.
@@ -45,6 +46,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Item not found' }, { status: 404 })
   }
 
+  const requestStart = new Date().toISOString()
+
   const { data, error } = await supabaseAdmin
     .from('bom_individual_items')
     .update({ lead_time, updated_at: new Date().toISOString() })
@@ -55,6 +58,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  await attributeCostHistory(requestStart, performedByEmail, performedByName)
 
   // Audit trail for lead_time change
   const oldVal = existing.lead_time != null ? String(existing.lead_time) : null

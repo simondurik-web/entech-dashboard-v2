@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { BomAuthoringError, updateSubAssembly } from '@/lib/bom-authoring'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { attributeCostHistory } from '@/lib/bom-cost-history-attribution'
 
 const AUDIT_FIELDS = ['part_number', 'category', 'mold_name', 'part_weight', 'parts_per_hour', 'labor_rate_per_hour', 'num_employees']
 
@@ -13,6 +14,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     delete body._performed_by_name
     delete body._performed_by_email
 
+    const requestStart = new Date().toISOString()
+
     // Fetch existing for audit diff
     const { data: existing } = await supabaseAdmin
       .from('bom_sub_assemblies')
@@ -21,6 +24,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       .single()
 
     const data = await updateSubAssembly(id, body)
+    await attributeCostHistory(requestStart, performedByEmail, performedByName)
 
     // Audit trail
     if (existing) {

@@ -1525,6 +1525,9 @@ interface CostHistoryEntry {
   pct_change: number
   cause_item_id?: string
   cause_item_part_number?: string
+  changed_by?: string | null
+  changed_by_email?: string | null
+  changed_by_name?: string | null
 }
 
 interface CostHistoryResponse {
@@ -1598,6 +1601,7 @@ function CostHistoryPanel({ data, loading, error, onViewComponents }: {
             <TableHead className="text-right">Old Value</TableHead>
             <TableHead className="text-right">New Value</TableHead>
             <TableHead className="text-right">% Change</TableHead>
+            <TableHead>By</TableHead>
             <TableHead>Cause</TableHead>
           </TableRow>
         </TableHeader>
@@ -1605,6 +1609,7 @@ function CostHistoryPanel({ data, loading, error, onViewComponents }: {
           {history.map(entry => {
             const date = new Date(entry.changed_at)
             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            const by = formatChangedBy(entry)
             return (
               <TableRow key={entry.id}>
                 <TableCell className="text-xs">{dateStr}</TableCell>
@@ -1618,6 +1623,7 @@ function CostHistoryPanel({ data, loading, error, onViewComponents }: {
                     </span>
                   ) : '—'}
                 </TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate" title={by.title}>{by.display}</TableCell>
                 <TableCell className="text-xs font-mono">
                   {entry.cause_item_part_number || '—'}
                 </TableCell>
@@ -2280,8 +2286,21 @@ interface CostChangeLogEntry {
   new_value: number | null
   pct_change: number | null
   changed_by: string | null
+  changed_by_email: string | null
+  changed_by_name: string | null
   changed_at: string
   affected_assemblies: unknown
+}
+
+function formatChangedBy(row: { changed_by_email?: string | null; changed_by_name?: string | null; changed_by?: string | null }): { display: string; title: string } {
+  const email = row.changed_by_email ?? null
+  const name = row.changed_by_name ?? null
+  if (name && email) return { display: name, title: email }
+  if (email) return { display: email, title: email }
+  if (name) return { display: name, title: name }
+  const fallback = row.changed_by ?? '—'
+  const isSystem = fallback === 'service_role' || fallback === 'postgres' || fallback === 'migration_backfill'
+  return { display: isSystem ? '(system)' : fallback, title: fallback }
 }
 
 type CostChangeLogRow = CostChangeLogEntry & Record<string, unknown>
@@ -2393,8 +2412,11 @@ function CostChangeLogTab({ search }: { search: string }) {
       },
     },
     {
-      key: 'changed_by', label: 'By', sortable: true, filterable: true,
-      render: (v) => <span className="text-xs text-muted-foreground">{String(v ?? '—')}</span>,
+      key: 'changed_by_email', label: 'By', sortable: true, filterable: true,
+      render: (_v, row) => {
+        const { display, title } = formatChangedBy(row)
+        return <span className="text-xs text-muted-foreground max-w-[200px] truncate inline-block align-bottom" title={title}>{display}</span>
+      },
     },
   ], [])
 

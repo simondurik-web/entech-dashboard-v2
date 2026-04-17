@@ -23,6 +23,9 @@ interface CostHistoryEntry {
   pct_change: number
   cause_item_id?: string
   cause_item_part_number?: string
+  changed_by?: string | null
+  changed_by_email?: string | null
+  changed_by_name?: string | null
 }
 
 interface CostStats {
@@ -103,6 +106,9 @@ export async function GET(
         pct_change: Math.round(pctChange * 100) / 100,
         cause_item_id: causeItemId,
         cause_item_part_number: causePartNumber,
+        changed_by: (row.changed_by as string | null) ?? null,
+        changed_by_email: (row.changed_by_email as string | null) ?? null,
+        changed_by_name: (row.changed_by_name as string | null) ?? null,
       }
     })
 
