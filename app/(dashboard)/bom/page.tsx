@@ -414,6 +414,7 @@ export default function BOMExplorer() {
           <TabsTrigger value="individual">{t('bom.individualItems')} ({individualItems.length})</TabsTrigger>
           <TabsTrigger value="sub">{t('bom.subAssemblies')} ({subAssemblies.length})</TabsTrigger>
           <TabsTrigger value="final">{t('bom.finalAssemblies')} ({finalAssemblies.length})</TabsTrigger>
+          <TabsTrigger value="changelog">Cost Change Log</TabsTrigger>
         </TabsList>
 
         <TabsContent value="individual">
@@ -431,6 +432,9 @@ export default function BOMExplorer() {
             search={search}
             onRefresh={fetchAll}
           />
+        </TabsContent>
+        <TabsContent value="changelog">
+          <CostChangeLogTab search={search} />
         </TabsContent>
       </Tabs>
     </div>
@@ -2257,6 +2261,274 @@ function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
         )}
         <span className="text-xs ml-1">= {fmt(cost)}</span>
       </span>
+    </div>
+  )
+}
+
+// ─── Cost Change Log Tab ─────────────────────────────────────────
+
+interface CostChangeLogEntry {
+  id: string
+  bom_item_id: string
+  item_type: 'individual' | 'sub' | 'final'
+  part_number: string | null
+  item_description: string | null
+  changed_field: string
+  old_value: number | null
+  new_value: number | null
+  pct_change: number | null
+  changed_by: string | null
+  changed_at: string
+  affected_assemblies: unknown
+}
+
+function CostChangeLogTab({ search }: { search: string }) {
+  const [entries, setEntries] = useState<CostChangeLogEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [total, setTotal] = useState(0)
+
+  const [itemType, setItemType] = useState<'all' | 'individual' | 'sub' | 'final'>('all')
+  const [changeType, setChangeType] = useState<'all' | 'cost' | 'lead_time'>('all')
+  const [fromDate, setFromDate] = useState<string>('')
+  const [toDate, setToDate] = useState<string>('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const fetchEntries = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams()
+      params.set('limit', '500')
+      if (itemType !== 'all') params.set('item_type', itemType)
+      if (changeType !== 'all') params.set('change_type', changeType)
+      if (fromDate) params.set('from', new Date(fromDate).toISOString())
+      if (toDate) {
+        const end = new Date(toDate)
+        end.setHours(23, 59, 59, 999)
+        params.set('to', end.toISOString())
+      }
+      if (search.trim()) params.set('q', search.trim())
+
+      const res = await fetch(`/api/bom/cost-history?${params}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to load (${res.status})`)
+      }
+      const data = await res.json()
+      setEntries(data.entries || [])
+      setTotal(data.total || 0)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load cost change log')
+    } finally {
+      setLoading(false)
+    }
+  }, [itemType, changeType, fromDate, toDate, search])
+
+  useEffect(() => { void fetchEntries() }, [fetchEntries])
+
+  const isLeadTime = (f: string) => f === 'lead_time'
+
+  const resetFilters = () => {
+    setItemType('all')
+    setChangeType('all')
+    setFromDate('')
+    setToDate('')
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-4 w-4" />
+          Cost Change Log
+          <span className="text-xs font-normal text-muted-foreground ml-1">
+            ({total} change{total !== 1 ? 's' : ''})
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Item Type</Label>
+            <Select value={itemType} onValueChange={(v) => setItemType(v as typeof itemType)}>
+              <SelectTrigger className="w-[160px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="individual">Individual Items</SelectItem>
+                <SelectItem value="sub">Sub-Assemblies</SelectItem>
+                <SelectItem value="final">Final Assemblies</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Change Type</Label>
+            <Select value={changeType} onValueChange={(v) => setChangeType(v as typeof changeType)}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Changes</SelectItem>
+                <SelectItem value="cost">Cost</SelectItem>
+                <SelectItem value="lead_time">Lead Time</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">From</Label>
+            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-9 w-[150px]" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">To</Label>
+            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-9 w-[150px]" />
+          </div>
+
+          <Button variant="outline" size="sm" onClick={resetFilters} className="h-9">Reset</Button>
+          <Button variant="outline" size="sm" onClick={() => void fetchEntries()} disabled={loading} className="h-9">
+            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+
+          {search.trim() && (
+            <div className="text-xs text-muted-foreground self-end pb-2">
+              Searching for: <span className="font-mono">&quot;{search.trim()}&quot;</span>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="text-sm text-destructive flex items-center gap-1 py-2">
+            <AlertTriangle className="h-4 w-4" /> {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="py-10 text-center text-muted-foreground text-sm">
+            <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
+            Loading change log...
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="py-10 text-center text-muted-foreground text-sm">
+            No changes match the current filters.
+          </div>
+        ) : (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[8px]"></TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Part #</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Field</TableHead>
+                  <TableHead className="text-right">Old</TableHead>
+                  <TableHead className="text-right">New</TableHead>
+                  <TableHead className="text-right">% Change</TableHead>
+                  <TableHead>By</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.map((e) => {
+                  const date = new Date(e.changed_at)
+                  const dateStr = date.toLocaleString('en-US', {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: 'numeric', minute: '2-digit',
+                  })
+                  const leadTime = isLeadTime(e.changed_field)
+                  const formatVal = (v: number | null) => {
+                    if (v === null || v === undefined) return '—'
+                    return leadTime ? `${v}d` : fmt(v)
+                  }
+                  const isIncrease = e.pct_change !== null && e.pct_change > 0
+                  const isDecrease = e.pct_change !== null && e.pct_change < 0
+                  const pctClass = isIncrease ? 'text-red-400' : isDecrease ? 'text-green-400' : ''
+                  const isExpanded = expandedId === e.id
+                  const typeBadge =
+                    e.item_type === 'individual' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                    e.item_type === 'sub' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+                    'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+                  const typeLabel =
+                    e.item_type === 'individual' ? 'Individual' :
+                    e.item_type === 'sub' ? 'Sub' : 'Final'
+
+                  return (
+                    <Fragment key={e.id}>
+                      <TableRow
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setExpandedId(isExpanded ? null : e.id)}
+                      >
+                        <TableCell className="py-1.5">
+                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{dateStr}</TableCell>
+                        <TableCell className="text-xs font-mono">{e.part_number || '—'}</TableCell>
+                        <TableCell className="text-xs max-w-[240px] truncate" title={e.item_description || ''}>
+                          {e.item_description || '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`text-xs ${typeBadge}`}>{typeLabel}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs capitalize">{e.changed_field.replace(/_/g, ' ')}</TableCell>
+                        <TableCell className="text-right text-xs">{formatVal(e.old_value)}</TableCell>
+                        <TableCell className="text-right text-xs">{formatVal(e.new_value)}</TableCell>
+                        <TableCell className={`text-right text-xs ${pctClass}`}>
+                          {e.pct_change === null ? '—' : `${isIncrease ? '+' : ''}${e.pct_change.toFixed(2)}%`}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate" title={e.changed_by || ''}>
+                          {e.changed_by || '—'}
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={10} className="py-3">
+                            <CostChangeLogExpanded entry={e} />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function CostChangeLogExpanded({ entry }: { entry: CostChangeLogEntry }) {
+  const affected = Array.isArray(entry.affected_assemblies) ? entry.affected_assemblies : []
+  return (
+    <div className="space-y-2 px-4">
+      <div className="text-xs text-muted-foreground">
+        <span className="font-medium">Item ID:</span> <span className="font-mono">{entry.bom_item_id}</span>
+      </div>
+      {affected.length > 0 ? (
+        <div>
+          <div className="text-xs font-semibold mb-1">Affected Assemblies ({affected.length})</div>
+          <ul className="text-xs space-y-0.5 list-disc pl-5">
+            {affected.map((a, i) => {
+              const obj = a as Record<string, unknown>
+              const pn = obj.part_number ?? obj.cause_part_number ?? '(unknown)'
+              const tp = obj.item_type ?? obj.type ?? ''
+              return <li key={i}><span className="font-mono">{String(pn)}</span>{tp ? <span className="text-muted-foreground"> — {String(tp)}</span> : null}</li>
+            })}
+          </ul>
+        </div>
+      ) : entry.item_type === 'individual' ? (
+        <div className="text-xs text-muted-foreground italic">
+          No propagated assemblies recorded for this change. Parent assemblies will still reflect recalculated costs.
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground italic">
+          Change recorded on this {entry.item_type === 'sub' ? 'sub-assembly' : 'final assembly'} directly.
+        </div>
+      )}
     </div>
   )
 }
