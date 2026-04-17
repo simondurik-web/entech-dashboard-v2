@@ -456,6 +456,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   const leadTimeCancelledRef = useRef(false)
   const [showAdd, setShowAdd] = useState(false)
   const [newItem, setNewItem] = useState({ part_number: '', description: '', cost_per_unit: '', unit: 'lb', supplier: '' })
+  const { costHistoryId, costHistoryData, costHistoryLoading, costHistoryError, toggleCostHistory } = useCostHistory('individual')
 
   const performedBy = {
     _performed_by_name: profile?.full_name || 'Unknown',
@@ -624,6 +625,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
           </TableHeader>
           <TableBody>
             {filtered.map(item => (
+              <Fragment key={item.id}>
               <TableRow key={item.id}>
                 <TableCell className="font-mono text-sm">{item.part_number}</TableCell>
                 <TableCell className="text-muted-foreground">{item.description}</TableCell>
@@ -685,6 +687,9 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === item.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(item.id, () => {})} title="Cost History">
+                      <History className="h-3 w-3" />
+                    </Button>
                     <EditIndividualItemDialog item={item} onSaved={() => onRefresh(true)} />
                     <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => duplicateItem(item.id, item.part_number)} title="Clone">
                       <Copy className="h-3 w-3" />
@@ -695,6 +700,18 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                   </div>
                 </TableCell>
               </TableRow>
+              {costHistoryId === item.id && (
+                <TableRow key={`${item.id}-history`}>
+                  <TableCell colSpan={7} className="bg-muted/30 p-4">
+                    <CostHistoryPanel
+                      data={costHistoryData}
+                      loading={costHistoryLoading}
+                      error={costHistoryError}
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+              </Fragment>
             ))}
           </TableBody>
         </Table>
@@ -1614,7 +1631,7 @@ function CostHistoryPanel({ data, loading, error, onViewComponents }: {
   )
 }
 
-function useCostHistory(typePrefix: 'sub' | 'final') {
+function useCostHistory(typePrefix: 'sub' | 'final' | 'individual') {
   const [costHistoryId, setCostHistoryId] = useState<string | null>(null)
   const [costHistoryData, setCostHistoryData] = useState<CostHistoryResponse | null>(null)
   const [costHistoryLoading, setCostHistoryLoading] = useState(false)
