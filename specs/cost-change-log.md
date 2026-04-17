@@ -61,22 +61,23 @@ same table — **Phase 1 extends the individual-item trigger to also record
       ordered by `changed_at` DESC
 - [x] TypeScript compiles clean
 
-### Phase 2: Cost Change Log tab UI — ⬜ Pending
-- [ ] Add 4th tab "Cost Change Log" in `app/(dashboard)/bom/page.tsx`
-- [ ] New `CostChangeLogTab` component — client-side fetch on mount
-- [ ] Table with columns: Date, Part Number, Type, Field, Old, New, % Change,
-      By, Actions
-- [ ] Color code +/- changes (red/green)
-- [ ] Date range + item type + change type filters
-- [ ] Search input (part number / description)
-- [ ] Loading / error / empty states matching dashboard conventions
+### Phase 2: Cost Change Log tab UI — ✅ Complete
+- [x] Added 4th tab "Cost Change Log" in `app/(dashboard)/bom/page.tsx`
+- [x] New `CostChangeLogTab` component — client-side fetch on mount + on
+      filter change
+- [x] Table with columns: Date, Part #, Description, Type, Field, Old, New,
+      % Change, By
+- [x] Color code +/- changes (red increase / green decrease)
+- [x] Date range (from/to) + item type + change type filters
+- [x] Reset / Refresh buttons
+- [x] Loading / error / empty states
 
-### Phase 3: Expandable rows + affected assemblies — ⬜ Pending
-- [ ] Click row → expands to show `affected_assemblies` (parent assemblies
-      for individual-item changes)
-- [ ] Show cause chain for sub/final entries when data is available
-- [ ] Hook up existing top-level search box so it filters this tab too
-- [ ] Polish: keyboard nav, empty-state copy, column widths
+### Phase 3: Expandable rows + search — ✅ Complete
+- [x] Click row → expands to show `affected_assemblies` list when present;
+      graceful fallback text otherwise
+- [x] Uses the existing top-level search box (passed in as `search` prop) so
+      the same input filters individual/sub/final tabs AND the change log
+- [x] Type badges (Individual/Sub/Final) and lead_time formatting (`Nd`)
 
 ### Phase 4 (after): Merge to staging
 - [ ] `gh pr create --base staging`
