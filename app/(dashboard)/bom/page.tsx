@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { DataTable } from '@/components/data-table'
 
 // ─── Audit Types ────────────────────────────────────────────────
 
@@ -414,6 +416,7 @@ export default function BOMExplorer() {
           <TabsTrigger value="individual">{t('bom.individualItems')} ({individualItems.length})</TabsTrigger>
           <TabsTrigger value="sub">{t('bom.subAssemblies')} ({subAssemblies.length})</TabsTrigger>
           <TabsTrigger value="final">{t('bom.finalAssemblies')} ({finalAssemblies.length})</TabsTrigger>
+          <TabsTrigger value="changelog">Cost Change Log</TabsTrigger>
         </TabsList>
 
         <TabsContent value="individual">
@@ -431,6 +434,9 @@ export default function BOMExplorer() {
             search={search}
             onRefresh={fetchAll}
           />
+        </TabsContent>
+        <TabsContent value="changelog">
+          <CostChangeLogTab search={search} />
         </TabsContent>
       </Tabs>
     </div>
@@ -2257,6 +2263,257 @@ function OverheadLine({ label, pctValue, cost, id, field, onSave }: {
         )}
         <span className="text-xs ml-1">= {fmt(cost)}</span>
       </span>
+    </div>
+  )
+}
+
+// ─── Cost Change Log Tab ─────────────────────────────────────────
+
+interface CostChangeLogEntry {
+  id: string
+  bom_item_id: string
+  item_type: 'individual' | 'sub' | 'final'
+  part_number: string | null
+  item_description: string | null
+  changed_field: string
+  old_value: number | null
+  new_value: number | null
+  pct_change: number | null
+  changed_by: string | null
+  changed_at: string
+  affected_assemblies: unknown
+}
+
+type CostChangeLogRow = CostChangeLogEntry & Record<string, unknown>
+
+function CostChangeLogTab({ search }: { search: string }) {
+  const [entries, setEntries] = useState<CostChangeLogRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [itemType, setItemType] = useState<'all' | 'individual' | 'sub' | 'final'>('all')
+  const [changeType, setChangeType] = useState<'all' | 'cost' | 'lead_time'>('all')
+  const [fromDate, setFromDate] = useState<string>('')
+  const [toDate, setToDate] = useState<string>('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const fetchEntries = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams()
+      params.set('limit', '1500')
+      if (itemType !== 'all') params.set('item_type', itemType)
+      if (changeType !== 'all') params.set('change_type', changeType)
+      if (fromDate) params.set('from', new Date(fromDate).toISOString())
+      if (toDate) {
+        const end = new Date(toDate)
+        end.setHours(23, 59, 59, 999)
+        params.set('to', end.toISOString())
+      }
+
+      const res = await fetch(`/api/bom/cost-history?${params}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to load (${res.status})`)
+      }
+      const data = await res.json()
+      setEntries((data.entries || []) as CostChangeLogRow[])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load cost change log')
+    } finally {
+      setLoading(false)
+    }
+  }, [itemType, changeType, fromDate, toDate])
+
+  useEffect(() => { void fetchEntries() }, [fetchEntries])
+
+  const resetFilters = () => {
+    setItemType('all')
+    setChangeType('all')
+    setFromDate('')
+    setToDate('')
+  }
+
+  const COLUMNS: ColumnDef<CostChangeLogRow>[] = useMemo(() => [
+    {
+      key: 'changed_at', label: 'Date', sortable: true, filterable: false,
+      render: (v) => {
+        const d = new Date(String(v))
+        return <span className="text-xs whitespace-nowrap">{d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+      },
+    },
+    {
+      key: 'part_number', label: 'Part #', sortable: true, filterable: true,
+      render: (v) => <span className="text-xs font-mono">{String(v ?? '—')}</span>,
+    },
+    {
+      key: 'item_description', label: 'Description', sortable: true, filterable: false,
+      render: (v) => <span className="text-xs block max-w-[260px] truncate" title={String(v ?? '')}>{String(v ?? '—')}</span>,
+    },
+    {
+      key: 'item_type', label: 'Type', sortable: true, filterable: true,
+      render: (v) => {
+        const t = String(v)
+        const cls =
+          t === 'individual' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+          t === 'sub' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+          'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+        const label = t === 'individual' ? 'Individual' : t === 'sub' ? 'Sub' : 'Final'
+        return <Badge variant="outline" className={`text-xs ${cls}`}>{label}</Badge>
+      },
+    },
+    {
+      key: 'changed_field', label: 'Field', sortable: true, filterable: true,
+      render: (v) => <span className="text-xs capitalize">{String(v).replace(/_/g, ' ')}</span>,
+    },
+    {
+      key: 'old_value', label: 'Old', sortable: true, filterable: false,
+      render: (v, row) => {
+        const n = v as number | null
+        if (n === null || n === undefined) return <span className="text-xs">—</span>
+        return <span className="text-xs">{row.changed_field === 'lead_time' ? `${n}d` : fmt(n)}</span>
+      },
+    },
+    {
+      key: 'new_value', label: 'New', sortable: true, filterable: false,
+      render: (v, row) => {
+        const n = v as number | null
+        if (n === null || n === undefined) return <span className="text-xs">—</span>
+        return <span className="text-xs">{row.changed_field === 'lead_time' ? `${n}d` : fmt(n)}</span>
+      },
+    },
+    {
+      key: 'pct_change', label: '% Change', sortable: true, filterable: false,
+      render: (v) => {
+        const n = v as number | null
+        if (n === null || n === undefined) return <span className="text-xs">—</span>
+        const cls = n > 0 ? 'text-red-400' : n < 0 ? 'text-green-400' : ''
+        return <span className={`text-xs ${cls}`}>{n > 0 ? '+' : ''}{n.toFixed(2)}%</span>
+      },
+    },
+    {
+      key: 'changed_by', label: 'By', sortable: true, filterable: true,
+      render: (v) => <span className="text-xs text-muted-foreground">{String(v ?? '—')}</span>,
+    },
+  ], [])
+
+  const table = useDataTable<CostChangeLogRow>({
+    data: entries,
+    columns: COLUMNS,
+    storageKey: 'bom-cost-change-log',
+  })
+
+  // Keep DataTable's internal search in sync with the BOM page's top-level search
+  const { setSearch } = table
+  useEffect(() => { setSearch(search) }, [search, setSearch])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-4 w-4" />
+          Cost Change Log
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Item Type</Label>
+            <Select value={itemType} onValueChange={(v) => setItemType(v as typeof itemType)}>
+              <SelectTrigger className="w-[160px] h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="individual">Individual Items</SelectItem>
+                <SelectItem value="sub">Sub-Assemblies</SelectItem>
+                <SelectItem value="final">Final Assemblies</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Change Type</Label>
+            <Select value={changeType} onValueChange={(v) => setChangeType(v as typeof changeType)}>
+              <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Changes</SelectItem>
+                <SelectItem value="cost">Cost</SelectItem>
+                <SelectItem value="lead_time">Lead Time</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">From</Label>
+            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-9 w-[150px]" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">To</Label>
+            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-9 w-[150px]" />
+          </div>
+
+          <Button variant="outline" size="sm" onClick={resetFilters} className="h-9">Reset</Button>
+          <Button variant="outline" size="sm" onClick={() => void fetchEntries()} disabled={loading} className="h-9">
+            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
+
+        {error && (
+          <div className="text-sm text-destructive flex items-center gap-1 py-2">
+            <AlertTriangle className="h-4 w-4" /> {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="py-10 text-center text-muted-foreground text-sm">
+            <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
+            Loading change log...
+          </div>
+        ) : (
+          <DataTable<CostChangeLogRow>
+            table={table}
+            data={entries}
+            noun="change"
+            exportFilename="cost-change-log.csv"
+            getRowKey={(row) => row.id}
+            expandedRowKey={expandedId}
+            onRowClick={(row) => setExpandedId((prev) => prev === row.id ? null : row.id)}
+            renderExpandedContent={(row) => <CostChangeLogExpanded entry={row} />}
+          />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function CostChangeLogExpanded({ entry }: { entry: CostChangeLogEntry }) {
+  const affected = Array.isArray(entry.affected_assemblies) ? entry.affected_assemblies : []
+  return (
+    <div className="space-y-2 px-4">
+      <div className="text-xs text-muted-foreground">
+        <span className="font-medium">Item ID:</span> <span className="font-mono">{entry.bom_item_id}</span>
+      </div>
+      {affected.length > 0 ? (
+        <div>
+          <div className="text-xs font-semibold mb-1">Affected Assemblies ({affected.length})</div>
+          <ul className="text-xs space-y-0.5 list-disc pl-5">
+            {affected.map((a, i) => {
+              const obj = a as Record<string, unknown>
+              const pn = obj.part_number ?? obj.cause_part_number ?? '(unknown)'
+              const tp = obj.item_type ?? obj.type ?? ''
+              return <li key={i}><span className="font-mono">{String(pn)}</span>{tp ? <span className="text-muted-foreground"> — {String(tp)}</span> : null}</li>
+            })}
+          </ul>
+        </div>
+      ) : entry.item_type === 'individual' ? (
+        <div className="text-xs text-muted-foreground italic">
+          No propagated assemblies recorded for this change. Parent assemblies will still reflect recalculated costs.
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground italic">
+          Change recorded on this {entry.item_type === 'sub' ? 'sub-assembly' : 'final assembly'} directly.
+        </div>
+      )}
     </div>
   )
 }

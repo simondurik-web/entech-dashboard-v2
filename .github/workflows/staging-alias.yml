@@ -1,0 +1,73 @@
+name: Refresh staging alias
+
+# Vercel's auto-branch-alias for `entech-dashboard-v2-git-staging-*.vercel.app`
+# has drifted before when the preview deployment for the `staging` branch
+# finishes. This workflow is the belt-and-suspenders fix: after every push
+# to `staging`, wait for Vercel to finish building, then explicitly point
+# the staging alias at that deployment.
+#
+# One-time setup:
+#   1. Create a Vercel token: https://vercel.com/account/tokens
+#      (scope: full access to "Simon's projects" team; no expiration)
+#   2. Add it as a GitHub repo secret named VERCEL_TOKEN:
+#        gh secret set VERCEL_TOKEN -R simondurik-web/entech-dashboard-v2
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-alias
+  cancel-in-progress: false
+
+jobs:
+  alias:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      TEAM_ID: team_gs4O1AbHmRoQX3kChA6Bcsyg
+      PROJECT_ID: prj_iYotsisuYbfXgtrk9rJteZQk7ktK
+      STAGING_ALIAS: entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app
+    steps:
+      - name: Wait for Vercel preview deployment for this commit
+        id: wait
+        run: |
+          set -euo pipefail
+          SHA="${{ github.sha }}"
+          echo "Looking for Vercel deployment for sha=$SHA"
+          for attempt in $(seq 1 60); do
+            resp=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v6/deployments?projectId=$PROJECT_ID&teamId=$TEAM_ID&limit=20")
+            dpl_id=$(echo "$resp" | jq -r --arg sha "$SHA" \
+              '[.deployments[] | select(.meta.githubCommitSha == $sha)] | .[0].uid // empty')
+            state=$(echo "$resp" | jq -r --arg sha "$SHA" \
+              '[.deployments[] | select(.meta.githubCommitSha == $sha)] | .[0].state // empty')
+            url=$(echo "$resp" | jq -r --arg sha "$SHA" \
+              '[.deployments[] | select(.meta.githubCommitSha == $sha)] | .[0].url // empty')
+            echo "attempt=$attempt id=$dpl_id state=$state url=$url"
+            if [ "$state" = "READY" ] && [ -n "$url" ]; then
+              echo "deployment_id=$dpl_id" >> "$GITHUB_OUTPUT"
+              echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$state" = "ERROR" ] || [ "$state" = "CANCELED" ]; then
+              echo "Deployment $state — not aliasing."
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for Vercel deployment."
+          exit 1
+
+      - name: Point staging alias at new deployment
+        run: |
+          set -euo pipefail
+          DPL_URL="${{ steps.wait.outputs.deployment_url }}"
+          echo "Aliasing $STAGING_ALIAS -> $DPL_URL"
+          curl -sS -X POST \
+            "https://api.vercel.com/v2/deployments/$DPL_URL/aliases?teamId=$TEAM_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"alias\": \"$STAGING_ALIAS\"}" \
+            | jq '{oldDeploymentId, uid, alias}'
