@@ -1,6 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { recalculateCascade } from '@/lib/bom-recalculate'
+import { attributeCostHistory } from '@/lib/bom-cost-history-attribution'
 
 const AUDIT_FIELDS = ['part_number', 'description', 'cost_per_unit', 'unit', 'supplier', 'lead_time']
 
@@ -11,6 +12,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const performedByEmail = body._performed_by_email || null
   delete body._performed_by_name
   delete body._performed_by_email
+
+  // Capture timestamp right before the UPDATE so attributeCostHistory can
+  // later fill in email/name on rows inserted by the trigger.
+  const requestStart = new Date().toISOString()
 
   // Fetch existing for audit diff
   const { data: existing } = await supabaseAdmin
@@ -27,6 +32,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Fill in user attribution for trigger-inserted cost-history rows
+  await attributeCostHistory(requestStart, performedByEmail, performedByName)
 
   // Audit trail
   if (existing) {
@@ -61,6 +69,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     } catch (err) {
       console.error('[bom-cascade] recalculation failed:', err)
     }
+    // Attribute any rows the cascade produced via propagation triggers
+    await attributeCostHistory(requestStart, performedByEmail, performedByName)
   })
 
   return NextResponse.json(data)

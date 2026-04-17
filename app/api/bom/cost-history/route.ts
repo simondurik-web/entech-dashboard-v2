@@ -18,6 +18,8 @@ export interface CostChangeLogEntry {
   new_value: number | null
   pct_change: number | null
   changed_by: string | null
+  changed_by_email: string | null
+  changed_by_name: string | null
   changed_at: string
   affected_assemblies: unknown
 }
@@ -77,6 +79,8 @@ function mapRows(rows: unknown[]): CostChangeLogEntry[] {
       new_value: newVal,
       pct_change: pct,
       changed_by: (row.changed_by as string | null) ?? null,
+      changed_by_email: (row.changed_by_email as string | null) ?? null,
+      changed_by_name: (row.changed_by_name as string | null) ?? null,
       changed_at: String(row.changed_at),
       affected_assemblies: row.affected_assemblies ?? null,
     }
