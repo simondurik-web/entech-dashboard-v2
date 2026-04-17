@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { DataTable } from '@/components/data-table'
 
 // ─── Audit Types ────────────────────────────────────────────────
 
@@ -2282,11 +2284,12 @@ interface CostChangeLogEntry {
   affected_assemblies: unknown
 }
 
+type CostChangeLogRow = CostChangeLogEntry & Record<string, unknown>
+
 function CostChangeLogTab({ search }: { search: string }) {
-  const [entries, setEntries] = useState<CostChangeLogEntry[]>([])
+  const [entries, setEntries] = useState<CostChangeLogRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [total, setTotal] = useState(0)
 
   const [itemType, setItemType] = useState<'all' | 'individual' | 'sub' | 'final'>('all')
   const [changeType, setChangeType] = useState<'all' | 'cost' | 'lead_time'>('all')
@@ -2299,7 +2302,7 @@ function CostChangeLogTab({ search }: { search: string }) {
     setError(null)
     try {
       const params = new URLSearchParams()
-      params.set('limit', '500')
+      params.set('limit', '1500')
       if (itemType !== 'all') params.set('item_type', itemType)
       if (changeType !== 'all') params.set('change_type', changeType)
       if (fromDate) params.set('from', new Date(fromDate).toISOString())
@@ -2308,7 +2311,6 @@ function CostChangeLogTab({ search }: { search: string }) {
         end.setHours(23, 59, 59, 999)
         params.set('to', end.toISOString())
       }
-      if (search.trim()) params.set('q', search.trim())
 
       const res = await fetch(`/api/bom/cost-history?${params}`)
       if (!res.ok) {
@@ -2316,18 +2318,15 @@ function CostChangeLogTab({ search }: { search: string }) {
         throw new Error(body.error || `Failed to load (${res.status})`)
       }
       const data = await res.json()
-      setEntries(data.entries || [])
-      setTotal(data.total || 0)
+      setEntries((data.entries || []) as CostChangeLogRow[])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load cost change log')
     } finally {
       setLoading(false)
     }
-  }, [itemType, changeType, fromDate, toDate, search])
+  }, [itemType, changeType, fromDate, toDate])
 
   useEffect(() => { void fetchEntries() }, [fetchEntries])
-
-  const isLeadTime = (f: string) => f === 'lead_time'
 
   const resetFilters = () => {
     setItemType('all')
@@ -2336,15 +2335,85 @@ function CostChangeLogTab({ search }: { search: string }) {
     setToDate('')
   }
 
+  const COLUMNS: ColumnDef<CostChangeLogRow>[] = useMemo(() => [
+    {
+      key: 'changed_at', label: 'Date', sortable: true, filterable: false,
+      render: (v) => {
+        const d = new Date(String(v))
+        return <span className="text-xs whitespace-nowrap">{d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+      },
+    },
+    {
+      key: 'part_number', label: 'Part #', sortable: true, filterable: true,
+      render: (v) => <span className="text-xs font-mono">{String(v ?? '—')}</span>,
+    },
+    {
+      key: 'item_description', label: 'Description', sortable: true, filterable: false,
+      render: (v) => <span className="text-xs block max-w-[260px] truncate" title={String(v ?? '')}>{String(v ?? '—')}</span>,
+    },
+    {
+      key: 'item_type', label: 'Type', sortable: true, filterable: true,
+      render: (v) => {
+        const t = String(v)
+        const cls =
+          t === 'individual' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+          t === 'sub' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+          'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+        const label = t === 'individual' ? 'Individual' : t === 'sub' ? 'Sub' : 'Final'
+        return <Badge variant="outline" className={`text-xs ${cls}`}>{label}</Badge>
+      },
+    },
+    {
+      key: 'changed_field', label: 'Field', sortable: true, filterable: true,
+      render: (v) => <span className="text-xs capitalize">{String(v).replace(/_/g, ' ')}</span>,
+    },
+    {
+      key: 'old_value', label: 'Old', sortable: true, filterable: false,
+      render: (v, row) => {
+        const n = v as number | null
+        if (n === null || n === undefined) return <span className="text-xs">—</span>
+        return <span className="text-xs">{row.changed_field === 'lead_time' ? `${n}d` : fmt(n)}</span>
+      },
+    },
+    {
+      key: 'new_value', label: 'New', sortable: true, filterable: false,
+      render: (v, row) => {
+        const n = v as number | null
+        if (n === null || n === undefined) return <span className="text-xs">—</span>
+        return <span className="text-xs">{row.changed_field === 'lead_time' ? `${n}d` : fmt(n)}</span>
+      },
+    },
+    {
+      key: 'pct_change', label: '% Change', sortable: true, filterable: false,
+      render: (v) => {
+        const n = v as number | null
+        if (n === null || n === undefined) return <span className="text-xs">—</span>
+        const cls = n > 0 ? 'text-red-400' : n < 0 ? 'text-green-400' : ''
+        return <span className={`text-xs ${cls}`}>{n > 0 ? '+' : ''}{n.toFixed(2)}%</span>
+      },
+    },
+    {
+      key: 'changed_by', label: 'By', sortable: true, filterable: true,
+      render: (v) => <span className="text-xs text-muted-foreground">{String(v ?? '—')}</span>,
+    },
+  ], [])
+
+  const table = useDataTable<CostChangeLogRow>({
+    data: entries,
+    columns: COLUMNS,
+    storageKey: 'bom-cost-change-log',
+  })
+
+  // Keep DataTable's internal search in sync with the BOM page's top-level search
+  const { setSearch } = table
+  useEffect(() => { setSearch(search) }, [search, setSearch])
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <History className="h-4 w-4" />
           Cost Change Log
-          <span className="text-xs font-normal text-muted-foreground ml-1">
-            ({total} change{total !== 1 ? 's' : ''})
-          </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -2352,9 +2421,7 @@ function CostChangeLogTab({ search }: { search: string }) {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Item Type</Label>
             <Select value={itemType} onValueChange={(v) => setItemType(v as typeof itemType)}>
-              <SelectTrigger className="w-[160px] h-9">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-[160px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="individual">Individual Items</SelectItem>
@@ -2367,9 +2434,7 @@ function CostChangeLogTab({ search }: { search: string }) {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Change Type</Label>
             <Select value={changeType} onValueChange={(v) => setChangeType(v as typeof changeType)}>
-              <SelectTrigger className="w-[140px] h-9">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Changes</SelectItem>
                 <SelectItem value="cost">Cost</SelectItem>
@@ -2391,12 +2456,6 @@ function CostChangeLogTab({ search }: { search: string }) {
           <Button variant="outline" size="sm" onClick={() => void fetchEntries()} disabled={loading} className="h-9">
             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-
-          {search.trim() && (
-            <div className="text-xs text-muted-foreground self-end pb-2">
-              Searching for: <span className="font-mono">&quot;{search.trim()}&quot;</span>
-            </div>
-          )}
         </div>
 
         {error && (
@@ -2410,91 +2469,17 @@ function CostChangeLogTab({ search }: { search: string }) {
             <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
             Loading change log...
           </div>
-        ) : entries.length === 0 ? (
-          <div className="py-10 text-center text-muted-foreground text-sm">
-            No changes match the current filters.
-          </div>
         ) : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[8px]"></TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Part #</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Field</TableHead>
-                  <TableHead className="text-right">Old</TableHead>
-                  <TableHead className="text-right">New</TableHead>
-                  <TableHead className="text-right">% Change</TableHead>
-                  <TableHead>By</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map((e) => {
-                  const date = new Date(e.changed_at)
-                  const dateStr = date.toLocaleString('en-US', {
-                    year: 'numeric', month: 'short', day: 'numeric',
-                    hour: 'numeric', minute: '2-digit',
-                  })
-                  const leadTime = isLeadTime(e.changed_field)
-                  const formatVal = (v: number | null) => {
-                    if (v === null || v === undefined) return '—'
-                    return leadTime ? `${v}d` : fmt(v)
-                  }
-                  const isIncrease = e.pct_change !== null && e.pct_change > 0
-                  const isDecrease = e.pct_change !== null && e.pct_change < 0
-                  const pctClass = isIncrease ? 'text-red-400' : isDecrease ? 'text-green-400' : ''
-                  const isExpanded = expandedId === e.id
-                  const typeBadge =
-                    e.item_type === 'individual' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
-                    e.item_type === 'sub' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
-                    'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
-                  const typeLabel =
-                    e.item_type === 'individual' ? 'Individual' :
-                    e.item_type === 'sub' ? 'Sub' : 'Final'
-
-                  return (
-                    <Fragment key={e.id}>
-                      <TableRow
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setExpandedId(isExpanded ? null : e.id)}
-                      >
-                        <TableCell className="py-1.5">
-                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        </TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{dateStr}</TableCell>
-                        <TableCell className="text-xs font-mono">{e.part_number || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[240px] truncate" title={e.item_description || ''}>
-                          {e.item_description || '—'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-xs ${typeBadge}`}>{typeLabel}</Badge>
-                        </TableCell>
-                        <TableCell className="text-xs capitalize">{e.changed_field.replace(/_/g, ' ')}</TableCell>
-                        <TableCell className="text-right text-xs">{formatVal(e.old_value)}</TableCell>
-                        <TableCell className="text-right text-xs">{formatVal(e.new_value)}</TableCell>
-                        <TableCell className={`text-right text-xs ${pctClass}`}>
-                          {e.pct_change === null ? '—' : `${isIncrease ? '+' : ''}${e.pct_change.toFixed(2)}%`}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate" title={e.changed_by || ''}>
-                          {e.changed_by || '—'}
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && (
-                        <TableRow className="bg-muted/30 hover:bg-muted/30">
-                          <TableCell colSpan={10} className="py-3">
-                            <CostChangeLogExpanded entry={e} />
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          <DataTable<CostChangeLogRow>
+            table={table}
+            data={entries}
+            noun="change"
+            exportFilename="cost-change-log.csv"
+            getRowKey={(row) => row.id}
+            expandedRowKey={expandedId}
+            onRowClick={(row) => setExpandedId((prev) => prev === row.id ? null : row.id)}
+            renderExpandedContent={(row) => <CostChangeLogExpanded entry={row} />}
+          />
         )}
       </CardContent>
     </Card>
