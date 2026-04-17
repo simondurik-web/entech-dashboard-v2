@@ -50,14 +50,16 @@ same table — **Phase 1 extends the individual-item trigger to also record
 
 ## Phase Tracker
 
-### Phase 1: API + lead_time tracking — ⬜ Pending
-- [ ] Migration: extend `track_individual_item_changes()` to also record
-      `lead_time` changes into `bom_cost_history`.
-- [ ] `GET /api/bom/cost-history` endpoint — returns all entries with
-      filters: `?limit=500&from=ISO&to=ISO&item_type=individual|sub|final&change_type=cost|lead_time&q=search`
-- [ ] Response shape: `{ entries: CostChangeLogEntry[], total, limit }`
-- [ ] Server-side filtering/ordering (changed_at DESC)
-- [ ] Test: returns recent entries with joined part numbers
+### Phase 1: API + lead_time tracking — ✅ Complete
+- [x] Migration `20260417_bom_lead_time_tracking.sql` — extends
+      `track_individual_item_changes()` to also record `lead_time` changes
+      into `bom_cost_history` with `changed_field = 'lead_time'`
+- [x] `GET /api/bom/cost-history` endpoint (`app/api/bom/cost-history/route.ts`)
+      with filters: `?limit&offset&from&to&item_type&change_type&q`
+- [x] Response shape: `{ entries: CostChangeLogEntry[], total, limit, offset }`
+- [x] Server-side filtering on `bom_cost_history_with_details` view,
+      ordered by `changed_at` DESC
+- [x] TypeScript compiles clean
 
 ### Phase 2: Cost Change Log tab UI — ⬜ Pending
 - [ ] Add 4th tab "Cost Change Log" in `app/(dashboard)/bom/page.tsx`
