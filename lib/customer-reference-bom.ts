@@ -67,7 +67,8 @@ export type DrawingProductType = 'Tire' | 'Hub' | 'Other'
 export interface DrawingLite {
   partNumber: string
   productType: DrawingProductType
-  drawingUrl: string | null
+  /** All valid http(s) drawing URLs for this part, in original sheet order. Never null; empty means no drawings. */
+  drawingUrls: string[]
 }
 
 /** Only allow http(s) URLs through — guards against `javascript:` from sheet-edited data. */
@@ -223,13 +224,13 @@ export async function fetchBomMaps(signal?: AbortSignal): Promise<BomMaps> {
 
   for (const row of drawingsRes) {
     if (!row?.partNumber) continue
-    const firstValid = (row.drawingUrls ?? [])
+    const valid = (row.drawingUrls ?? [])
       .map((u) => sanitizeDrawingUrl(u))
-      .find((u): u is string => typeof u === 'string')
+      .filter((u): u is string => typeof u === 'string')
     maps.drawingsByPN.set(norm(row.partNumber), {
       partNumber: row.partNumber,
       productType: coerceDrawingProductType(row.productType),
-      drawingUrl: firstValid ?? null,
+      drawingUrls: valid,
     })
   }
 

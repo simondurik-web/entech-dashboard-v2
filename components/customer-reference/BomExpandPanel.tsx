@@ -251,7 +251,7 @@ export function BomExpandPanel(props: BomExpandPanelProps) {
                           </div>
                         </td>
                         <td className="px-2 py-2 text-center">
-                          <DrawingIconButton partNumber={c.partNumber} drawingUrl={drawing?.drawingUrl ?? null} />
+                          <DrawingIconButton partNumber={c.partNumber} drawingUrls={drawing?.drawingUrls ?? []} />
                         </td>
                       </tr>
                     )
@@ -351,7 +351,7 @@ function IndividualItemCard({ item, drawings }: { item: IndividualItemLite; draw
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground">{t('customerRef.drawingLabel')}</span>
-          <DrawingIconButton partNumber={item.part_number} drawingUrl={drawing?.drawingUrl ?? null} />
+          <DrawingIconButton partNumber={item.part_number} drawingUrls={drawing?.drawingUrls ?? []} />
         </div>
       </div>
     </div>

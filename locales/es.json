@@ -487,5 +487,8 @@
   "customerRef.subAssemblyKind": "Sub-Ensamble",
   "customerRef.individualKind": "Material Individual",
   "customerRef.drawingViewerTitle": "Dibujo · {pn}",
-  "customerRef.drawingOpenExternal": "Abrir imagen completa"
+  "customerRef.drawingOpenExternal": "Abrir imagen completa",
+  "customerRef.drawingPrev": "Dibujo anterior",
+  "customerRef.drawingNext": "Dibujo siguiente",
+  "customerRef.drawingGoto": "Ir al dibujo {n}"
 }
