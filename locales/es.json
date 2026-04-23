@@ -468,7 +468,6 @@
   "customerRef.extCost": "Ext.",
   "customerRef.inventoryLabel": "Inventario",
   "customerRef.drawingLabel": "Dibujo",
-  "customerRef.viewInventory": "Ver inventario",
   "customerRef.viewDrawing": "Ver dibujo",
   "customerRef.noDrawing": "Sin dibujo disponible",
   "customerRef.description": "Descripción",

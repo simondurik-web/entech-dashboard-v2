@@ -62,10 +62,20 @@ export interface IndividualItemLite {
   supplier: string | null
 }
 
+export type DrawingProductType = 'Tire' | 'Hub' | 'Other'
+
 export interface DrawingLite {
   partNumber: string
-  productType: string | null
+  productType: DrawingProductType
   drawingUrl: string | null
+}
+
+/** Only allow http(s) URLs through — guards against `javascript:` from sheet-edited data. */
+export function sanitizeDrawingUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  const trimmed = String(url).trim()
+  if (!trimmed) return null
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null
 }
 
 export interface BomMaps {
@@ -131,22 +141,35 @@ interface IndividualItemApi {
 
 interface DrawingApi {
   partNumber: string
-  productType?: string | null
-  drawing1Url?: string | null
-  drawing2Url?: string | null
+  productType?: DrawingProductType
+  drawingUrls?: string[]
+}
+
+function coerceDrawingProductType(pt: unknown): DrawingProductType {
+  if (pt === 'Tire' || pt === 'Hub') return pt
+  return 'Other'
+}
+
+async function getJsonOrThrow<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { signal })
+  if (!res.ok) throw new Error(`${url} → ${res.status}`)
+  return (await res.json()) as T
 }
 
 export async function fetchBomMaps(signal?: AbortSignal): Promise<BomMaps> {
+  // Surface network / server failures to the caller so the Retry UI is reachable.
+  // Using Promise.all means any one failing rejects the whole prefetch — the page
+  // state switches to `errored` and the retry button re-invokes this function.
   const [finalRes, subRes, indivRes, drawingsRes] = await Promise.all([
-    fetch('/api/bom/final-assemblies', { signal }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
-    fetch('/api/bom/sub-assemblies', { signal }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
-    fetch('/api/bom/individual-items', { signal }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
-    fetch('/api/drawings', { signal }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    getJsonOrThrow<FinalAssemblyApi[]>('/api/bom/final-assemblies', signal),
+    getJsonOrThrow<SubAssemblyApi[]>('/api/bom/sub-assemblies', signal),
+    getJsonOrThrow<IndividualItemApi[]>('/api/bom/individual-items', signal),
+    getJsonOrThrow<DrawingApi[]>('/api/drawings', signal),
   ])
 
   const maps = emptyBomMaps()
 
-  for (const row of finalRes as FinalAssemblyApi[]) {
+  for (const row of finalRes) {
     if (!row?.part_number) continue
     maps.finalByPN.set(norm(row.part_number), {
       id: row.id,
@@ -173,7 +196,7 @@ export async function fetchBomMaps(signal?: AbortSignal): Promise<BomMaps> {
     })
   }
 
-  for (const row of subRes as SubAssemblyApi[]) {
+  for (const row of subRes) {
     if (!row?.part_number) continue
     maps.subByPN.set(norm(row.part_number), {
       id: row.id,
@@ -186,7 +209,7 @@ export async function fetchBomMaps(signal?: AbortSignal): Promise<BomMaps> {
     })
   }
 
-  for (const row of indivRes as IndividualItemApi[]) {
+  for (const row of indivRes) {
     if (!row?.part_number) continue
     maps.individualByPN.set(norm(row.part_number), {
       id: row.id,
@@ -198,13 +221,15 @@ export async function fetchBomMaps(signal?: AbortSignal): Promise<BomMaps> {
     })
   }
 
-  for (const row of drawingsRes as DrawingApi[]) {
+  for (const row of drawingsRes) {
     if (!row?.partNumber) continue
-    const url = (row.drawing1Url || row.drawing2Url || '').trim() || null
+    const firstValid = (row.drawingUrls ?? [])
+      .map((u) => sanitizeDrawingUrl(u))
+      .find((u): u is string => typeof u === 'string')
     maps.drawingsByPN.set(norm(row.partNumber), {
       partNumber: row.partNumber,
-      productType: row.productType ?? null,
-      drawingUrl: url,
+      productType: coerceDrawingProductType(row.productType),
+      drawingUrl: firstValid ?? null,
     })
   }
 

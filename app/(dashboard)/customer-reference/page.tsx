@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -144,26 +144,38 @@ function CustomerReferencePageContent() {
   const [bomMaps, setBomMaps] = useState<BomMaps>(() => emptyBomMaps())
   const [bomMapsLoading, setBomMapsLoading] = useState(true)
   const [bomMapsError, setBomMapsError] = useState(false)
+  const bomAbortRef = useRef<AbortController | null>(null)
 
   const { t } = useI18n()
 
+  // Prefetches all BOM tables + drawings on mount, cancellable + re-callable for retry.
+  // Tracks the latest AbortController in a ref so repeat invocations (e.g. Retry button
+  // spamming) cancel any in-flight request before starting a new one.
   const loadBomMaps = useCallback(() => {
+    bomAbortRef.current?.abort()
     const ctrl = new AbortController()
+    bomAbortRef.current = ctrl
     setBomMapsLoading(true)
     setBomMapsError(false)
     fetchBomMaps(ctrl.signal)
       .then((maps) => {
-        setBomMaps(maps)
+        if (!ctrl.signal.aborted) setBomMaps(maps)
       })
-      .catch(() => setBomMapsError(true))
-      .finally(() => setBomMapsLoading(false))
-    return () => ctrl.abort()
+      .catch((err) => {
+        if (ctrl.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
+        setBomMapsError(true)
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setBomMapsLoading(false)
+      })
   }, [])
 
   useEffect(() => {
-    const cancel = loadBomMaps()
-    return cancel
+    loadBomMaps()
+    return () => bomAbortRef.current?.abort()
   }, [loadBomMaps])
+
+  const expandedPanelId = 'bom-expand-panel'
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -293,7 +305,8 @@ function CustomerReferencePageContent() {
               title={isOpen ? t('customerRef.collapseRow') : t('customerRef.expandRow')}
               aria-label={isOpen ? t('customerRef.collapseRow') : t('customerRef.expandRow')}
               aria-expanded={isOpen}
-              className={`inline-flex items-center justify-center size-[18px] rounded-[4px] leading-none transition-all duration-150 hover:scale-110 active:scale-95 shrink-0 ${
+              aria-controls={isOpen ? expandedPanelId : undefined}
+              className={`inline-flex items-center justify-center size-[18px] rounded-[4px] leading-none transition-all duration-150 hover:scale-110 active:scale-95 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                 isOpen
                   ? 'bg-primary/20 text-primary'
                   : 'bg-muted/50 hover:bg-primary/20 hover:text-primary text-muted-foreground/70'
@@ -736,10 +749,11 @@ function CustomerReferencePageContent() {
           rowClassName={(row) => isDuplicate(row as unknown as PartMapping) ? 'bg-amber-500/5 border-l-2 border-l-amber-500' : ''}
           expandedRowKey={expandedRowId}
           renderExpandedContent={(row) => {
-            const m = row as unknown as PartMapping
+            const m: PartMapping = row
             const pnKey = m.internal_part_number?.trim().toUpperCase() ?? ''
             return (
               <BomExpandPanel
+                id={expandedPanelId}
                 partNumber={m.internal_part_number}
                 loading={bomMapsLoading}
                 errored={bomMapsError}

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FileImage, ExternalLink, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
+import { sanitizeDrawingUrl } from '@/lib/customer-reference-bom'
 import { useI18n } from '@/lib/i18n'
 
 interface DrawingIconButtonProps {
@@ -15,7 +16,10 @@ export function DrawingIconButton({ partNumber, drawingUrl }: DrawingIconButtonP
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
 
-  const hasDrawing = Boolean(drawingUrl && drawingUrl.trim())
+  // Defence-in-depth: the URL is already sanitized by fetchBomMaps, but guard again here
+  // in case a caller passes an unchecked value.
+  const safeUrl = sanitizeDrawingUrl(drawingUrl)
+  const hasDrawing = safeUrl !== null
   const label = hasDrawing ? t('customerRef.viewDrawing') : t('customerRef.noDrawing')
 
   return (
@@ -46,7 +50,7 @@ export function DrawingIconButton({ partNumber, drawingUrl }: DrawingIconButtonP
                 </DialogTitle>
                 <div className="flex items-center gap-2">
                   <a
-                    href={drawingUrl!}
+                    href={safeUrl!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
@@ -68,7 +72,7 @@ export function DrawingIconButton({ partNumber, drawingUrl }: DrawingIconButtonP
             <div className="flex items-center justify-center bg-black/20 min-h-[50vh]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={getDriveThumbUrl(drawingUrl!, 1600)}
+                src={getDriveThumbUrl(safeUrl!, 1600)}
                 alt={partNumber}
                 className="max-h-[75vh] max-w-full object-contain"
                 loading="lazy"

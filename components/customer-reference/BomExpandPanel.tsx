@@ -7,7 +7,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'
 import { DrawingIconButton } from './DrawingIconButton'
-import type { FinalAssemblyLite, SubAssemblyLite, IndividualItemLite, DrawingLite } from '@/lib/customer-reference-bom'
+import type { DrawingProductType, FinalAssemblyLite, SubAssemblyLite, IndividualItemLite, DrawingLite } from '@/lib/customer-reference-bom'
 
 interface BomExpandPanelProps {
   partNumber: string
@@ -18,11 +18,14 @@ interface BomExpandPanelProps {
   subAssembly: SubAssemblyLite | null
   individualItem: IndividualItemLite | null
   drawings: Map<string, DrawingLite>
+  /** DOM id for the expanded panel — paired with `aria-controls` on the chevron trigger. */
+  id?: string
 }
 
 const fmt = (n: number | null | undefined) => {
-  if (n === null || n === undefined || Number.isNaN(Number(n))) return '—'
+  if (n === null || n === undefined) return '—'
   const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
   return `$${v.toFixed(v < 1 ? 4 : 2)}`
 }
 
@@ -33,12 +36,12 @@ const fmtQty = (q: number | null | undefined) => {
   return v.toFixed(6).replace(/\.?0+$/, '')
 }
 
-function partTypeFromCategory(cat: string | null | undefined): 'tire' | 'hub' | 'part' {
-  if (!cat) return 'part'
-  const c = cat.toLowerCase()
-  if (c.includes('tire')) return 'tire'
-  if (c.includes('hub')) return 'hub'
-  return 'part'
+function inventoryChipKindFromDrawing(productType: DrawingProductType | undefined): 'tire' | 'hub' | 'part' {
+  switch (productType) {
+    case 'Tire': return 'tire'
+    case 'Hub': return 'hub'
+    default: return 'part'
+  }
 }
 
 function CostLine({ label, value, muted = false, emphasis = false }: { label: string; value: string; muted?: boolean; emphasis?: boolean }) {
@@ -72,10 +75,16 @@ function KindBadge({ kind }: { kind: 'final' | 'sub' | 'individual' }) {
 
 export function BomExpandPanel(props: BomExpandPanelProps) {
   const { t } = useI18n()
-  const { partNumber, loading, errored, onRetry, finalAssembly, subAssembly, individualItem, drawings } = props
+  const { partNumber, loading, errored, onRetry, finalAssembly, subAssembly, individualItem, drawings, id } = props
 
   const kind: 'final' | 'sub' | 'individual' | null =
     finalAssembly ? 'final' : subAssembly ? 'sub' : individualItem ? 'individual' : null
+
+  // Surface a data-hygiene warning when the same PN resolves in multiple BOM tiers.
+  const multiTier: Array<'final' | 'sub' | 'individual'> = []
+  if (finalAssembly) multiTier.push('final')
+  if (subAssembly) multiTier.push('sub')
+  if (individualItem) multiTier.push('individual')
 
   // Build a unified component list from whichever tier matched.
   const components = useMemo(() => {
@@ -110,7 +119,7 @@ export function BomExpandPanel(props: BomExpandPanelProps) {
   // ── Loading ──
   if (loading) {
     return (
-      <div className="rounded-lg border border-border/40 bg-muted/25 px-4 py-8 text-center">
+      <div id={id} role="region" aria-label={t('customerRef.bomLoading')} className="rounded-lg border border-border/40 bg-muted/25 px-4 py-8 text-center">
         <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
           <span className="size-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           {t('customerRef.bomLoading')}
@@ -122,7 +131,7 @@ export function BomExpandPanel(props: BomExpandPanelProps) {
   // ── Error ──
   if (errored) {
     return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center space-y-2">
+      <div id={id} role="region" aria-label={t('customerRef.bomFailed')} className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center space-y-2">
         <div className="inline-flex items-center gap-2 text-sm text-destructive">
           <AlertCircle className="size-4" />
           {t('customerRef.bomFailed')}
@@ -137,7 +146,7 @@ export function BomExpandPanel(props: BomExpandPanelProps) {
   // ── No BOM for this PN ──
   if (!kind) {
     return (
-      <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-6 py-8 text-center space-y-3">
+      <div id={id} role="region" aria-label={t('customerRef.noBom')} className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-6 py-8 text-center space-y-3">
         <div className="inline-flex items-center gap-2 text-sm text-amber-400">
           <AlertCircle className="size-4" />
           <span className="font-semibold">{t('customerRef.noBom')}</span>
@@ -160,12 +169,23 @@ export function BomExpandPanel(props: BomExpandPanelProps) {
 
   // ── Normal BOM render ──
   return (
-    <div className="rounded-lg border border-border/40 bg-gradient-to-br from-muted/30 via-muted/10 to-transparent p-4 space-y-4">
+    <div id={id} role="region" aria-label={t('customerRef.bomFor').replace('{pn}', partNumber)} className="rounded-lg border border-border/40 bg-gradient-to-br from-muted/30 via-muted/10 to-transparent p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono text-sm font-semibold truncate">{partNumber}</span>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">
+            {t('customerRef.bomFor').replace('{pn}', partNumber)}
+          </h3>
           <KindBadge kind={kind} />
+          {multiTier.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400"
+              title={`${partNumber} also exists in: ${multiTier.filter((k) => k !== kind).join(', ')}`}
+            >
+              <AlertCircle className="size-3" />
+              +{multiTier.length - 1}
+            </span>
+          )}
         </div>
         <Link
           href="/bom"
@@ -226,7 +246,7 @@ export function BomExpandPanel(props: BomExpandPanelProps) {
                           <div className="inline-flex" onClick={(e) => e.stopPropagation()}>
                             <InventoryPopover
                               partNumber={c.partNumber}
-                              partType={partTypeFromCategory(drawing?.productType)}
+                              partType={inventoryChipKindFromDrawing(drawing?.productType)}
                             />
                           </div>
                         </td>
@@ -322,7 +342,7 @@ function IndividualItemCard({ item, drawings }: { item: IndividualItemLite; draw
       <div>
         <div className="flex justify-between"><span className="text-muted-foreground">{t('customerRef.description')}:</span><span className="text-right text-xs">{item.description || '—'}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">{t('customerRef.unitCost')}:</span><span className="font-mono">{fmt(item.cost_per_unit)}</span></div>
-        {item.supplier && <div className="flex justify-between"><span className="text-muted-foreground">Supplier:</span><span className="text-xs">{item.supplier}</span></div>}
+        {item.supplier && <div className="flex justify-between"><span className="text-muted-foreground">{t('bom.supplier')}:</span><span className="text-xs">{item.supplier}</span></div>}
       </div>
       <div className="flex items-center justify-end gap-3">
         <div className="flex items-center gap-2">
