@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,7 @@ import {
 import {
   Search, Plus, Users, AlertTriangle, TrendingUp, Target,
   RefreshCw, History, Trash2, AlertCircle, Copy, Pencil,
+  ChevronRight, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { DataTable } from '@/components/data-table'
@@ -34,6 +35,8 @@ import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { toast } from '@/lib/use-toast'
+import { BomExpandPanel } from '@/components/customer-reference/BomExpandPanel'
+import { fetchBomMaps, emptyBomMaps, type BomMaps } from '@/lib/customer-reference-bom'
 
 interface Customer {
   id: string
@@ -136,7 +139,43 @@ function CustomerReferencePageContent() {
   const [auditFilterUser, setAuditFilterUser] = useState('')
   const [auditFilterAction, setAuditFilterAction] = useState<string>('all')
 
+  // BOM expand-row state
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
+  const [bomMaps, setBomMaps] = useState<BomMaps>(() => emptyBomMaps())
+  const [bomMapsLoading, setBomMapsLoading] = useState(true)
+  const [bomMapsError, setBomMapsError] = useState(false)
+  const bomAbortRef = useRef<AbortController | null>(null)
+
   const { t } = useI18n()
+
+  // Prefetches all BOM tables + drawings on mount, cancellable + re-callable for retry.
+  // Tracks the latest AbortController in a ref so repeat invocations (e.g. Retry button
+  // spamming) cancel any in-flight request before starting a new one.
+  const loadBomMaps = useCallback(() => {
+    bomAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    bomAbortRef.current = ctrl
+    setBomMapsLoading(true)
+    setBomMapsError(false)
+    fetchBomMaps(ctrl.signal)
+      .then((maps) => {
+        if (!ctrl.signal.aborted) setBomMaps(maps)
+      })
+      .catch((err) => {
+        if (ctrl.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
+        setBomMapsError(true)
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setBomMapsLoading(false)
+      })
+  }, [])
+
+  useEffect(() => {
+    loadBomMaps()
+    return () => bomAbortRef.current?.abort()
+  }, [loadBomMaps])
+
+  const expandedPanelId = 'bom-expand-panel'
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -257,10 +296,28 @@ function CustomerReferencePageContent() {
       render: (v, row) => {
         const m = row as unknown as PartMapping
         const dupe = isDuplicate(m)
+        const isOpen = expandedRowId === m.id
         return (
-          <span className={`font-mono text-sm ${dupe ? 'text-amber-500 font-bold' : ''}`}>
-            {v as string}
-            {dupe && <span className="ml-1 text-[10px] font-normal bg-amber-500/20 text-amber-500 px-1 py-0.5 rounded">DUPLICATE</span>}
+          <span className="inline-flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setExpandedRowId(prev => prev === m.id ? null : m.id) }}
+              title={isOpen ? t('customerRef.collapseRow') : t('customerRef.expandRow')}
+              aria-label={isOpen ? t('customerRef.collapseRow') : t('customerRef.expandRow')}
+              aria-expanded={isOpen}
+              aria-controls={isOpen ? expandedPanelId : undefined}
+              className={`inline-flex items-center justify-center size-[18px] rounded-[4px] leading-none transition-all duration-150 hover:scale-110 active:scale-95 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
+                isOpen
+                  ? 'bg-primary/20 text-primary'
+                  : 'bg-muted/50 hover:bg-primary/20 hover:text-primary text-muted-foreground/70'
+              }`}
+            >
+              {isOpen ? <ChevronDown className="size-[11px]" /> : <ChevronRight className="size-[11px]" />}
+            </button>
+            <span className={`font-mono text-sm ${dupe ? 'text-amber-500 font-bold' : ''}`}>
+              {v as string}
+              {dupe && <span className="ml-1 text-[10px] font-normal bg-amber-500/20 text-amber-500 px-1 py-0.5 rounded">DUPLICATE</span>}
+            </span>
           </span>
         )
       },
@@ -690,6 +747,24 @@ function CustomerReferencePageContent() {
           getRowKey={(row) => (row as unknown as PartMapping).id}
           onRowClick={(row) => openEdit(row as unknown as PartMapping)}
           rowClassName={(row) => isDuplicate(row as unknown as PartMapping) ? 'bg-amber-500/5 border-l-2 border-l-amber-500' : ''}
+          expandedRowKey={expandedRowId}
+          renderExpandedContent={(row) => {
+            const m: PartMapping = row
+            const pnKey = m.internal_part_number?.trim().toUpperCase() ?? ''
+            return (
+              <BomExpandPanel
+                id={expandedPanelId}
+                partNumber={m.internal_part_number}
+                loading={bomMapsLoading}
+                errored={bomMapsError}
+                onRetry={loadBomMaps}
+                finalAssembly={bomMaps.finalByPN.get(pnKey) ?? null}
+                subAssembly={bomMaps.subByPN.get(pnKey) ?? null}
+                individualItem={bomMaps.individualByPN.get(pnKey) ?? null}
+                drawings={bomMaps.drawingsByPN}
+              />
+            )
+          }}
         />
       )}
 
