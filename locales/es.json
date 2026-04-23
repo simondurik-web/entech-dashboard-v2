@@ -490,5 +490,9 @@
   "customerRef.drawingOpenExternal": "Abrir imagen completa",
   "customerRef.drawingPrev": "Dibujo anterior",
   "customerRef.drawingNext": "Dibujo siguiente",
-  "customerRef.drawingGoto": "Ir al dibujo {n}"
+  "customerRef.drawingGoto": "Ir al dibujo {n}",
+  "fpRef.hasBomTooltip": "Mostrar lista de materiales",
+  "fpRef.noBomTooltip": "Sin BOM — clic para mostrar estado vacío",
+  "fpRef.withBom": "Con BOM",
+  "fpRef.withoutBom": "Sin BOM"
 }
