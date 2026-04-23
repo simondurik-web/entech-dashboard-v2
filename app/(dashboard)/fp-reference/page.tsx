@@ -31,14 +31,6 @@ function normPN(pn: string): string {
   return pn.trim().toUpperCase()
 }
 
-/** Tire PNs in the FP sheet are short (e.g. "261"); the inventory table indexes
- * them under a prefixed form. The user sees the short form; the popover/lookup
- * relies on whatever the Inventory table actually uses. Pass the raw value — the
- * InventoryPopover already does a normalized compare internally. */
-function tirePartLabel(v: string): string {
-  return v
-}
-
 export default function FPReferencePage() {
   return <Suspense><FPReferencePageContent /></Suspense>
 }
@@ -79,9 +71,11 @@ function FPReferencePageContent() {
   }, [])
 
   useEffect(() => {
-    // setState inside loadBomMaps is intentional: this is the standard
-    // fetch-on-mount pattern, not derived state. Same shape used on
-    // /customer-reference. React 19's lint rule flags the transitive call.
+    // Classic fetch-on-mount effect: setState happens through loadBomMaps.
+    // Byte-identical to /customer-reference, which lints clean — the
+    // react-hooks/set-state-in-effect rule's transitive-call analysis varies
+    // by component size, so the suppression is rule-heuristic, not a real
+    // smell. Refactoring this into useSyncExternalStore would be overkill.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadBomMaps()
     return () => bomAbortRef.current?.abort()
@@ -108,6 +102,20 @@ function FPReferencePageContent() {
     return bomMaps.finalByPN.has(key) || bomMaps.subByPN.has(key) || bomMaps.individualByPN.has(key)
   }, [bomMaps])
 
+  // Stable unique row key per FPRecord, computed once per data load. Uses a
+  // WeakMap keyed on the row object so the cell render, getRowKey, and the
+  // DataTable's `expandedRowKey === rowKey` comparison all agree — even when
+  // two rows share a PN or PN is empty. Without this, duplicate PNs would
+  // expand together and empty-PN rows would visually toggle without a panel.
+  const rowKeyMap = useMemo(() => {
+    const map = new WeakMap<FPRecord, string>()
+    data.forEach((row, i) => {
+      const pn = str(row[PART_NUMBER_COL])
+      map.set(row, `${pn || 'row'}-${i}`)
+    })
+    return map
+  }, [data])
+
   // Build columns once headers are known. Special-case 3 columns; everything
   // else stays plain (sortable + filterable, header label = sheet column name).
   const columns: ColumnDef<FPRecord>[] = useMemo(() => {
@@ -118,19 +126,25 @@ function FPReferencePageContent() {
           label: h,
           sortable: true,
           filterable: true,
-          render: (v) => {
+          render: (v, row) => {
             const pn = str(v)
-            const isOpen = expandedRowKey === pn
+            // Skip the chevron entirely on rows with no PN — there's nothing
+            // to resolve a BOM against, so offering an expand affordance is
+            // just a broken promise.
+            if (!pn) return <span className="font-mono text-sm text-muted-foreground/50">—</span>
+            const rowKey = rowKeyMap.get(row) ?? pn
+            const isOpen = expandedRowKey === rowKey
             const present = bomMapsLoading ? null : hasBom(pn)
-            const tooltipKey =
-              present === true ? 'fpRef.hasBomTooltip' :
-              present === false ? 'fpRef.noBomTooltip' :
-                                  'customerRef.bomLoading'
+            const tooltipKey = isOpen
+              ? 'customerRef.collapseRow'
+              : present === true ? 'fpRef.hasBomTooltip'
+              : present === false ? 'fpRef.noBomTooltip'
+              : 'customerRef.bomLoading'
             return (
               <span className="inline-flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setExpandedRowKey((prev) => prev === pn ? null : pn) }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedRowKey((prev) => prev === rowKey ? null : rowKey) }}
                   title={t(tooltipKey)}
                   aria-label={t(tooltipKey)}
                   aria-expanded={isOpen}
@@ -152,7 +166,7 @@ function FPReferencePageContent() {
                       : <ChevronRight className="size-[11px]" />}
                 </button>
                 <span className={`font-mono text-sm ${present === false ? 'text-muted-foreground/80' : ''}`}>
-                  {pn || '—'}
+                  {pn}
                 </span>
               </span>
             )
@@ -172,7 +186,7 @@ function FPReferencePageContent() {
             const drawing = bomMaps.drawingsByPN.get(normPN(tire))
             return (
               <span className="inline-flex items-center gap-1.5">
-                <span className="font-mono text-sm">{tirePartLabel(tire)}</span>
+                <span className="font-mono text-sm">{tire}</span>
                 <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
                   <InventoryPopover partNumber={tire} partType="tire" />
                   <DrawingIconButton partNumber={tire} drawingUrls={drawing?.drawingUrls ?? []} />
@@ -208,7 +222,7 @@ function FPReferencePageContent() {
 
       return { key: h, label: h, sortable: true, filterable: true }
     })
-  }, [headers, expandedRowKey, bomMaps, bomMapsLoading, hasBom, t])
+  }, [headers, expandedRowKey, bomMaps, bomMapsLoading, hasBom, rowKeyMap, t])
 
   const table = useDataTable({
     data,
@@ -217,9 +231,8 @@ function FPReferencePageContent() {
   })
 
   const getRowKey = useCallback((row: FPRecord, index: number): string => {
-    const pn = str(row[PART_NUMBER_COL])
-    return pn || `row-${index}`
-  }, [])
+    return rowKeyMap.get(row) ?? `row-${index}`
+  }, [rowKeyMap])
 
   const rowClassName = useCallback((row: FPRecord): string => {
     const pn = str(row[PART_NUMBER_COL])
