@@ -45,11 +45,11 @@ function saveSessionId(sid: string) {
 }
 
 function errorKey(detail: string | undefined, status: number | undefined): string {
-  if (status === 401 || status === 403) return 'phil.error.unauthorized'
-  if (status === 429) return 'phil.error.rateLimit'
+  if (status === 401 || status === 403 || detail === 'bridge_unauthorized') return 'phil.error.unauthorized'
+  if (status === 429 || detail === 'rate_limit') return 'phil.error.rateLimit'
   if (status === 504 || detail === 'timeout' || detail === 'codex_timeout') return 'phil.error.timeout'
-  if (status === 503 || detail === 'bridge_not_configured') return 'phil.error.bridgeDown'
-  if (status === 502) return 'phil.error.bridgeDown'
+  if (status === 503 || detail === 'bridge_not_configured' || detail === 'empty_answer') return 'phil.error.bridgeDown'
+  if (status === 502 || detail === 'bridge_error') return 'phil.error.bridgeDown'
   return 'phil.error.generic'
 }
 
@@ -307,9 +307,10 @@ export function PhilChat({ userId }: Props) {
           />
           <Button
             type="button"
+            size="lg"
             onClick={() => void send()}
             disabled={sending || !input.trim()}
-            className="h-11 px-4"
+            className="h-11"
           >
             {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             <span className="hidden sm:inline">{t('phil.send')}</span>
