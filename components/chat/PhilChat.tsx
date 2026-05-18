@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Send, Loader2, Plus, Trash2, AlertCircle, User as UserIcon, Bot } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { Button } from '@/components/ui/button'
 import { PhilReportDownload, isPhilReport, type PhilReport } from './PhilReportDownload'
 
 interface Message {
@@ -202,6 +203,8 @@ export function PhilChat({ userId }: Props) {
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Skip Enter while IME composition is active (Japanese/Chinese/Korean)
+      if (e.nativeEvent.isComposing) return
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         void send()
@@ -221,31 +224,34 @@ export function PhilChat({ userId }: Props) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
       {/* Action bar */}
-      <div className="flex items-center justify-end gap-1 border-b border-white/10 px-3 py-1.5">
-        <button
+      <div className="flex items-center justify-end gap-1 border-b px-3 py-1.5">
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={startNewChat}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-white/60 hover:bg-white/10 hover:text-white"
           title={t('phil.newChat')}
         >
           <Plus className="size-3.5" />
           <span>{t('phil.newChat')}</span>
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={clearHistory}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-white/60 hover:bg-red-500/10 hover:text-red-300"
           title={t('phil.clearHistory')}
+          className="hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
           <span>{t('phil.clearHistory')}</span>
-        </button>
+        </Button>
       </div>
 
       {/* Message list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4">
         {loadingHistory && (
-          <div className="flex items-center justify-center py-8 text-xs text-white/40">
+          <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
             <Loader2 className="mr-2 size-3.5 animate-spin" />
             {t('phil.thinking')}
           </div>
@@ -253,16 +259,16 @@ export function PhilChat({ userId }: Props) {
 
         {isEmpty && (
           <div className="mx-auto mt-12 max-w-md text-center">
-            <Bot className="mx-auto size-10 text-white/40" />
-            <h2 className="mt-3 text-base font-semibold text-white">{t('phil.empty.title')}</h2>
-            <p className="mt-2 text-sm text-white/60">{t('phil.empty.body')}</p>
+            <Bot className="mx-auto size-10 text-muted-foreground" />
+            <h2 className="mt-3 text-base font-semibold text-foreground">{t('phil.empty.title')}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{t('phil.empty.body')}</p>
             <div className="mt-5 flex flex-col gap-1.5">
               {examples.map((ex, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => setInput(ex)}
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="rounded-md border bg-card px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   {ex}
                 </button>
@@ -279,14 +285,14 @@ export function PhilChat({ userId }: Props) {
       </div>
 
       {bannerError && (
-        <div className="mx-3 mb-2 flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div className="mx-3 mb-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
           <span>{bannerError}</span>
         </div>
       )}
 
       {/* Input */}
-      <div className="border-t border-white/10 px-3 py-3">
+      <div className="border-t px-3 py-3">
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -294,19 +300,20 @@ export function PhilChat({ userId }: Props) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={t('phil.placeholder')}
+            aria-label={t('phil.placeholder')}
             rows={1}
             disabled={sending}
-            className="min-h-[44px] flex-1 resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none disabled:opacity-50"
+            className="min-h-[44px] flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
           />
-          <button
+          <Button
             type="button"
             onClick={() => void send()}
             disabled={sending || !input.trim()}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-11 px-4"
           >
             {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             <span className="hidden sm:inline">{t('phil.send')}</span>
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -320,10 +327,10 @@ function MessageBubble({ msg, t }: { msg: Message; t: (key: string) => string })
   if (msg.pending) {
     return (
       <div className="flex gap-3">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/10">
-          <Bot className="size-3.5 text-white/60" />
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
+          <Bot className="size-3.5 text-muted-foreground" />
         </div>
-        <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-white/50">
+        <div className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin" />
           <span>{t('phil.thinking')}</span>
         </div>
@@ -334,10 +341,10 @@ function MessageBubble({ msg, t }: { msg: Message; t: (key: string) => string })
   if (msg.error && !msg.content) {
     return (
       <div className="flex gap-3">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-500/20">
-          <AlertCircle className="size-3.5 text-red-300" />
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-destructive/20">
+          <AlertCircle className="size-3.5 text-destructive" />
         </div>
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {msg.error}
         </div>
       </div>
@@ -348,7 +355,7 @@ function MessageBubble({ msg, t }: { msg: Message; t: (key: string) => string })
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div
         className={`flex size-7 shrink-0 items-center justify-center rounded-full ${
-          isUser ? 'bg-blue-600/30 text-blue-200' : 'bg-white/10 text-white/70'
+          isUser ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
         }`}
       >
         <Icon className="size-3.5" />
@@ -357,15 +364,15 @@ function MessageBubble({ msg, t }: { msg: Message; t: (key: string) => string })
         <div
           className={`whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed ${
             isUser
-              ? 'bg-blue-600/25 text-white'
-              : 'border border-white/10 bg-white/5 text-white/90'
+              ? 'bg-primary/15 text-foreground'
+              : 'border bg-card text-foreground'
           }`}
         >
           {msg.content}
         </div>
         {msg.report && <PhilReportDownload report={msg.report} />}
         {!isUser && msg.latency_ms != null && (
-          <span className="text-[10px] text-white/30">
+          <span className="text-[10px] text-muted-foreground">
             {msg.model ?? 'gpt-5.5'} · {(msg.latency_ms / 1000).toFixed(1)}s
           </span>
         )}

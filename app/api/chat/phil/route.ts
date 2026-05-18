@@ -5,6 +5,8 @@ export const maxDuration = 180
 
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 const PHIL_PATH = "/phil-assistant"
+const DASHBOARD_APP_ID = "dashboard"
+const HISTORY_LIMIT = 20
 const WEBHOOK_URL = process.env.PHIL_AI_WEBHOOK_URL
 const WEBHOOK_SECRET = process.env.PHIL_AI_WEBHOOK_SECRET
 const WEBHOOK_TIMEOUT_MS = 150_000
@@ -23,6 +25,10 @@ interface UserContext {
   customPermissions: Record<string, boolean> | null
 }
 
+// Mirrors getProfileFromHeader from app/api/scheduling/_utils.ts: read
+// user_profiles, then overlay the user's dashboard-app role from
+// user_app_roles. Adds custom_permissions (not in the scheduling helper)
+// because Phil's permission check needs them.
 async function loadUserContext(userId: string): Promise<UserContext | null> {
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
@@ -30,10 +36,20 @@ async function loadUserContext(userId: string): Promise<UserContext | null> {
     .eq("id", userId)
     .single()
   if (!profile?.email) return null
+
+  const { data: appRole } = await supabaseAdmin
+    .from("user_app_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("app_id", DASHBOARD_APP_ID)
+    .single()
+
+  const effectiveRole = appRole?.role ?? profile.role ?? "visitor"
+
   return {
     userId: profile.id,
     email: profile.email,
-    role: profile.role ?? "visitor",
+    role: effectiveRole,
     customPermissions: (profile.custom_permissions as Record<string, boolean> | null) ?? null,
   }
 }
@@ -103,6 +119,15 @@ interface IncomingBody {
   language?: unknown
 }
 
+function sanitizeBridgeError(detail: string, status: number): string {
+  if (status === 504 || detail === "timeout" || detail === "codex_timeout") return "timeout"
+  if (status === 503 || detail === "bridge_not_configured") return "bridge_not_configured"
+  if (detail === "empty_answer") return "empty_answer"
+  if (status === 429) return "rate_limit"
+  if (status === 401 || status === 403) return "bridge_unauthorized"
+  return "bridge_error"
+}
+
 export async function POST(req: NextRequest) {
   const userId = req.headers.get("x-user-id")
   if (!userId) {
@@ -136,14 +161,14 @@ export async function POST(req: NextRequest) {
 
   const language: "en" | "es" = body.language === "es" ? "es" : "en"
 
-  // Fetch recent history for this session (chronological, last 20 messages)
+  // Fetch recent history for this session (chronological, capped)
   const { data: historyRows } = await supabaseAdmin
     .from("phil_chat_history")
     .select("role, content")
     .eq("user_id", user.userId)
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true })
-    .limit(20)
+    .limit(HISTORY_LIMIT)
 
   const history = (historyRows ?? []).map((row) => ({
     role: row.role as "user" | "assistant",
@@ -166,15 +191,18 @@ export async function POST(req: NextRequest) {
   })
 
   if (!result.ok) {
+    // Persist a sanitized error code (not raw stderr) — stderr can contain
+    // codex auth state, DB connection strings, or prompt fragments. The
+    // client gets a short error tag, not the raw detail.
     await supabaseAdmin.from("phil_chat_history").insert({
       user_id: user.userId,
       session_id: sessionId,
       role: "assistant",
       content: "",
-      error: result.detail,
+      error: sanitizeBridgeError(result.detail, result.status),
     })
     return NextResponse.json(
-      { error: "bridge_failed", detail: result.detail, sessionId },
+      { error: "bridge_failed", detail: sanitizeBridgeError(result.detail, result.status), sessionId },
       { status: result.status },
     )
   }

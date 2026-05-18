@@ -42,7 +42,10 @@ create policy phil_chat_delete_own
   using (auth.uid() = user_id);
 
 -- Admin view: per-user activity summary
--- Service role queries this directly via supabaseAdmin; not exposed via RLS.
+-- Service role queries this directly via supabaseAdmin.
+-- The view aggregates personal data (emails, names, message counts) across
+-- all users, so we revoke direct access from anon/authenticated and only
+-- grant select to service_role. Admin pages read via the service-role key.
 create or replace view public.phil_chat_user_stats as
 select
   p.user_id,
@@ -60,5 +63,10 @@ from public.phil_chat_history p
 left join public.user_profiles up on up.id = p.user_id
 group by p.user_id, up.email, up.full_name;
 
+revoke all on public.phil_chat_user_stats from anon, authenticated, public;
+grant select on public.phil_chat_user_stats to service_role;
+
 comment on table public.phil_chat_history is
   'Per-user multi-turn chat history for the Phil Assistant (GPT-5.5 via local bridge). RLS-gated to own user; admin reads via service role.';
+comment on view public.phil_chat_user_stats is
+  'Admin-only summary of Phil usage per user. Service-role read access only; revoked from anon/authenticated to prevent leaking other users emails + counts.';

@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { Download, FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Loader2, AlertCircle } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { Button } from '@/components/ui/button'
 
 export type PhilReportColumn = {
   key: string
@@ -29,7 +30,7 @@ interface Props {
   report: PhilReport
 }
 
-function isReport(value: unknown): value is PhilReport {
+export function isPhilReport(value: unknown): value is PhilReport {
   if (!value || typeof value !== 'object') return false
   const r = value as Partial<PhilReport>
   return (
@@ -229,9 +230,11 @@ async function buildPdf(report: PhilReport): Promise<Blob> {
         cellEls,
       )
     })
+    // Allow @react-pdf to wrap the sheet across pages — `wrap: false` would
+    // clip any report taller than one page (~50 rows at 9pt landscape).
     return React.createElement(
       View,
-      { key: `s-${si}`, wrap: false },
+      { key: `s-${si}` },
       React.createElement(Text, { style: styles.sheetName }, sheet.name),
       React.createElement(View, { style: styles.table }, headerRow, ...dataRows),
     )
@@ -275,26 +278,30 @@ export function PhilReportDownload({ report }: Props) {
     }
   }, [report])
 
-  if (!isReport(report)) return null
+  if (!isPhilReport(report)) return null
 
   const Icon = report.type === 'excel' ? FileSpreadsheet : FileText
   const label = report.type === 'excel' ? t('phil.report.downloadExcel') : t('phil.report.downloadPdf')
 
   return (
     <div className="mt-2 inline-flex flex-col gap-1">
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={onDownload}
         disabled={busy}
-        className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/90 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}
         <span>{busy ? t('phil.report.generating') : label}</span>
         {!busy && <Download className="size-3" />}
-      </button>
-      {error && <span className="text-[10px] text-red-300">{error}</span>}
+      </Button>
+      {error && (
+        <span className="inline-flex items-center gap-1 text-xs text-destructive">
+          <AlertCircle className="size-3" />
+          {error}
+        </span>
+      )}
     </div>
   )
 }
-
-export { isReport as isPhilReport }
