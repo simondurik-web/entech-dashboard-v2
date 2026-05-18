@@ -17,7 +17,6 @@ import { CategoryDonutChart } from '@/components/sales/CategoryDonutChart'
 import { EnhancedStatCard } from '@/components/sales/EnhancedStatCard'
 import { RevenueConcentrationModal, RevenueConcentrationButton } from '@/components/sales/RevenueConcentrationModal'
 import { AtRiskCustomersBarChart } from '@/components/sales/AtRiskCustomersBarChart'
-import { AtRiskCustomersBubbleChart } from '@/components/sales/AtRiskCustomersBubbleChart'
 import {
   computeCustomerRiskMetrics,
   computeCustomerPartRiskMetrics,
@@ -788,40 +787,21 @@ function SalesCustomersContent() {
       {/* Top 10 Customers Bar Chart (Enhancement 1) */}
       <TopCustomersBarChart customers={customerRows} />
 
-      {/* At-Risk Customers — BOTH chart variants for staging review. */}
-      {/* Decide one for production; remove the other in a follow-up PR. */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <AtRiskCustomersBarChart
-          customers={customerRows.map((c) => ({
-            customer: c.customer,
-            daysSinceLastOrder: c.daysSinceLastOrder,
-            revenue12mo: c.revenue12mo,
-            riskTier: c.riskTier,
-          }))}
-          onSelect={(customer) => {
-            setExpandedCustomer(customer)
-            // Scroll to the table so the expanded row is visible
-            setTimeout(() => {
-              document.getElementById('sales-customers-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }, 50)
-          }}
-        />
-        <AtRiskCustomersBubbleChart
-          customers={customerRows.map((c) => ({
-            customer: c.customer,
-            daysSinceLastOrder: c.daysSinceLastOrder,
-            revenue12mo: c.revenue12mo,
-            riskTier: c.riskTier,
-            shippedOrderCount: c.shippedOrderCount,
-          }))}
-          onSelect={(customer) => {
-            setExpandedCustomer(customer)
-            setTimeout(() => {
-              document.getElementById('sales-customers-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }, 50)
-          }}
-        />
-      </div>
+      {/* At-Risk Customers — bar view (chosen over bubble after staging review). */}
+      <AtRiskCustomersBarChart
+        customers={customerRows.map((c) => ({
+          customer: c.customer,
+          daysSinceLastOrder: c.daysSinceLastOrder,
+          revenue12mo: c.revenue12mo,
+          riskTier: c.riskTier,
+        }))}
+        onSelect={(customer) => {
+          setExpandedCustomer(customer)
+          setTimeout(() => {
+            document.getElementById('sales-customers-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }, 50)
+        }}
+      />
 
       {/* Customer Revenue Concentration — Full-screen interactive treemap */}
       <RevenueConcentrationButton onClick={() => setTreemapOpen(!treemapOpen)} open={treemapOpen} />
