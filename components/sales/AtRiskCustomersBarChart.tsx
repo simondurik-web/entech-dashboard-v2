@@ -166,9 +166,11 @@ export function AtRiskCustomersBarChart({ customers, onSelect, limit = 15 }: Pro
                 position: 'right',
                 fill: 'hsl(var(--foreground))',
                 fontSize: 11,
-                formatter: (props: unknown) => {
-                  const row = props as { value: number; payload: { revenue12mo: number } }
-                  return `${row.value}d · ${fmtRevenue(row.payload.revenue12mo)}`
+                // Recharts 3 only passes `value` to label formatter (not the
+                // full row payload). Tooltip has the revenue + tier detail.
+                formatter: (value: unknown) => {
+                  const v = typeof value === 'number' ? value : 0
+                  return `${v}d`
                 },
               }}
             >
