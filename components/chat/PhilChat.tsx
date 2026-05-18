@@ -16,6 +16,7 @@ interface Message {
   error?: string | null
   created_at?: string
   pending?: boolean
+  pendingPhase?: 'loading_history' | 'thinking' | 'querying' | undefined
 }
 
 interface Props {
@@ -129,52 +130,102 @@ export function PhilChat({ userId }: Props) {
     setSending(true)
     setBannerError(null)
     const userMsg: Message = { role: 'user', content: question }
-    const placeholder: Message = { role: 'assistant', content: '', pending: true }
+    const placeholder: Message = { role: 'assistant', content: '', pending: true, pendingPhase: 'thinking' }
     setMessages((prev) => [...prev, userMsg, placeholder])
     setInput('')
+
+    const updatePlaceholder = (patch: Partial<Message>) => {
+      setMessages((prev) => {
+        const next = [...prev]
+        next[next.length - 1] = { ...next[next.length - 1], ...patch }
+        return next
+      })
+    }
+
     try {
       const res = await fetch('/api/chat/phil', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': userId,
+          Accept: 'text/event-stream',
         },
         body: JSON.stringify({ question, sessionId, language }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        const key = errorKey(data?.detail, res.status)
-        setMessages((prev) => {
-          const next = [...prev]
-          next[next.length - 1] = { role: 'assistant', content: '', error: data?.detail ?? 'error' }
-          return next
-        })
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}))
+        const key = errorKey(data?.detail ?? data?.error, res.status)
+        updatePlaceholder({ role: 'assistant', content: '', error: data?.detail ?? data?.error ?? 'error', pending: false })
         setBannerError(t(key))
         return
       }
-      if (data.sessionId && data.sessionId !== sessionId) {
-        setSessionId(data.sessionId)
-        saveSessionId(data.sessionId)
-      }
-      const report = isPhilReport(data.report) ? (data.report as PhilReport) : null
-      setMessages((prev) => {
-        const next = [...prev]
-        next[next.length - 1] = {
-          role: 'assistant',
-          content: data.answer ?? '',
-          report,
-          model: data.model ?? null,
-          latency_ms: data.latencyMs ?? null,
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let resolved = false
+
+      const handleEvent = (event: string, data: Record<string, unknown>) => {
+        if (event === 'status') {
+          const phase = data.phase as 'loading_history' | 'thinking' | undefined
+          if (phase) updatePlaceholder({ pendingPhase: phase })
+        } else if (event === 'result') {
+          resolved = true
+          if (data.sessionId && data.sessionId !== sessionId) {
+            setSessionId(data.sessionId as string)
+            saveSessionId(data.sessionId as string)
+          }
+          const report = isPhilReport(data.report) ? (data.report as PhilReport) : null
+          updatePlaceholder({
+            role: 'assistant',
+            content: (data.answer as string) ?? '',
+            report,
+            model: (data.model as string) ?? null,
+            latency_ms: (data.latencyMs as number) ?? null,
+            pending: false,
+            pendingPhase: undefined,
+          })
+        } else if (event === 'error') {
+          resolved = true
+          const status = (data.status as number | undefined) ?? 500
+          const detail = (data.detail as string | undefined) ?? 'error'
+          updatePlaceholder({ role: 'assistant', content: '', error: detail, pending: false, pendingPhase: undefined })
+          setBannerError(t(errorKey(detail, status)))
         }
-        return next
-      })
+        // event === 'open' is ignored — just used to flush the first byte
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let idx
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const raw = buffer.slice(0, idx)
+          buffer = buffer.slice(idx + 2)
+          // SSE comment line starts with ':' — ignore (these are our keepalives)
+          if (raw.startsWith(':')) continue
+          let evName = 'message'
+          let dataStr = ''
+          for (const line of raw.split('\n')) {
+            if (line.startsWith('event:')) evName = line.slice(6).trim()
+            else if (line.startsWith('data:')) dataStr += (dataStr ? '\n' : '') + line.slice(5).trim()
+          }
+          if (!dataStr) continue
+          let parsed: Record<string, unknown>
+          try { parsed = JSON.parse(dataStr) } catch { continue }
+          handleEvent(evName, parsed)
+        }
+      }
+
+      if (!resolved) {
+        updatePlaceholder({ role: 'assistant', content: '', error: 'stream_ended', pending: false, pendingPhase: undefined })
+        setBannerError(t('phil.error.generic'))
+      }
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'network_error'
-      setMessages((prev) => {
-        const next = [...prev]
-        next[next.length - 1] = { role: 'assistant', content: '', error: detail }
-        return next
-      })
+      updatePlaceholder({ role: 'assistant', content: '', error: detail, pending: false, pendingPhase: undefined })
       setBannerError(t('phil.error.generic'))
     } finally {
       setSending(false)
@@ -326,6 +377,10 @@ function MessageBubble({ msg, t }: { msg: Message; t: (key: string) => string })
   const Icon = isUser ? UserIcon : Bot
 
   if (msg.pending) {
+    const phaseKey =
+      msg.pendingPhase === 'loading_history' ? 'phil.status.loadingHistory'
+      : msg.pendingPhase === 'querying' ? 'phil.status.querying'
+      : 'phil.thinking'
     return (
       <div className="flex gap-3">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
@@ -333,7 +388,7 @@ function MessageBubble({ msg, t }: { msg: Message; t: (key: string) => string })
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin" />
-          <span>{t('phil.thinking')}</span>
+          <span>{t(phaseKey)}</span>
         </div>
       </div>
     )
