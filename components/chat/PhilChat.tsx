@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Loader2, Plus, Trash2, AlertCircle, User as UserIcon, Bot } from 'lucide-react'
+import { Send, Loader2, Plus, Trash2, AlertCircle, User as UserIcon, Bot, Mic, MicOff } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { PhilReportDownload, isPhilReport, type PhilReport } from './PhilReportDownload'
@@ -62,8 +62,11 @@ export function PhilChat({ userId }: Props) {
   const [sending, setSending] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [bannerError, setBannerError] = useState<string | null>(null)
+  const [micState, setMicState] = useState<'idle' | 'listening' | 'unsupported'>('idle')
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const recognitionRef = useRef<any>(null)
+  const baseInputRef = useRef<string>('')
 
   // Load history on mount + when sessionId changes
   useEffect(() => {
@@ -252,6 +255,97 @@ export function PhilChat({ userId }: Props) {
     }
   }, [userId, t, startNewChat])
 
+  // --- Voice dictation via the browser Web Speech API ---
+  // No Whisper / OpenAI key needed (Simon's key lacks model.request scope
+  // as of 2026-05-18). Falls back to "unsupported" if SpeechRecognition is
+  // missing (Firefox, older browsers). Real-time interim transcription
+  // appends to whatever was already in the textarea so dictation augments
+  // typed text rather than replacing it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setMicState('unsupported')
+    }
+  }, [])
+
+  const stopDictation = useCallback(() => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch {}
+      recognitionRef.current = null
+    }
+    setMicState('idle')
+  }, [])
+
+  const startDictation = useCallback(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setMicState('unsupported')
+      setBannerError(t('phil.mic.unsupported'))
+      return
+    }
+    if (recognitionRef.current) {
+      stopDictation()
+      return
+    }
+    const rec = new SR()
+    rec.lang = language === 'es' ? 'es-MX' : 'en-US'
+    rec.interimResults = true
+    rec.continuous = true
+    rec.maxAlternatives = 1
+    baseInputRef.current = input  // remember what was already typed
+    setBannerError(null)
+    rec.onresult = (event: any) => {
+      let finalText = ''
+      let interimText = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) finalText += transcript
+        else interimText += transcript
+      }
+      // Append-mode: keep typed text + dictated final + interim preview
+      const base = baseInputRef.current ? baseInputRef.current.replace(/\s+$/, '') + ' ' : ''
+      const merged = (base + finalText + interimText).replace(/\s+/g, ' ').trimStart()
+      setInput(merged)
+      // commit final pieces into the base so the next interim doesn't double them
+      if (finalText) {
+        baseInputRef.current = (base + finalText).replace(/\s+/g, ' ').trim()
+      }
+    }
+    rec.onerror = (event: any) => {
+      const err = event?.error || 'unknown'
+      stopDictation()
+      if (err === 'not-allowed' || err === 'service-not-allowed') {
+        setBannerError(t('phil.mic.denied'))
+      } else if (err === 'no-speech') {
+        setBannerError(t('phil.mic.noSpeech'))
+      } else if (err === 'audio-capture') {
+        setBannerError(t('phil.mic.noMicrophone'))
+      } else if (err !== 'aborted') {
+        setBannerError(t('phil.mic.error'))
+      }
+    }
+    rec.onend = () => {
+      // Browser ended the session (timeout or stop()). Drop state to idle.
+      recognitionRef.current = null
+      setMicState('idle')
+    }
+    try {
+      rec.start()
+      recognitionRef.current = rec
+      setMicState('listening')
+    } catch (err) {
+      // start() throws if called twice; reset
+      try { rec.abort() } catch {}
+      recognitionRef.current = null
+      setMicState('idle')
+      setBannerError(t('phil.mic.error'))
+    }
+  }, [language, input, t, stopDictation])
+
+  // Cleanup on unmount
+  useEffect(() => () => stopDictation(), [stopDictation])
+
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       // Skip Enter while IME composition is active (Japanese/Chinese/Korean)
@@ -345,12 +439,29 @@ export function PhilChat({ userId }: Props) {
       {/* Input */}
       <div className="border-t px-3 py-3">
         <div className="mx-auto flex max-w-3xl items-end gap-2">
+          {micState !== 'unsupported' && (
+            <Button
+              type="button"
+              size="lg"
+              variant={micState === 'listening' ? 'destructive' : 'outline'}
+              onClick={micState === 'listening' ? stopDictation : startDictation}
+              disabled={sending}
+              className={
+                'h-11 ' +
+                (micState === 'listening' ? 'animate-pulse' : '')
+              }
+              aria-label={micState === 'listening' ? t('phil.mic.stop') : t('phil.mic.start')}
+              title={micState === 'listening' ? t('phil.mic.stop') : t('phil.mic.start')}
+            >
+              {micState === 'listening' ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </Button>
+          )}
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={t('phil.placeholder')}
+            placeholder={micState === 'listening' ? t('phil.mic.listening') : t('phil.placeholder')}
             aria-label={t('phil.placeholder')}
             rows={1}
             disabled={sending}
