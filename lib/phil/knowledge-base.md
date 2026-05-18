@@ -277,6 +277,19 @@ There is **no** `usage7` / `usage30` / `daysToMin` / `daysToZero` / `itemType` /
 - Out of stock: `NULLIF(target,'')::numeric > 0 AND COALESCE(NULLIF(real_number_value,'')::numeric, 0) = 0`
 - To make: `NULLIF(parts_to_be_made,'')::numeric > 0`
 
+### Customer activity (in the orders slice as `customer_activity`)
+When the user asks about customers — inactive customers, top customer by volume, first-time orders, division-specific patterns ("Roll Tech customers who haven't ordered in 2 months") — you DO have the data. The orders slice includes a `customer_activity` array with one row per (customer, category) combo:
+- `customer` — customer name
+- `category` — 'Roll tech' (lowercase t), 'Molding', 'Snap Pad', or 'Part number missing in item reference data'
+- `total_orders` — count of all orders this customer placed in this category, all time
+- `last_order_date` — most recent order in this category (ISO date)
+- `first_order_date` — earliest order in this category
+- `days_since_last_order` — integer, computed against today's date on the bridge
+
+You can filter/group this array client-side to answer the question. For example, "Roll Tech customers inactive 2+ months" = rows where `category = 'Roll tech'` AND `days_since_last_order > 60`.
+
+If you generate a report from `customer_activity`, the columns to use are typically: customer, category, last_order_date, days_since_last_order, total_orders.
+
 ---
 
 ## 12. REPORT GENERATION CONTRACT
