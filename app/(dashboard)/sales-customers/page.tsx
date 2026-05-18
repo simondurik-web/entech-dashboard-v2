@@ -16,6 +16,17 @@ import { TopCustomersBarChart } from '@/components/sales/TopCustomersBarChart'
 import { CategoryDonutChart } from '@/components/sales/CategoryDonutChart'
 import { EnhancedStatCard } from '@/components/sales/EnhancedStatCard'
 import { RevenueConcentrationModal, RevenueConcentrationButton } from '@/components/sales/RevenueConcentrationModal'
+import { AtRiskCustomersBarChart } from '@/components/sales/AtRiskCustomersBarChart'
+import { AtRiskCustomersBubbleChart } from '@/components/sales/AtRiskCustomersBubbleChart'
+import {
+  computeCustomerRiskMetrics,
+  computeCustomerPartRiskMetrics,
+  RISK_TIER_CLASSES,
+  RISK_TIER_LABEL,
+  formatShortDate,
+  daysSinceColorClass,
+  type RiskTier,
+} from '@/lib/at-risk'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +63,15 @@ interface CustomerRow extends Record<string, unknown> {
   totalProfit: number
   totalMarginPct: number
   orders: SalesOrder[]
+  // At-risk metrics (derived in the page useMemo from `orders`)
+  lastOrderDate: Date | null
+  lastOrderIso: string  // for DataTable sort/filter (Date can't be exported)
+  daysSinceLastOrder: number | null
+  hasOpenWork: boolean
+  shippedOrderCount: number
+  medianDaysBetweenOrders: number | null
+  riskTier: RiskTier
+  revenue12mo: number
 }
 
 interface PartSummaryRow extends Record<string, unknown> {
@@ -67,6 +87,13 @@ interface PartSummaryRow extends Record<string, unknown> {
   variableMarginPct: number
   contribution: string
   orders: SalesOrder[]
+  // 12-month rolling metrics (per part within this customer)
+  lastOrderDate: Date | null
+  lastOrderIso: string
+  daysSinceLastOrder: number | null
+  monthlyAvgQty: number
+  monthlyAvgRevenue: number
+  orderCount12mo: number
 }
 
 interface OrderRow extends Record<string, unknown> {
@@ -114,6 +141,14 @@ function getLast6MonthsRevenue(orders: { shippedDate?: string; revenue: number }
 
 // ─── Customer-level columns ──────────────────────────────────────────────────
 
+function RiskChip({ tier }: { tier: RiskTier }) {
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] border ${RISK_TIER_CLASSES[tier]}`}>
+      {RISK_TIER_LABEL[tier]}
+    </span>
+  )
+}
+
 const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
   { key: 'orderCount', label: 'Orders', sortable: true, render: (v) => fmtN(v as number) },
@@ -122,6 +157,30 @@ const CUSTOMER_COLUMNS: ColumnDef<CustomerRow>[] = [
   { key: 'costs', label: 'Total Cost', sortable: true, render: (v) => fmt(v as number) },
   { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt(v as number)}</span> },
   { key: 'totalMarginPct', label: 'Margin', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{(v as number).toFixed(1)}%</span> },
+  {
+    key: 'lastOrderIso',
+    label: 'Last Order',
+    sortable: true,
+    render: (_v, row) => {
+      const r = row as CustomerRow
+      return <span className="text-xs">{formatShortDate(r.lastOrderDate)}</span>
+    },
+  },
+  {
+    key: 'daysSinceLastOrder',
+    label: 'Days Since',
+    sortable: true,
+    render: (v, row) => {
+      const r = row as CustomerRow
+      if (v == null) return <span className="text-muted-foreground text-xs">—</span>
+      return (
+        <span className="flex items-center gap-2">
+          <span className="text-xs font-medium tabular-nums">{v as number}d</span>
+          <RiskChip tier={r.riskTier} />
+        </span>
+      )
+    },
+  },
   {
     key: 'trend',
     label: 'Trend',
@@ -392,6 +451,10 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
   const [expandedPart, setExpandedPart] = useState<string | null>(null)
 
   const partSummaries: PartSummaryRow[] = useMemo(() => {
+    const now = new Date()
+    const partRisks = computeCustomerPartRiskMetrics(customerRow.orders, now)
+    const riskByPart = new Map(partRisks.map((p) => [p.partNumber, p]))
+
     const byPart: Record<string, { orders: SalesOrder[]; category: string }> = {}
     for (const o of customerRow.orders) {
       const k = o.partNumber || 'Unknown'
@@ -409,6 +472,7 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
         const totalMarginPct = revenue > 0 ? (totalProfit / revenue) * 100 : 0
         const variableMarginPct = revenue > 0 ? (variableProfit / revenue) * 100 : 0
         const avgUnitPrice = totalQty > 0 ? revenue / totalQty : 0
+        const risk = riskByPart.get(partNumber)
         return {
           partNumber,
           category,
@@ -422,7 +486,13 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
           variableMarginPct,
           contribution: variableMarginPct >= 0 ? 'PROFITABLE' : 'LOSS',
           orders,
-        }
+          lastOrderDate: risk?.lastOrderDate ?? null,
+          lastOrderIso: risk?.lastOrderDate ? risk.lastOrderDate.toISOString().slice(0, 10) : '',
+          daysSinceLastOrder: risk?.daysSinceLastOrder ?? null,
+          monthlyAvgQty: risk?.monthlyAvgQty ?? 0,
+          monthlyAvgRevenue: risk?.monthlyAvgRevenue ?? 0,
+          orderCount12mo: risk?.orderCount12mo ?? 0,
+        } satisfies PartSummaryRow
       })
       .sort((a, b) => b.revenue - a.revenue)
   }, [customerRow.orders])
@@ -483,6 +553,42 @@ function CustomerDrilldown({ customerRow }: { customerRow: CustomerRow }) {
       },
     },
     { key: 'totalProfit', label: 'P/L', sortable: true, render: (v) => <span className={(v as number) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{fmt(v as number)}</span> },
+    {
+      key: 'lastOrderIso',
+      label: 'Last Order',
+      sortable: true,
+      render: (_v, row) => <span className="text-xs">{formatShortDate((row as PartSummaryRow).lastOrderDate)}</span>,
+    },
+    {
+      key: 'daysSinceLastOrder',
+      label: 'Days Since',
+      sortable: true,
+      render: (v) => {
+        if (v == null) return <span className="text-muted-foreground text-xs">—</span>
+        const n = v as number
+        return <span className={`text-xs font-medium tabular-nums ${daysSinceColorClass(n)}`}>{n}d</span>
+      },
+    },
+    {
+      key: 'monthlyAvgQty',
+      label: '12mo Avg Qty/mo',
+      sortable: true,
+      render: (v) => {
+        const n = v as number
+        if (!n) return <span className="text-muted-foreground text-xs">—</span>
+        return <span className="text-xs tabular-nums">{n.toFixed(1)}</span>
+      },
+    },
+    {
+      key: 'monthlyAvgRevenue',
+      label: '12mo Avg $/mo',
+      sortable: true,
+      render: (v) => {
+        const n = v as number
+        if (!n) return <span className="text-muted-foreground text-xs">—</span>
+        return <span className="text-xs tabular-nums">{fmt(n)}</span>
+      },
+    },
   ], [expandedPart])
 
   const storageKey = `sales_customer_${customerRow.customer.replace(/\W/g, '_')}_parts`
@@ -587,11 +693,20 @@ function SalesCustomersContent() {
 
   const customerRows: CustomerRow[] = useMemo(() => {
     if (!filteredOrders.length && !data) return []
-    const byCustomer: Record<string, CustomerRow> = {}
+    const now = new Date()
+    const byCustomer: Record<string, {
+      customer: string
+      orderCount: number
+      totalQty: number
+      revenue: number
+      costs: number
+      totalProfit: number
+      orders: SalesOrder[]
+    }> = {}
     for (const order of filteredOrders) {
       const key = order.customer || 'Unknown'
       if (!byCustomer[key]) {
-        byCustomer[key] = { customer: key, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, totalProfit: 0, totalMarginPct: 0, orders: [] }
+        byCustomer[key] = { customer: key, orderCount: 0, totalQty: 0, revenue: 0, costs: 0, totalProfit: 0, orders: [] }
       }
       byCustomer[key].orderCount++
       byCustomer[key].totalQty += order.qty
@@ -600,7 +715,21 @@ function SalesCustomersContent() {
       byCustomer[key].totalProfit += order.totalProfit
       byCustomer[key].orders.push(order)
     }
-    return Object.values(byCustomer).map((c) => ({ ...c, totalMarginPct: c.revenue > 0 ? (c.totalProfit / c.revenue) * 100 : 0 }))
+    return Object.values(byCustomer).map((c) => {
+      const risk = computeCustomerRiskMetrics(c.orders, now)
+      return {
+        ...c,
+        totalMarginPct: c.revenue > 0 ? (c.totalProfit / c.revenue) * 100 : 0,
+        lastOrderDate: risk.lastOrderDate,
+        lastOrderIso: risk.lastOrderDate ? risk.lastOrderDate.toISOString().slice(0, 10) : '',
+        daysSinceLastOrder: risk.daysSinceLastOrder,
+        hasOpenWork: risk.hasOpenWork,
+        shippedOrderCount: risk.shippedOrderCount,
+        medianDaysBetweenOrders: risk.medianDaysBetweenOrders,
+        riskTier: risk.riskTier,
+        revenue12mo: risk.revenue12mo,
+      } satisfies CustomerRow
+    })
   }, [filteredOrders, data])
 
   // ─── Top-level aggregates for EnhancedStatCards ───
@@ -659,6 +788,41 @@ function SalesCustomersContent() {
       {/* Top 10 Customers Bar Chart (Enhancement 1) */}
       <TopCustomersBarChart customers={customerRows} />
 
+      {/* At-Risk Customers — BOTH chart variants for staging review. */}
+      {/* Decide one for production; remove the other in a follow-up PR. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <AtRiskCustomersBarChart
+          customers={customerRows.map((c) => ({
+            customer: c.customer,
+            daysSinceLastOrder: c.daysSinceLastOrder,
+            revenue12mo: c.revenue12mo,
+            riskTier: c.riskTier,
+          }))}
+          onSelect={(customer) => {
+            setExpandedCustomer(customer)
+            // Scroll to the table so the expanded row is visible
+            setTimeout(() => {
+              document.getElementById('sales-customers-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }, 50)
+          }}
+        />
+        <AtRiskCustomersBubbleChart
+          customers={customerRows.map((c) => ({
+            customer: c.customer,
+            daysSinceLastOrder: c.daysSinceLastOrder,
+            revenue12mo: c.revenue12mo,
+            riskTier: c.riskTier,
+            shippedOrderCount: c.shippedOrderCount,
+          }))}
+          onSelect={(customer) => {
+            setExpandedCustomer(customer)
+            setTimeout(() => {
+              document.getElementById('sales-customers-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }, 50)
+          }}
+        />
+      </div>
+
       {/* Customer Revenue Concentration — Full-screen interactive treemap */}
       <RevenueConcentrationButton onClick={() => setTreemapOpen(!treemapOpen)} open={treemapOpen} />
       <RevenueConcentrationModal
@@ -671,22 +835,24 @@ function SalesCustomersContent() {
       <CategoryDonutChart orders={filteredOrders} />
 
       {/* Customer Table */}
-      <DataTable
-        table={table}
-        data={customerRows}
-        noun="customer"
-        exportFilename="sales-by-customer"
-        page="sales-by-customer"
-        initialView={initialView}
-        autoExport={autoExport}
-        getRowKey={(row) => (row as CustomerRow).customer}
-        expandedRowKey={expandedCustomer}
-        onRowClick={(row) => {
-          const c = (row as CustomerRow).customer
-          setExpandedCustomer((prev) => (prev === c ? null : c))
-        }}
-        renderExpandedContent={(row) => <CustomerDrilldown customerRow={row as CustomerRow} />}
-      />
+      <div id="sales-customers-table" className="scroll-mt-4">
+        <DataTable
+          table={table}
+          data={customerRows}
+          noun="customer"
+          exportFilename="sales-by-customer"
+          page="sales-by-customer"
+          initialView={initialView}
+          autoExport={autoExport}
+          getRowKey={(row) => (row as CustomerRow).customer}
+          expandedRowKey={expandedCustomer}
+          onRowClick={(row) => {
+            const c = (row as CustomerRow).customer
+            setExpandedCustomer((prev) => (prev === c ? null : c))
+          }}
+          renderExpandedContent={(row) => <CustomerDrilldown customerRow={row as CustomerRow} />}
+        />
+      </div>
     </div>
   )
 }
