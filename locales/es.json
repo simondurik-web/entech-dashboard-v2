@@ -500,6 +500,8 @@
   "phil.placeholder": "Pregunta a Phil…",
   "phil.send": "Enviar",
   "phil.thinking": "Pensando…",
+  "phil.status.loadingHistory": "Cargando conversación anterior…",
+  "phil.status.querying": "Consultando el panel…",
   "phil.newChat": "Nuevo chat",
   "phil.clearHistory": "Borrar historial",
   "phil.clearHistoryConfirm": "¿Borrar todo el historial del chat? No se puede deshacer.",

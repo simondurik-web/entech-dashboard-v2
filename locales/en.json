@@ -500,6 +500,8 @@
   "phil.placeholder": "Ask Phil…",
   "phil.send": "Send",
   "phil.thinking": "Thinking…",
+  "phil.status.loadingHistory": "Loading prior conversation…",
+  "phil.status.querying": "Querying the dashboard…",
   "phil.newChat": "New chat",
   "phil.clearHistory": "Clear history",
   "phil.clearHistoryConfirm": "Clear all chat history? This cannot be undone.",

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
-export const maxDuration = 180
+export const maxDuration = 300
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 const PHIL_PATH = "/phil-assistant"
@@ -9,7 +11,8 @@ const DASHBOARD_APP_ID = "dashboard"
 const HISTORY_LIMIT = 20
 const WEBHOOK_URL = process.env.PHIL_AI_WEBHOOK_URL
 const WEBHOOK_SECRET = process.env.PHIL_AI_WEBHOOK_SECRET
-const WEBHOOK_TIMEOUT_MS = 150_000
+const WEBHOOK_TIMEOUT_MS = 240_000
+const KEEPALIVE_MS = 4_000
 
 interface BridgeResponse {
   answer: string
@@ -25,10 +28,6 @@ interface UserContext {
   customPermissions: Record<string, boolean> | null
 }
 
-// Mirrors getProfileFromHeader from app/api/scheduling/_utils.ts: read
-// user_profiles, then overlay the user's dashboard-app role from
-// user_app_roles. Adds custom_permissions (not in the scheduling helper)
-// because Phil's permission check needs them.
 async function loadUserContext(userId: string): Promise<UserContext | null> {
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")
@@ -128,107 +127,171 @@ function sanitizeBridgeError(detail: string, status: number): string {
   return "bridge_error"
 }
 
+// POST is SSE-streaming. The bridge call can take 30–90s on questions that
+// need a query-on-demand loop; iOS Safari aborts a quiet fetch around 60s
+// on cellular. By writing `: ping\n\n` comments every 4s we keep the
+// connection visibly alive end-to-end. Final outcome arrives as a
+// named SSE event (status/result/error) the client parses.
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get("x-user-id")
-  if (!userId) {
-    return NextResponse.json({ error: "auth_required" }, { status: 401 })
-  }
+  const encoder = new TextEncoder()
 
-  const user = await loadUserContext(userId)
-  if (!user) {
-    return NextResponse.json({ error: "auth_required" }, { status: 401 })
-  }
+  const stream = new ReadableStream({
+    async start(controller) {
+      let closed = false
+      const safeEnqueue = (chunk: Uint8Array) => {
+        if (closed) return
+        try {
+          controller.enqueue(chunk)
+        } catch {
+          closed = true
+        }
+      }
+      const send = (event: string, data: object) => {
+        safeEnqueue(
+          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+        )
+      }
+      const ping = setInterval(() => {
+        safeEnqueue(encoder.encode(`: ping ${Date.now()}\n\n`))
+      }, KEEPALIVE_MS)
 
-  if (!(await canAccessPhil(user))) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 })
-  }
+      try {
+        // Initial byte: open SSE channel and tell the client we got the request.
+        // Critical for iOS Safari — sees data immediately, doesn't time out.
+        send("open", { ts: Date.now() })
 
-  let body: IncomingBody
-  try {
-    body = (await req.json()) as IncomingBody
-  } catch {
-    return NextResponse.json({ error: "bad_request" }, { status: 400 })
-  }
+        // --- Auth ---
+        const userId = req.headers.get("x-user-id")
+        if (!userId) {
+          send("error", { detail: "auth_required", status: 401, fatal: true })
+          return
+        }
+        const user = await loadUserContext(userId)
+        if (!user) {
+          send("error", { detail: "auth_required", status: 401, fatal: true })
+          return
+        }
+        if (!(await canAccessPhil(user))) {
+          send("error", { detail: "forbidden", status: 403, fatal: true })
+          return
+        }
 
-  const question = typeof body.question === "string" ? body.question.trim() : ""
-  if (question.length < 1 || question.length > 2000) {
-    return NextResponse.json({ error: "bad_question" }, { status: 400 })
-  }
+        // --- Body ---
+        let body: IncomingBody
+        try {
+          body = (await req.json()) as IncomingBody
+        } catch {
+          send("error", { detail: "bad_request", status: 400, fatal: true })
+          return
+        }
+        const question = typeof body.question === "string" ? body.question.trim() : ""
+        if (question.length < 1 || question.length > 2000) {
+          send("error", { detail: "bad_question", status: 400, fatal: true })
+          return
+        }
+        const sessionId =
+          typeof body.sessionId === "string" && body.sessionId.length > 0
+            ? body.sessionId
+            : crypto.randomUUID()
+        const language: "en" | "es" = body.language === "es" ? "es" : "en"
 
-  const sessionId = typeof body.sessionId === "string" && body.sessionId.length > 0
-    ? body.sessionId
-    : crypto.randomUUID()
+        send("status", { phase: "loading_history", sessionId })
 
-  const language: "en" | "es" = body.language === "es" ? "es" : "en"
+        // --- History + persist user message ---
+        const { data: historyRows } = await supabaseAdmin
+          .from("phil_chat_history")
+          .select("role, content")
+          .eq("user_id", user.userId)
+          .eq("session_id", sessionId)
+          .order("created_at", { ascending: true })
+          .limit(HISTORY_LIMIT)
+        const history = (historyRows ?? []).map((row) => ({
+          role: row.role as "user" | "assistant",
+          content: row.content as string,
+        }))
 
-  // Fetch recent history for this session (chronological, capped)
-  const { data: historyRows } = await supabaseAdmin
-    .from("phil_chat_history")
-    .select("role, content")
-    .eq("user_id", user.userId)
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: true })
-    .limit(HISTORY_LIMIT)
+        await supabaseAdmin.from("phil_chat_history").insert({
+          user_id: user.userId,
+          session_id: sessionId,
+          role: "user",
+          content: question,
+        })
 
-  const history = (historyRows ?? []).map((row) => ({
-    role: row.role as "user" | "assistant",
-    content: row.content as string,
-  }))
+        send("status", { phase: "thinking", sessionId })
 
-  // Persist user message before calling bridge
-  await supabaseAdmin.from("phil_chat_history").insert({
-    user_id: user.userId,
-    session_id: sessionId,
-    role: "user",
-    content: question,
+        // --- Bridge call ---
+        const result = await callBridge({
+          question,
+          history,
+          language,
+          user: { email: user.email, role: user.role },
+        })
+
+        if (!result.ok) {
+          const sanitized = sanitizeBridgeError(result.detail, result.status)
+          await supabaseAdmin.from("phil_chat_history").insert({
+            user_id: user.userId,
+            session_id: sessionId,
+            role: "assistant",
+            content: "",
+            error: sanitized,
+          })
+          send("error", {
+            detail: sanitized,
+            status: result.status,
+            sessionId,
+            fatal: true,
+          })
+          return
+        }
+
+        const { answer, report, model, latencyMs } = result.data
+
+        await supabaseAdmin.from("phil_chat_history").insert({
+          user_id: user.userId,
+          session_id: sessionId,
+          role: "assistant",
+          content: answer,
+          model: model ?? "gpt-5.5",
+          latency_ms: latencyMs ?? null,
+          report: report ?? null,
+        })
+
+        send("result", {
+          answer,
+          report: report ?? null,
+          model: model ?? "gpt-5.5",
+          latencyMs: latencyMs ?? null,
+          sessionId,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "internal_error"
+        send("error", { detail: message.slice(0, 200), status: 500, fatal: true })
+      } finally {
+        clearInterval(ping)
+        closed = true
+        try {
+          controller.close()
+        } catch {
+          // already closed
+        }
+      }
+    },
   })
 
-  const result = await callBridge({
-    question,
-    history,
-    language,
-    user: { email: user.email, role: user.role },
-  })
-
-  if (!result.ok) {
-    // Persist a sanitized error code (not raw stderr) — stderr can contain
-    // codex auth state, DB connection strings, or prompt fragments. The
-    // client gets a short error tag, not the raw detail.
-    await supabaseAdmin.from("phil_chat_history").insert({
-      user_id: user.userId,
-      session_id: sessionId,
-      role: "assistant",
-      content: "",
-      error: sanitizeBridgeError(result.detail, result.status),
-    })
-    return NextResponse.json(
-      { error: "bridge_failed", detail: sanitizeBridgeError(result.detail, result.status), sessionId },
-      { status: result.status },
-    )
-  }
-
-  const { answer, report, model, latencyMs } = result.data
-
-  await supabaseAdmin.from("phil_chat_history").insert({
-    user_id: user.userId,
-    session_id: sessionId,
-    role: "assistant",
-    content: answer,
-    model: model ?? "gpt-5.5",
-    latency_ms: latencyMs ?? null,
-    report: report ?? null,
-  })
-
-  return NextResponse.json({
-    answer,
-    report: report ?? null,
-    model: model ?? "gpt-5.5",
-    latencyMs: latencyMs ?? null,
-    sessionId,
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      // Disables proxy buffering (Nginx + similar) so chunks ship promptly.
+      "X-Accel-Buffering": "no",
+    },
   })
 }
 
-// GET /api/chat/phil?sessionId=... — fetch history for current user (current session if provided, else most recent session)
+// GET /api/chat/phil?sessionId=... — fetch history for current user
 export async function GET(req: NextRequest) {
   const userId = req.headers.get("x-user-id")
   if (!userId) {
