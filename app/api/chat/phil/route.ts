@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
-export const maxDuration = 300
+export const maxDuration = 800
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
@@ -9,10 +9,13 @@ const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 const PHIL_PATH = "/phil-assistant"
 const DASHBOARD_APP_ID = "dashboard"
 const HISTORY_LIMIT = 20
-const WEBHOOK_URL = process.env.PHIL_AI_WEBHOOK_URL
-const WEBHOOK_SECRET = process.env.PHIL_AI_WEBHOOK_SECRET
-const WEBHOOK_TIMEOUT_MS = 280_000
 const KEEPALIVE_MS = 4_000
+
+// Async job queue settings — bridge worker claims rows from phil_jobs and
+// writes results back. Vercel route polls for completion. This decouples
+// the chat latency from any wall-clock ceiling.
+const JOB_POLL_INTERVAL_MS = 1_500
+const JOB_MAX_WAIT_MS = 600_000  // 10 min absolute ceiling — safety net
 
 interface BridgeResponse {
   answer: string
@@ -68,48 +71,48 @@ async function canAccessPhil(user: UserContext): Promise<boolean> {
   return menu[PHIL_PATH] === true
 }
 
-async function callBridge(payload: {
+async function enqueueJob(payload: {
+  userId: string
+  sessionId: string
   question: string
   history: Array<{ role: "user" | "assistant"; content: string }>
   language: "en" | "es"
   user: { email: string; role: string }
-}): Promise<
-  | { ok: true; data: BridgeResponse }
-  | { ok: false; status: number; detail: string }
-> {
-  if (!WEBHOOK_URL || !WEBHOOK_SECRET) {
-    return { ok: false, status: 503, detail: "bridge_not_configured" }
-  }
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS)
-  try {
-    const res = await fetch(`${WEBHOOK_URL.replace(/\/$/, "")}/ask`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Phil-Secret": WEBHOOK_SECRET,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
+}): Promise<{ ok: true; jobId: string } | { ok: false; status: number; detail: string }> {
+  const { data, error } = await supabaseAdmin
+    .from("phil_jobs")
+    .insert({
+      user_id: payload.userId,
+      session_id: payload.sessionId,
+      question: payload.question,
+      history: payload.history,
+      language: payload.language,
+      user_email: payload.user.email,
+      user_role: payload.user.role,
+      // status defaults to 'queued'
     })
-    if (!res.ok) {
-      const text = await res.text()
-      return { ok: false, status: res.status === 429 ? 429 : 502, detail: text.slice(0, 500) }
-    }
-    const data = (await res.json()) as BridgeResponse
-    if (typeof data.answer !== "string" || !data.answer.trim()) {
-      return { ok: false, status: 502, detail: "empty_answer" }
-    }
-    return { ok: true, data }
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      return { ok: false, status: 504, detail: "timeout" }
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    return { ok: false, status: 502, detail: message.slice(0, 500) }
-  } finally {
-    clearTimeout(timer)
+    .select("id")
+    .single()
+  if (error || !data?.id) {
+    return { ok: false, status: 500, detail: error?.message?.slice(0, 200) ?? "enqueue_failed" }
   }
+  return { ok: true, jobId: data.id as string }
+}
+
+interface JobRow {
+  status: "queued" | "running" | "done" | "failed"
+  result: BridgeResponse | null
+  error: string | null
+  claimed_by: string | null
+}
+
+async function fetchJob(jobId: string): Promise<JobRow | null> {
+  const { data } = await supabaseAdmin
+    .from("phil_jobs")
+    .select("status, result, error, claimed_by")
+    .eq("id", jobId)
+    .single()
+  return (data as JobRow | null) ?? null
 }
 
 interface IncomingBody {
@@ -119,11 +122,14 @@ interface IncomingBody {
 }
 
 function sanitizeBridgeError(detail: string, status: number): string {
-  if (status === 504 || detail === "timeout" || detail === "codex_timeout") return "timeout"
-  if (status === 503 || detail === "bridge_not_configured") return "bridge_not_configured"
-  if (detail === "empty_answer") return "empty_answer"
+  const d = (detail ?? "").toLowerCase()
+  if (status === 504 || d === "timeout" || d === "codex_timeout") return "timeout"
+  if (status === 503 || d === "bridge_not_configured") return "bridge_not_configured"
+  if (d === "empty_answer") return "empty_answer"
   if (status === 429) return "rate_limit"
   if (status === 401 || status === 403) return "bridge_unauthorized"
+  if (d === "codex_error" || d === "codex_failed") return "bridge_error"
+  if (d === "enqueue_failed" || d === "job_missing") return "bridge_error"
   return "bridge_error"
 }
 
@@ -219,16 +225,62 @@ export async function POST(req: NextRequest) {
 
         send("status", { phase: "thinking", sessionId })
 
-        // --- Bridge call ---
-        const result = await callBridge({
+        // --- Enqueue async job ---
+        const enq = await enqueueJob({
+          userId: user.userId,
+          sessionId,
           question,
           history,
           language,
           user: { email: user.email, role: user.role },
         })
+        if (!enq.ok) {
+          await supabaseAdmin.from("phil_chat_history").insert({
+            user_id: user.userId,
+            session_id: sessionId,
+            role: "assistant",
+            content: "",
+            error: "enqueue_failed",
+          })
+          send("error", { detail: enq.detail, status: enq.status, sessionId, fatal: true })
+          return
+        }
+        const jobId = enq.jobId
+        send("status", { phase: "queued", sessionId, jobId })
 
-        if (!result.ok) {
-          const sanitized = sanitizeBridgeError(result.detail, result.status)
+        // --- Poll the job table until done/failed or hit the safety ceiling ---
+        const startedAt = Date.now()
+        let lastEmittedStatus: JobRow["status"] | null = null
+        let job: JobRow | null = null
+        while (true) {
+          if (Date.now() - startedAt > JOB_MAX_WAIT_MS) {
+            await supabaseAdmin.from("phil_chat_history").insert({
+              user_id: user.userId,
+              session_id: sessionId,
+              role: "assistant",
+              content: "",
+              error: "timeout",
+            })
+            send("error", { detail: "timeout", status: 504, sessionId, fatal: true })
+            return
+          }
+          await new Promise((r) => setTimeout(r, JOB_POLL_INTERVAL_MS))
+          job = await fetchJob(jobId)
+          if (!job) {
+            send("error", { detail: "job_missing", status: 500, sessionId, fatal: true })
+            return
+          }
+          // Surface running transition as a status event (UI flips
+          // "Loading prior conversation…" → "Querying the dashboard…").
+          if (job.status !== lastEmittedStatus) {
+            if (job.status === "running") send("status", { phase: "thinking", sessionId, jobId })
+            lastEmittedStatus = job.status
+          }
+          if (job.status === "done" || job.status === "failed") break
+        }
+
+        if (job.status === "failed" || !job.result) {
+          const sanitized = sanitizeBridgeError(job.error ?? "bridge_error", 502)
           await supabaseAdmin.from("phil_chat_history").insert({
             user_id: user.userId,
             session_id: sessionId,
@@ -236,16 +288,11 @@ export async function POST(req: NextRequest) {
             content: "",
             error: sanitized,
           })
-          send("error", {
-            detail: sanitized,
-            status: result.status,
-            sessionId,
-            fatal: true,
-          })
+          send("error", { detail: sanitized, status: 502, sessionId, fatal: true })
           return
         }
 
-        const { answer, report, model, latencyMs } = result.data
+        const { answer, report, model, latencyMs } = job.result
 
         await supabaseAdmin.from("phil_chat_history").insert({
           user_id: user.userId,
