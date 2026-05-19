@@ -11,7 +11,7 @@ const DASHBOARD_APP_ID = "dashboard"
 const HISTORY_LIMIT = 20
 const WEBHOOK_URL = process.env.PHIL_AI_WEBHOOK_URL
 const WEBHOOK_SECRET = process.env.PHIL_AI_WEBHOOK_SECRET
-const WEBHOOK_TIMEOUT_MS = 240_000
+const WEBHOOK_TIMEOUT_MS = 280_000
 const KEEPALIVE_MS = 4_000
 
 interface BridgeResponse {

@@ -277,6 +277,25 @@ There is **no** `usage7` / `usage30` / `daysToMin` / `daysToZero` / `itemType` /
 - Out of stock: `NULLIF(target,'')::numeric > 0 AND COALESCE(NULLIF(real_number_value,'')::numeric, 0) = 0`
 - To make: `NULLIF(parts_to_be_made,'')::numeric > 0`
 
+### Numeric casts on `dashboard_orders` + `production_totals` — comma gotcha
+
+Both tables store numeric columns as `text`. Many of them (especially `fusion_inventory`, `minimums`, `manual_target`, `order_qty`, `revenue`, `total_cost`, etc.) contain commas in their string representation — e.g. `"1,250"` instead of `"1250"`. A naive `NULLIF(col, '')::numeric` then **throws** with `invalid input syntax for type numeric: "1,250"` and burns one of your `<SQL>` iterations.
+
+**Use this pattern for any numeric cast on these tables — strip commas first:**
+
+```sql
+NULLIF(REPLACE(col, ',', ''), '')::numeric
+```
+
+Or as a reusable safe-cast:
+```sql
+NULLIF(REGEXP_REPLACE(COALESCE(col, ''), '[^0-9.\-]', '', 'g'), '')::numeric
+```
+
+The regex form also strips currency symbols, spaces, and stray characters — preferred for fields like `revenue` that occasionally have `"$1,250.00"`. Use it on the first try, not after a failure.
+
+The `inventory.real_number_value` and `inventory.target` are USUALLY clean integers, but apply the same pattern defensively if you're querying broadly.
+
 ### Customer activity (in the orders slice as `customer_activity`)
 When the user asks about customers — inactive customers, top customer by volume, first-time orders, division-specific patterns ("Roll Tech customers who haven't ordered in 2 months") — you DO have the data. The orders slice includes a `customer_activity` array with one row per (customer, category) combo:
 - `customer` — customer name
