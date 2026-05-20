@@ -265,7 +265,13 @@ export function Sidebar({
           {expanded && <ZoomControls />}
 
           {/* Navigation */}
-          <nav className="flex-1 px-2 py-4">
+          {/* `overflow-y-auto min-h-0` makes the nav itself scrollable when
+              the user expands many sections (admin view especially). The
+              outer aside also has overflow-y-auto, but on smaller viewports
+              that scroll hides the bottom Phil link / theme toggle / sign-
+              out — making nav scroll independently keeps those always
+              reachable. */}
+          <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4">
             <LayoutGroup>
             {filteredProduction.length > 0 && (
               <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
