@@ -1496,7 +1496,30 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
                         <SelectContent>{partOpts.map(o => <SelectItem key={o.id} value={o.part_number}>{o.part_number}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2"><Label>Qty</Label><Input type="number" min="0.000001" step="0.0001" value={comp.quantity} onChange={e => { const n = [...components]; n[i] = { ...comp, quantity: e.target.value }; setComponents(n) }} /></div>
+                    <div className="grid gap-2">
+                      <Label className="flex items-center gap-2">
+                        Qty
+                        {comp.quantity_formula ? (
+                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-normal text-amber-700 dark:text-amber-400" title={`Auto-computed from formula: ${comp.quantity_formula}. Editing the qty will clear the formula.`}>
+                            auto: {comp.quantity_formula}
+                          </span>
+                        ) : null}
+                      </Label>
+                      <Input
+                        type="number"
+                        min="0.000001"
+                        step="0.0001"
+                        value={comp.quantity}
+                        onChange={e => {
+                          // Editing the qty manually clears any auto-formula
+                          // (e.g. "1/PPP"). Without this, recalculateFinalAssembly
+                          // would overwrite the user's value on the next save.
+                          const n = [...components]
+                          n[i] = { ...comp, quantity: e.target.value, quantity_formula: '' }
+                          setComponents(n)
+                        }}
+                      />
+                    </div>
                     <div className="flex items-end"><Button type="button" variant="ghost" size="sm" className="h-10 px-2 text-destructive" onClick={() => setComponents(components.length === 1 ? [{ component_source: 'sub_assembly', component_part_number: '', quantity: '1', quantity_formula: '' }] : components.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button></div>
                   </div>
                 )
