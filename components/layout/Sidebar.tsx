@@ -210,7 +210,9 @@ export function Sidebar({
       >
         <aside
           className={cn(
-            "h-full flex flex-col overflow-y-auto overflow-x-hidden",
+            // No outer overflow-y-auto — the inner <nav> handles scrolling
+            // so the bottom Phil link / theme toggle / sign-out stay anchored.
+            "h-full flex flex-col overflow-x-hidden",
             "bg-gradient-to-b from-[#2b6cb0] to-[#2c5282] text-white",
             "dark:from-[#0f1f38] dark:to-[#1a365d]",
             "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
