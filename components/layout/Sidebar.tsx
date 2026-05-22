@@ -353,6 +353,13 @@ export function Sidebar({
             )}
             <nav
               ref={navRef}
+              // Lenis (the global smooth-scroll library) hijacks wheel
+              // events at the document level. Without this opt-out,
+              // trackpad/wheel scrolling over the sidebar would scroll
+              // the main page instead of the nav. The `data-lenis-prevent`
+              // attribute is matched by `smooth-scroll.tsx` to skip the
+              // hijack for this element.
+              data-lenis-prevent
               className={cn(
                 "h-full min-h-0 overflow-y-auto px-2 py-4 phil-nav-scroll",
                 // Always-visible scrollbar styling for webkit + firefox.
