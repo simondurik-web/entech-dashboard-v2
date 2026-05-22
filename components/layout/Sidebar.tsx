@@ -58,24 +58,21 @@ type NavItem = {
 
 const productionItems: NavItem[] = [
   { tKey: "nav.ordersData", href: "/orders", icon: <ClipboardList className="size-4" /> },
-  { tKey: "Sales Action Center", href: "/rolltech-actions", icon: <Inbox className="size-4" /> },
   { tKey: "nav.productionMake", href: "/need-to-make", icon: <Factory className="size-4" />, sub: true },
   { tKey: "nav.ordersQueue", href: "/need-to-package", icon: <Package className="size-4" />, sub: true },
-  { tKey: "nav.ordersStaged", href: "/staged", icon: <PackageCheck className="size-4" />, sub: true },
-  { tKey: "nav.ordersShipped", href: "/shipped", icon: <Truck className="size-4" />, sub: true },
   { tKey: "nav.inventory", href: "/inventory", icon: <Archive className="size-4" /> },
   { tKey: "nav.inventoryHistory", href: "/inventory-history", icon: <TrendingUp className="size-4" />, sub: true },
   { tKey: "nav.drawingsLibrary", href: "/drawings", icon: <Ruler className="size-4" />, sub: true },
+  { tKey: "nav.scheduling", href: "/scheduling", icon: <CalendarDays className="size-4" /> },
+  { tKey: "nav.labels", href: "/labels", icon: <Tag className="size-4" /> },
+]
+
+const shippingItems: NavItem[] = [
+  { tKey: "nav.ordersStaged", href: "/staged", icon: <PackageCheck className="size-4" /> },
+  { tKey: "nav.ordersShipped", href: "/shipped", icon: <Truck className="size-4" /> },
   { tKey: "nav.palletRecords", href: "/pallet-records", icon: <Camera className="size-4" /> },
   { tKey: "nav.shippingRecords", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { tKey: "nav.shippingOverview", href: "/shipping-overview", icon: <Ship className="size-4" /> },
-  { tKey: "nav.scheduling", href: "/scheduling", icon: <CalendarDays className="size-4" /> },
-  { tKey: "nav.labels", href: "/labels", icon: <Tag className="size-4" /> },
-  { tKey: "nav.bom", href: "/bom", icon: <Layers className="size-4" /> },
-  { tKey: "nav.materialReqs", href: "/material-requirements", icon: <Package className="size-4" />, sub: true },
-  { tKey: "nav.fpReference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
-  { tKey: "nav.customerRef", href: "/customer-reference", icon: <Users className="size-4" /> },
-  { tKey: "nav.quotes", href: "/quotes", icon: <DollarSign className="size-4" /> },
 ]
 
 const salesItems: NavItem[] = [
@@ -83,6 +80,15 @@ const salesItems: NavItem[] = [
   { tKey: "nav.salesByPart", href: "/sales-parts", icon: <Wrench className="size-4" />, sub: true },
   { tKey: "nav.salesByCustomer", href: "/sales-customers", icon: <Users className="size-4" />, sub: true },
   { tKey: "nav.salesByDate", href: "/sales-dates", icon: <CalendarDays className="size-4" />, sub: true },
+]
+
+const toolsItems: NavItem[] = [
+  { tKey: "Sales Action Center", href: "/rolltech-actions", icon: <Inbox className="size-4" /> },
+  { tKey: "nav.bom", href: "/bom", icon: <Layers className="size-4" /> },
+  { tKey: "nav.materialReqs", href: "/material-requirements", icon: <Package className="size-4" />, sub: true },
+  { tKey: "nav.fpReference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
+  { tKey: "nav.customerRef", href: "/customer-reference", icon: <Users className="size-4" /> },
+  { tKey: "nav.quotes", href: "/quotes", icon: <DollarSign className="size-4" /> },
 ]
 
 const adminItems: NavItem[] = [
@@ -203,7 +209,9 @@ export function Sidebar({
   }
 
   const filteredProduction = productionItems.filter((item) => canAccess(item.href))
+  const filteredShipping = shippingItems.filter((item) => canAccess(item.href))
   const filteredSales = salesItems.filter((item) => canAccess(item.href))
+  const filteredTools = toolsItems.filter((item) => canAccess(item.href))
   const showAllData = canAccess("/all-data")
   const isAdmin = profile?.role === "admin"
 
@@ -381,10 +389,26 @@ export function Sidebar({
               </CollapsibleNavSection>
             )}
 
+            {filteredShipping.length > 0 && (
+              <CollapsibleNavSection label={t('nav.shipping')} expanded={expanded} storageKey="shipping" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
+                  {filteredShipping.map((item) => renderNavItem(item))}
+                </ul>
+              </CollapsibleNavSection>
+            )}
+
             {filteredSales.length > 0 && (
               <CollapsibleNavSection label={t('nav.salesFinance')} expanded={expanded} storageKey="sales" defaultOpen={true}>
                 <ul className="space-y-0.5 mt-1">
                   {filteredSales.map((item) => renderNavItem(item))}
+                </ul>
+              </CollapsibleNavSection>
+            )}
+
+            {filteredTools.length > 0 && (
+              <CollapsibleNavSection label={t('nav.toolsReference')} expanded={expanded} storageKey="tools" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
+                  {filteredTools.map((item) => renderNavItem(item))}
                 </ul>
               </CollapsibleNavSection>
             )}
@@ -561,11 +585,57 @@ export function Sidebar({
             </>
           )}
 
+          {filteredShipping.length > 0 && (
+            <>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.shipping')}</p>
+              <ul className="space-y-0.5">
+                {filteredShipping.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        item.sub && "ml-4 text-xs",
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+                      )}>
+                        {item.icon}
+                        <span>{t(item.tKey)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
+
           {filteredSales.length > 0 && (
             <>
               <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.salesFinance')}</p>
               <ul className="space-y-0.5">
                 {filteredSales.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        item.sub && "ml-4 text-xs",
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+                      )}>
+                        {item.icon}
+                        <span>{t(item.tKey)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
+
+          {filteredTools.length > 0 && (
+            <>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.toolsReference')}</p>
+              <ul className="space-y-0.5">
+                {filteredTools.map((item) => {
                   const isActive = pathname === item.href
                   return (
                     <li key={item.href}>
