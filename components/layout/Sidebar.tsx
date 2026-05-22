@@ -80,6 +80,7 @@ const salesItems: NavItem[] = [
   { tKey: "nav.salesByPart", href: "/sales-parts", icon: <Wrench className="size-4" />, sub: true },
   { tKey: "nav.salesByCustomer", href: "/sales-customers", icon: <Users className="size-4" />, sub: true },
   { tKey: "nav.salesByDate", href: "/sales-dates", icon: <CalendarDays className="size-4" />, sub: true },
+  { tKey: "nav.incomeStatement", href: "/income-statement", icon: <FileBarChart className="size-4" /> },
 ]
 
 const toolsItems: NavItem[] = [
