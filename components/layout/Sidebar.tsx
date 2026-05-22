@@ -23,6 +23,8 @@ import {
   FileText,
   Bot,
   PanelLeftClose,
+  ChevronUp,
+  ChevronDown,
   Sun,
   Moon,
   Layers,
@@ -123,6 +125,31 @@ export function Sidebar({
   const hoverTimeout = useRef<NodeJS.Timeout | null>(null)
   const leaveTimeout = useRef<NodeJS.Timeout | null>(null)
 
+  // --- Sidebar nav scroll affordances (initialized; effect attaches below
+  // after `expanded` is in scope) ---
+  const navRef = useRef<HTMLElement | null>(null)
+  const [canScrollUp, setCanScrollUp] = useState(false)
+  const [canScrollDown, setCanScrollDown] = useState(false)
+  const scrollHoldTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startScrollHold = (direction: -1 | 1) => {
+    const el = navRef.current
+    if (!el) return
+    // Initial step on press-down for snappy feedback
+    el.scrollBy({ top: direction * 120, behavior: "smooth" })
+    // Continuous scroll while button is held
+    if (scrollHoldTimer.current) clearInterval(scrollHoldTimer.current)
+    scrollHoldTimer.current = setInterval(() => {
+      el.scrollBy({ top: direction * 40, behavior: "auto" })
+    }, 60)
+  }
+  const stopScrollHold = () => {
+    if (scrollHoldTimer.current) {
+      clearInterval(scrollHoldTimer.current)
+      scrollHoldTimer.current = null
+    }
+  }
+  useEffect(() => () => stopScrollHold(), [])
+
   useEffect(() => {
     setMounted(true)
     // Restore pin state
@@ -131,6 +158,31 @@ export function Sidebar({
   }, [])
 
   const expanded = hovered || pinned
+
+  // Track whether the nav can scroll up/down so we can show explicit
+  // chevron buttons (trackpad scroll is finicky + scrollbar auto-hides
+  // on macOS). Re-evaluates on scroll, resize, and DOM mutations
+  // (sections expand/collapse).
+  useEffect(() => {
+    const el = navRef.current
+    if (!el) return
+    const update = () => {
+      const tolerance = 2
+      setCanScrollUp(el.scrollTop > tolerance)
+      setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - tolerance)
+    }
+    update()
+    el.addEventListener("scroll", update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    const mo = new MutationObserver(update)
+    mo.observe(el, { childList: true, subtree: true })
+    return () => {
+      el.removeEventListener("scroll", update)
+      ro.disconnect()
+      mo.disconnect()
+    }
+  }, [expanded])
 
   const handleMouseEnter = () => {
     if (leaveTimeout.current) { clearTimeout(leaveTimeout.current); leaveTimeout.current = null }
@@ -269,11 +321,57 @@ export function Sidebar({
           {/* Navigation */}
           {/* `overflow-y-auto min-h-0` makes the nav itself scrollable when
               the user expands many sections (admin view especially). The
-              outer aside also has overflow-y-auto, but on smaller viewports
-              that scroll hides the bottom Phil link / theme toggle / sign-
-              out — making nav scroll independently keeps those always
-              reachable. */}
-          <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4">
+              outer aside dropped its overflow so the inner nav can scroll
+              independently while the bottom chrome (Phil link, theme
+              toggle, sign-out) stays anchored.
+
+              The wrapper div positions the scroll-arrow buttons absolutely
+              at top + bottom of the nav. Buttons appear only when there's
+              scrollable content in that direction (canScrollUp/Down state).
+              Click steps by 120px; press-and-hold continuously scrolls.
+              Both address the macOS trackpad-doesn't-always-scroll issue
+              and the auto-hidden scrollbar UX. */}
+          <div className="relative flex-1 min-h-0">
+            {expanded && canScrollUp && (
+              <button
+                type="button"
+                aria-label="Scroll menu up"
+                onMouseDown={() => startScrollHold(-1)}
+                onMouseUp={stopScrollHold}
+                onMouseLeave={stopScrollHold}
+                onTouchStart={() => startScrollHold(-1)}
+                onTouchEnd={stopScrollHold}
+                className={cn(
+                  "absolute left-2 right-2 top-0 z-10 flex h-7 items-center justify-center",
+                  "rounded-md bg-white/10 text-white/80 backdrop-blur-sm",
+                  "hover:bg-white/20 hover:text-white active:bg-white/30",
+                  "transition-colors shadow-sm",
+                )}
+              >
+                <ChevronUp className="size-4" />
+              </button>
+            )}
+            <nav
+              ref={navRef}
+              // Lenis (the global smooth-scroll library) hijacks wheel
+              // events at the document level. Without this opt-out,
+              // trackpad/wheel scrolling over the sidebar would scroll
+              // the main page instead of the nav. The `data-lenis-prevent`
+              // attribute is matched by `smooth-scroll.tsx` to skip the
+              // hijack for this element.
+              data-lenis-prevent
+              className={cn(
+                "h-full min-h-0 overflow-y-auto px-2 py-4 phil-nav-scroll",
+                // Always-visible scrollbar styling for webkit + firefox.
+                "[&::-webkit-scrollbar]:w-1.5",
+                "[&::-webkit-scrollbar-track]:bg-transparent",
+                "[&::-webkit-scrollbar-thumb]:bg-white/15",
+                "[&::-webkit-scrollbar-thumb:hover]:bg-white/30",
+                "[&::-webkit-scrollbar-thumb]:rounded-full",
+                "[scrollbar-color:rgba(255,255,255,0.15)_transparent]",
+                "[scrollbar-width:thin]",
+              )}
+            >
             <LayoutGroup>
             {filteredProduction.length > 0 && (
               <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
@@ -314,7 +412,27 @@ export function Sidebar({
               </CollapsibleNavSection>
             )}
             </LayoutGroup>
-          </nav>
+            </nav>
+            {expanded && canScrollDown && (
+              <button
+                type="button"
+                aria-label="Scroll menu down"
+                onMouseDown={() => startScrollHold(1)}
+                onMouseUp={stopScrollHold}
+                onMouseLeave={stopScrollHold}
+                onTouchStart={() => startScrollHold(1)}
+                onTouchEnd={stopScrollHold}
+                className={cn(
+                  "absolute left-2 right-2 bottom-0 z-10 flex h-7 items-center justify-center",
+                  "rounded-md bg-white/10 text-white/80 backdrop-blur-sm",
+                  "hover:bg-white/20 hover:text-white active:bg-white/30",
+                  "transition-colors shadow-sm",
+                )}
+              >
+                <ChevronDown className="size-4" />
+              </button>
+            )}
+          </div>
 
           {/* Phil Assistant */}
           {canAccess('/phil-assistant') && (
