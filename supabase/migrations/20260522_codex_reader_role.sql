@@ -56,3 +56,9 @@ revoke select on table public.push_subscriptions    from codex_reader;
 
 -- Information_schema is readable by every role by default. The Codex
 -- schema-discovery endpoint relies on that for `tables` + `columns`.
+
+-- The Vercel function connects through the Supabase pooler as the
+-- `postgres` role (the pooler doesn't know about custom roles) and
+-- switches to codex_reader via `SET LOCAL ROLE` inside each transaction.
+-- For that to work, postgres needs to be a member of codex_reader.
+grant codex_reader to postgres;

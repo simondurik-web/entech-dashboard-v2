@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { authorizeCodex } from '@/lib/codex-api/auth'
-import { getCodexReaderPool } from '@/lib/codex-api/db'
+import { runAsCodexReader } from '@/lib/codex-api/db'
 import { logCodexCall } from '@/lib/codex-api/audit'
 
 export const dynamic = 'force-dynamic'
@@ -40,58 +40,49 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const pool = getCodexReaderPool()
-  let client
   try {
-    client = await pool.connect()
-  } catch (err) {
-    const requestId = randomUUID()
-    console.error(`[codex-schema] pool connect failed (request_id=${requestId}):`, err)
-    await logCodexCall(ENDPOINT, req, {}, 'server_error', Date.now() - start, 'pool connect failed')
-    return NextResponse.json({ error: 'Internal server error', request_id: requestId }, { status: 500 })
-  }
+    const out = await runAsCodexReader(async (client) => {
+      // Pull tables that codex_reader can SELECT. has_table_privilege
+      // walls off the seven excluded tables automatically.
+      const tables = await client.query(`
+        SELECT
+          c.relname AS name,
+          obj_description(c.oid, 'pg_class') AS description
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind IN ('r', 'v', 'm')
+          AND has_table_privilege(current_user, c.oid, 'SELECT')
+        ORDER BY c.relname
+      `)
 
-  try {
-    // Pull tables that codex_reader can SELECT. has_table_privilege
-    // walls off the seven excluded tables automatically.
-    const tables = await client.query(`
-      SELECT
-        c.relname AS name,
-        obj_description(c.oid, 'pg_class') AS description
-      FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public'
-        AND c.relkind IN ('r', 'v', 'm')
-        AND has_table_privilege(current_user, c.oid, 'SELECT')
-      ORDER BY c.relname
-    `)
+      // Columns for those tables, in one shot.
+      const cols = await client.query(`
+        SELECT
+          c.table_name,
+          c.column_name AS name,
+          c.data_type AS type,
+          c.is_nullable = 'YES' AS nullable,
+          col_description(((c.table_schema || '.' || c.table_name)::regclass)::oid, c.ordinal_position) AS description
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+          AND has_table_privilege(current_user, (c.table_schema || '.' || c.table_name)::regclass, 'SELECT')
+        ORDER BY c.table_name, c.ordinal_position
+      `)
 
-    // Columns for those tables, in one shot.
-    const cols = await client.query(`
-      SELECT
-        c.table_name,
-        c.column_name AS name,
-        c.data_type AS type,
-        c.is_nullable = 'YES' AS nullable,
-        col_description(((c.table_schema || '.' || c.table_name)::regclass)::oid, c.ordinal_position) AS description
-      FROM information_schema.columns c
-      WHERE c.table_schema = 'public'
-        AND has_table_privilege(current_user, (c.table_schema || '.' || c.table_name)::regclass, 'SELECT')
-      ORDER BY c.table_name, c.ordinal_position
-    `)
+      const colsByTable = new Map<string, Array<{ name: string; type: string; nullable: boolean; description: string | null }>>()
+      for (const r of cols.rows as Array<{ table_name: string; name: string; type: string; nullable: boolean; description: string | null }>) {
+        const list = colsByTable.get(r.table_name) || []
+        list.push({ name: r.name, type: r.type, nullable: r.nullable, description: r.description })
+        colsByTable.set(r.table_name, list)
+      }
 
-    const colsByTable = new Map<string, Array<{ name: string; type: string; nullable: boolean; description: string | null }>>()
-    for (const r of cols.rows as Array<{ table_name: string; name: string; type: string; nullable: boolean; description: string | null }>) {
-      const list = colsByTable.get(r.table_name) || []
-      list.push({ name: r.name, type: r.type, nullable: r.nullable, description: r.description })
-      colsByTable.set(r.table_name, list)
-    }
-
-    const out = (tables.rows as Array<{ name: string; description: string | null }>).map((t) => ({
-      name: t.name,
-      description: t.description,
-      columns: colsByTable.get(t.name) || [],
-    }))
+      return (tables.rows as Array<{ name: string; description: string | null }>).map((t) => ({
+        name: t.name,
+        description: t.description,
+        columns: colsByTable.get(t.name) || [],
+      }))
+    })
 
     await logCodexCall(ENDPOINT, req, { table_count: out.length }, 'ok', Date.now() - start, null)
     return NextResponse.json({
@@ -105,8 +96,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     console.error(`[codex-schema] error (request_id=${requestId}):`, message)
     await logCodexCall(ENDPOINT, req, {}, 'server_error', Date.now() - start, message)
     return NextResponse.json({ error: 'Internal server error', request_id: requestId }, { status: 500 })
-  } finally {
-    client.release()
   }
 }
 
