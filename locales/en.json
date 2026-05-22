@@ -546,5 +546,18 @@
   "incomeStatement.sectionIncome": "Income",
   "incomeStatement.sectionCogs": "Cost of Sales",
   "incomeStatement.sectionExpense": "Operating Expenses",
-  "incomeStatement.sectionOtherExpense": "Other Expenses"
+  "incomeStatement.sectionOtherExpense": "Other Expenses",
+  "incomeStatement.viewMonth": "Single Month",
+  "incomeStatement.viewTrend": "Monthly Trend",
+  "incomeStatement.viewQuarterly": "Quarterly",
+  "incomeStatement.viewYearly": "Yearly",
+  "incomeStatement.quarterly": "Quarterly Comparison",
+  "incomeStatement.yearly": "Yearly Comparison",
+  "incomeStatement.trendTitle": "Monthly Trend — Revenue, Costs, Expenses, Net Income, EBITDA",
+  "incomeStatement.metric": "Metric",
+  "incomeStatement.exportXlsx": "Excel",
+  "incomeStatement.exportPdf": "PDF",
+  "incomeStatement.noPeriods": "Not enough data to aggregate yet.",
+  "incomeStatement.interest": "Interest",
+  "incomeStatement.depreciation": "Depreciation"
 }

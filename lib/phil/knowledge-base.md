@@ -589,3 +589,89 @@ Use `<REPORT_JSON>` per section 12 with columns: customer, category, risk_tier, 
 - Don't flag `active` or `has_open_work` customers as needing outreach. They've got business in flight.
 - Don't classify a customer as at-risk based on your own day-counting — trust `risk_tier`. The dashboard and bridge agree by design.
 - If the slice shows zero at-risk, just say "No customers flagged at-risk right now 🎯" — don't manufacture concern.
+
+## 17. INCOME STATEMENT (monthly P&L)
+
+The `income_statement_months` table holds the Compression Molding monthly P&L. Source of truth is a Google Sheet (one tab per month); the Next.js fetcher mirrors it into Supabase whenever the cache misses (max once per 5 min), so this table is usually within a few minutes of the sheet.
+
+### Schema
+
+| column | type | meaning |
+|---|---|---|
+| `month_iso` | text PK | "2026-01" — ISO month, sortable as text |
+| `label` | text | "Jan 26" — human label as the sheet uses |
+| `revenue` | numeric | Total - Income |
+| `cogs` | numeric | Total - Cost Of Sales |
+| `expense` | numeric | Total - Expense (operating expenses) |
+| `other_expense` | numeric | Total - Other Expense (often 0) |
+| `gross_profit` | numeric | revenue − cogs |
+| `net_ordinary_income` | numeric | gross_profit − expense |
+| `net_other_income` | numeric | usually 0; non-operating |
+| `net_income` | numeric | the bottom line |
+| `interest` | numeric | interest expense (add-back for EBITDA) |
+| `depreciation` | numeric | depreciation (add-back for EBITDA) |
+| `ebitda` | numeric | net_income + interest + depreciation (already computed) |
+| `gross_margin_pct` | numeric | gross_profit / revenue (0..1) |
+| `net_margin_pct` | numeric | net_income / revenue |
+| `ebitda_margin_pct` | numeric | ebitda / revenue |
+| `line_items` | jsonb | `{ income, cogs, expense, otherExpense }` — each is an array of `{ account, amount, percentOfRevenue }` |
+| `updated_at` | timestamptz | last sync time |
+
+### How to answer
+
+**"What was our EBITDA last month?"** → Sort by `month_iso DESC LIMIT 1`, return `ebitda` + `ebitda_margin_pct`.
+
+```
+<SQL>
+SELECT label, ebitda, ebitda_margin_pct
+FROM income_statement_months
+ORDER BY month_iso DESC
+LIMIT 1
+</SQL>
+```
+
+**"How is EBITDA trending?"** → Pull the whole series, comment on the direction.
+
+```
+<SQL>
+SELECT label, revenue, ebitda, ebitda_margin_pct
+FROM income_statement_months
+ORDER BY month_iso ASC
+</SQL>
+```
+
+**"Quarterly EBITDA"** → Aggregate by ISO quarter.
+
+```
+<SQL>
+SELECT
+  substring(month_iso, 1, 4) || '-Q' || (((substring(month_iso, 6, 2)::int - 1) / 3) + 1) AS quarter,
+  SUM(revenue) AS revenue,
+  SUM(ebitda)  AS ebitda,
+  SUM(net_income) AS net_income
+FROM income_statement_months
+GROUP BY 1
+ORDER BY 1
+</SQL>
+```
+
+**"Which expense category grew the most?"** → Use `line_items` jsonb. Each section is an array; unnest, join across months, compare. For a single-month "biggest expense" question:
+
+```
+<SQL>
+SELECT item ->> 'account' AS account,
+       (item ->> 'amount')::numeric AS amount
+FROM income_statement_months,
+     jsonb_array_elements(line_items -> 'expense') AS item
+WHERE month_iso = '2026-04'
+ORDER BY 2 DESC
+LIMIT 10
+</SQL>
+```
+
+### Don't
+
+- Don't divide by revenue manually — the `*_margin_pct` columns are already there.
+- Don't assume the sheet is in column-A order; the parser handles row-reordering, so query by column name.
+- Don't recompute EBITDA from interest + depreciation + net_income unless the user explicitly asks for the add-back math — the precomputed `ebitda` column matches the sheet's value.
+- Negative numbers are real (Inventory Change, Sales Discounts). Don't flip signs to "clean up" output.

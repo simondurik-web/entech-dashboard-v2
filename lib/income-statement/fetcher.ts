@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { getSheetsClient } from '@/lib/google-auth'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { parseMonthRows, tabLabelToIso } from './parser'
 import type { IncomeStatementMonth, IncomeStatementResponse } from './types'
 
@@ -55,5 +56,48 @@ export async function fetchIncomeStatement(opts?: { skipCache?: boolean }): Prom
     fetchedAt: new Date().toISOString(),
   }
   cache = { at: Date.now(), payload }
+
+  // Mirror into Supabase so Phil can SQL it. Best-effort — a sync failure
+  // shouldn't break the page render.
+  syncToSupabase(months).catch((e) => {
+    console.error('[income-statement] Supabase sync failed:', e instanceof Error ? e.message : e)
+  })
+
   return payload
+}
+
+async function syncToSupabase(months: IncomeStatementMonth[]) {
+  if (months.length === 0) return
+  const rows = months.map((m) => {
+    const rev = m.totals.income
+    return {
+      month_iso: m.monthIso,
+      label: m.label,
+      revenue: m.totals.income,
+      cogs: m.totals.cogs,
+      expense: m.totals.expense,
+      other_expense: m.totals.otherExpense,
+      gross_profit: m.derived.grossProfit,
+      net_ordinary_income: m.derived.netOrdinaryIncome,
+      net_other_income: m.derived.netOtherIncome,
+      net_income: m.derived.netIncome,
+      interest: m.derived.interest,
+      depreciation: m.derived.depreciation,
+      ebitda: m.derived.ebitda,
+      gross_margin_pct:  rev !== 0 ? m.derived.grossProfit / rev : null,
+      net_margin_pct:    rev !== 0 ? m.derived.netIncome   / rev : null,
+      ebitda_margin_pct: rev !== 0 ? m.derived.ebitda      / rev : null,
+      line_items: {
+        income: m.income,
+        cogs: m.cogs,
+        expense: m.expense,
+        otherExpense: m.otherExpense,
+      },
+      updated_at: new Date().toISOString(),
+    }
+  })
+  const { error } = await supabaseAdmin
+    .from('income_statement_months')
+    .upsert(rows, { onConflict: 'month_iso' })
+  if (error) throw error
 }

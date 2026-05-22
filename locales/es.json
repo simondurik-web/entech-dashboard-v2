@@ -546,5 +546,18 @@
   "incomeStatement.sectionIncome": "Ingresos",
   "incomeStatement.sectionCogs": "Costo de Ventas",
   "incomeStatement.sectionExpense": "Gastos Operativos",
-  "incomeStatement.sectionOtherExpense": "Otros Gastos"
+  "incomeStatement.sectionOtherExpense": "Otros Gastos",
+  "incomeStatement.viewMonth": "Mes Individual",
+  "incomeStatement.viewTrend": "Tendencia Mensual",
+  "incomeStatement.viewQuarterly": "Trimestral",
+  "incomeStatement.viewYearly": "Anual",
+  "incomeStatement.quarterly": "Comparación Trimestral",
+  "incomeStatement.yearly": "Comparación Anual",
+  "incomeStatement.trendTitle": "Tendencia Mensual — Ingresos, Costos, Gastos, Utilidad Neta, EBITDA",
+  "incomeStatement.metric": "Métrica",
+  "incomeStatement.exportXlsx": "Excel",
+  "incomeStatement.exportPdf": "PDF",
+  "incomeStatement.noPeriods": "Aún no hay suficientes datos para agregar.",
+  "incomeStatement.interest": "Intereses",
+  "incomeStatement.depreciation": "Depreciación"
 }
