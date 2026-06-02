@@ -23,9 +23,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { order_lines, custom_parts_per_package } = body as {
+  const { order_lines, custom_parts_per_package, custom_packaging_type } = body as {
     order_lines: string[]
     custom_parts_per_package?: Record<string, number>
+    custom_packaging_type?: Record<string, string>
   }
 
   if (!order_lines?.length) {
@@ -84,6 +85,13 @@ export async function POST(req: NextRequest) {
       continue
     }
 
+    // Apply custom packaging_type override if provided; empty string clears to null
+    const customPackaging = custom_packaging_type?.[orderLine]
+    const effectivePackagingType =
+      customPackaging !== undefined
+        ? (customPackaging.trim() || null)
+        : (order.packaging || order.packaging_type || null)
+
     const { numPackages, lastPackageQty } = calculatePackages(orderQty, partsPerPackage)
     const qrData = generateQrData(orderLine, customerName, partNumber, undefined, numPackages)
 
@@ -110,7 +118,7 @@ export async function POST(req: NextRequest) {
         parts_per_package: partsInThis,
         num_packages: numPackages,
         pallet_number: palletNum,
-        packaging_type: order.packaging || order.packaging_type || null,
+        packaging_type: effectivePackagingType,
         qr_data: generateQrData(orderLine, customerName, partNumber, palletNum, numPackages),
         label_status: 'generated' as const,
         tire: order.tire || null,
@@ -136,13 +144,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (labels?.length) {
-      const isCustom = custom_parts_per_package?.[orderLine] ? ' (custom packaging)' : ''
+      const customFlags = [
+        custom_parts_per_package?.[orderLine] ? 'custom parts/pkg' : null,
+        customPackaging !== undefined ? `custom packaging: ${effectivePackagingType ?? 'none'}` : null,
+      ].filter(Boolean)
+      const customNote = customFlags.length ? ` (${customFlags.join(', ')})` : ''
       await supabaseAdmin.from('label_activity_log').insert({
         label_id: labels[0].id,
         order_line: orderLine,
         action: 'generated',
         status: 'success',
-        notes: `Generated ${numPackages} pallet labels (last pallet: ${lastPackageQty} parts)${isCustom}`,
+        notes: `Generated ${numPackages} pallet labels (last pallet: ${lastPackageQty} parts)${customNote}`,
         created_by: userId || null,
       })
 
