@@ -151,7 +151,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Main content - pad bottom on mobile for nav bar */}
-        <main className="pb-4" style={{ zoom: zoomLevel }}>
+        <main className="pb-4" style={{ zoom: zoomLevel, '--app-zoom': zoomLevel } as React.CSSProperties}>
           <SmoothScroll>
             <AccessGuard>
               <BreadcrumbNav />
