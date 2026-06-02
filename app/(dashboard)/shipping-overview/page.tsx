@@ -315,7 +315,7 @@ function ShippingOverviewPageContent() {
 
       {/* ── Two-column grid ─────────────────────────────────── */}
       {!loading && !error && data && (
-        <div className="mt-4 grid grid-cols-1 gap-4 min-[1400px]:grid-cols-2 min-[1400px]:flex-1 min-[1400px]:min-h-0">
+        <div className="mt-4 grid grid-cols-1 gap-4 min-[1400px]:grid-cols-2 min-[1400px]:grid-rows-1 min-[1400px]:flex-1 min-[1400px]:min-h-0">
           {/* ═══ Left: Ready to Ship ═══ */}
           <div className={`overflow-hidden rounded-3xl border flex flex-col ${sectionBg}`}>
             {/* Section header */}
