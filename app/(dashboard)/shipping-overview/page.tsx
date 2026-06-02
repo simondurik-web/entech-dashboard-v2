@@ -242,7 +242,7 @@ function ShippingOverviewPageContent() {
     : 'border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/50'
 
   return (
-    <div className={`flex min-h-screen flex-col p-4 pb-4 min-[1400px]:h-screen min-[1400px]:max-h-screen ${pageBg}`}>
+    <div className={`flex min-h-[calc(100vh/var(--app-zoom,1))] flex-col p-4 pb-4 min-[1400px]:h-[calc(100vh/var(--app-zoom,1))] min-[1400px]:max-h-[calc(100vh/var(--app-zoom,1))] ${pageBg}`}>
       {/* ── Header ─────────────────────────────────────────── */}
       <section className="shrink-0 overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#1e3c72_0%,#2a5298_100%)] px-6 py-4 text-white shadow-[0_18px_60px_rgba(30,60,114,0.28)]">
         <div className="flex flex-col gap-3">
