@@ -242,9 +242,9 @@ function ShippingOverviewPageContent() {
     : 'border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/50'
 
   return (
-    <div className={`min-h-screen p-4 pb-20 ${pageBg}`}>
+    <div className={`flex min-h-screen flex-col p-4 pb-4 min-[1400px]:h-screen min-[1400px]:max-h-screen ${pageBg}`}>
       {/* ── Header ─────────────────────────────────────────── */}
-      <section className="overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#1e3c72_0%,#2a5298_100%)] px-6 py-4 text-white shadow-[0_18px_60px_rgba(30,60,114,0.28)]">
+      <section className="shrink-0 overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#1e3c72_0%,#2a5298_100%)] px-6 py-4 text-white shadow-[0_18px_60px_rgba(30,60,114,0.28)]">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -315,7 +315,7 @@ function ShippingOverviewPageContent() {
 
       {/* ── Two-column grid ─────────────────────────────────── */}
       {!loading && !error && data && (
-        <div className="mt-4 grid grid-cols-1 gap-4 min-[1400px]:grid-cols-2 min-[1400px]:h-[calc(100vh-210px)]">
+        <div className="mt-4 grid grid-cols-1 gap-4 min-[1400px]:grid-cols-2 min-[1400px]:flex-1 min-[1400px]:min-h-0">
           {/* ═══ Left: Ready to Ship ═══ */}
           <div className={`overflow-hidden rounded-3xl border flex flex-col ${sectionBg}`}>
             {/* Section header */}
