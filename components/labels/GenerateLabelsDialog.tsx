@@ -5,6 +5,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
 import { ArrowUpDown, Search, Package, Eye } from 'lucide-react'
@@ -42,6 +49,10 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   // Custom parts-per-package overrides (line -> value)
   const [customPPP, setCustomPPP] = useState<Record<string, number>>({})
+  // Packaging-type overrides — `mode` drives the dropdown selection, `other` is the
+  // free-text when mode === 'other'. Untouched lines fall back to the sheet value.
+  const [packagingMode, setPackagingMode] = useState<Record<string, 'pallet' | 'box' | 'gaylord' | 'other'>>({})
+  const [packagingOther, setPackagingOther] = useState<Record<string, string>>({})
   // Expanded row for detail editing
   const [expandedLine, setExpandedLine] = useState<string | null>(null)
 
@@ -52,6 +63,8 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
     setSearch('')
     setExpandedLine(null)
     setCustomPPP({})
+    setPackagingMode({})
+    setPackagingOther({})
 
     // Fetch ALL orders + existing labels
     Promise.all([
@@ -129,6 +142,18 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
   )
 
   const getEffectivePPP = (o: OrderOption) => customPPP[o.line] ?? o.partsPerPackage
+
+  /** Returns the chosen packaging string for this line, or `undefined` if the user
+   * didn't touch the selector (in which case the API falls back to the sheet value). */
+  const getPackagingOverride = (line: string): string | undefined => {
+    const mode = packagingMode[line]
+    if (!mode) return undefined
+    if (mode === 'pallet') return 'Pallet'
+    if (mode === 'box') return 'Box'
+    if (mode === 'gaylord') return 'Gaylord Box'
+    // 'other' — trim and treat empty as undefined (no override)
+    return packagingOther[line]?.trim() || undefined
+  }
   const getNumPackages = (o: OrderOption) => {
     const ppp = getEffectivePPP(o)
     if (ppp <= 0 || o.orderQty <= 0) return 0
@@ -160,6 +185,9 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
         body: JSON.stringify({
           order_lines: [order.line],
           ...(ppp !== order.partsPerPackage ? { custom_parts_per_package: { [order.line]: ppp } } : {}),
+          ...(getPackagingOverride(order.line) !== undefined
+            ? { custom_packaging_type: { [order.line]: getPackagingOverride(order.line)! } }
+            : {}),
         }),
       })
 
@@ -282,8 +310,8 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
                           {isGenerating
                             ? '...'
                             : o.labelStatus
-                              ? 'Regenerate'
-                              : 'Generate'}
+                              ? t('labels.reprint')
+                              : t('labels.generate')}
                         </Button>
                       </td>
                     </tr>
@@ -364,6 +392,54 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Packaging type — override the sheet's default for this reprint */}
+              <div className="grid grid-cols-3 gap-4 text-sm border-t pt-3">
+                <div className="col-span-1">
+                  <label className="text-muted-foreground text-xs block mb-1">
+                    {t('labels.packagingType')}
+                  </label>
+                  <Select
+                    value={packagingMode[order.line] ?? undefined}
+                    onValueChange={(v) => {
+                      setPackagingMode((prev) => ({
+                        ...prev,
+                        [order.line]: v as 'pallet' | 'box' | 'gaylord' | 'other',
+                      }))
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-8 w-full"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <SelectValue placeholder={t('labels.packagingDefault')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pallet">{t('labels.packagingPallet')}</SelectItem>
+                      <SelectItem value="box">{t('labels.packagingBox')}</SelectItem>
+                      <SelectItem value="gaylord">{t('labels.packagingGaylord')}</SelectItem>
+                      <SelectItem value="other">{t('labels.packagingOther')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {packagingMode[order.line] === 'other' && (
+                  <div className="col-span-2">
+                    <label className="text-muted-foreground text-xs block mb-1">
+                      {t('labels.packagingCustom')}
+                    </label>
+                    <Input
+                      type="text"
+                      className="h-8 w-full"
+                      placeholder={t('labels.packagingCustomPlaceholder')}
+                      value={packagingOther[order.line] ?? ''}
+                      onChange={(e) => {
+                        setPackagingOther((prev) => ({ ...prev, [order.line]: e.target.value }))
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                )}
               </div>
 
               {order.poNumber && (
