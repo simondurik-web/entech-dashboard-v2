@@ -35,6 +35,7 @@ import {
   Bell,
   FileBarChart,
   Inbox,
+  ShoppingCart,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { usePermissions } from "@/lib/use-permissions"
@@ -59,6 +60,7 @@ const baseCommandPaletteItems = [
   { label: 'FP Reference', href: '/fp-reference', section: 'Production', icon: <ClipboardCheck className="size-4" /> },
   { label: 'Customer Reference', href: '/customer-reference', section: 'Production', icon: <Users className="size-4" /> },
   { label: 'Quotes', href: '/quotes', section: 'Production', icon: <DollarSign className="size-4" /> },
+  { label: 'Purchasing', href: '/purchasing', section: 'Production', icon: <ShoppingCart className="size-4" /> },
   { label: 'Sales Overview', href: '/sales-overview', section: 'Sales', icon: <BarChart3 className="size-4" /> },
   { label: 'Sales by Part', href: '/sales-parts', section: 'Sales', icon: <Wrench className="size-4" /> },
   { label: 'Sales by Customer', href: '/sales-customers', section: 'Sales', icon: <Users className="size-4" /> },
