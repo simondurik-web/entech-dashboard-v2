@@ -102,11 +102,12 @@ export function PhotoGallery({
               {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Camera className="size-3.5" />}
               {t('purchasing.photos.add')}
             </button>
+            {/* No `capture` attr: lets the phone offer the photo library AND the
+                camera, instead of forcing the camera open. */}
             <input
               ref={fileRef}
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               className="hidden"
               onChange={(e) => upload(e.target.files)}
