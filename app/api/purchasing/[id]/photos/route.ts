@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
 import { resolveActor, logPurchasing } from '@/lib/purchasing/audit'
-import { PHOTO_BUCKET, MAX_PHOTO_BYTES, photoPublicUrl } from '@/lib/purchasing/photos'
+import { PHOTO_BUCKET, MAX_PHOTO_BYTES, PHOTO_KINDS, photoPublicUrl, type PhotoKind } from '@/lib/purchasing/photos'
 
 export const dynamic = 'force-dynamic'
 
-/** GET item photos for an order. ?includeDeleted=1 also returns soft-deleted. */
+/** GET photos for an order. ?kind=item|paperwork filters; ?includeDeleted=1 includes soft-deleted. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const includeDeleted = new URL(req.url).searchParams.get('includeDeleted') === '1'
+  const sp = new URL(req.url).searchParams
+  const includeDeleted = sp.get('includeDeleted') === '1'
+  const kind = sp.get('kind')
 
   let q = supabaseAdmin
     .from('purchasing_photos')
@@ -17,6 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq('order_id', id)
     .order('created_at', { ascending: true })
   if (!includeDeleted) q = q.is('deleted_at', null)
+  if (kind && PHOTO_KINDS.includes(kind as PhotoKind)) q = q.eq('kind', kind)
 
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -32,6 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const form = await req.formData()
+  const kindRaw = String(form.get('kind') || 'item')
+  const kind: PhotoKind = PHOTO_KINDS.includes(kindRaw as PhotoKind) ? (kindRaw as PhotoKind) : 'item'
   const files = form.getAll('files').filter((f): f is File => f instanceof File)
   // Validate the WHOLE batch up front so we never partially upload then fail.
   const images = files.filter((f) => f.type.startsWith('image/'))
@@ -49,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (up.error) return NextResponse.json({ error: up.error.message, photos: inserted }, { status: 500 })
     const { data: row, error } = await supabaseAdmin
       .from('purchasing_photos')
-      .insert({ order_id: id, storage_path: path, original_name: file.name.slice(0, 200), uploaded_by: userId })
+      .insert({ order_id: id, kind, storage_path: path, original_name: file.name.slice(0, 200), uploaded_by: userId })
       .select()
       .single()
     if (error) {
@@ -67,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       order_id: id,
       item_description: order?.item_description ?? null,
       action: 'updated',
-      field_name: 'Item picture',
+      field_name: kind === 'paperwork' ? 'Paperwork picture' : 'Item picture',
       old_value: null,
       new_value: `added ${inserted.length} photo(s)`,
     }])

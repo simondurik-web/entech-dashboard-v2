@@ -653,5 +653,13 @@
   "purchasing.photos.restore": "Restaurar",
   "purchasing.photos.uploadFailed": "Error al subir",
   "purchasing.photos.deleteFailed": "Error al eliminar la foto",
-  "purchasing.photos.restoreFailed": "Error al restaurar la foto"
+  "purchasing.photos.restoreFailed": "Error al restaurar la foto",
+  "purchasing.photos.itemTitle": "Fotos del artículo",
+  "purchasing.photos.paperworkTitle": "Fotos del papeleo",
+  "purchasing.receive.title": "Recibir",
+  "purchasing.receive.mark": "Marcar como recibido",
+  "purchasing.receive.hint": "Te registra como quien recibió. Si no hay foto del artículo o del papeleo, se pedirá confirmación.",
+  "purchasing.receive.confirmNoPhoto": "No hay foto del {what}. ¿Marcar como recibido de todos modos?",
+  "purchasing.receive.item": "artículo",
+  "purchasing.receive.paperwork": "papeleo"
 }

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Pencil, Trash2, History, PackageCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'
+import { useAuth } from '@/lib/auth-context'
 import { DatePicker } from './DatePicker'
 import { PhotoGallery } from './PhotoGallery'
 import type { PurchasingRow, PurchasingAudit, PurchasingInput } from '@/lib/purchasing/types'
@@ -34,6 +35,11 @@ export function PurchasingDetail({
   const { t } = useI18n()
   const [audit, setAudit] = useState<PurchasingAudit[] | null>(null)
 
+  const { profile, user } = useAuth()
+  const [receiveDate, setReceiveDate] = useState(row.received_date ?? '')
+  const [marking, setMarking] = useState(false)
+  const receiverName = profile?.full_name || user?.email || ''
+
   const loadAudit = useCallback(() => {
     fetch(`/api/purchasing/audit?orderId=${row.id}`)
       .then((r) => r.json())
@@ -41,6 +47,41 @@ export function PurchasingDetail({
       .catch(() => setAudit([]))
   }, [row.id])
   useEffect(() => { loadAudit() }, [loadAudit])
+  useEffect(() => { setReceiveDate(row.received_date ?? '') }, [row.id, row.received_date])
+
+  // Receive flow: pick a date, then confirm. Does NOT auto-mark; warns if there's
+  // no item/paperwork photo (can be bypassed). Records the current user as received-by.
+  const markReceived = async () => {
+    if (!onQuickPatch || marking) return
+    setMarking(true)
+    try {
+      const d = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const date = receiveDate || `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      let item = 0, paperwork = 0, checked = false
+      try {
+        const r = await fetch(`/api/purchasing/${row.id}/photos`)
+        if (r.ok) {
+          const j = await r.json()
+          if (Array.isArray(j.photos)) {
+            checked = true
+            for (const p of j.photos) { if (p.kind === 'paperwork') paperwork++; else item++ }
+          }
+        }
+      } catch { /* couldn't verify photos — don't show a false "missing photo" warning */ }
+      const missing: string[] = []
+      if (checked && item === 0) missing.push(t('purchasing.receive.item'))
+      if (checked && paperwork === 0) missing.push(t('purchasing.receive.paperwork'))
+      if (missing.length > 0 && !window.confirm(t('purchasing.receive.confirmNoPhoto').replace('{what}', missing.join(' + ')))) {
+        return
+      }
+      const input: Record<string, unknown> = { received_date: date }
+      if (receiverName) input.received_by = receiverName
+      await onQuickPatch(row, input)
+    } finally {
+      setMarking(false)
+    }
+  }
 
   const fields: { label: string; value: React.ReactNode }[] = [
     { label: t('purchasing.col.externalNumber'), value: row.external_number || '—' },
@@ -78,18 +119,24 @@ export function PurchasingDetail({
         )}
       </div>
 
+      <PhotoGallery orderId={row.id} kind="item" title={t('purchasing.photos.itemTitle')} canEdit={canEdit} onChange={loadAudit} />
+      <PhotoGallery orderId={row.id} kind="paperwork" title={t('purchasing.photos.paperworkTitle')} canEdit={canEdit} onChange={loadAudit} />
+
       {canEdit && onQuickPatch && (
-        <div className="flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-3">
-          <div className="min-w-[180px]">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <PackageCheck className="size-3.5" />{t('purchasing.quickReceived')}
-            </span>
-            <DatePicker
-              value={row.received_date ?? ''}
-              onChange={(v) => onQuickPatch(row, { received_date: v || null })}
-            />
+        <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <PackageCheck className="size-3.5" />{t('purchasing.receive.title')}
+          </span>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[170px]">
+              <span className="text-[11px] text-muted-foreground">{t('purchasing.col.receivedDate')}</span>
+              <DatePicker value={receiveDate} onChange={setReceiveDate} />
+            </div>
+            <Button size="sm" onClick={markReceived} disabled={marking}>
+              <PackageCheck className="mr-1.5 size-3.5" />{t('purchasing.receive.mark')}
+            </Button>
           </div>
-          <p className="pb-2 text-[11px] text-muted-foreground">{t('purchasing.quickReceivedHint')}</p>
+          <p className="text-[11px] text-muted-foreground">{t('purchasing.receive.hint')}</p>
         </div>
       )}
 
@@ -101,8 +148,6 @@ export function PurchasingDetail({
           </div>
         ))}
       </div>
-
-      <PhotoGallery orderId={row.id} canEdit={canEdit} onChange={loadAudit} />
 
       <div>
         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">

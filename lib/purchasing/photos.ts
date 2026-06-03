@@ -3,6 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 export const PHOTO_BUCKET = 'purchasing-photos'
 export const MAX_PHOTO_BYTES = 15 * 1024 * 1024 // 15 MB
 
+export type PhotoKind = 'item' | 'paperwork'
+export const PHOTO_KINDS: PhotoKind[] = ['item', 'paperwork']
+
 export function photoPublicUrl(path: string): string {
   return supabaseAdmin.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl
 }
@@ -10,6 +13,7 @@ export function photoPublicUrl(path: string): string {
 export interface PurchasingPhoto {
   id: string
   order_id: string
+  kind: PhotoKind
   storage_path: string
   original_name: string | null
   uploaded_by: string | null

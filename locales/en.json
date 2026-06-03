@@ -653,5 +653,13 @@
   "purchasing.photos.restore": "Restore",
   "purchasing.photos.uploadFailed": "Upload failed",
   "purchasing.photos.deleteFailed": "Failed to delete photo",
-  "purchasing.photos.restoreFailed": "Failed to restore photo"
+  "purchasing.photos.restoreFailed": "Failed to restore photo",
+  "purchasing.photos.itemTitle": "Item photos",
+  "purchasing.photos.paperworkTitle": "Paperwork photos",
+  "purchasing.receive.title": "Receive",
+  "purchasing.receive.mark": "Mark as received",
+  "purchasing.receive.hint": "Records you as received-by. If there's no item or paperwork photo, you'll be asked to confirm.",
+  "purchasing.receive.confirmNoPhoto": "There is no picture of the {what}. Mark it as received anyway?",
+  "purchasing.receive.item": "item",
+  "purchasing.receive.paperwork": "paperwork"
 }

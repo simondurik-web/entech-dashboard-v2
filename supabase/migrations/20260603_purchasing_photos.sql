@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS purchasing_photos (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   order_id uuid NOT NULL,
+  kind text NOT NULL DEFAULT 'item', -- 'item' | 'paperwork'
   storage_path text NOT NULL,       -- path within the purchasing-photos bucket
   original_name text,
   uploaded_by uuid,

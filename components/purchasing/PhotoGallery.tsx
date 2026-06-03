@@ -10,12 +10,16 @@ import type { PurchasingPhoto } from '@/lib/purchasing/photos'
 
 export function PhotoGallery({
   orderId,
+  kind,
+  title,
   canEdit,
   onChange,
 }: {
   orderId: string
+  kind: 'item' | 'paperwork'
+  title: string
   canEdit: boolean
-  /** Called after an upload/delete/restore so the parent can refresh its audit trail. */
+  /** Called after an upload/delete/restore so the parent can refresh its audit trail / counts. */
   onChange?: () => void
 }) {
   const { t } = useI18n()
@@ -31,12 +35,14 @@ export function PhotoGallery({
   const load = useCallback(() => {
     const seq = ++seqRef.current
     setLoading(true)
-    fetch(`/api/purchasing/${orderId}/photos${showDeleted ? '?includeDeleted=1' : ''}`)
+    const qs = new URLSearchParams({ kind })
+    if (showDeleted) qs.set('includeDeleted', '1')
+    fetch(`/api/purchasing/${orderId}/photos?${qs.toString()}`)
       .then((r) => r.json())
       .then((d) => { if (seq === seqRef.current) setPhotos(d.photos ?? []) })
       .catch(() => { if (seq === seqRef.current) setPhotos([]) })
       .finally(() => { if (seq === seqRef.current) setLoading(false) })
-  }, [orderId, showDeleted])
+  }, [orderId, showDeleted, kind])
   useEffect(() => { load() }, [load])
 
   const active = photos.filter((p) => !p.deleted_at)
@@ -48,6 +54,7 @@ export function PhotoGallery({
     setUploading(true)
     try {
       const fd = new FormData()
+      fd.append('kind', kind)
       Array.from(files).forEach((f) => fd.append('files', f))
       const res = await fetch(`/api/purchasing/${orderId}/photos`, { method: 'POST', headers: { 'x-user-id': user?.id || '' }, body: fd })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `HTTP ${res.status}`) }
@@ -82,7 +89,7 @@ export function PhotoGallery({
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <ImageIcon className="size-3.5" />{t('purchasing.photos.title')} {active.length > 0 && <span className="opacity-70">({active.length})</span>}
+          <ImageIcon className="size-3.5" />{title} {active.length > 0 && <span className="opacity-70">({active.length})</span>}
         </p>
         {canEdit && (
           <div className="flex items-center gap-2">
