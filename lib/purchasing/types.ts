@@ -26,6 +26,8 @@ export interface PurchasingOrder extends Record<string, unknown> {
   promised_date: string | null
   received_date: string | null
   received_by: string | null
+  /** Manual status set from the dropdown; overrides the date-derived status. Null = Auto. */
+  status_override: string | null
   poe_cc: string | null
   notes: string | null
   packing_slip_pic: string | null
@@ -75,6 +77,7 @@ export interface PurchasingInput {
   promised_date?: string | null
   received_date?: string | null
   received_by?: string | null
+  status_override?: string | null
   poe_cc?: string | null
   notes?: string | null
   packing_slip_pic?: string | null
@@ -86,7 +89,7 @@ export const EDITABLE_FIELDS: (keyof PurchasingInput)[] = [
   'item_description', 'external_number', 'quantity', 'total_cost', 'delivery_cost',
   'canceled', 'refunded', 'urgent', 'partial_delivery', 'requestor', 'deliver_to',
   'sub_department', 'department', 'store', 'supplier_link', 'date_requested',
-  'date_ordered', 'promised_date', 'received_date', 'received_by', 'poe_cc',
+  'date_ordered', 'promised_date', 'received_date', 'received_by', 'status_override', 'poe_cc',
   'notes', 'packing_slip_pic', 'item_pic',
 ]
 

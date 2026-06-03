@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 
 const NUMERIC = new Set(['quantity', 'total_cost', 'delivery_cost'])
 const BOOLEAN = new Set(['canceled', 'refunded', 'urgent', 'partial_delivery'])
+const VALID_STATUS = new Set(['Requested', 'Ordered', 'Received', 'Partial', 'Canceled', 'Refunded'])
 
 function sanitize(body: Record<string, unknown>): PurchasingInput {
   const out: Record<string, unknown> = {}
@@ -22,6 +23,9 @@ function sanitize(body: Record<string, unknown>): PurchasingInput {
         const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[$,\s]/g, ''))
         out[key] = Number.isNaN(n) ? null : n
       }
+    } else if (key === 'status_override') {
+      const sv = typeof v === 'string' ? v.trim() : ''
+      out[key] = VALID_STATUS.has(sv) ? sv : null
     } else {
       if (typeof v === 'string') v = v.trim()
       out[key] = v === '' || v === undefined ? null : v
