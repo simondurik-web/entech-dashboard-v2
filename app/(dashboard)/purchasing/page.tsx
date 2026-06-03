@@ -145,15 +145,19 @@ export default function PurchasingPage() {
 
   const table = useDataTable({ data: rows, columns, storageKey: 'purchasing' })
 
-  // Hide the Rubber department by default (re-addable via the Department column filter).
-  const rubberApplied = useRef(false)
+  // Default view shows only the Molding and Melt line departments (incl. spelling
+  // variants like "Melt Line"). Everything else — Rubber, Office, blanks, etc. —
+  // is hidden until the user adds it back via the Department column filter.
+  const deptDefaultApplied = useRef(false)
   useEffect(() => {
-    if (rubberApplied.current || rows.length === 0) return
-    rubberApplied.current = true
+    if (deptDefaultApplied.current || rows.length === 0) return
+    deptDefaultApplied.current = true
     const depts = new Set<string>()
     for (const r of rows) depts.add(r.department == null ? '' : String(r.department))
-    const allowed = new Set([...depts].filter((d) => d.trim().toLowerCase() !== 'rubber'))
-    if (allowed.size < depts.size) table.setFilter('department', allowed)
+    const allowed = new Set(
+      [...depts].filter((d) => /molding/i.test(d) || /melt\s*line/i.test(d))
+    )
+    if (allowed.size > 0 && allowed.size < depts.size) table.setFilter('department', allowed)
   }, [rows, table])
 
   const writeHeaders = useMemo(
