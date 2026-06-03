@@ -108,11 +108,11 @@ export default function PurchasingPage() {
       { key: 'quantity', label: t('purchasing.col.quantity'), sortable: true, filterable: false, render: (v: unknown) => (v == null ? '—' : Number(v).toLocaleString()) },
       { key: 'total_cost', label: t('purchasing.col.totalCost'), sortable: true, filterable: false, render: money },
       { key: 'cost_per_unit', label: t('purchasing.col.costPerUnit'), sortable: true, filterable: false, render: money4 },
-      { key: 'delivery_cost', label: t('purchasing.col.deliveryCost'), sortable: true, filterable: false, render: money, defaultHidden: true },
+      { key: 'delivery_cost', label: t('purchasing.col.deliveryCost'), sortable: true, filterable: false, render: money },
       { key: 'urgent', label: t('purchasing.col.urgent'), sortable: true, filterable: true, render: boolCell },
       { key: 'requestor', label: t('purchasing.col.requestor'), sortable: true, filterable: true, render: dash },
       { key: 'sub_department', label: t('purchasing.col.subDepartment'), sortable: true, filterable: true, render: dash },
-      { key: 'deliver_to', label: t('purchasing.col.deliverTo'), sortable: true, filterable: true, render: dash, defaultHidden: true },
+      { key: 'deliver_to', label: t('purchasing.col.deliverTo'), sortable: true, filterable: true, render: dash },
       { key: 'store', label: t('purchasing.col.store'), sortable: true, filterable: true, render: dash },
       { key: 'date_requested', label: t('purchasing.col.dateRequested'), sortable: true, filterable: false, render: fmtDate },
       { key: 'date_ordered', label: t('purchasing.col.dateOrdered'), sortable: true, filterable: false, render: fmtDate },
@@ -128,22 +128,22 @@ export default function PurchasingPage() {
       },
       { key: 'received_date', label: t('purchasing.col.receivedDate'), sortable: true, filterable: false, render: fmtDate },
       { key: 'received_by', label: t('purchasing.col.receivedBy'), sortable: true, filterable: true, render: dash },
-      { key: 'poe_cc', label: t('purchasing.col.poeCc'), sortable: true, filterable: true, render: dash, defaultHidden: true },
-      { key: 'external_number', label: t('purchasing.col.externalNumber'), sortable: true, filterable: false, render: dash, defaultHidden: true },
+      { key: 'poe_cc', label: t('purchasing.col.poeCc'), sortable: true, filterable: true, render: dash },
+      { key: 'external_number', label: t('purchasing.col.externalNumber'), sortable: true, filterable: false, render: dash },
       {
-        key: 'supplier_link', label: t('purchasing.col.supplierLink'), sortable: false, filterable: false, defaultHidden: true,
+        key: 'supplier_link', label: t('purchasing.col.supplierLink'), sortable: false, filterable: false,
         render: (v) => { const h = safeHref(v); return h ? <a href={h} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t('purchasing.openLink')}</a> : (v ? String(v) : '—') },
       },
-      { key: 'canceled', label: t('purchasing.col.canceled'), sortable: true, filterable: true, render: boolCell, defaultHidden: true },
-      { key: 'refunded', label: t('purchasing.col.refunded'), sortable: true, filterable: true, render: boolCell, defaultHidden: true },
-      { key: 'partial_delivery', label: t('purchasing.col.partialDelivery'), sortable: true, filterable: true, render: boolCell, defaultHidden: true },
-      { key: 'notes', label: t('purchasing.col.notes'), sortable: false, filterable: false, render: dash, defaultHidden: true },
-      { key: 'packing_slip_pic', label: t('purchasing.col.packingSlip'), sortable: false, filterable: false, defaultHidden: true, render: (v) => (v ? '📎' : '—') },
-      { key: 'item_pic', label: t('purchasing.col.itemPicture'), sortable: false, filterable: false, defaultHidden: true, render: (v) => (v ? '📎' : '—') },
+      { key: 'canceled', label: t('purchasing.col.canceled'), sortable: true, filterable: true, render: boolCell },
+      { key: 'refunded', label: t('purchasing.col.refunded'), sortable: true, filterable: true, render: boolCell },
+      { key: 'partial_delivery', label: t('purchasing.col.partialDelivery'), sortable: true, filterable: true, render: boolCell },
+      { key: 'notes', label: t('purchasing.col.notes'), sortable: false, filterable: false, render: dash },
+      { key: 'packing_slip_pic', label: t('purchasing.col.packingSlip'), sortable: false, filterable: false, render: (v) => (v ? '📎' : '—') },
+      { key: 'item_pic', label: t('purchasing.col.itemPicture'), sortable: false, filterable: false, render: (v) => (v ? '📎' : '—') },
     ]
   }, [t])
 
-  const table = useDataTable({ data: rows, columns, storageKey: 'purchasing' })
+  const table = useDataTable({ data: rows, columns, storageKey: 'purchasing-v2' })
 
   // Default view shows only the Molding and Melt line departments (incl. spelling
   // variants like "Melt Line"). Everything else — Rubber, Office, blanks, etc. —
