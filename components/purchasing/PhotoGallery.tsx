@@ -87,12 +87,10 @@ export function PhotoGallery({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <ImageIcon className="size-3.5" />{title} {active.length > 0 && <span className="opacity-70">({active.length})</span>}
-        </p>
+      {/* Add button on the LEFT so it's reachable without scrolling right. */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         {canEdit && (
-          <div className="flex items-center gap-2">
+          <>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -112,8 +110,11 @@ export function PhotoGallery({
               className="hidden"
               onChange={(e) => upload(e.target.files)}
             />
-          </div>
+          </>
         )}
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+          <ImageIcon className="size-3.5" />{title} {active.length > 0 && <span className="opacity-70">({active.length})</span>}
+        </p>
       </div>
 
       {loading ? (
