@@ -1,34 +1,37 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useI18n } from '@/lib/i18n'
-import { deriveDepartment } from '@/lib/purchasing/compute'
+import { useAuth } from '@/lib/auth-context'
+import { Combobox } from './Combobox'
+import { DatePicker } from './DatePicker'
 import type { PurchasingInput, PurchasingOrder } from '@/lib/purchasing/types'
 
-type FieldType = 'text' | 'number' | 'date' | 'url' | 'textarea'
+type OptionField = 'department' | 'sub_department' | 'person'
+type Control = 'text' | 'number' | 'date' | 'url' | { combo: OptionField }
 
-const TEXT_FIELDS: { key: keyof PurchasingInput; tKey: string; type: FieldType }[] = [
-  { key: 'item_description', tKey: 'purchasing.col.itemDescription', type: 'text' },
-  { key: 'quantity', tKey: 'purchasing.col.quantity', type: 'number' },
-  { key: 'total_cost', tKey: 'purchasing.col.totalCost', type: 'number' },
-  { key: 'delivery_cost', tKey: 'purchasing.col.deliveryCost', type: 'number' },
-  { key: 'requestor', tKey: 'purchasing.col.requestor', type: 'text' },
-  { key: 'deliver_to', tKey: 'purchasing.col.deliverTo', type: 'text' },
-  { key: 'sub_department', tKey: 'purchasing.col.subDepartment', type: 'text' },
-  { key: 'department', tKey: 'purchasing.col.department', type: 'text' },
-  { key: 'store', tKey: 'purchasing.col.store', type: 'text' },
-  { key: 'supplier_link', tKey: 'purchasing.col.supplierLink', type: 'url' },
-  { key: 'external_number', tKey: 'purchasing.col.externalNumber', type: 'text' },
-  { key: 'date_requested', tKey: 'purchasing.col.dateRequested', type: 'date' },
-  { key: 'date_ordered', tKey: 'purchasing.col.dateOrdered', type: 'date' },
-  { key: 'promised_date', tKey: 'purchasing.col.promisedDate', type: 'date' },
-  { key: 'received_date', tKey: 'purchasing.col.receivedDate', type: 'date' },
-  { key: 'received_by', tKey: 'purchasing.col.receivedBy', type: 'text' },
-  { key: 'poe_cc', tKey: 'purchasing.col.poeCc', type: 'text' },
+const FIELDS: { key: keyof PurchasingInput; tKey: string; control: Control; full?: boolean }[] = [
+  { key: 'item_description', tKey: 'purchasing.col.itemDescription', control: 'text', full: true },
+  { key: 'quantity', tKey: 'purchasing.col.quantity', control: 'number' },
+  { key: 'total_cost', tKey: 'purchasing.col.totalCost', control: 'number' },
+  { key: 'delivery_cost', tKey: 'purchasing.col.deliveryCost', control: 'number' },
+  { key: 'requestor', tKey: 'purchasing.col.requestor', control: { combo: 'person' } },
+  { key: 'deliver_to', tKey: 'purchasing.col.deliverTo', control: { combo: 'person' } },
+  { key: 'department', tKey: 'purchasing.col.department', control: { combo: 'department' } },
+  { key: 'sub_department', tKey: 'purchasing.col.subDepartment', control: { combo: 'sub_department' } },
+  { key: 'store', tKey: 'purchasing.col.store', control: 'text' },
+  { key: 'supplier_link', tKey: 'purchasing.col.supplierLink', control: 'url' },
+  { key: 'external_number', tKey: 'purchasing.col.externalNumber', control: 'text' },
+  { key: 'date_requested', tKey: 'purchasing.col.dateRequested', control: 'date' },
+  { key: 'date_ordered', tKey: 'purchasing.col.dateOrdered', control: 'date' },
+  { key: 'promised_date', tKey: 'purchasing.col.promisedDate', control: 'date' },
+  { key: 'received_date', tKey: 'purchasing.col.receivedDate', control: 'date' },
+  { key: 'received_by', tKey: 'purchasing.col.receivedBy', control: { combo: 'person' } },
+  { key: 'poe_cc', tKey: 'purchasing.col.poeCc', control: 'text' },
 ]
 
 const BOOL_FIELDS: { key: keyof PurchasingInput; tKey: string }[] = [
@@ -38,9 +41,11 @@ const BOOL_FIELDS: { key: keyof PurchasingInput; tKey: string }[] = [
   { key: 'refunded', tKey: 'purchasing.col.refunded' },
 ]
 
+type OptionsMap = Record<OptionField, string[]>
+
 function initialState(order?: PurchasingOrder | null): Record<string, string | boolean> {
   const s: Record<string, string | boolean> = {}
-  for (const f of TEXT_FIELDS) {
+  for (const f of FIELDS) {
     const v = order ? order[f.key as keyof PurchasingOrder] : null
     s[f.key] = v == null ? '' : String(v)
   }
@@ -61,17 +66,37 @@ export function PurchasingForm({
   submitting?: boolean
 }) {
   const { t } = useI18n()
+  const { user } = useAuth()
   const [state, setState] = useState<Record<string, string | boolean>>(() => initialState(order))
+  const [options, setOptions] = useState<OptionsMap>({ department: [], sub_department: [], person: [] })
   const set = (k: string, v: string | boolean) => setState((p) => ({ ...p, [k]: v }))
 
-  const suggestedDept = useMemo(
-    () => deriveDepartment(String(state.sub_department || '')),
-    [state.sub_department]
-  )
+  useEffect(() => {
+    fetch('/api/purchasing/options')
+      .then((r) => r.json())
+      .then((d) => { if (d.options) setOptions(d.options) })
+      .catch(() => {})
+  }, [])
+
+  // Persist a newly-typed option. Only add it to the shared list when the POST
+  // actually succeeds (avoids faking a save). The value is still applied to the
+  // field by the Combobox regardless, so this entry saves either way.
+  const addOption = useCallback(async (field: OptionField, value: string) => {
+    try {
+      const res = await fetch('/api/purchasing/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        body: JSON.stringify({ field, value }),
+      })
+      if (res.ok) {
+        setOptions((prev) => (prev[field].includes(value) ? prev : { ...prev, [field]: [...prev[field], value] }))
+      }
+    } catch { /* value still usable as this field's content */ }
+  }, [user?.id])
 
   const handleSubmit = () => {
     const input: Record<string, unknown> = {}
-    for (const f of TEXT_FIELDS) input[f.key] = state[f.key]
+    for (const f of FIELDS) input[f.key] = state[f.key]
     for (const f of BOOL_FIELDS) input[f.key] = state[f.key]
     input.notes = state.notes
     onSubmit(input as PurchasingInput)
@@ -82,32 +107,37 @@ export function PurchasingForm({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {TEXT_FIELDS.map((f) => (
-          <div key={f.key} className={f.key === 'item_description' ? 'sm:col-span-2' : ''}>
-            <Label htmlFor={`pf-${f.key}`} className="text-xs text-muted-foreground">
-              {t(f.tKey)}
-              {f.key === 'item_description' && <span className="text-destructive"> *</span>}
-            </Label>
-            <Input
-              id={`pf-${f.key}`}
-              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-              inputMode={f.type === 'number' ? 'decimal' : undefined}
-              value={String(state[f.key] ?? '')}
-              onChange={(e) => set(f.key, e.target.value)}
-              className="mt-1 h-9"
-              placeholder={f.key === 'department' && suggestedDept ? suggestedDept : undefined}
-            />
-            {f.key === 'department' && suggestedDept && !String(state.department || '').trim() && (
-              <button
-                type="button"
-                onClick={() => set('department', suggestedDept)}
-                className="mt-1 text-[11px] text-primary hover:underline"
-              >
-                {t('purchasing.useSuggested')}: {suggestedDept}
-              </button>
-            )}
-          </div>
-        ))}
+        {FIELDS.map((f) => {
+          const val = String(state[f.key] ?? '')
+          return (
+            <div key={f.key} className={f.full ? 'sm:col-span-2' : ''}>
+              <Label htmlFor={`pf-${f.key}`} className="text-xs text-muted-foreground">
+                {t(f.tKey)}
+                {f.key === 'item_description' && <span className="text-destructive"> *</span>}
+              </Label>
+              {typeof f.control === 'object' ? (
+                <Combobox
+                  id={`pf-${f.key}`}
+                  value={val}
+                  onChange={(v) => set(f.key, v)}
+                  options={options[f.control.combo]}
+                  onCreate={(v) => addOption((f.control as { combo: OptionField }).combo, v)}
+                />
+              ) : f.control === 'date' ? (
+                <DatePicker id={`pf-${f.key}`} value={val} onChange={(v) => set(f.key, v)} />
+              ) : (
+                <Input
+                  id={`pf-${f.key}`}
+                  type={f.control === 'number' ? 'number' : 'text'}
+                  inputMode={f.control === 'number' ? 'decimal' : undefined}
+                  value={val}
+                  onChange={(e) => set(f.key, e.target.value)}
+                  className="mt-1 h-9"
+                />
+              )}
+            </div>
+          )
+        })}
       </div>
 
       <div>

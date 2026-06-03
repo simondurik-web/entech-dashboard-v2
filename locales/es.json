@@ -632,5 +632,12 @@
   "purchasing.toast.saveFailed": "Error al guardar",
   "purchasing.toast.deleted": "Eliminado",
   "purchasing.toast.deleteFailed": "Error al eliminar",
-  "purchasing.toast.loadFailed": "Error al cargar"
+  "purchasing.toast.loadFailed": "Error al cargar",
+  "purchasing.combobox.select": "Seleccionar…",
+  "purchasing.combobox.searchOrAdd": "Buscar o agregar…",
+  "purchasing.combobox.noResults": "Sin resultados",
+  "purchasing.combobox.add": "Agregar",
+  "purchasing.date.select": "Seleccionar fecha",
+  "purchasing.date.today": "Hoy",
+  "purchasing.date.clear": "Borrar"
 }

@@ -632,5 +632,12 @@
   "purchasing.toast.saveFailed": "Failed to save",
   "purchasing.toast.deleted": "Deleted",
   "purchasing.toast.deleteFailed": "Failed to delete",
-  "purchasing.toast.loadFailed": "Failed to load"
+  "purchasing.toast.loadFailed": "Failed to load",
+  "purchasing.combobox.select": "Select…",
+  "purchasing.combobox.searchOrAdd": "Search or add…",
+  "purchasing.combobox.noResults": "No results",
+  "purchasing.combobox.add": "Add",
+  "purchasing.date.select": "Select date",
+  "purchasing.date.today": "Today",
+  "purchasing.date.clear": "Clear"
 }
