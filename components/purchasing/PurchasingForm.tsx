@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,28 +71,47 @@ export function PurchasingForm({
   const [options, setOptions] = useState<OptionsMap>({ department: [], sub_department: [], person: [] })
   const set = (k: string, v: string | boolean) => setState((p) => ({ ...p, [k]: v }))
 
-  useEffect(() => {
+  const refetchOptions = useCallback(() => {
     fetch('/api/purchasing/options')
       .then((r) => r.json())
       .then((d) => { if (d.options) setOptions(d.options) })
       .catch(() => {})
   }, [])
 
+  useEffect(() => { refetchOptions() }, [refetchOptions])
+
+  const optHeaders = useMemo(
+    () => ({ 'Content-Type': 'application/json', 'x-user-id': user?.id || '' }),
+    [user?.id]
+  )
+
   // Persist a newly-typed option. Only add it to the shared list when the POST
   // actually succeeds (avoids faking a save). The value is still applied to the
   // field by the Combobox regardless, so this entry saves either way.
   const addOption = useCallback(async (field: OptionField, value: string) => {
     try {
-      const res = await fetch('/api/purchasing/options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
-        body: JSON.stringify({ field, value }),
-      })
+      const res = await fetch('/api/purchasing/options', { method: 'POST', headers: optHeaders, body: JSON.stringify({ field, value }) })
       if (res.ok) {
         setOptions((prev) => (prev[field].includes(value) ? prev : { ...prev, [field]: [...prev[field], value] }))
       }
     } catch { /* value still usable as this field's content */ }
-  }, [user?.id])
+  }, [optHeaders])
+
+  const editOption = useCallback(async (field: OptionField, oldValue: string, newValue: string) => {
+    setOptions((prev) => ({ ...prev, [field]: prev[field].map((v) => (v === oldValue ? newValue : v)) }))
+    try {
+      const res = await fetch('/api/purchasing/options', { method: 'PATCH', headers: optHeaders, body: JSON.stringify({ field, oldValue, newValue }) })
+      if (!res.ok) refetchOptions()
+    } catch { refetchOptions() }
+  }, [optHeaders, refetchOptions])
+
+  const deleteOption = useCallback(async (field: OptionField, value: string) => {
+    setOptions((prev) => ({ ...prev, [field]: prev[field].filter((v) => v !== value) }))
+    try {
+      const res = await fetch('/api/purchasing/options', { method: 'DELETE', headers: optHeaders, body: JSON.stringify({ field, value }) })
+      if (!res.ok) refetchOptions()
+    } catch { refetchOptions() }
+  }, [optHeaders, refetchOptions])
 
   const handleSubmit = () => {
     const input: Record<string, unknown> = {}
@@ -122,6 +141,8 @@ export function PurchasingForm({
                   onChange={(v) => set(f.key, v)}
                   options={options[f.control.combo]}
                   onCreate={(v) => addOption((f.control as { combo: OptionField }).combo, v)}
+                  onEdit={(o, n) => editOption((f.control as { combo: OptionField }).combo, o, n)}
+                  onDelete={(v) => deleteOption((f.control as { combo: OptionField }).combo, v)}
                 />
               ) : f.control === 'date' ? (
                 <DatePicker id={`pf-${f.key}`} value={val} onChange={(v) => set(f.key, v)} />

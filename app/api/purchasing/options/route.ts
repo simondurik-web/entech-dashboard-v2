@@ -55,3 +55,49 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, value })
 }
+
+/** PATCH { field, oldValue, newValue } -> rename an option (gated). Only edits
+ *  the list; existing orders keep their stored value. */
+export async function PATCH(req: NextRequest) {
+  const userId = req.headers.get('x-user-id')
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const body = (await req.json()) as { field?: string; oldValue?: string; newValue?: string }
+  const field = String(body.field || '')
+  const oldValue = String(body.oldValue || '')
+  const newValue = String(body.newValue || '').trim()
+  if (!FIELDS.has(field)) return NextResponse.json({ error: 'Invalid field' }, { status: 400 })
+  if (!oldValue || !newValue) return NextResponse.json({ error: 'oldValue and newValue are required' }, { status: 400 })
+  if (newValue.length > 200) return NextResponse.json({ error: 'Value too long' }, { status: 400 })
+
+  const { error } = await supabaseAdmin
+    .from('purchasing_options')
+    .update({ value: newValue })
+    .eq('field', field)
+    .eq('value', oldValue)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true, value: newValue })
+}
+
+/** DELETE { field, value } -> remove an option (gated). Existing orders keep
+ *  their stored value; this only removes it from the dropdown list. */
+export async function DELETE(req: NextRequest) {
+  const userId = req.headers.get('x-user-id')
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const body = (await req.json().catch(() => ({}))) as { field?: string; value?: string }
+  const field = String(body.field || '')
+  const value = String(body.value || '')
+  if (!FIELDS.has(field)) return NextResponse.json({ error: 'Invalid field' }, { status: 400 })
+  if (!value) return NextResponse.json({ error: 'value is required' }, { status: 400 })
+
+  const { error } = await supabaseAdmin
+    .from('purchasing_options')
+    .delete()
+    .eq('field', field)
+    .eq('value', value)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

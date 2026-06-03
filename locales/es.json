@@ -639,5 +639,9 @@
   "purchasing.combobox.add": "Agregar",
   "purchasing.date.select": "Seleccionar fecha",
   "purchasing.date.today": "Hoy",
-  "purchasing.date.clear": "Borrar"
+  "purchasing.date.clear": "Borrar",
+  "purchasing.status.all": "Todos",
+  "purchasing.combobox.confirmDelete": "¿Eliminar \"{v}\" de la lista?",
+  "purchasing.quickReceived": "Marcar recibido",
+  "purchasing.quickReceivedHint": "Al poner una fecha de recepción, la orden pasa a Recibido."
 }

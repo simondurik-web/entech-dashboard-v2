@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Pencil, Trash2, History } from 'lucide-react'
+import { Pencil, Trash2, History, PackageCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'
-import type { PurchasingRow, PurchasingAudit } from '@/lib/purchasing/types'
+import { DatePicker } from './DatePicker'
+import type { PurchasingRow, PurchasingAudit, PurchasingInput } from '@/lib/purchasing/types'
 
 function fmtDate(v: string | null): string {
   if (!v) return '—'
@@ -20,11 +21,13 @@ export function PurchasingDetail({
   row,
   onEdit,
   onDelete,
+  onQuickPatch,
   canEdit,
 }: {
   row: PurchasingRow
   onEdit: (row: PurchasingRow) => void
   onDelete: (row: PurchasingRow) => void
+  onQuickPatch?: (row: PurchasingRow, input: PurchasingInput) => Promise<void> | void
   canEdit: boolean
 }) {
   const { t } = useI18n()
@@ -74,6 +77,21 @@ export function PurchasingDetail({
           </>
         )}
       </div>
+
+      {canEdit && onQuickPatch && (
+        <div className="flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-3">
+          <div className="min-w-[180px]">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <PackageCheck className="size-3.5" />{t('purchasing.quickReceived')}
+            </span>
+            <DatePicker
+              value={row.received_date ?? ''}
+              onChange={(v) => onQuickPatch(row, { received_date: v || null })}
+            />
+          </div>
+          <p className="pb-2 text-[11px] text-muted-foreground">{t('purchasing.quickReceivedHint')}</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
         {fields.map((f, i) => (

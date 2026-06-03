@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef } from 'react'
-import { ChevronsUpDown, Check, Plus, X } from 'lucide-react'
+import { ChevronsUpDown, Check, Plus, X, Pencil, Trash2 } from 'lucide-react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -13,6 +13,8 @@ export function Combobox({
   options,
   placeholder,
   onCreate,
+  onEdit,
+  onDelete,
   id,
 }: {
   value: string
@@ -21,14 +23,30 @@ export function Combobox({
   placeholder?: string
   /** Called when the user adds a value not in the list. Should persist it. */
   onCreate?: (value: string) => Promise<void> | void
+  /** Rename an existing option (persist + update list). Enables the edit icon. */
+  onEdit?: (oldValue: string, newValue: string) => Promise<void> | void
+  /** Delete an existing option (persist + update list). Enables the delete icon. */
+  onDelete?: (value: string) => Promise<void> | void
   id?: string
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
+  const [editingOpt, setEditingOpt] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const touchY = useRef<number | null>(null)
+  const manageable = !!onEdit || !!onDelete
+
+  const commitEdit = async (oldValue: string) => {
+    const nv = editText.trim()
+    setEditingOpt(null)
+    if (!nv || nv === oldValue) return
+    // Don't rename onto a value that already exists (would dupe / hit UNIQUE).
+    if (options.some((o) => o !== oldValue && o.toLowerCase() === nv.toLowerCase())) return
+    await onEdit?.(oldValue, nv)
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -60,7 +78,7 @@ export function Combobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery('') }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setQuery(''); setEditingOpt(null) } }}>
       <div className="relative mt-1">
         <PopoverTrigger asChild>
           <button
@@ -119,15 +137,47 @@ export function Combobox({
           onTouchEnd={() => { touchY.current = null }}
         >
           {filtered.map((o) => (
-            <button
-              key={o}
-              type="button"
-              onClick={() => select(o)}
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent"
-            >
-              <Check className={cn('size-3.5 shrink-0', o === value ? 'opacity-100' : 'opacity-0')} />
-              <span className="truncate">{o}</span>
-            </button>
+            editingOpt === o ? (
+              <div key={o} className="flex items-center gap-1 px-1 py-1">
+                <Input
+                  autoFocus
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="h-8"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitEdit(o) }
+                    if (e.key === 'Escape') setEditingOpt(null)
+                  }}
+                />
+                <button type="button" aria-label={t('ui.save')} onClick={() => commitEdit(o)} className="flex size-7 shrink-0 items-center justify-center rounded-sm text-primary hover:bg-accent"><Check className="size-4" /></button>
+                <button type="button" aria-label={t('ui.cancel')} onClick={() => setEditingOpt(null)} className="flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent"><X className="size-4" /></button>
+              </div>
+            ) : (
+              <div key={o} className="flex items-center rounded-sm hover:bg-accent">
+                <button
+                  type="button"
+                  onClick={() => select(o)}
+                  className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm"
+                >
+                  <Check className={cn('size-3.5 shrink-0', o === value ? 'opacity-100' : 'opacity-0')} />
+                  <span className="truncate">{o}</span>
+                </button>
+                {manageable && (
+                  <span className="flex shrink-0 items-center gap-0.5 pr-1">
+                    {onEdit && (
+                      <button type="button" aria-label={t('ui.edit')} onClick={() => { setEditingOpt(o); setEditText(o) }} className="flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground">
+                        <Pencil className="size-3.5" />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button type="button" aria-label={t('ui.delete')} onClick={async () => { if (window.confirm(t('purchasing.combobox.confirmDelete').replace('{v}', o))) await onDelete(o) }} className="flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:text-destructive">
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+            )
           ))}
           {filtered.length === 0 && !canCreate && (
             <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t('purchasing.combobox.noResults')}</p>

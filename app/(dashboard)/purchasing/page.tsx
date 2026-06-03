@@ -28,6 +28,8 @@ const STATUS_STYLES: Record<string, string> = {
   Refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
 }
 
+const STATUS_ORDER = ['Requested', 'Ordered', 'Received', 'Partial', 'Canceled', 'Refunded'] as const
+
 function money(v: unknown): string {
   if (v == null || v === '') return '—'
   const n = Number(v)
@@ -160,6 +162,28 @@ export default function PurchasingPage() {
     if (allowed.size > 0 && allowed.size < depts.size) table.setFilter('department', allowed)
   }, [rows, table])
 
+  // Status quick-filter bar. Counts respect other active filters (e.g. the
+  // department default) but not the status filter itself, so they stay stable.
+  const contextRows = useMemo(() => {
+    let r = rows
+    for (const [k, vals] of table.filters) {
+      if (k === 'order_status') continue
+      r = r.filter((x) => vals.has(String(x[k as keyof PurchasingRow] ?? '')))
+    }
+    return r
+  }, [rows, table.filters])
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const x of contextRows) { const s = x.order_status || ''; c[s] = (c[s] || 0) + 1 }
+    return c
+  }, [contextRows])
+  const activeStatusFilter = table.filters.get('order_status')
+  const activeStatus = activeStatusFilter && activeStatusFilter.size === 1 ? [...activeStatusFilter][0] : null
+  const setStatus = (s: string | null) => {
+    if (s == null) table.clearFilter('order_status')
+    else table.setFilter('order_status', new Set([s]))
+  }
+
   const writeHeaders = useMemo(
     () => ({ 'Content-Type': 'application/json', 'x-user-id': user?.id || '' }),
     [user?.id]
@@ -187,6 +211,21 @@ export default function PurchasingPage() {
       toast({ title: t('purchasing.toast.saveFailed'), description: e instanceof Error ? e.message : undefined, type: 'error' })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Quick inline patch (e.g. set received date → status auto-flips to Received).
+  const quickPatch = async (row: PurchasingRow, input: PurchasingInput) => {
+    try {
+      const res = await fetch(`/api/purchasing/${row.id}`, { method: 'PATCH', headers: writeHeaders, body: JSON.stringify(input) })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
+      // Update just this row in place (no full-table skeleton flash).
+      setOrders((prev) => prev.map((o) => (o.id === row.id ? (d.order ?? { ...o, ...input }) : o)))
+      setAuditKey((k) => k + 1)
+      toast({ title: t('purchasing.toast.saved'), type: 'success' })
+    } catch (e) {
+      toast({ title: t('purchasing.toast.saveFailed'), description: e instanceof Error ? e.message : undefined, type: 'error' })
     }
   }
 
@@ -235,6 +274,26 @@ export default function PurchasingPage() {
           {loading ? (
             <TableSkeleton />
           ) : (
+            <div className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setStatus(null)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${activeStatus === null ? 'border-primary bg-primary text-primary-foreground' : 'border-input hover:bg-accent'}`}
+              >
+                {t('purchasing.status.all')} <span className="opacity-70">{contextRows.length}</span>
+              </button>
+              {STATUS_ORDER.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${activeStatus === s ? `${STATUS_STYLES[s]} border-transparent ring-2 ring-primary/40` : 'border-input hover:bg-accent'}`}
+                >
+                  {t(`purchasing.status.${s}`)} <span className="opacity-70">{statusCounts[s] || 0}</span>
+                </button>
+              ))}
+            </div>
             <DataTable
               table={table}
               data={rows}
@@ -246,7 +305,7 @@ export default function PurchasingPage() {
               expandedRowKey={expandedRowKey}
               onRowClick={(row) => setExpandedRowKey((k) => (k === row.id ? null : row.id))}
               renderExpandedContent={(row) => (
-                <PurchasingDetail row={row} onEdit={openEdit} onDelete={deleteRow} canEdit={canEdit} />
+                <PurchasingDetail row={row} onEdit={openEdit} onDelete={deleteRow} onQuickPatch={quickPatch} canEdit={canEdit} />
               )}
               renderCard={(row) => {
                 const expanded = expandedRowKey === row.id
@@ -271,7 +330,7 @@ export default function PurchasingPage() {
                       </button>
                       {expanded && (
                         <div className="border-t pt-3">
-                          <PurchasingDetail row={row} onEdit={openEdit} onDelete={deleteRow} canEdit={canEdit} />
+                          <PurchasingDetail row={row} onEdit={openEdit} onDelete={deleteRow} onQuickPatch={quickPatch} canEdit={canEdit} />
                         </div>
                       )}
                     </CardContent>
@@ -279,6 +338,7 @@ export default function PurchasingPage() {
                 )
               }}
             />
+            </div>
           )}
         </TabsContent>
 
