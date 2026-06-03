@@ -36,10 +36,10 @@ const FIELDS: { key: keyof PurchasingInput; tKey: string; control: Control; full
 
 const BOOL_FIELDS: { key: keyof PurchasingInput; tKey: string }[] = [
   { key: 'urgent', tKey: 'purchasing.col.urgent' },
-  { key: 'partial_delivery', tKey: 'purchasing.col.partialDelivery' },
-  { key: 'canceled', tKey: 'purchasing.col.canceled' },
-  { key: 'refunded', tKey: 'purchasing.col.refunded' },
 ]
+
+// Status dropdown values; '' = Auto (date-derived).
+const STATUS_OPTIONS = ['', 'Requested', 'Ordered', 'Received', 'Partial', 'Canceled', 'Refunded']
 
 type OptionsMap = Record<OptionField, string[]>
 
@@ -50,6 +50,7 @@ function initialState(order?: PurchasingOrder | null): Record<string, string | b
     s[f.key] = v == null ? '' : String(v)
   }
   for (const f of BOOL_FIELDS) s[f.key] = order ? Boolean(order[f.key as keyof PurchasingOrder]) : false
+  s.status_override = order?.status_override ?? ''
   s.notes = order?.notes ?? ''
   return s
 }
@@ -117,6 +118,7 @@ export function PurchasingForm({
     const input: Record<string, unknown> = {}
     for (const f of FIELDS) input[f.key] = state[f.key]
     for (const f of BOOL_FIELDS) input[f.key] = state[f.key]
+    input.status_override = state.status_override || null
     input.notes = state.notes
     onSubmit(input as PurchasingInput)
   }
@@ -159,6 +161,20 @@ export function PurchasingForm({
             </div>
           )
         })}
+      </div>
+
+      <div className="sm:max-w-xs">
+        <Label htmlFor="pf-status" className="text-xs text-muted-foreground">{t('purchasing.col.orderStatus')}</Label>
+        <select
+          id="pf-status"
+          value={String(state.status_override ?? '')}
+          onChange={(e) => set('status_override', e.target.value)}
+          className="mt-1 h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s === '' ? t('purchasing.status.auto') : t(`purchasing.status.${s}`)}</option>
+          ))}
+        </select>
       </div>
 
       <div>

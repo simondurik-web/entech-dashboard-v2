@@ -661,5 +661,8 @@
   "purchasing.receive.hint": "Te registra como quien recibió. Si no hay foto del artículo o del papeleo, se pedirá confirmación.",
   "purchasing.receive.confirmNoPhoto": "No hay foto del {what}. ¿Marcar como recibido de todos modos?",
   "purchasing.receive.item": "artículo",
-  "purchasing.receive.paperwork": "papeleo"
+  "purchasing.receive.paperwork": "papeleo",
+  "purchasing.status.auto": "Automático (por fecha)",
+  "purchasing.status.current": "Actual",
+  "purchasing.notes.save": "Guardar notas"
 }

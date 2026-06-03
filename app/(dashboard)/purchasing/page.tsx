@@ -136,12 +136,7 @@ export default function PurchasingPage() {
         key: 'supplier_link', label: t('purchasing.col.supplierLink'), sortable: false, filterable: false,
         render: (v) => { const h = safeHref(v); return h ? <a href={h} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t('purchasing.openLink')}</a> : (v ? String(v) : '—') },
       },
-      { key: 'canceled', label: t('purchasing.col.canceled'), sortable: true, filterable: true, render: boolCell },
-      { key: 'refunded', label: t('purchasing.col.refunded'), sortable: true, filterable: true, render: boolCell },
-      { key: 'partial_delivery', label: t('purchasing.col.partialDelivery'), sortable: true, filterable: true, render: boolCell },
       { key: 'notes', label: t('purchasing.col.notes'), sortable: false, filterable: false, render: dash },
-      { key: 'packing_slip_pic', label: t('purchasing.col.packingSlip'), sortable: false, filterable: false, render: (v) => (v ? '📎' : '—') },
-      { key: 'item_pic', label: t('purchasing.col.itemPicture'), sortable: false, filterable: false, render: (v) => (v ? '📎' : '—') },
     ]
   }, [t])
 

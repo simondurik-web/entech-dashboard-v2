@@ -38,7 +38,20 @@ export function PurchasingDetail({
   const { profile, user } = useAuth()
   const [receiveDate, setReceiveDate] = useState(row.received_date ?? '')
   const [marking, setMarking] = useState(false)
+  const [notes, setNotes] = useState(row.notes ?? '')
+  const [savingNotes, setSavingNotes] = useState(false)
   const receiverName = profile?.full_name || user?.email || ''
+
+  const changeStatus = async (v: string) => {
+    if (!onQuickPatch) return
+    await onQuickPatch(row, { status_override: v || null })
+    loadAudit()
+  }
+  const saveNotes = async () => {
+    if (!onQuickPatch || savingNotes) return
+    setSavingNotes(true)
+    try { await onQuickPatch(row, { notes }); loadAudit() } finally { setSavingNotes(false) }
+  }
 
   const loadAudit = useCallback(() => {
     fetch(`/api/purchasing/audit?orderId=${row.id}`)
@@ -48,6 +61,9 @@ export function PurchasingDetail({
   }, [row.id])
   useEffect(() => { loadAudit() }, [loadAudit])
   useEffect(() => { setReceiveDate(row.received_date ?? '') }, [row.id, row.received_date])
+  useEffect(() => { setNotes(row.notes ?? '') }, [row.id, row.notes])
+
+  const STATUS_OPTS = ['', 'Requested', 'Ordered', 'Received', 'Partial', 'Canceled', 'Refunded']
 
   // Receive flow: pick a date, then confirm. Does NOT auto-mark; warns if there's
   // no item/paperwork photo (can be bypassed). Records the current user as received-by.
@@ -75,9 +91,10 @@ export function PurchasingDetail({
       if (missing.length > 0 && !window.confirm(t('purchasing.receive.confirmNoPhoto').replace('{what}', missing.join(' + ')))) {
         return
       }
-      const input: Record<string, unknown> = { received_date: date }
+      const input: Record<string, unknown> = { received_date: date, status_override: null }
       if (receiverName) input.received_by = receiverName
       await onQuickPatch(row, input)
+      loadAudit()
     } finally {
       setMarking(false)
     }
@@ -101,7 +118,6 @@ export function PurchasingDetail({
         ? <a href={row.supplier_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t('purchasing.openLink')}</a>
         : '—',
     },
-    { label: t('purchasing.col.notes'), value: row.notes || '—' },
   ]
 
   return (
@@ -118,6 +134,24 @@ export function PurchasingDetail({
           </>
         )}
       </div>
+
+      {canEdit && onQuickPatch && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">{t('purchasing.col.orderStatus')}:</span>
+          <select
+            value={row.status_override ?? ''}
+            onChange={(e) => changeStatus(e.target.value)}
+            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+          >
+            {STATUS_OPTS.map((s) => (
+              <option key={s} value={s}>{s === '' ? t('purchasing.status.auto') : t(`purchasing.status.${s}`)}</option>
+            ))}
+          </select>
+          <span className="text-[11px] text-muted-foreground">
+            {t('purchasing.status.current')}: {row.order_status ? t(`purchasing.status.${row.order_status}`) : '—'}
+          </span>
+        </div>
+      )}
 
       <PhotoGallery orderId={row.id} kind="item" title={t('purchasing.photos.itemTitle')} canEdit={canEdit} onChange={loadAudit} />
       <PhotoGallery orderId={row.id} kind="paperwork" title={t('purchasing.photos.paperworkTitle')} canEdit={canEdit} onChange={loadAudit} />
@@ -147,6 +181,27 @@ export function PurchasingDetail({
             <p className="font-medium break-words">{f.value}</p>
           </div>
         ))}
+      </div>
+
+      <div>
+        <span className="text-xs text-muted-foreground">{t('purchasing.col.notes')}</span>
+        {canEdit && onQuickPatch ? (
+          <>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
+            <div className="mt-1 flex justify-end">
+              <Button size="sm" variant="outline" onClick={saveNotes} disabled={savingNotes || notes === (row.notes ?? '')}>
+                {savingNotes ? t('ui.saving') : t('purchasing.notes.save')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <p className="mt-1 font-medium break-words">{row.notes || '—'}</p>
+        )}
       </div>
 
       <div>

@@ -18,9 +18,12 @@ function toNum(v: unknown): number | null {
  */
 export function deriveStatus(o: PurchasingOrder): OrderStatus {
   if (!has(o.item_description)) return ''
-  if (o.refunded) return 'Refunded'
-  if (o.canceled) return 'Canceled'
-  if (o.partial_delivery) return 'Partial'
+  // Manual status set from the dropdown wins; otherwise it's purely date-derived.
+  // (Legacy canceled/refunded/partial booleans were migrated into status_override,
+  // so they are intentionally NOT consulted here — that lets "Auto" mean by-date
+  // and lets "Mark received" actually show Received.)
+  const override = (o.status_override ?? '').trim()
+  if (override) return override as OrderStatus
   if (has(o.date_requested) && !has(o.date_ordered) && !has(o.received_date)) return 'Requested'
   if (has(o.date_ordered) && !has(o.received_date)) return 'Ordered'
   if (has(o.received_date)) return 'Received'

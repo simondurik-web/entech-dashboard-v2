@@ -661,5 +661,8 @@
   "purchasing.receive.hint": "Records you as received-by. If there's no item or paperwork photo, you'll be asked to confirm.",
   "purchasing.receive.confirmNoPhoto": "There is no picture of the {what}. Mark it as received anyway?",
   "purchasing.receive.item": "item",
-  "purchasing.receive.paperwork": "paperwork"
+  "purchasing.receive.paperwork": "paperwork",
+  "purchasing.status.auto": "Auto (by date)",
+  "purchasing.status.current": "Current",
+  "purchasing.notes.save": "Save notes"
 }
