@@ -245,10 +245,19 @@ export function DataTable<T extends Record<string, unknown>>({
   // and prevent hidden-view errors from crashing the visible view
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 640)
+    // Card view only on narrow PORTRAIT phones. In landscape, always show the
+    // full (horizontally scrollable) table — rotating the phone reveals it.
+    const check = () => {
+      const portrait = window.innerHeight >= window.innerWidth
+      setIsMobile(window.innerWidth < 640 && portrait)
+    }
     check()
     window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
+    window.addEventListener('orientationchange', check)
+    return () => {
+      window.removeEventListener('resize', check)
+      window.removeEventListener('orientationchange', check)
+    }
   }, [])
 
   return (
