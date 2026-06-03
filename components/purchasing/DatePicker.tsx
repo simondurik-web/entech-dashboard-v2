@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -34,6 +34,7 @@ export function DatePicker({
   const { t, language } = useI18n()
   const locale = language === 'es' ? 'es-ES' : 'en-US'
   const [open, setOpen] = useState(false)
+  const touchY = useRef<number | null>(null)
 
   const today = new Date()
   const parsed = parseISO(value)
@@ -110,7 +111,20 @@ export function DatePicker({
           </button>
         )}
       </div>
-      <PopoverContent align="start" collisionPadding={8} className="z-[60] w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-3">
+      <PopoverContent
+        align="start"
+        collisionPadding={8}
+        className="z-[60] w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-3"
+        onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY }}
+        onTouchStart={(e) => { touchY.current = e.touches[0]?.clientY ?? null }}
+        onTouchMove={(e) => {
+          if (touchY.current == null) return
+          const y = e.touches[0]?.clientY ?? touchY.current
+          e.currentTarget.scrollTop += touchY.current - y
+          touchY.current = y
+        }}
+        onTouchEnd={() => { touchY.current = null }}
+      >
         <div className="mb-2 flex items-center gap-1">
           <button type="button" onClick={() => step(-1)} className="rounded p-2 hover:bg-accent" aria-label="prev">
             <ChevronLeft className="size-4" />

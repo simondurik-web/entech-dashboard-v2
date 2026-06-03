@@ -28,6 +28,7 @@ export function Combobox({
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const touchY = useRef<number | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -105,7 +106,18 @@ export function Combobox({
             }}
           />
         </div>
-        <div className="max-h-56 overflow-y-auto overscroll-contain p-1">
+        <div
+          className="max-h-56 overflow-y-auto overscroll-contain p-1"
+          onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY }}
+          onTouchStart={(e) => { touchY.current = e.touches[0]?.clientY ?? null }}
+          onTouchMove={(e) => {
+            if (touchY.current == null) return
+            const y = e.touches[0]?.clientY ?? touchY.current
+            e.currentTarget.scrollTop += touchY.current - y
+            touchY.current = y
+          }}
+          onTouchEnd={() => { touchY.current = null }}
+        >
           {filtered.map((o) => (
             <button
               key={o}
