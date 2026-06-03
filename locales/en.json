@@ -643,5 +643,15 @@
   "purchasing.status.all": "All",
   "purchasing.combobox.confirmDelete": "Delete \"{v}\" from the list?",
   "purchasing.quickReceived": "Mark received",
-  "purchasing.quickReceivedHint": "Setting a received date marks the order as Received."
+  "purchasing.quickReceivedHint": "Setting a received date marks the order as Received.",
+  "purchasing.photos.title": "Item photos",
+  "purchasing.photos.add": "Add photo",
+  "purchasing.photos.none": "No photos yet.",
+  "purchasing.photos.showDeleted": "Show deleted",
+  "purchasing.photos.hideDeleted": "Hide deleted",
+  "purchasing.photos.noDeleted": "No deleted photos.",
+  "purchasing.photos.restore": "Restore",
+  "purchasing.photos.uploadFailed": "Upload failed",
+  "purchasing.photos.deleteFailed": "Failed to delete photo",
+  "purchasing.photos.restoreFailed": "Failed to restore photo"
 }

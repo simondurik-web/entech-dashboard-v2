@@ -643,5 +643,15 @@
   "purchasing.status.all": "Todos",
   "purchasing.combobox.confirmDelete": "¿Eliminar \"{v}\" de la lista?",
   "purchasing.quickReceived": "Marcar recibido",
-  "purchasing.quickReceivedHint": "Al poner una fecha de recepción, la orden pasa a Recibido."
+  "purchasing.quickReceivedHint": "Al poner una fecha de recepción, la orden pasa a Recibido.",
+  "purchasing.photos.title": "Fotos del artículo",
+  "purchasing.photos.add": "Agregar foto",
+  "purchasing.photos.none": "Aún no hay fotos.",
+  "purchasing.photos.showDeleted": "Mostrar eliminadas",
+  "purchasing.photos.hideDeleted": "Ocultar eliminadas",
+  "purchasing.photos.noDeleted": "No hay fotos eliminadas.",
+  "purchasing.photos.restore": "Restaurar",
+  "purchasing.photos.uploadFailed": "Error al subir",
+  "purchasing.photos.deleteFailed": "Error al eliminar la foto",
+  "purchasing.photos.restoreFailed": "Error al restaurar la foto"
 }

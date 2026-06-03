@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Pencil, Trash2, History, PackageCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'
 import { DatePicker } from './DatePicker'
+import { PhotoGallery } from './PhotoGallery'
 import type { PurchasingRow, PurchasingAudit, PurchasingInput } from '@/lib/purchasing/types'
 
 function fmtDate(v: string | null): string {
@@ -33,14 +34,13 @@ export function PurchasingDetail({
   const { t } = useI18n()
   const [audit, setAudit] = useState<PurchasingAudit[] | null>(null)
 
-  useEffect(() => {
-    let active = true
+  const loadAudit = useCallback(() => {
     fetch(`/api/purchasing/audit?orderId=${row.id}`)
       .then((r) => r.json())
-      .then((d) => { if (active) setAudit(d.entries ?? []) })
-      .catch(() => { if (active) setAudit([]) })
-    return () => { active = false }
+      .then((d) => setAudit(d.entries ?? []))
+      .catch(() => setAudit([]))
   }, [row.id])
+  useEffect(() => { loadAudit() }, [loadAudit])
 
   const fields: { label: string; value: React.ReactNode }[] = [
     { label: t('purchasing.col.externalNumber'), value: row.external_number || '—' },
@@ -101,6 +101,8 @@ export function PurchasingDetail({
           </div>
         ))}
       </div>
+
+      <PhotoGallery orderId={row.id} canEdit={canEdit} onChange={loadAudit} />
 
       <div>
         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
