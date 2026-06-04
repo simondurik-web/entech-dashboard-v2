@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
-import { Pencil, UserCheck, UserX } from 'lucide-react'
+import { Pencil, UserCheck, UserX, UserPlus } from 'lucide-react'
 
 interface Employee {
   id: string
@@ -46,16 +46,20 @@ interface EmployeeRow {
 interface EmployeeManagerProps {
   employees: Employee[]
   onUpdate: (id: string, data: Partial<Employee>) => Promise<void>
+  /** Create a new employee. When provided, an "Add Employee" button is shown. */
+  onCreate?: (data: Partial<Employee>) => Promise<void>
   /** Whether to show pay rate data (admin/manager only) */
   showPay?: boolean
 }
 
-export function EmployeeManager({ employees, onUpdate, showPay = false }: EmployeeManagerProps) {
+export function EmployeeManager({ employees, onUpdate, onCreate, showPay = false }: EmployeeManagerProps) {
   const { t } = useI18n()
   const [showInactive, setShowInactive] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [creating, setCreating] = useState(false)
   const [editForm, setEditForm] = useState<Partial<Employee>>({})
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Transform employees into flat rows for DataTable
   const rows: EmployeeRow[] = useMemo(() => {
@@ -178,6 +182,8 @@ export function EmployeeManager({ employees, onUpdate, showPay = false }: Employ
   })
 
   const handleEdit = (emp: Employee) => {
+    setCreating(false)
+    setSaveError(null)
     setEditingEmployee(emp)
     setEditForm({
       first_name: emp.first_name,
@@ -190,14 +196,48 @@ export function EmployeeManager({ employees, onUpdate, showPay = false }: Employ
     })
   }
 
+  const handleAddNew = () => {
+    setEditingEmployee(null)
+    setSaveError(null)
+    setEditForm({
+      employee_id: '',
+      first_name: '',
+      last_name: '',
+      department: 'Molding',
+      default_shift: 1,
+      shift_length: 10,
+      pay_rate: undefined,
+      is_active: true,
+    })
+    setCreating(true)
+  }
+
+  const closeDialog = () => { setEditingEmployee(null); setCreating(false); setSaveError(null) }
+
   const handleSave = async () => {
-    if (!editingEmployee) return
+    setSaveError(null)
+    if (creating) {
+      const eid = (editForm.employee_id || '').trim()
+      const fn = (editForm.first_name || '').trim()
+      const ln = (editForm.last_name || '').trim()
+      if (!eid || !fn || !ln) { setSaveError(t('scheduling.requiredFields')); return }
+    }
     setSaving(true)
     try {
-      await onUpdate(editingEmployee.id, editForm)
-      setEditingEmployee(null)
+      if (creating) {
+        if (onCreate) await onCreate({
+          ...editForm,
+          employee_id: (editForm.employee_id || '').trim(),
+          first_name: (editForm.first_name || '').trim(),
+          last_name: (editForm.last_name || '').trim(),
+        })
+      } else if (editingEmployee) {
+        await onUpdate(editingEmployee.id, editForm)
+      }
+      closeDialog()
     } catch (err) {
-      console.error('Failed to update employee:', err)
+      console.error('Failed to save employee:', err)
+      setSaveError(err instanceof Error ? err.message : t('scheduling.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -211,8 +251,14 @@ export function EmployeeManager({ employees, onUpdate, showPay = false }: Employ
 
   return (
     <div className="space-y-4">
-      {/* Show inactive toggle */}
-      <div className="flex items-center gap-3">
+      {/* Toolbar: add + show-inactive */}
+      <div className="flex flex-wrap items-center gap-3">
+        {onCreate && (
+          <Button size="sm" onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700">
+            <UserPlus className="mr-1.5 size-3.5" />
+            {t('scheduling.addEmployee')}
+          </Button>
+        )}
         <Button
           variant={showInactive ? 'default' : 'outline'}
           size="sm"
@@ -237,14 +283,26 @@ export function EmployeeManager({ employees, onUpdate, showPay = false }: Employ
       />
 
       {/* Edit dialog */}
-      <Dialog open={!!editingEmployee} onOpenChange={(o) => !o && setEditingEmployee(null)}>
+      <Dialog open={!!editingEmployee || creating} onOpenChange={(o) => { if (!o) closeDialog() }}>
         <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {t('scheduling.edit')} — {editingEmployee?.first_name} {editingEmployee?.last_name}
+              {creating
+                ? t('scheduling.addEmployee')
+                : `${t('scheduling.edit')} — ${editingEmployee?.first_name ?? ''} ${editingEmployee?.last_name ?? ''}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {creating && (
+              <div className="space-y-2">
+                <Label className="text-foreground/80">{t('scheduling.employeeId')}</Label>
+                <Input
+                  value={editForm.employee_id || ''}
+                  onChange={(e) => setEditForm({ ...editForm, employee_id: e.target.value })}
+                  className="bg-muted border-border text-foreground"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="text-foreground/80">First Name</Label>
@@ -324,8 +382,11 @@ export function EmployeeManager({ employees, onUpdate, showPay = false }: Employ
               />
             </div>
           </div>
+          {saveError && (
+            <p className="text-sm text-red-400">{saveError}</p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingEmployee(null)} className="border-border">
+            <Button variant="outline" onClick={closeDialog} className="border-border">
               {t('scheduling.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">

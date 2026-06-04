@@ -664,5 +664,8 @@
   "purchasing.receive.paperwork": "papeleo",
   "purchasing.status.auto": "Automático (por fecha)",
   "purchasing.status.current": "Actual",
-  "purchasing.notes.save": "Guardar notas"
+  "purchasing.notes.save": "Guardar notas",
+  "scheduling.addEmployee": "Agregar empleado",
+  "scheduling.requiredFields": "El ID de empleado, el nombre y el apellido son obligatorios.",
+  "scheduling.saveFailed": "No se pudo guardar. Inténtalo de nuevo."
 }

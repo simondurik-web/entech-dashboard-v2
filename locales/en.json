@@ -664,5 +664,8 @@
   "purchasing.receive.paperwork": "paperwork",
   "purchasing.status.auto": "Auto (by date)",
   "purchasing.status.current": "Current",
-  "purchasing.notes.save": "Save notes"
+  "purchasing.notes.save": "Save notes",
+  "scheduling.addEmployee": "Add Employee",
+  "scheduling.requiredFields": "Employee ID, first name, and last name are required.",
+  "scheduling.saveFailed": "Failed to save. Please try again."
 }
