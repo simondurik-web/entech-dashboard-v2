@@ -46,3 +46,6 @@ scripts/migrate-drawings.mjs
 scripts/gen-schedule-pdf.js
 scripts/seed-inventory-supabase.js
 scripts/sync-inventory-daily.js
+.claude/worktrees/
+.agents/
+research/
