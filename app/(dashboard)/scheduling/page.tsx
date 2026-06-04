@@ -492,6 +492,18 @@ function SchedulingPageContent() {
                   })
                   window.location.reload()
                 }}
+                onCreate={async (data) => {
+                  const res = await fetch('/api/scheduling/employees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+                    body: JSON.stringify(data),
+                  })
+                  if (!res.ok) {
+                    const d = await res.json().catch(() => ({}))
+                    throw new Error(d.error || `HTTP ${res.status}`)
+                  }
+                  window.location.reload()
+                }}
               />
             </Card>
           </TabsContent>
