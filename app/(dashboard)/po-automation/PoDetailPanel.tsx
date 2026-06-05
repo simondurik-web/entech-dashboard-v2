@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileText, ExternalLink, ImageOff, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,6 +10,21 @@ import {
 } from '@/components/ui/dialog'
 import { useI18n } from '@/lib/i18n'
 import type { ProcessedPo } from '@/lib/po-automation/types'
+
+/**
+ * Only embed/load https URLs that live on Supabase storage. Today these URLs are
+ * written by our own pipeline, but the email-extraction path will eventually
+ * populate them from less-trusted input — so allowlist the host and reject
+ * data:/blob:/http: before rendering them in an iframe or <img>.
+ */
+function isSafeStorageUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
+  } catch {
+    return false
+  }
+}
 
 /** Friendly label for a screenshot derived from its filename. */
 function screenshotLabel(url: string): string {
@@ -29,12 +44,21 @@ function screenshotLabel(url: string): string {
 export function PoDetailPanel({ po }: { po: ProcessedPo }) {
   const { t } = useI18n()
   const screenshots = Array.isArray(po.screenshot_urls)
-    ? po.screenshot_urls.filter((u): u is string => typeof u === 'string' && u.length > 0)
+    ? po.screenshot_urls.filter((u): u is string => typeof u === 'string' && isSafeStorageUrl(u))
     : []
-  const pdfUrl = typeof po.po_pdf_url === 'string' && po.po_pdf_url.length > 0 ? po.po_pdf_url : null
+  const pdfUrl =
+    typeof po.po_pdf_url === 'string' && isSafeStorageUrl(po.po_pdf_url) ? po.po_pdf_url : null
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const lightboxOpen = lightboxIndex !== null
+
+  // If the row data refreshes and the gallery shrinks while the lightbox is
+  // open, close it rather than index past the end of the array.
+  useEffect(() => {
+    if (lightboxIndex !== null && lightboxIndex >= screenshots.length) {
+      setLightboxIndex(null)
+    }
+  }, [lightboxIndex, screenshots.length])
 
   const showPrev = () =>
     setLightboxIndex((i) => (i === null ? null : (i - 1 + screenshots.length) % screenshots.length))
@@ -67,6 +91,11 @@ export function PoDetailPanel({ po }: { po: ProcessedPo }) {
             <iframe
               src={pdfUrl}
               title={t('po.detail.originalPo')}
+              // src is allowlisted to Supabase storage above; sandbox isolates
+              // the framed doc to its own (cross-)origin so it can't script our
+              // page. allow-scripts/downloads keep the browser PDF viewer usable.
+              sandbox="allow-same-origin allow-scripts allow-downloads"
+              referrerPolicy="no-referrer"
               className="h-[420px] w-full"
             />
           </div>
@@ -92,7 +121,7 @@ export function PoDetailPanel({ po }: { po: ProcessedPo }) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {screenshots.map((url, i) => (
               <button
-                key={url}
+                key={`${url}-${i}`}
                 type="button"
                 onClick={() => setLightboxIndex(i)}
                 className="group relative overflow-hidden rounded-md border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring"
