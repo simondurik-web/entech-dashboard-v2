@@ -544,6 +544,8 @@ function NeedToPackagePageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                customer={order.customer}
+                poNumber={order.poNumber}
                 canEdit={canAccess('edit_pallet_records')}
                 userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useI18n } from '@/lib/i18n'
+import { PdfViewer } from '@/components/ui/PdfViewer'
 import type { ProcessedPo } from '@/lib/po-automation/types'
 
 /**
@@ -66,39 +67,15 @@ export function PoDetailPanel({ po }: { po: ProcessedPo }) {
     setLightboxIndex((i) => (i === null ? null : (i + 1) % screenshots.length))
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {/* Original customer PO PDF */}
       <section className="min-w-0">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-            <FileText className="size-4" />
-            {t('po.detail.originalPo')}
-          </h3>
-          {pdfUrl && (
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
-            >
-              <ExternalLink className="size-3.5" />
-              {t('po.detail.openPdf')}
-            </a>
-          )}
-        </div>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+          <FileText className="size-4" />
+          {t('po.detail.originalPo')}
+        </h3>
         {pdfUrl ? (
-          <div className="overflow-hidden rounded-md border bg-muted/30">
-            <iframe
-              src={pdfUrl}
-              title={t('po.detail.originalPo')}
-              // src is allowlisted to Supabase storage above; sandbox isolates
-              // the framed doc to its own (cross-)origin so it can't script our
-              // page. allow-scripts/downloads keep the browser PDF viewer usable.
-              sandbox="allow-same-origin allow-scripts allow-downloads"
-              referrerPolicy="no-referrer"
-              className="h-[420px] w-full"
-            />
-          </div>
+          <PdfViewer url={pdfUrl} title={t('po.detail.originalPo')} />
         ) : (
           <div className="flex h-[120px] items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
             {t('po.detail.noPdf')}

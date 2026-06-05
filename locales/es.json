@@ -710,5 +710,16 @@
   "po.detail.noScreenshots": "No se capturaron capturas de pantalla",
   "po.detail.openFull": "Abrir en tamaño completo",
   "po.detail.prev": "Anterior",
-  "po.detail.next": "Siguiente"
+  "po.detail.next": "Siguiente",
+  "po.detail.poFusionEntry": "OC y Entrada en Fusion",
+  "po.detail.noRecord": "No se encontró ningún registro de automatización de OC para este cliente + OC.",
+  "po.detail.soNumbers": "OV #",
+  "po.col.proofShort": "Comprobante",
+  "po.card.party": "Cliente / Proveedor",
+  "po.card.so": "OV #",
+  "pdf.open": "Abrir",
+  "pdf.download": "Descargar",
+  "pdf.prevPage": "Página anterior",
+  "pdf.nextPage": "Página siguiente",
+  "pdf.cannotPreview": "No se pudo previsualizar este PDF en línea."
 }

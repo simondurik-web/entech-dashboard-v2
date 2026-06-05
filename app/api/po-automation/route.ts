@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import {
   EMPTY_STATUS_COUNTS,
@@ -10,10 +10,38 @@ import {
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
+/** Single-record lookup payload used by the order-detail "PO & Fusion Entry" section. */
+export interface PoLookupResponse {
+  match: {
+    po_pdf_url: string | null
+    screenshot_urls: string[] | null
+    so_numbers: string | null
+    status: PoStatus
+    party: string | null
+    po_number: string | null
+  } | null
+}
+
+function norm(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase()
+}
+
 // GET /api/po-automation
-// Returns the recent PO dedup queue plus summary stats for the monitoring page.
+// Default: returns the recent PO dedup queue plus summary stats for the
+//   monitoring page.
+// With ?customer=<name>&po=<number>: returns the single best-matching record
+//   (case-insensitive, trimmed) for the order-detail "PO & Fusion Entry" panel.
 // Reads po_automation.processed_pos via the service-role client (bypasses RLS).
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const customer = searchParams.get("customer")
+  const po = searchParams.get("po")
+
+  // Single-record lookup mode for the order detail expansion.
+  if (customer || po) {
+    return lookupSingle(customer, po)
+  }
+
   try {
     const { data, error } = await supabaseAdmin
       .schema("po_automation")
@@ -62,5 +90,61 @@ export async function GET() {
       { error: "Unexpected error fetching PO automation queue" },
       { status: 500 }
     )
+  }
+}
+
+/**
+ * Find the single best PO automation record for a given customer + PO number.
+ * Matches `party` ≈ customer (case-insensitive, trimmed) AND `po_number` = po.
+ * Returns { match: null } when nothing matches so the UI can show "no record".
+ */
+async function lookupSingle(
+  customer: string | null,
+  po: string | null
+): Promise<NextResponse<PoLookupResponse>> {
+  const empty: PoLookupResponse = { match: null }
+
+  // Require both a customer and a PO number to avoid leaking unrelated records.
+  if (!customer?.trim() || !po?.trim()) {
+    return NextResponse.json(empty)
+  }
+
+  try {
+    // Narrow on po_number in the query (exact, case-insensitive), then refine
+    // the party match in JS since `party` casing/whitespace varies upstream.
+    const { data, error } = await supabaseAdmin
+      .schema("po_automation")
+      .from("processed_pos")
+      .select("po_pdf_url, screenshot_urls, so_numbers, status, party, po_number")
+      .ilike("po_number", po.trim())
+      .order("created_at", { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error("[po-automation] lookup query error:", error)
+      return NextResponse.json(empty)
+    }
+
+    const rows = (data ?? []) as PoLookupResponse["match"][]
+    const wantCustomer = norm(customer)
+    const wantPo = norm(po)
+
+    // Prefer an exact party match; fall back to a substring match either way.
+    const exact = rows.find(
+      (r) => norm(r?.party) === wantCustomer && norm(r?.po_number) === wantPo
+    )
+    const fuzzy = rows.find((r) => {
+      const p = norm(r?.party)
+      return (
+        norm(r?.po_number) === wantPo &&
+        (p.includes(wantCustomer) || wantCustomer.includes(p)) &&
+        p.length > 0
+      )
+    })
+
+    return NextResponse.json({ match: exact ?? fuzzy ?? null })
+  } catch (err) {
+    console.error("[po-automation] lookup unexpected error:", err)
+    return NextResponse.json(empty)
   }
 }
