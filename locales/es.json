@@ -701,5 +701,14 @@
   "po.partyType.customer": "cliente",
   "po.partyType.vendor": "proveedor",
   "po.empty.title": "Aún no hay órdenes de compra",
-  "po.empty.subtitle": "Las OC aparecerán aquí a medida que la automatización procese el buzón de monitoreo."
+  "po.empty.subtitle": "Las OC aparecerán aquí a medida que la automatización procese el buzón de monitoreo.",
+  "po.col.proof": "Comprobante",
+  "po.detail.originalPo": "OC Original",
+  "po.detail.openPdf": "Abrir PDF",
+  "po.detail.noPdf": "No hay PDF de OC adjunto",
+  "po.detail.screenshots": "Capturas de Comprobante",
+  "po.detail.noScreenshots": "No se capturaron capturas de pantalla",
+  "po.detail.openFull": "Abrir en tamaño completo",
+  "po.detail.prev": "Anterior",
+  "po.detail.next": "Siguiente"
 }

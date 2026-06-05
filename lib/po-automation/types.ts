@@ -37,6 +37,12 @@ export interface ProcessedPo extends Record<string, unknown> {
   created_at: string
   updated_at: string
   entered_at: string | null
+  /** Sales order number(s) the PO was entered against in FileMaker. */
+  so_numbers: string | null
+  /** Public URLs of the Codex proof screenshots captured during entry. */
+  screenshot_urls: string[] | null
+  /** Public URL of the customer's original PO PDF, if attached. */
+  po_pdf_url: string | null
 }
 
 export interface PoAutomationStats {
