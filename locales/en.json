@@ -701,5 +701,14 @@
   "po.partyType.customer": "customer",
   "po.partyType.vendor": "vendor",
   "po.empty.title": "No purchase orders yet",
-  "po.empty.subtitle": "POs will appear here as the automation processes the monitoring inbox."
+  "po.empty.subtitle": "POs will appear here as the automation processes the monitoring inbox.",
+  "po.col.proof": "Proof",
+  "po.detail.originalPo": "Original PO",
+  "po.detail.openPdf": "Open PDF",
+  "po.detail.noPdf": "No PO PDF attached",
+  "po.detail.screenshots": "Proof Screenshots",
+  "po.detail.noScreenshots": "No screenshots captured",
+  "po.detail.openFull": "Open full size",
+  "po.detail.prev": "Previous",
+  "po.detail.next": "Next"
 }

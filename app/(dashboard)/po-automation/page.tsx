@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { RefreshCw, FileText, CheckCircle2, AlertTriangle, Copy, Clock } from 'lucide-react'
+import { RefreshCw, FileText, CheckCircle2, AlertTriangle, Copy, Clock, Paperclip, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TableSkeleton } from '@/components/ui/skeleton-loader'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
+import { PoDetailPanel } from './PoDetailPanel'
 import type {
   PoAutomationResponse,
   PoAutomationStats,
@@ -36,6 +37,7 @@ export default function PoAutomationPage() {
   const [data, setData] = useState<PoAutomationResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -71,6 +73,33 @@ export default function PoAutomationPage() {
         sortable: true,
         filterable: true,
         render: (v) => (v ? String(v) : '—'),
+      },
+      {
+        key: 'po_pdf_url',
+        label: t('po.col.proof'),
+        sortable: false,
+        render: (_v, row) => {
+          const r = row as ProcessedPo
+          const shots = Array.isArray(r.screenshot_urls) ? r.screenshot_urls.length : 0
+          const hasPdf = typeof r.po_pdf_url === 'string' && r.po_pdf_url.length > 0
+          if (!shots && !hasPdf) return <span className="text-muted-foreground">—</span>
+          return (
+            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+              {hasPdf && (
+                <span className="inline-flex items-center gap-0.5" title={t('po.detail.originalPo')}>
+                  <Paperclip className="size-3.5" />
+                  PDF
+                </span>
+              )}
+              {shots > 0 && (
+                <span className="inline-flex items-center gap-0.5" title={t('po.detail.screenshots')}>
+                  <ImageIcon className="size-3.5" />
+                  {shots}
+                </span>
+              )}
+            </span>
+          )
+        },
       },
       {
         key: 'party',
@@ -208,6 +237,13 @@ export default function PoAutomationPage() {
           noun="PO"
           exportFilename="po-automation-queue"
           page="po-automation"
+          getRowKey={(row) => (row as ProcessedPo).id}
+          expandedRowKey={expandedId}
+          onRowClick={(row) => {
+            const id = (row as ProcessedPo).id
+            setExpandedId((cur) => (cur === id ? null : id))
+          }}
+          renderExpandedContent={(row) => <PoDetailPanel po={row as ProcessedPo} />}
         />
       )}
     </div>
