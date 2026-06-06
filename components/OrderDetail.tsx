@@ -6,6 +6,7 @@ import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pen
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { PdfViewer } from '@/components/ui/PdfViewer'
+import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -566,6 +567,18 @@ export function OrderDetail({
                 customer={customer!.trim()}
                 poNumber={poNumber!.trim()}
                 userId={userId}
+                onOpenImage={(url) => setLightboxUrl(url)}
+              />
+            )}
+
+            {/* ── Bill of Lading — role-gated, sits beside PO & Fusion Entry ── */}
+            {showPoSection && (
+              <BillOfLadingSection
+                key={`bol|${customer!.trim()}|${poNumber!.trim()}`}
+                customer={customer!.trim()}
+                poNumber={poNumber!.trim()}
+                userId={userId}
+                variant="card"
                 onOpenImage={(url) => setLightboxUrl(url)}
               />
             )}

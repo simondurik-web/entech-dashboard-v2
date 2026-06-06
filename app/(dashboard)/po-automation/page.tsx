@@ -248,7 +248,7 @@ export default function PoAutomationPage() {
             const id = (row as ProcessedPo).id
             setExpandedId((cur) => (cur === id ? null : id))
           }}
-          renderExpandedContent={(row) => <PoDetailPanel po={row as ProcessedPo} />}
+          renderExpandedContent={(row) => <PoDetailPanel po={row as ProcessedPo} onChanged={() => void load()} />}
           renderCard={(row) => {
             const r = row as ProcessedPo
             const expanded = expandedId === r.id
@@ -299,7 +299,7 @@ export default function PoAutomationPage() {
                   </button>
                   {expanded && (
                     <div className="border-t pt-3">
-                      <PoDetailPanel po={r} />
+                      <PoDetailPanel po={r} onChanged={() => void load()} />
                     </div>
                   )}
                 </CardContent>

@@ -1,10 +1,14 @@
 'use client'
 
-import { useMemo } from 'react'
-import { ChevronDown, FileText, Package2, Truck } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, FileText, Inbox, Package2, Truck } from 'lucide-react'
 import { PalletTable } from '@/components/shipping-overview/PalletTable'
 import { PhotoGallery } from '@/components/shipping-overview/PhotoGallery'
+import { OrderPoBolSection } from '@/components/po-automation/OrderPoBolSection'
 import type { ShippingOverviewOrder } from '@/components/shipping-overview/types'
+import { useI18n } from '@/lib/i18n'
+import { usePermissions } from '@/lib/use-permissions'
+import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 
 interface ShippingOverviewCardProps {
@@ -61,6 +65,14 @@ function getDueState(order: ShippingOverviewOrder): { label: string; tone: strin
 }
 
 export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOverviewCardProps) {
+  const { t } = useI18n()
+  const { canAccess, userId } = usePermissions()
+  const { user } = useAuth()
+  // Only users who can access PO Automation see the PO / BOL control, and only
+  // when we have a customer + PO to look up. Gating here means the fetch never
+  // fires for unpermitted users or orders missing the keys.
+  const showPoBol = canAccess('/po-automation') && !!order.customer?.trim() && !!order.poNumber?.trim()
+  const [poBolOpen, setPoBolOpen] = useState(false)
   const statusLabel = getDueState(order)
   const badgeLabel = useMemo(() => {
     const segments: string[] = []
@@ -151,6 +163,31 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
                 <SummaryRow label="Total Weight" value={`${formatNumber(order.totalPalletWeight)} lbs`} />
                 <SummaryRow label="Dimensions" value={order.dimensionsSummary || '-'} />
               </div>
+            </section>
+          )}
+
+          {/* PO / BOL — role-gated, collapsible to keep the card compact */}
+          {showPoBol && (
+            <section className="rounded-xl border-l-4 border-l-cyan-500 bg-muted/20">
+              <button
+                type="button"
+                onClick={() => setPoBolOpen((o) => !o)}
+                className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-bold uppercase tracking-[0.16em] text-foreground"
+              >
+                <Inbox className="size-4" />
+                <span>{t('po.shipping.poBol')}</span>
+                <ChevronRight className={cn('ml-auto size-4 text-muted-foreground transition-transform', poBolOpen && 'rotate-90')} />
+              </button>
+              {poBolOpen && (
+                <div className="px-4 pb-4">
+                  <OrderPoBolSection
+                    key={`${order.customer.trim()}|${order.poNumber.trim()}`}
+                    customer={order.customer.trim()}
+                    poNumber={order.poNumber.trim()}
+                    userId={userId ?? user?.id ?? null}
+                  />
+                </div>
+              )}
             </section>
           )}
 
