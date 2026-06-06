@@ -68,22 +68,26 @@ interface PoMatch {
 function PoFusionSection({
   customer,
   poNumber,
+  userId,
   onOpenImage,
 }: {
   customer: string
   poNumber: string
+  userId: string | null
   onOpenImage: (url: string) => void
 }) {
   const { t } = useI18n()
   const [match, setMatch] = useState<PoMatch | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // The caller remounts this component via a key on (customer, poNumber), so the
+  // initial state (loading=true, match=null) already resets per lookup — we do
+  // NOT reset synchronously here (that triggers react-hooks/set-state-in-effect).
+  // All state updates happen inside async callbacks, which is allowed.
   useEffect(() => {
     let active = true
-    setLoading(true)
-    setMatch(null)
     const qs = new URLSearchParams({ customer, po: poNumber }).toString()
-    fetch(`/api/po-automation?${qs}`)
+    fetch(`/api/po-automation?${qs}`, { headers: { 'x-user-id': userId || '' } })
       .then((r) => (r.ok ? r.json() : { match: null }))
       .then((data) => {
         if (active) setMatch(data?.match ?? null)
@@ -97,7 +101,7 @@ function PoFusionSection({
     return () => {
       active = false
     }
-  }, [customer, poNumber])
+  }, [customer, poNumber, userId])
 
   const pdfUrl =
     match && typeof match.po_pdf_url === 'string' && isSafeStorageUrl(match.po_pdf_url)
@@ -131,7 +135,7 @@ function PoFusionSection({
       ) : (
         <div className="space-y-2">
           {pdfUrl ? (
-            <PdfViewer url={pdfUrl} title={t('po.detail.originalPo')} height={260} />
+            <PdfViewer key={pdfUrl} url={pdfUrl} title={t('po.detail.originalPo')} height={260} />
           ) : (
             <p className="text-[10px] text-muted-foreground">{t('po.detail.noPdf')}</p>
           )}
@@ -267,7 +271,7 @@ export function OrderDetail({
   onClose,
 }: OrderDetailProps) {
   const { t } = useI18n()
-  const { canAccess } = usePermissions()
+  const { canAccess, userId } = usePermissions()
   // Only users who can access the PO Automation page see the PO & Fusion Entry
   // section, and only when we have a customer + PO to look up. Gating here means
   // the fetch never fires for unpermitted users or rows without the keys.
@@ -558,8 +562,10 @@ export function OrderDetail({
             {/* ── PO & Fusion Entry — role-gated (PO Automation access) ── */}
             {showPoSection && (
               <PoFusionSection
+                key={`${customer!.trim()}|${poNumber!.trim()}`}
                 customer={customer!.trim()}
                 poNumber={poNumber!.trim()}
+                userId={userId}
                 onOpenImage={(url) => setLightboxUrl(url)}
               />
             )}

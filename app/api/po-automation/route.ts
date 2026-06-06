@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { canAccessPoAutomation } from "@/lib/po-automation/guard"
 import {
   EMPTY_STATUS_COUNTS,
   type PoAutomationResponse,
@@ -33,6 +34,16 @@ function norm(value: string | null | undefined): string {
 //   (case-insensitive, trimmed) for the order-detail "PO & Fusion Entry" panel.
 // Reads po_automation.processed_pos via the service-role client (bypasses RLS).
 export async function GET(req: NextRequest) {
+  // Server-side permission gate — the service-role query below bypasses RLS, so
+  // the client-side AccessGuard / canAccess() gate is not sufficient on its own.
+  const userId = req.headers.get("x-user-id")
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  if (!(await canAccessPoAutomation(userId))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   const { searchParams } = new URL(req.url)
   const customer = searchParams.get("customer")
   const po = searchParams.get("po")

@@ -75,7 +75,7 @@ export function PoDetailPanel({ po }: { po: ProcessedPo }) {
           {t('po.detail.originalPo')}
         </h3>
         {pdfUrl ? (
-          <PdfViewer url={pdfUrl} title={t('po.detail.originalPo')} />
+          <PdfViewer key={pdfUrl} url={pdfUrl} title={t('po.detail.originalPo')} />
         ) : (
           <div className="flex h-[120px] items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
             {t('po.detail.noPdf')}

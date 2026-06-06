@@ -74,7 +74,7 @@ export function usePermissions() {
     }
   }, [])
 
-  return { canAccess, permissions, refreshPermissions }
+  return { canAccess, permissions, refreshPermissions, userId: profile?.id ?? null }
 }
 
 // Clear cache (useful after admin updates permissions)

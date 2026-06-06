@@ -8,6 +8,7 @@ import { TableSkeleton } from '@/components/ui/skeleton-loader'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
+import { useAuth } from '@/lib/auth-context'
 import { PoDetailPanel } from './PoDetailPanel'
 import type {
   PoAutomationResponse,
@@ -34,6 +35,7 @@ function fmtDate(value: string | null): string {
 
 export default function PoAutomationPage() {
   const { t } = useI18n()
+  const { user } = useAuth()
   const [data, setData] = useState<PoAutomationResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +45,10 @@ export default function PoAutomationPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/po-automation', { cache: 'no-store' })
+      const res = await fetch('/api/po-automation', {
+        cache: 'no-store',
+        headers: { 'x-user-id': user?.id || '' },
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData((await res.json()) as PoAutomationResponse)
     } catch (e) {
@@ -51,7 +56,7 @@ export default function PoAutomationPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     void load()

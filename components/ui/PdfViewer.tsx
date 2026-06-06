@@ -52,12 +52,10 @@ export function PdfViewer({ url, title, height = 420 }: PdfViewerProps) {
     return () => ro.disconnect()
   }, [])
 
-  // Reset when the source changes.
-  useEffect(() => {
-    setNumPages(0)
-    setPage(1)
-    setFailed(false)
-  }, [url])
+  // NOTE: per-document state (numPages/page/failed) is reset by remounting — the
+  // callers render <PdfViewer key={url} ... /> so a new source gives a fresh
+  // component. We deliberately do NOT reset synchronously in an effect here
+  // (that trips react-hooks/set-state-in-effect).
 
   return (
     <div className="overflow-hidden rounded-md border bg-muted/30">

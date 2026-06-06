@@ -245,17 +245,14 @@ export function DataTable<T extends Record<string, unknown>>({
   // and prevent hidden-view errors from crashing the visible view
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
-    // Use the card view on any narrow viewport (phone in portrait OR landscape),
-    // not just portrait — landscape phones are still too narrow for the full
-    // table. When a page supplies a custom `renderCard`, switch at the wider
-    // <768px breakpoint so the tailored card is used. Pages WITHOUT a custom
-    // card keep the narrower <640px threshold so the desktop table stays the
-    // default for tablets and only true phones fall back to the generic card.
-    // The table itself remains horizontally scrollable (overflow-auto) above
-    // the breakpoint. A resize listener keeps this correct across rotation.
-    const breakpoint = renderCard ? 768 : 640
+    // Card view on a true phone (narrow + portrait) — unchanged threshold so no
+    // existing page's tablet/landscape behavior shifts. The improvement here is
+    // re-checking on resize/rotation (previously it was a one-shot on mount, so
+    // rotating a phone didn't switch views). The per-page custom `renderCard`
+    // is what makes the phone card usable; the breakpoint stays at <640+portrait.
     const check = () => {
-      setIsMobile(window.innerWidth < breakpoint)
+      const portrait = window.innerHeight >= window.innerWidth
+      setIsMobile(window.innerWidth < 640 && portrait)
     }
     check()
     window.addEventListener('resize', check)
@@ -264,7 +261,7 @@ export function DataTable<T extends Record<string, unknown>>({
       window.removeEventListener('resize', check)
       window.removeEventListener('orientationchange', check)
     }
-  }, [renderCard])
+  }, [])
 
   return (
     <div className="space-y-3">
