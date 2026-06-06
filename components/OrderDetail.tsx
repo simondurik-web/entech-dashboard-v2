@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag, Inbox, ImageOff } from 'lucide-react'
+import { X, Ruler, Package, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag, Inbox, ImageOff } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
-import { PdfViewer } from '@/components/ui/PdfViewer'
+import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -32,16 +33,6 @@ interface OrderDetailProps {
   onClose: () => void
 }
 
-/** Only render/load https URLs hosted on Supabase storage. */
-function isSafeStorageUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
-
 function screenshotLabel(url: string): string {
   try {
     const file = decodeURIComponent(url.split('/').pop() ?? '')
@@ -62,20 +53,18 @@ interface PoMatch {
 
 /**
  * "PO & Fusion Entry" section for the order detail. Shows the customer's
- * original PO PDF (PdfViewer) + the Fusion entry screenshots (thumbnail gallery
- * with click-to-enlarge lightbox). Only mounted for permitted users with a
- * customer + poNumber present, so the fetch is gated by the caller.
+ * original PO PDF + the Fusion entry screenshots as compact thumbnails
+ * (PoMediaThumbs — click to expand/download). Only mounted for permitted users
+ * with a customer + poNumber present, so the fetch is gated by the caller.
  */
 function PoFusionSection({
   customer,
   poNumber,
   userId,
-  onOpenImage,
 }: {
   customer: string
   poNumber: string
   userId: string | null
-  onOpenImage: (url: string) => void
 }) {
   const { t } = useI18n()
   const [match, setMatch] = useState<PoMatch | null>(null)
@@ -111,6 +100,12 @@ function PoFusionSection({
   const screenshots = Array.isArray(match?.screenshot_urls)
     ? match!.screenshot_urls.filter((u): u is string => typeof u === 'string' && isSafeStorageUrl(u))
     : []
+  // Compact thumbnails: the PO PDF first, then the Fusion screenshots — small
+  // pallet-style tiles that expand/download in a modal on click (no more giant
+  // full-width inline PDF).
+  const media: PoMediaItem[] = []
+  if (pdfUrl) media.push({ url: pdfUrl, kind: 'pdf', label: t('po.detail.originalPo') })
+  for (const url of screenshots) media.push({ url, kind: 'image', label: screenshotLabel(url) })
 
   return (
     <div
@@ -133,47 +128,13 @@ function PoFusionSection({
         </div>
       ) : !match ? (
         <p className="text-[10px] text-muted-foreground">{t('po.detail.noRecord')}</p>
+      ) : media.length > 0 ? (
+        <PoMediaThumbs items={media} size="md" />
       ) : (
-        <div className="space-y-2">
-          {pdfUrl ? (
-            <PdfViewer key={pdfUrl} url={pdfUrl} title={t('po.detail.originalPo')} height={260} />
-          ) : (
-            <p className="text-[10px] text-muted-foreground">{t('po.detail.noPdf')}</p>
-          )}
-
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              {t('po.detail.screenshots')}
-              {screenshots.length > 0 && ` (${screenshots.length})`}
-            </p>
-            {screenshots.length > 0 ? (
-              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-                {screenshots.map((url, i) => (
-                  <button
-                    key={`${url}-${i}`}
-                    type="button"
-                    onClick={() => onOpenImage(url)}
-                    className="group relative overflow-hidden rounded border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                    title={screenshotLabel(url)}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={url}
-                      alt={screenshotLabel(url)}
-                      loading="lazy"
-                      className="h-16 w-full object-cover transition-transform group-hover:scale-105"
-                    />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <ImageOff className="size-3" />
-                {t('po.detail.noScreenshots')}
-              </p>
-            )}
-          </div>
-        </div>
+        <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <ImageOff className="size-3" />
+          {t('po.detail.noScreenshots')}
+        </p>
       )}
     </div>
   )
@@ -567,7 +528,6 @@ export function OrderDetail({
                 customer={customer!.trim()}
                 poNumber={poNumber!.trim()}
                 userId={userId}
-                onOpenImage={(url) => setLightboxUrl(url)}
               />
             )}
 
@@ -579,7 +539,6 @@ export function OrderDetail({
                 poNumber={poNumber!.trim()}
                 userId={userId}
                 variant="card"
-                onOpenImage={(url) => setLightboxUrl(url)}
               />
             )}
 

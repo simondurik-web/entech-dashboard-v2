@@ -1,37 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { FileText, ExternalLink, ImageOff, ChevronLeft, ChevronRight, Pencil, History } from 'lucide-react'
+import { FileText, ImageOff, Pencil, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
 import { usePermissions } from '@/lib/use-permissions'
-import { PdfViewer } from '@/components/ui/PdfViewer'
+import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { PoEditModal } from './PoEditModal'
 import type { ProcessedPo } from '@/lib/po-automation/types'
 import type { PoAuditEntry } from '@/lib/po-automation/edit'
-
-/**
- * Only embed/load https URLs that live on Supabase storage. Today these URLs are
- * written by our own pipeline, but the email-extraction path will eventually
- * populate them from less-trusted input — so allowlist the host and reject
- * data:/blob:/http: before rendering them in an iframe or <img>.
- */
-function isSafeStorageUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
 
 /** Friendly label for a screenshot derived from its filename. */
 function screenshotLabel(url: string): string {
@@ -59,13 +39,11 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
     : []
   const pdfUrl =
     typeof po.po_pdf_url === 'string' && isSafeStorageUrl(po.po_pdf_url) ? po.po_pdf_url : null
+  // Compact thumbnails — PO PDF first, then screenshots; expand/download in a modal.
+  const media: PoMediaItem[] = []
+  if (pdfUrl) media.push({ url: pdfUrl, kind: 'pdf', label: t('po.detail.originalPo') })
+  for (const url of screenshots) media.push({ url, kind: 'image', label: screenshotLabel(url) })
 
-  const [rawLightboxIndex, setLightboxIndex] = useState<number | null>(null)
-  // Clamp during render rather than resetting in an effect: if the gallery
-  // shrinks while open, an out-of-range index reads as closed (no setState).
-  const lightboxIndex =
-    rawLightboxIndex !== null && rawLightboxIndex >= screenshots.length ? null : rawLightboxIndex
-  const lightboxOpen = lightboxIndex !== null
   const [editOpen, setEditOpen] = useState(false)
 
   // Audit history for this PO (newest first). The fetch's setHistory calls live
@@ -86,11 +64,6 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
     loadHistory()
   }, [loadHistory])
 
-  const showPrev = () =>
-    setLightboxIndex((i) => (i === null ? null : (i - 1 + screenshots.length) % screenshots.length))
-  const showNext = () =>
-    setLightboxIndex((i) => (i === null ? null : (i + 1) % screenshots.length))
-
   const fmtDate = (value: string | null) => {
     if (!value) return ''
     const d = new Date(value)
@@ -109,64 +82,24 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {/* Original customer PO PDF */}
+      {/* PO PDF + Fusion screenshots — compact thumbnails (click to expand/download) */}
       <section className="min-w-0">
         <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
           <FileText className="size-4" />
-          {t('po.detail.originalPo')}
-        </h3>
-        {pdfUrl ? (
-          <PdfViewer key={pdfUrl} url={pdfUrl} title={t('po.detail.originalPo')} />
-        ) : (
-          <div className="flex h-[120px] items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
-            {t('po.detail.noPdf')}
-          </div>
-        )}
-      </section>
-
-      {/* Codex proof screenshots */}
-      <section className="min-w-0">
-        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-          <FileText className="size-4" />
-          {t('po.detail.screenshots')}
-          {screenshots.length > 0 && (
-            <span className="text-xs font-normal text-muted-foreground">
-              ({screenshots.length})
-            </span>
+          {t('po.detail.documentsTitle')}
+          {media.length > 0 && (
+            <span className="text-xs font-normal text-muted-foreground">({media.length})</span>
           )}
         </h3>
-        {screenshots.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {screenshots.map((url, i) => (
-              <button
-                key={`${url}-${i}`}
-                type="button"
-                onClick={() => setLightboxIndex(i)}
-                className="group relative overflow-hidden rounded-md border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring"
-                title={screenshotLabel(url)}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={url}
-                  alt={screenshotLabel(url)}
-                  loading="lazy"
-                  className="h-24 w-full object-cover transition-transform group-hover:scale-105"
-                />
-                <span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 py-0.5 text-[10px] text-white">
-                  {screenshotLabel(url)}
-                </span>
-              </button>
-            ))}
-          </div>
+        {media.length > 0 ? (
+          <PoMediaThumbs items={media} size="lg" />
         ) : (
-          <div className="flex h-[120px] items-center justify-center gap-1.5 rounded-md border border-dashed text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
             <ImageOff className="size-4" />
             {t('po.detail.noScreenshots')}
           </div>
         )}
       </section>
-      </div>
 
       {/* Bill of Lading — role-gated, full-width panel */}
       {canEdit && po.po_number && (
@@ -176,11 +109,6 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
           poNumber={po.po_number}
           userId={userId}
           variant="panel"
-          onOpenImage={(url) => {
-            // Show BOL images in the same lightbox by appending to the gallery is
-            // overkill — just open in a new tab for the panel context.
-            window.open(url, '_blank', 'noopener,noreferrer')
-          }}
         />
       )}
 
@@ -239,64 +167,6 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
           }}
         />
       )}
-
-      {/* Lightbox */}
-      <Dialog open={lightboxOpen} onOpenChange={(open) => !open && setLightboxIndex(null)}>
-        <DialogContent className="max-w-4xl gap-2">
-          <DialogTitle className="text-sm">
-            {lightboxIndex !== null ? screenshotLabel(screenshots[lightboxIndex]) : ''}
-          </DialogTitle>
-          <DialogDescription className="sr-only">{t('po.detail.screenshots')}</DialogDescription>
-          {lightboxIndex !== null && (
-            <div className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={screenshots[lightboxIndex]}
-                alt={screenshotLabel(screenshots[lightboxIndex])}
-                className="max-h-[75vh] w-full rounded-md object-contain"
-              />
-              {screenshots.length > 1 && (
-                <>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={showPrev}
-                    aria-label={t('po.detail.prev')}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 opacity-90"
-                  >
-                    <ChevronLeft className="size-5" />
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={showNext}
-                    aria-label={t('po.detail.next')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-90"
-                  >
-                    <ChevronRight className="size-5" />
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {lightboxIndex !== null ? `${lightboxIndex + 1} / ${screenshots.length}` : ''}
-            </span>
-            {lightboxIndex !== null && (
-              <a
-                href={screenshots[lightboxIndex]}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
-              >
-                <ExternalLink className="size-3.5" />
-                {t('po.detail.openFull')}
-              </a>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

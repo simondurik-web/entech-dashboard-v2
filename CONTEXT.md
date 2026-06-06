@@ -209,6 +209,8 @@ Live email thread queue for `rolltech.sales@4entech.com` emails. AI-processed, s
 
 ## Recent Activity
 
+2026-06-06 [AUTO-SUMMARY]: Confirmed Employee Scheduling list lives in Supabase `scheduling_employees` table (imported once from Google, no longer syncing — dashboard is source of truth); built "+ Add Employee" button on Scheduling → Employees tab w/ form for Employee ID, first/last name, department, shift, shift length, pay rate, saves directly to `scheduling_employees`; multi-agent review (grok-composer-2.5) done; shipped to staging badge va2f2da4.
+
 2026-06-04 [AUTO-SUMMARY]: Purchasing iterated 06-03 — PR #137 prod (show-all-cols default, dropdown-scroll fix via JS-managed scroll bypassing dialog scroll-lock); PR #138 Vanessa save fix (guard reads per-app role); PR #139 prod — editable Status dropdown audited, redundant cols removed, status quick-filter buttons, Item+Paperwork photo sections w/ restore, receive flow w/ photo warning + auto Received by, editable Notes; PR #140 phone gallery picker; PR #141 Add-photo buttons moved left.
 
 2026-06-03 [AUTO-SUMMARY]: ES Maza→Hub and Rodamientos→Baleros translations shipped to prod; Shipping Overview cards fill viewport at any zoom (flex layout replacing hardcoded vh calc); Label reprint w/ packaging selector (Pallet/Box/Gaylord) + qty edit shipped to prod; new role-gated Purchasing section under Tools&Reference — 4,739 rows from "All Data Combined" sheet w/ replicated auto-calc cols, default Molding+Melt-only filter, landscape iPhone shows full scrollable table, searchable dropdowns for Dept/SubDept/Requestor/DeliverTo/ReceivedBy.

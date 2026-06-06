@@ -2,23 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { FileText, Inbox } from 'lucide-react'
-import { PdfViewer } from '@/components/ui/PdfViewer'
+import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
-
-/** Only render/load https URLs hosted on Supabase storage. */
-function isSafeStorageUrl(url: string | null | undefined): url is string {
-  if (typeof url !== 'string') return false
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
 
 interface PoMatch {
   po_pdf_url: string | null
+  screenshot_urls: string[] | null
   so_numbers: string | null
 }
 
@@ -62,6 +53,12 @@ export function OrderPoBolSection({
   }, [customer, poNumber, userId])
 
   const pdfUrl = match && isSafeStorageUrl(match.po_pdf_url) ? match.po_pdf_url : null
+  const screenshots = Array.isArray(match?.screenshot_urls)
+    ? match!.screenshot_urls.filter((u): u is string => typeof u === 'string' && isSafeStorageUrl(u))
+    : []
+  const media: PoMediaItem[] = []
+  if (pdfUrl) media.push({ url: pdfUrl, kind: 'pdf', label: t('po.detail.originalPo') })
+  for (const url of screenshots) media.push({ url, kind: 'image' })
 
   return (
     <div className="space-y-3">
@@ -77,8 +74,8 @@ export function OrderPoBolSection({
         </div>
         {loading ? (
           <p className="text-xs text-muted-foreground">{t('ui.loading')}</p>
-        ) : pdfUrl ? (
-          <PdfViewer key={pdfUrl} url={pdfUrl} title={t('po.detail.originalPo')} height={300} />
+        ) : media.length > 0 ? (
+          <PoMediaThumbs items={media} size="lg" />
         ) : (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <FileText className="size-3.5" />
@@ -94,7 +91,6 @@ export function OrderPoBolSection({
         poNumber={poNumber}
         userId={userId}
         variant="panel"
-        onOpenImage={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
       />
     </div>
   )
