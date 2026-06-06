@@ -49,6 +49,15 @@ export function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Escape Postgres `ilike` wildcards so a lookup matches the value literally.
+ * `%`, `_` and `\` are special in LIKE/ILIKE patterns; without escaping a
+ * po_number like "PO_1" would match "PO-1", "POX1", etc.
+ */
+export function escapeLike(value: string): string {
+  return value.replace(/([%_\\])/g, '\\$1')
+}
+
 /** Normalize a string-ish field to a trimmed string or null. */
 export function str(v: unknown): string | null {
   if (v === null || v === undefined) return null
@@ -64,6 +73,24 @@ export function normalizeLineItem(raw: unknown): PoLineItem {
     description: str(li.description),
     quantity: num(li.quantity),
     unit_price: num(li.unit_price),
+  }
+}
+
+/**
+ * Merge the editable fields (item_number/description/quantity/unit_price) from
+ * an incoming raw line item into an existing stored line-item object so any
+ * other keys (UOM, totals, extraction metadata, …) are preserved. Used when
+ * persisting edits — never replace stored items with reduced 4-field objects.
+ */
+export function mergeLineItem(existing: unknown, raw: unknown): PoLineItem {
+  const base = (existing ?? {}) as Record<string, unknown>
+  const incoming = normalizeLineItem(raw)
+  return {
+    ...base,
+    item_number: incoming.item_number,
+    description: incoming.description,
+    quantity: incoming.quantity,
+    unit_price: incoming.unit_price,
   }
 }
 

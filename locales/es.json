@@ -755,6 +755,7 @@
   "po.bol.uploadError": "Error al subir",
   "po.bol.uploadedBy": "Subido por",
   "po.bol.delete": "Eliminar",
+  "po.bol.deleteConfirm": "¿Eliminar este conocimiento de embarque? Esto no se puede deshacer.",
   "po.bol.unavailable": "Archivo no disponible",
   "po.shipping.poBol": "OC / BOL"
 }

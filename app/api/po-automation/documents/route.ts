@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { canAccessPoAutomation } from '@/lib/po-automation/guard'
-import { resolvePoActor, str } from '@/lib/po-automation/edit'
+import { resolvePoActor, str, escapeLike } from '@/lib/po-automation/edit'
 import {
   PO_DOC_BUCKET,
   MAX_DOC_BYTES,
@@ -9,6 +9,7 @@ import {
   docPublicUrl,
   pathSlug,
   isAllowedDocType,
+  validatedExt,
   type OrderDocType,
 } from '@/lib/po-automation/documents'
 
@@ -29,8 +30,9 @@ function norm(v: string | null): string {
 
 /**
  * GET /api/po-automation/documents?customer=&po=  — list order documents (BOLs)
- * for an order. Matches po_number exactly (case-insensitive) and refines the
- * customer match in JS, mirroring the processed_pos lookup.
+ * for an order. Requires BOTH customer AND po to avoid leaking every doc for a
+ * PO number across customers. Matches po_number literally (case-insensitive,
+ * ilike wildcards escaped) and refines the customer match in JS.
  */
 export async function GET(req: NextRequest) {
   const gated = await gate(req)
@@ -39,24 +41,23 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams
   const customer = sp.get('customer')
   const po = sp.get('po')
-  if (!po?.trim()) return NextResponse.json({ documents: [] })
+  // Require both — never return all docs for a PO number across customers.
+  if (!po?.trim() || !customer?.trim()) return NextResponse.json({ documents: [] })
 
   const { data, error } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
     .select('*')
-    .ilike('po_number', po.trim())
+    .ilike('po_number', escapeLike(po.trim()))
     .order('created_at', { ascending: false })
   if (error) {
     console.error('[po-automation] documents fetch error:', error)
     return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 502 })
   }
 
-  // Refine by customer when provided (party casing varies upstream); if no
-  // customer is given, return all docs for the PO number.
+  // Refine by customer (party casing varies upstream).
   const wantCustomer = norm(customer)
   const rows = (data ?? []).filter((d) => {
-    if (!wantCustomer) return true
     const c = norm(d.customer)
     return c === wantCustomer || c.includes(wantCustomer) || wantCustomer.includes(c)
   })
@@ -96,26 +97,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PO number is required' }, { status: 400 })
   }
   if (!isAllowedDocType(file.type)) {
-    return NextResponse.json({ error: 'Only PDF or image files are allowed' }, { status: 400 })
+    return NextResponse.json({ error: 'Only PDF, PNG, JPEG or WebP files are allowed' }, { status: 400 })
+  }
+  // Extension must be in the allowlist AND match the declared MIME type.
+  const ext = validatedExt(file.type, file.name)
+  if (!ext) {
+    return NextResponse.json({ error: 'File extension does not match its type' }, { status: 400 })
   }
   if (file.size > MAX_DOC_BYTES) {
     return NextResponse.json({ error: 'File too large (max 25MB)' }, { status: 400 })
   }
 
-  const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'bin'
   const poSlug = pathSlug(po, 'unknown-po')
   const path = `${poSlug}/${docType}/${crypto.randomUUID()}.${ext}`
   const buf = Buffer.from(await file.arrayBuffer())
 
   const up = await supabaseAdmin.storage
     .from(PO_DOC_BUCKET)
-    .upload(path, buf, { contentType: file.type || 'application/octet-stream', upsert: true })
+    .upload(path, buf, { contentType: file.type, upsert: true })
   if (up.error) {
     return NextResponse.json({ error: up.error.message }, { status: 500 })
   }
   const fileUrl = docPublicUrl(path)
 
   const actor = await resolvePoActor(userId)
+  const fileName = file.name.slice(0, 200)
   const { data: row, error } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
@@ -125,7 +131,7 @@ export async function POST(req: NextRequest) {
       doc_type: docType,
       doc_number: docNumber,
       file_url: fileUrl,
-      file_name: file.name.slice(0, 200),
+      file_name: fileName,
       uploaded_by: userId,
       uploaded_by_name: actor.name,
       source: 'manual',
@@ -139,6 +145,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Best-effort audit trail entry for document housekeeping (po_id is null —
+  // documents aren't tied to a single processed_pos row).
+  const { error: auditErr } = await supabaseAdmin
+    .schema('po_automation')
+    .from('po_audit_log')
+    .insert({
+      po_id: null,
+      po_number: po,
+      changed_by: userId,
+      changed_by_name: actor.name,
+      changes: [{ field: 'bol_added', old: null, new: docNumber || fileName }],
+      note: null,
+    })
+  if (auditErr) console.error('[po-automation] BOL add audit error:', auditErr)
+
   return NextResponse.json({ document: row })
 }
 
@@ -146,6 +167,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const gated = await gate(req)
   if (gated instanceof NextResponse) return gated
+  const userId = gated
 
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -153,9 +175,18 @@ export async function DELETE(req: NextRequest) {
   const { data: doc } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
-    .select('file_url')
+    .select('file_url, po_number, doc_number, file_name')
     .eq('id', id)
     .single()
+
+  // Delete the DB row FIRST — a storage-removal failure then leaves an orphan
+  // object but never a DB row pointing at a missing file.
+  const { error } = await supabaseAdmin
+    .schema('po_automation')
+    .from('order_documents')
+    .delete()
+    .eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Best-effort storage cleanup — derive the object path from the public URL.
   if (doc?.file_url) {
@@ -167,12 +198,22 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  const { error } = await supabaseAdmin
-    .schema('po_automation')
-    .from('order_documents')
-    .delete()
-    .eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Best-effort audit trail entry for document housekeeping.
+  if (doc) {
+    const actor = await resolvePoActor(userId)
+    const { error: auditErr } = await supabaseAdmin
+      .schema('po_automation')
+      .from('po_audit_log')
+      .insert({
+        po_id: null,
+        po_number: doc.po_number ?? null,
+        changed_by: userId,
+        changed_by_name: actor.name,
+        changes: [{ field: 'bol_removed', old: doc.doc_number || doc.file_name || null, new: null }],
+        note: null,
+      })
+    if (auditErr) console.error('[po-automation] BOL delete audit error:', auditErr)
+  }
 
   return NextResponse.json({ ok: true })
 }

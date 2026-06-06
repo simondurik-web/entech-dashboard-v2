@@ -755,6 +755,7 @@
   "po.bol.uploadError": "Upload failed",
   "po.bol.uploadedBy": "Uploaded by",
   "po.bol.delete": "Delete",
+  "po.bol.deleteConfirm": "Delete this bill of lading? This can't be undone.",
   "po.bol.unavailable": "File unavailable",
   "po.shipping.poBol": "PO / BOL"
 }

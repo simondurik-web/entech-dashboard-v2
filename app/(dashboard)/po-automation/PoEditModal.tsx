@@ -3,7 +3,14 @@
 import { useState } from 'react'
 import { Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { useI18n } from '@/lib/i18n'
 import type { ProcessedPo, PoStatus, PoEnteredVia } from '@/lib/po-automation/types'
 import type { PoLineItem } from '@/lib/po-automation/edit'
@@ -45,8 +52,9 @@ function payloadLines(po: ProcessedPo): EditableLine[] {
 
 /**
  * Edit modal for a PO record. Edits correctable top-level fields + payload
- * line items, plus an optional note. Sends a JSON PATCH (field/line edits) and,
- * if a PDF was chosen, a separate multipart PATCH to replace the PO PDF.
+ * line items, plus an optional note. Sends ONE multipart PATCH carrying the
+ * edit JSON (as a `payload` form field) plus the optional replacement PDF, so
+ * the server applies everything atomically as a single audited change.
  */
 export function PoEditModal({
   po,
@@ -103,30 +111,19 @@ export function PoEditModal({
         })),
         note: note.trim() || null,
       }
+      // ONE multipart PATCH: edit JSON as a `payload` field + optional new PDF,
+      // so the server applies + audits everything atomically.
+      const fd = new FormData()
+      fd.append('payload', JSON.stringify(body))
+      if (pdfFile) fd.append('file', pdfFile)
       const res = await fetch(`/api/po-automation/${po.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId || '' },
-        body: JSON.stringify(body),
+        headers: { 'x-user-id': userId || '' },
+        body: fd,
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j?.error || `HTTP ${res.status}`)
-      }
-
-      // Replace the PO PDF separately if a file was chosen (multipart branch).
-      if (pdfFile) {
-        const fd = new FormData()
-        fd.append('file', pdfFile)
-        if (note.trim()) fd.append('note', note.trim())
-        const pres = await fetch(`/api/po-automation/${po.id}`, {
-          method: 'PATCH',
-          headers: { 'x-user-id': userId || '' },
-          body: fd,
-        })
-        if (!pres.ok) {
-          const j = await pres.json().catch(() => ({}))
-          throw new Error(j?.error || `HTTP ${pres.status}`)
-        }
       }
 
       onSaved()
@@ -148,6 +145,7 @@ export function PoEditModal({
           <DialogTitle className="text-base">
             {t('po.edit.title')} {po.po_number || ''}
           </DialogTitle>
+          <DialogDescription className="sr-only">{t('po.edit.title')}</DialogDescription>
         </DialogHeader>
 
         <div data-lenis-prevent className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -212,7 +210,7 @@ export function PoEditModal({
             <div className="space-y-2">
               {lines.length === 0 && <p className="text-xs text-muted-foreground">{t('po.edit.noLines')}</p>}
               {lines.map((l, i) => (
-                <div key={i} className="grid grid-cols-12 gap-1.5">
+                <div key={i} className="grid grid-cols-6 gap-1.5 sm:grid-cols-12">
                   <input
                     className="col-span-3 rounded border bg-background px-1.5 py-1 text-xs"
                     placeholder={t('po.edit.itemNumber')}
@@ -220,20 +218,20 @@ export function PoEditModal({
                     onChange={(e) => updateLine(i, 'item_number', e.target.value)}
                   />
                   <input
-                    className="col-span-5 rounded border bg-background px-1.5 py-1 text-xs"
+                    className="col-span-3 rounded border bg-background px-1.5 py-1 text-xs sm:col-span-5"
                     placeholder={t('po.edit.description')}
                     value={l.description}
                     onChange={(e) => updateLine(i, 'description', e.target.value)}
                   />
                   <input
-                    className="col-span-1 rounded border bg-background px-1.5 py-1 text-xs"
+                    className="col-span-2 rounded border bg-background px-1.5 py-1 text-xs sm:col-span-1"
                     placeholder={t('po.edit.qty')}
                     value={l.quantity}
                     inputMode="decimal"
                     onChange={(e) => updateLine(i, 'quantity', e.target.value)}
                   />
                   <input
-                    className="col-span-2 rounded border bg-background px-1.5 py-1 text-xs"
+                    className="col-span-3 rounded border bg-background px-1.5 py-1 text-xs sm:col-span-2"
                     placeholder={t('po.edit.unitPrice')}
                     value={l.unit_price}
                     inputMode="decimal"

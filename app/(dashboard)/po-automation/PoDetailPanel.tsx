@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
@@ -245,6 +246,7 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
           <DialogTitle className="text-sm">
             {lightboxIndex !== null ? screenshotLabel(screenshots[lightboxIndex]) : ''}
           </DialogTitle>
+          <DialogDescription className="sr-only">{t('po.detail.screenshots')}</DialogDescription>
           {lightboxIndex !== null && (
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}

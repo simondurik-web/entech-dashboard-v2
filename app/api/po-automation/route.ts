@@ -7,6 +7,7 @@ import {
   type PoStatus,
   type ProcessedPo,
 } from "@/lib/po-automation/types"
+import { escapeLike } from "@/lib/po-automation/edit"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -127,7 +128,7 @@ async function lookupSingle(
       .schema("po_automation")
       .from("processed_pos")
       .select("po_pdf_url, screenshot_urls, so_numbers, status, party, po_number")
-      .ilike("po_number", po.trim())
+      .ilike("po_number", escapeLike(po.trim()))
       .order("created_at", { ascending: false })
       .limit(50)
 

@@ -50,8 +50,13 @@ export function BillOfLadingSection({
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // Bumped on every (re)load to invalidate in-flight responses — a stale fetch
+  // (e.g. one started before an upload/delete) must not overwrite a newer list.
+  const loadSeq = useRef(0)
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
+    const active = () => seq === loadSeq.current
     setLoading(true)
     try {
       const qs = new URLSearchParams({ customer, po: poNumber }).toString()
@@ -60,11 +65,11 @@ export function BillOfLadingSection({
         cache: 'no-store',
       })
       const data = res.ok ? await res.json() : { documents: [] }
-      setDocs(Array.isArray(data?.documents) ? data.documents : [])
+      if (active()) setDocs(Array.isArray(data?.documents) ? data.documents : [])
     } catch {
-      setDocs([])
+      if (active()) setDocs([])
     } finally {
-      setLoading(false)
+      if (active()) setLoading(false)
     }
   }, [customer, poNumber, userId])
 
@@ -113,6 +118,7 @@ export function BillOfLadingSection({
 
   const handleDelete = useCallback(
     async (id: string) => {
+      if (!window.confirm(t('po.bol.deleteConfirm'))) return
       try {
         const res = await fetch(`/api/po-automation/documents?id=${encodeURIComponent(id)}`, {
           method: 'DELETE',
@@ -123,7 +129,7 @@ export function BillOfLadingSection({
         /* ignore */
       }
     },
-    [userId, load]
+    [userId, load, t]
   )
 
   const isPanel = variant === 'panel'
@@ -190,7 +196,7 @@ export function BillOfLadingSection({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={doc.file_url!}
-                          alt={doc.file_name || 'BOL'}
+                          alt={doc.file_name || t('po.bol.title')}
                           loading="lazy"
                           className="max-h-48 w-full object-contain transition-transform group-hover:scale-[1.02]"
                         />
@@ -220,7 +226,7 @@ export function BillOfLadingSection({
               <input
                 ref={fileRef}
                 type="file"
-                accept="application/pdf,image/*"
+                accept="application/pdf,image/png,image/jpeg,image/webp"
                 className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-amber-500/15 file:px-2 file:py-1 file:text-xs file:text-amber-600"
               />
               <input
