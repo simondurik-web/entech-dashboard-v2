@@ -3,27 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollText, Upload, Trash2, ImageIcon, Loader2 } from 'lucide-react'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
 import type { OrderDocument } from '@/lib/po-automation/documents'
-
-/** Only render/load https URLs hosted on Supabase storage. */
-function isSafeStorageUrl(url: string | null | undefined): url is string {
-  if (typeof url !== 'string') return false
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
 
 function isPdf(doc: OrderDocument): boolean {
   return /\.pdf($|\?)/i.test(doc.file_url ?? '') || /\.pdf$/i.test(doc.file_name ?? '')
 }
 
 /**
- * Bill of Lading section — lists any BOLs for an order (PdfViewer for PDFs,
- * <img> for images) and exposes an "Add BOL" upload control. Role-gated by the
+ * Bill of Lading section — lists any BOLs for an order as compact thumbnails
+ * (PoMediaThumbs — click to expand/download) and exposes an "Add BOL" upload
+ * control with per-doc number/notes/delete. Role-gated by the
  * caller (only mounted for users who can access /po-automation), so the fetch
  * never fires for unpermitted users. Reused by OrderDetail + PoDetailPanel.
  */

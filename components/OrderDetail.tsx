@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag, Inbox, ImageOff } from 'lucide-react'
+import { X, Ruler, Package, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag, Inbox, ImageOff } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -32,16 +33,6 @@ interface OrderDetailProps {
   onClose: () => void
 }
 
-/** Only render/load https URLs hosted on Supabase storage. */
-function isSafeStorageUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
-
 function screenshotLabel(url: string): string {
   try {
     const file = decodeURIComponent(url.split('/').pop() ?? '')
@@ -62,9 +53,9 @@ interface PoMatch {
 
 /**
  * "PO & Fusion Entry" section for the order detail. Shows the customer's
- * original PO PDF (PdfViewer) + the Fusion entry screenshots (thumbnail gallery
- * with click-to-enlarge lightbox). Only mounted for permitted users with a
- * customer + poNumber present, so the fetch is gated by the caller.
+ * original PO PDF + the Fusion entry screenshots as compact thumbnails
+ * (PoMediaThumbs — click to expand/download). Only mounted for permitted users
+ * with a customer + poNumber present, so the fetch is gated by the caller.
  */
 function PoFusionSection({
   customer,

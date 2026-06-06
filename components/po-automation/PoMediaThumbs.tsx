@@ -53,8 +53,8 @@ export function PoMediaThumbs({
             type="button"
             onClick={() => setOpenIdx(i)}
             title={it.label || (it.kind === 'pdf' ? 'PDF' : '')}
-            aria-label={it.label || (it.kind === 'pdf' ? 'PDF' : t('po.detail.screenshots'))}
-            className="relative shrink-0 overflow-hidden rounded-md border bg-muted/40 transition-transform hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label={it.label || (it.kind === 'pdf' ? 'PDF' : `${t('po.detail.screenshots')} ${i + 1}`)}
+            className="relative shrink-0 overflow-hidden rounded-lg border bg-muted/40 transition-transform hover:scale-110 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
             style={{ width: px, height: px }}
           >
             {it.kind === 'image' ? (
@@ -75,15 +75,15 @@ export function PoMediaThumbs({
         ))}
       </div>
 
-      <Dialog open={openIdx !== null} onOpenChange={(o) => !o && setOpenIdx(null)}>
-        <DialogContent className="max-w-4xl gap-2">
+      <Dialog open={open !== null} onOpenChange={(o) => !o && setOpenIdx(null)}>
+        <DialogContent className="max-h-[85vh] max-w-4xl gap-2 overflow-y-auto">
           <DialogTitle className="text-sm">
             {open?.label || (open?.kind === 'pdf' ? t('po.detail.originalPo') : t('po.detail.screenshots'))}
           </DialogTitle>
           <DialogDescription className="sr-only">{t('po.media.previewDesc')}</DialogDescription>
           {open &&
             (open.kind === 'pdf' ? (
-              <PdfViewer key={open.url} url={open.url} title={open.label} height={600} />
+              <PdfViewer key={open.url} url={open.url} title={open.label} height={520} />
             ) : (
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -120,7 +120,9 @@ export function PoMediaThumbs({
                 </>
               )}
             </div>
-            {open && (
+            {/* PDFs already expose Open + Download in the PdfViewer toolbar — only
+                add these for the image branch to avoid a duplicate pair. */}
+            {open && open.kind === 'image' && (
               <div className="flex items-center gap-3">
                 <a
                   href={open.url}

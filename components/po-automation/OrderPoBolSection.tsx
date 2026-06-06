@@ -4,18 +4,8 @@ import { useEffect, useState } from 'react'
 import { FileText, Inbox } from 'lucide-react'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
-
-/** Only render/load https URLs hosted on Supabase storage. */
-function isSafeStorageUrl(url: string | null | undefined): url is string {
-  if (typeof url !== 'string') return false
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
 
 interface PoMatch {
   po_pdf_url: string | null

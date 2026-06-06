@@ -8,24 +8,10 @@ import { useAuth } from '@/lib/auth-context'
 import { usePermissions } from '@/lib/use-permissions'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { PoEditModal } from './PoEditModal'
 import type { ProcessedPo } from '@/lib/po-automation/types'
 import type { PoAuditEntry } from '@/lib/po-automation/edit'
-
-/**
- * Only embed/load https URLs that live on Supabase storage. Today these URLs are
- * written by our own pipeline, but the email-extraction path will eventually
- * populate them from less-trusted input — so allowlist the host and reject
- * data:/blob:/http: before rendering them in an iframe or <img>.
- */
-function isSafeStorageUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
-  } catch {
-    return false
-  }
-}
 
 /** Friendly label for a screenshot derived from its filename. */
 function screenshotLabel(url: string): string {
