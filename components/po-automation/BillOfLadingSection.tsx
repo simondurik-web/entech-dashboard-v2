@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollText, Upload, Trash2, ImageIcon, Loader2 } from 'lucide-react'
-import { PdfViewer } from '@/components/ui/PdfViewer'
+import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { useI18n } from '@/lib/i18n'
 import type { OrderDocument } from '@/lib/po-automation/documents'
 
@@ -32,14 +32,12 @@ export function BillOfLadingSection({
   poNumber,
   userId,
   variant = 'card',
-  onOpenImage,
 }: {
   customer: string
   poNumber: string
   userId: string | null
-  /** 'card' = compact cyan-style card (OrderDetail); 'panel' = full-width (PoDetailPanel). */
+  /** 'card' = compact amber card (OrderDetail); 'panel' = wider (PoDetailPanel). */
   variant?: 'card' | 'panel'
-  onOpenImage?: (url: string) => void
 }) {
   const { t } = useI18n()
   const [docs, setDocs] = useState<OrderDocument[]>([])
@@ -133,7 +131,6 @@ export function BillOfLadingSection({
   )
 
   const isPanel = variant === 'panel'
-  const pdfHeight = isPanel ? 420 : 260
   const textXs = isPanel ? 'text-xs' : 'text-[10px]'
 
   return (
@@ -160,54 +157,43 @@ export function BillOfLadingSection({
           ) : (
             docs.map((doc) => {
               const safe = isSafeStorageUrl(doc.file_url)
+              const label = doc.doc_number
+                ? `${t('po.bol.number')} ${doc.doc_number}`
+                : doc.file_name || t('po.bol.title')
+              const media: PoMediaItem[] = safe
+                ? [{ url: doc.file_url!, kind: isPdf(doc) ? 'pdf' : 'image', label }]
+                : []
               return (
-                <div key={doc.id} className="rounded-md border bg-background/60 p-2">
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className={`truncate font-medium ${isPanel ? 'text-xs' : 'text-[11px]'}`}>
-                        {doc.doc_number ? `${t('po.bol.number')} ${doc.doc_number}` : doc.file_name || t('po.bol.title')}
-                      </p>
-                      {doc.notes && <p className={`truncate ${textXs} text-muted-foreground`}>{doc.notes}</p>}
-                      {doc.uploaded_by_name && (
-                        <p className={`${textXs} text-muted-foreground`}>
-                          {t('po.bol.uploadedBy')} {doc.uploaded_by_name}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(doc.id)}
-                      aria-label={t('po.bol.delete')}
-                      title={t('po.bol.delete')}
-                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </div>
+                <div key={doc.id} className="flex items-start gap-2 rounded-md border bg-background/60 p-2">
+                  {/* Small thumbnail — click to expand/download */}
                   {safe ? (
-                    isPdf(doc) ? (
-                      <PdfViewer key={doc.file_url!} url={doc.file_url!} title={doc.file_name || t('po.bol.title')} height={pdfHeight} />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onOpenImage?.(doc.file_url!)}
-                        className="group block w-full overflow-hidden rounded border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={doc.file_url!}
-                          alt={doc.file_name || t('po.bol.title')}
-                          loading="lazy"
-                          className="max-h-48 w-full object-contain transition-transform group-hover:scale-[1.02]"
-                        />
-                      </button>
-                    )
+                    <PoMediaThumbs items={media} size={isPanel ? 'md' : 'sm'} />
                   ) : (
-                    <p className={`flex items-center gap-1.5 ${textXs} text-muted-foreground`}>
-                      <ImageIcon className="size-3" />
-                      {t('po.bol.unavailable')}
-                    </p>
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+                      <ImageIcon className="size-4" />
+                    </div>
                   )}
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate font-medium ${isPanel ? 'text-xs' : 'text-[11px]'}`}>{label}</p>
+                    {doc.notes && <p className={`truncate ${textXs} text-muted-foreground`}>{doc.notes}</p>}
+                    {doc.uploaded_by_name && (
+                      <p className={`${textXs} text-muted-foreground`}>
+                        {t('po.bol.uploadedBy')} {doc.uploaded_by_name}
+                      </p>
+                    )}
+                    {!safe && (
+                      <p className={`${textXs} text-muted-foreground`}>{t('po.bol.unavailable')}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(doc.id)}
+                    aria-label={t('po.bol.delete')}
+                    title={t('po.bol.delete')}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </div>
               )
             })

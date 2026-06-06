@@ -704,6 +704,8 @@
   "po.empty.subtitle": "Las OC aparecerán aquí a medida que la automatización procese el buzón de monitoreo.",
   "po.col.proof": "Comprobante",
   "po.detail.originalPo": "OC Original",
+  "po.detail.documentsTitle": "OC y Capturas",
+  "po.media.previewDesc": "Vista previa del documento",
   "po.detail.openPdf": "Abrir PDF",
   "po.detail.noPdf": "No hay PDF de OC adjunto",
   "po.detail.screenshots": "Capturas de Comprobante",

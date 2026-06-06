@@ -704,6 +704,8 @@
   "po.empty.subtitle": "POs will appear here as the automation processes the monitoring inbox.",
   "po.col.proof": "Proof",
   "po.detail.originalPo": "Original PO",
+  "po.detail.documentsTitle": "PO & Screenshots",
+  "po.media.previewDesc": "Document preview",
   "po.detail.openPdf": "Open PDF",
   "po.detail.noPdf": "No PO PDF attached",
   "po.detail.screenshots": "Proof Screenshots",
