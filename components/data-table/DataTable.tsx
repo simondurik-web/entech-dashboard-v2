@@ -245,8 +245,11 @@ export function DataTable<T extends Record<string, unknown>>({
   // and prevent hidden-view errors from crashing the visible view
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
-    // Card view only on narrow PORTRAIT phones. In landscape, always show the
-    // full (horizontally scrollable) table — rotating the phone reveals it.
+    // Card view on a true phone (narrow + portrait) — unchanged threshold so no
+    // existing page's tablet/landscape behavior shifts. The improvement here is
+    // re-checking on resize/rotation (previously it was a one-shot on mount, so
+    // rotating a phone didn't switch views). The per-page custom `renderCard`
+    // is what makes the phone card usable; the breakpoint stays at <640+portrait.
     const check = () => {
       const portrait = window.innerHeight >= window.innerWidth
       setIsMobile(window.innerWidth < 640 && portrait)

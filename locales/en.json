@@ -710,5 +710,16 @@
   "po.detail.noScreenshots": "No screenshots captured",
   "po.detail.openFull": "Open full size",
   "po.detail.prev": "Previous",
-  "po.detail.next": "Next"
+  "po.detail.next": "Next",
+  "po.detail.poFusionEntry": "PO & Fusion Entry",
+  "po.detail.noRecord": "No PO automation record matched for this customer + PO.",
+  "po.detail.soNumbers": "SO #",
+  "po.col.proofShort": "Proof",
+  "po.card.party": "Customer / Vendor",
+  "po.card.so": "SO #",
+  "pdf.open": "Open",
+  "pdf.download": "Download",
+  "pdf.prevPage": "Previous page",
+  "pdf.nextPage": "Next page",
+  "pdf.cannotPreview": "Couldn't preview this PDF inline."
 }

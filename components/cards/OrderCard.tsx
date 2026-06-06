@@ -143,6 +143,8 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                customer={order.customer}
+                poNumber={order.poNumber}
                 onClose={onToggle}
               />
             )}

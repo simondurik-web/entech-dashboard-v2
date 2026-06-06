@@ -320,6 +320,8 @@ function StagedPageContent() {
                   tirePartNum={order.tire}
                   hubPartNum={order.hub}
                   partNumber={order.partNumber}
+                  customer={order.customer}
+                  poNumber={order.poNumber}
                   canEdit={canEditPallets}
                   userName={profile?.full_name || ''}
                   onClose={() => setExpandedOrderKey(null)}

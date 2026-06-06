@@ -8,6 +8,7 @@ import { TableSkeleton } from '@/components/ui/skeleton-loader'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
+import { useAuth } from '@/lib/auth-context'
 import { PoDetailPanel } from './PoDetailPanel'
 import type {
   PoAutomationResponse,
@@ -34,6 +35,7 @@ function fmtDate(value: string | null): string {
 
 export default function PoAutomationPage() {
   const { t } = useI18n()
+  const { user } = useAuth()
   const [data, setData] = useState<PoAutomationResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +45,10 @@ export default function PoAutomationPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/po-automation', { cache: 'no-store' })
+      const res = await fetch('/api/po-automation', {
+        cache: 'no-store',
+        headers: { 'x-user-id': user?.id || '' },
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData((await res.json()) as PoAutomationResponse)
     } catch (e) {
@@ -51,7 +56,7 @@ export default function PoAutomationPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     void load()
@@ -244,6 +249,63 @@ export default function PoAutomationPage() {
             setExpandedId((cur) => (cur === id ? null : id))
           }}
           renderExpandedContent={(row) => <PoDetailPanel po={row as ProcessedPo} />}
+          renderCard={(row) => {
+            const r = row as ProcessedPo
+            const expanded = expandedId === r.id
+            const shots = Array.isArray(r.screenshot_urls) ? r.screenshot_urls.length : 0
+            const hasPdf = typeof r.po_pdf_url === 'string' && r.po_pdf_url.length > 0
+            return (
+              <Card className="border-l-4">
+                <CardContent className="space-y-2 px-4 pb-3 pt-4">
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => setExpandedId((cur) => (cur === r.id ? null : r.id))}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold">{r.po_number || '—'}</p>
+                      <span className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status] ?? ''}`}>
+                        {statusLabel(r.status)}
+                      </span>
+                    </div>
+                    <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm text-muted-foreground">
+                      <span className="col-span-2">
+                        {t('po.card.party')}: <span className="text-foreground">{r.party || '—'}</span>
+                        {r.party_type !== 'unknown' && (
+                          <span className="ml-1 text-xs">({t(`po.partyType.${r.party_type}`)})</span>
+                        )}
+                      </span>
+                      <span>{t('po.card.so')}: <span className="text-foreground">{r.so_numbers || '—'}</span></span>
+                      <span className="inline-flex items-center gap-2">
+                        {t('po.col.proofShort')}:{' '}
+                        {hasPdf || shots > 0 ? (
+                          <span className="inline-flex items-center gap-2 text-foreground">
+                            {hasPdf && (
+                              <span className="inline-flex items-center gap-0.5">
+                                <Paperclip className="size-3.5" />PDF
+                              </span>
+                            )}
+                            {shots > 0 && (
+                              <span className="inline-flex items-center gap-0.5">
+                                <ImageIcon className="size-3.5" />{shots}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-foreground">—</span>
+                        )}
+                      </span>
+                    </div>
+                  </button>
+                  {expanded && (
+                    <div className="border-t pt-3">
+                      <PoDetailPanel po={r} />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          }}
         />
       )}
     </div>

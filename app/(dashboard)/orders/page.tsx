@@ -649,6 +649,8 @@ function OrdersPageContent() {
                 partNumber={order.partNumber}
                 tirePartNum={order.tire}
                 hubPartNum={order.hub}
+                customer={order.customer}
+                poNumber={order.poNumber}
                 canEdit={canEditPallets}
                 userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}

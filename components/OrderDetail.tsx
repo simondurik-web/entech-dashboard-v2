@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag } from 'lucide-react'
+import { X, Ruler, Package, FileText, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag, Inbox, ImageOff } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
+import { PdfViewer } from '@/components/ui/PdfViewer'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
+import { usePermissions } from '@/lib/use-permissions'
 import { PalletEditModal, type EditablePallet } from '@/components/PalletEditModal'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import type { LabelData } from '@/lib/label-utils'
@@ -20,9 +22,160 @@ interface OrderDetailProps {
   tirePartNum?: string
   hubPartNum?: string
   partNumber?: string
+  /** Customer name — used to look up the matching PO automation record. */
+  customer?: string
+  /** Customer PO number — used to look up the matching PO automation record. */
+  poNumber?: string
   canEdit?: boolean
   userName?: string
   onClose: () => void
+}
+
+/** Only render/load https URLs hosted on Supabase storage. */
+function isSafeStorageUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && u.hostname.endsWith('.supabase.co')
+  } catch {
+    return false
+  }
+}
+
+function screenshotLabel(url: string): string {
+  try {
+    const file = decodeURIComponent(url.split('/').pop() ?? '')
+    return file.replace(/\.[a-z0-9]+$/i, '')
+  } catch {
+    return url
+  }
+}
+
+interface PoMatch {
+  po_pdf_url: string | null
+  screenshot_urls: string[] | null
+  so_numbers: string | null
+  status: string
+  party: string | null
+  po_number: string | null
+}
+
+/**
+ * "PO & Fusion Entry" section for the order detail. Shows the customer's
+ * original PO PDF (PdfViewer) + the Fusion entry screenshots (thumbnail gallery
+ * with click-to-enlarge lightbox). Only mounted for permitted users with a
+ * customer + poNumber present, so the fetch is gated by the caller.
+ */
+function PoFusionSection({
+  customer,
+  poNumber,
+  userId,
+  onOpenImage,
+}: {
+  customer: string
+  poNumber: string
+  userId: string | null
+  onOpenImage: (url: string) => void
+}) {
+  const { t } = useI18n()
+  const [match, setMatch] = useState<PoMatch | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // The caller remounts this component via a key on (customer, poNumber), so the
+  // initial state (loading=true, match=null) already resets per lookup — we do
+  // NOT reset synchronously here (that triggers react-hooks/set-state-in-effect).
+  // All state updates happen inside async callbacks, which is allowed.
+  useEffect(() => {
+    let active = true
+    const qs = new URLSearchParams({ customer, po: poNumber }).toString()
+    fetch(`/api/po-automation?${qs}`, { headers: { 'x-user-id': userId || '' } })
+      .then((r) => (r.ok ? r.json() : { match: null }))
+      .then((data) => {
+        if (active) setMatch(data?.match ?? null)
+      })
+      .catch(() => {
+        if (active) setMatch(null)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [customer, poNumber, userId])
+
+  const pdfUrl =
+    match && typeof match.po_pdf_url === 'string' && isSafeStorageUrl(match.po_pdf_url)
+      ? match.po_pdf_url
+      : null
+  const screenshots = Array.isArray(match?.screenshot_urls)
+    ? match!.screenshot_urls.filter((u): u is string => typeof u === 'string' && isSafeStorageUrl(u))
+    : []
+
+  return (
+    <div
+      className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-2.5"
+      style={{ borderTopWidth: 2, borderTopColor: 'rgb(6, 182, 212)' }}
+    >
+      <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-cyan-400">
+        <Inbox className="size-3" /> {t('po.detail.poFusionEntry')}
+        {match?.so_numbers && (
+          <span className="ml-auto rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px]">
+            {t('po.detail.soNumbers')} {match.so_numbers}
+          </span>
+        )}
+      </h4>
+
+      {loading ? (
+        <div className="flex items-center gap-2 py-2 text-[10px] text-muted-foreground">
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+          {t('ui.loading')}
+        </div>
+      ) : !match ? (
+        <p className="text-[10px] text-muted-foreground">{t('po.detail.noRecord')}</p>
+      ) : (
+        <div className="space-y-2">
+          {pdfUrl ? (
+            <PdfViewer key={pdfUrl} url={pdfUrl} title={t('po.detail.originalPo')} height={260} />
+          ) : (
+            <p className="text-[10px] text-muted-foreground">{t('po.detail.noPdf')}</p>
+          )}
+
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              {t('po.detail.screenshots')}
+              {screenshots.length > 0 && ` (${screenshots.length})`}
+            </p>
+            {screenshots.length > 0 ? (
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                {screenshots.map((url, i) => (
+                  <button
+                    key={`${url}-${i}`}
+                    type="button"
+                    onClick={() => onOpenImage(url)}
+                    className="group relative overflow-hidden rounded border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    title={screenshotLabel(url)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={screenshotLabel(url)}
+                      loading="lazy"
+                      className="h-16 w-full object-cover transition-transform group-hover:scale-105"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <ImageOff className="size-3" />
+                {t('po.detail.noScreenshots')}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function normalize(value: string | undefined): string {
@@ -111,11 +264,18 @@ export function OrderDetail({
   tirePartNum,
   hubPartNum,
   partNumber,
+  customer,
+  poNumber,
   canEdit = false,
   userName = '',
   onClose,
 }: OrderDetailProps) {
   const { t } = useI18n()
+  const { canAccess, userId } = usePermissions()
+  // Only users who can access the PO Automation page see the PO & Fusion Entry
+  // section, and only when we have a customer + PO to look up. Gating here means
+  // the fetch never fires for unpermitted users or rows without the keys.
+  const showPoSection = canAccess('/po-automation') && !!customer?.trim() && !!poNumber?.trim()
   const [pallets, setPallets] = useState<PalletRecord[]>([])
   const [shipping, setShipping] = useState<ShippingRecord[]>([])
   const [staged, setStaged] = useState<StagedRecord[]>([])
@@ -398,6 +558,17 @@ export function OrderDetail({
                 )}
               </div>
             </div>
+
+            {/* ── PO & Fusion Entry — role-gated (PO Automation access) ── */}
+            {showPoSection && (
+              <PoFusionSection
+                key={`${customer!.trim()}|${poNumber!.trim()}`}
+                customer={customer!.trim()}
+                poNumber={poNumber!.trim()}
+                userId={userId}
+                onOpenImage={(url) => setLightboxUrl(url)}
+              />
+            )}
 
             {/* ── Pallet Records — compact collapsible table ── */}
             {pallets.length === 0 && canEdit && (
