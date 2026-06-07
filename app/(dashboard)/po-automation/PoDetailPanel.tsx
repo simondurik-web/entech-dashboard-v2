@@ -83,7 +83,7 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
   const emailSubject = emailStr('subject')
   const retrievedAt = emailStr('retrieved_at')
   const emailDate = emailStr('email_date')
-  const hasEmailInfo = Boolean(sourceInbox || emailFrom || retrievedAt || emailSubject)
+  const hasEmailInfo = Boolean(sourceInbox || emailFrom || retrievedAt || emailSubject || emailDate)
 
   return (
     <div className="space-y-4">
@@ -142,16 +142,18 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
                 <dd className="min-w-0 break-words">{emailSubject}</dd>
               </>
             )}
+            {/* Chronological: when the customer sent it, then when our automation pulled it.
+                email_date is an RFC-2822 header string — format it, falling back to raw. */}
+            {emailDate && (
+              <>
+                <dt className="text-muted-foreground">{t('po.detail.emailDate')}</dt>
+                <dd className="min-w-0 break-words">{fmtDate(emailDate) || emailDate}</dd>
+              </>
+            )}
             {retrievedAt && (
               <>
                 <dt className="text-muted-foreground">{t('po.detail.emailRetrieved')}</dt>
                 <dd>{fmtDate(retrievedAt)}</dd>
-              </>
-            )}
-            {emailDate && (
-              <>
-                <dt className="text-muted-foreground">{t('po.detail.emailDate')}</dt>
-                <dd>{emailDate}</dd>
               </>
             )}
           </dl>

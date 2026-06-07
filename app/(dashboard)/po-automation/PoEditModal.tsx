@@ -23,6 +23,13 @@ const STATUSES: PoStatus[] = [
   'failed',
   'skipped_duplicate',
   'manual_override',
+  // Supervised-flow statuses the poller/bridge set. Included so opening the edit
+  // modal on one of these rows doesn't drop it to a fallback option and clobber the
+  // status on save (the <select value> must have a matching <option>).
+  'pending_confirmation',
+  'revision_pending',
+  'revision_pending_confirmation',
+  'manual_correction_flagged',
 ]
 const VIAS: PoEnteredVia[] = ['data_api', 'codex_ui', 'phil_backup', 'manual']
 

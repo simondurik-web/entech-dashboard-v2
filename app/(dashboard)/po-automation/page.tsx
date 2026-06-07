@@ -26,8 +26,11 @@ const STATUS_STYLES: Record<PoStatus, string> = {
   skipped_duplicate: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   manual_override: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   pending_confirmation: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-  revision_pending: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  revision_pending_confirmation: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  // Revision family = cool teal/cyan, kept clear of amber (skipped_duplicate) so a
+  // "Revision" badge can't be mistaken for "Duplicate"; the two revision states use
+  // distinct teal vs cyan shades so color (not just label) separates them.
+  revision_pending: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+  revision_pending_confirmation: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   manual_correction_flagged: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
 }
 
