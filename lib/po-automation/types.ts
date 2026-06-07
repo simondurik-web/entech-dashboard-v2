@@ -12,6 +12,11 @@ export type PoStatus =
   | "failed"
   | "skipped_duplicate"
   | "manual_override"
+  // Supervised-flow statuses written by the orchestrator/bridge:
+  | "pending_confirmation" // card posted, awaiting human ✅/❌
+  | "revision_pending" // a changed re-send detected, card not yet posted
+  | "revision_pending_confirmation" // revision card posted, awaiting ✅/🔧/❌
+  | "manual_correction_flagged" // 🔧 — human will correct the existing Fusion order
 
 export type PoEnteredVia = "data_api" | "codex_ui" | "phil_backup" | "manual"
 
@@ -67,4 +72,8 @@ export const EMPTY_STATUS_COUNTS: Record<PoStatus, number> = {
   failed: 0,
   skipped_duplicate: 0,
   manual_override: 0,
+  pending_confirmation: 0,
+  revision_pending: 0,
+  revision_pending_confirmation: 0,
+  manual_correction_flagged: 0,
 }

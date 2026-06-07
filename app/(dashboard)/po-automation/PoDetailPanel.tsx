@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { FileText, ImageOff, Pencil, History } from 'lucide-react'
+import { FileText, ImageOff, Pencil, History, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
@@ -70,6 +70,21 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
   }
 
+  // Source-email metadata: where the PO was retrieved from and when. The orchestrator
+  // stores this under payload._email; source_inbox is also a top-level column. Older
+  // POs (entered before this was captured) won't have it, so the section self-hides.
+  const emailMeta = (po.payload?._email ?? null) as Record<string, unknown> | null
+  const emailStr = (k: string): string => {
+    const v = emailMeta?.[k]
+    return typeof v === 'string' ? v : ''
+  }
+  const sourceInbox = emailStr('inbox') || (typeof po.source_inbox === 'string' ? po.source_inbox : '')
+  const emailFrom = emailStr('from') || emailStr('sender')
+  const emailSubject = emailStr('subject')
+  const retrievedAt = emailStr('retrieved_at')
+  const emailDate = emailStr('email_date')
+  const hasEmailInfo = Boolean(sourceInbox || emailFrom || retrievedAt || emailSubject)
+
   return (
     <div className="space-y-4">
       {/* Edit toolbar — only for users who can access /po-automation */}
@@ -100,6 +115,48 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
           </div>
         )}
       </section>
+
+      {/* Source email — where this PO came from and when we retrieved it */}
+      {hasEmailInfo && (
+        <section className="min-w-0">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+            <Mail className="size-4" />
+            {t('po.detail.sourceEmailTitle')}
+          </h3>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md border bg-muted/20 p-2.5 text-xs">
+            {emailFrom && (
+              <>
+                <dt className="text-muted-foreground">{t('po.detail.emailFrom')}</dt>
+                <dd className="min-w-0 break-words font-medium">{emailFrom}</dd>
+              </>
+            )}
+            {sourceInbox && (
+              <>
+                <dt className="text-muted-foreground">{t('po.detail.emailInbox')}</dt>
+                <dd className="min-w-0 break-words">{sourceInbox}</dd>
+              </>
+            )}
+            {emailSubject && (
+              <>
+                <dt className="text-muted-foreground">{t('po.detail.emailSubject')}</dt>
+                <dd className="min-w-0 break-words">{emailSubject}</dd>
+              </>
+            )}
+            {retrievedAt && (
+              <>
+                <dt className="text-muted-foreground">{t('po.detail.emailRetrieved')}</dt>
+                <dd>{fmtDate(retrievedAt)}</dd>
+              </>
+            )}
+            {emailDate && (
+              <>
+                <dt className="text-muted-foreground">{t('po.detail.emailDate')}</dt>
+                <dd>{emailDate}</dd>
+              </>
+            )}
+          </dl>
+        </section>
+      )}
 
       {/* Bill of Lading — role-gated, full-width panel */}
       {canEdit && po.po_number && (

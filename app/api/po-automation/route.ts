@@ -88,7 +88,14 @@ export async function GET(req: NextRequest) {
         total: records.length,
         by_status,
         entered_today,
-        pending: by_status.pending + by_status.claimed + by_status.processing,
+        pending:
+          by_status.pending +
+          by_status.claimed +
+          by_status.processing +
+          by_status.pending_confirmation +
+          by_status.revision_pending +
+          by_status.revision_pending_confirmation +
+          by_status.manual_correction_flagged,
         failed: by_status.failed,
         duplicates_skipped: by_status.skipped_duplicate,
       },

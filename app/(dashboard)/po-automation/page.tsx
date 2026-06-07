@@ -25,6 +25,10 @@ const STATUS_STYLES: Record<PoStatus, string> = {
   failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   skipped_duplicate: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   manual_override: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  pending_confirmation: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  revision_pending: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  revision_pending_confirmation: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  manual_correction_flagged: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
 }
 
 function fmtDate(value: string | null): string {
