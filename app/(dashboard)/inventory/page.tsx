@@ -244,9 +244,12 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
     { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs font-semibold">{Number(v).toLocaleString()}</span> },
     { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
-    { key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    // Single "Qty Needed" column for both make and buy: shortfall to minimum for ALL
+    // items (max(0, minimum - fusionQty)), with the red highlight when > 0. Replaces
+    // the old "Parts to Make" column (which was 0 for purchased items). partsToBeMade
+    // is still computed on the row and drives the Needs-Production filter + status.
     {
-      key: 'partsToBeMade', label: t('inventory.colPartsToMake'), sortable: true,
+      key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true,
       render: (v) => {
         const n = Number(v)
         return <span className={n > 0 ? 'text-red-400 font-semibold' : ''}>{n.toLocaleString()}</span>
@@ -664,10 +667,14 @@ function InventoryPageContent() {
     if (isRefresh) setRefreshing(true); else setLoading(true)
     setError(null)
     try {
+      // Normal loads use the CDN-cached responses (fast). An explicit Refresh
+      // bypasses the cache so the user always gets the latest data on demand.
+      const bust = isRefresh ? `?t=${Date.now()}` : ''
+      const opts: RequestInit = isRefresh ? { cache: 'no-store' } : {}
       const [invRes, histRes, costRes] = await Promise.all([
-        fetch('/api/inventory'),
-        fetch('/api/inventory-history'),
-        fetchCosts ? fetch('/api/inventory-costs') : Promise.resolve(null),
+        fetch(`/api/inventory${bust}`, opts),
+        fetch(`/api/inventory-history${bust}`, opts),
+        fetchCosts ? fetch(`/api/inventory-costs${bust}`, opts) : Promise.resolve(null),
       ])
       if (!invRes.ok) throw new Error('Failed to fetch inventory')
       const invData: InventoryItem[] = await invRes.json()
@@ -761,11 +768,14 @@ function InventoryPageContent() {
         status,
         itemType: item.itemType,
         isManufactured: item.isManufactured,
-        department: (() => {
+        // Department now ships with the base inventory (non-sensitive), so it works
+        // for ALL users regardless of cost-view permission. Fall back to costData for
+        // safety (e.g. Google Sheets fallback path that lacks the dept field).
+        department: item.department || (() => {
           const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
           return costEntry?.department || ''
         })(),
-        subDepartment: (() => {
+        subDepartment: item.subDepartment || (() => {
           const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
           return costEntry?.subDepartment || ''
         })(),
