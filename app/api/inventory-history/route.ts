@@ -12,9 +12,7 @@ export async function GET() {
       console.warn('Supabase inventory history failed, falling back to Google Sheets:', dbError)
       history = await fetchInventoryHistory()
     }
-    return NextResponse.json(history, {
-      headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=86400' },
-    })
+    return NextResponse.json(history)
   } catch (error) {
     console.error('Failed to fetch inventory history:', error)
     return NextResponse.json(

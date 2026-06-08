@@ -77,7 +77,7 @@ export async function GET() {
     }
     return NextResponse.json(
       { costs },
-      { headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' } }
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
     )
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

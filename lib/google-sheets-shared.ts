@@ -88,8 +88,6 @@ export interface InventoryItem {
   usage30: number | null    // 30-day usage
   daysToMin: number | null  // days until stock hits minimum
   daysToZero: number | null // days until stock hits zero
-  department?: string       // from inventory_reference — non-sensitive, sent to all users
-  subDepartment?: string    // from inventory_reference — non-sensitive, sent to all users
 }
 
 export interface ProductionMakeItem {
