@@ -52,6 +52,7 @@
   "inventory.colManualTarget": "Manual Target",
   "inventory.colMinimum": "Minimum",
   "inventory.colMoldType": "Mold Type",
+  "inventory.colNetsuiteId": "NetSuite ID",
   "inventory.colPartNumber": "Part Number",
   "inventory.colPartsToMake": "Parts to Make",
   "inventory.colProduct": "Product Type",
