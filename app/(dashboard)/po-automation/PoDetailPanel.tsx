@@ -79,11 +79,15 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
     return typeof v === 'string' ? v : ''
   }
   const sourceInbox = emailStr('inbox') || (typeof po.source_inbox === 'string' ? po.source_inbox : '')
-  const emailFrom = emailStr('from') || emailStr('sender')
+  const partyName = typeof po.party === 'string' ? po.party : ''
+  // Show the REAL customer who sent the PO, never the monitoring inbox / forwarder
+  // (Simon, 2026-06-08). The orchestrator extracts customer_sender from the forwarded
+  // body; fall back to the customer name for POs captured before that.
+  const customerFrom = emailStr('customer_sender') || partyName
   const emailSubject = emailStr('subject')
   const retrievedAt = emailStr('retrieved_at')
   const emailDate = emailStr('email_date')
-  const hasEmailInfo = Boolean(sourceInbox || emailFrom || retrievedAt || emailSubject || emailDate)
+  const hasEmailInfo = Boolean(customerFrom || sourceInbox || retrievedAt || emailSubject || emailDate)
 
   return (
     <div className="space-y-4">
@@ -124,16 +128,10 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
             {t('po.detail.sourceEmailTitle')}
           </h3>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md border bg-muted/20 p-2.5 text-xs">
-            {emailFrom && (
+            {customerFrom && (
               <>
                 <dt className="text-muted-foreground">{t('po.detail.emailFrom')}</dt>
-                <dd className="min-w-0 break-words font-medium">{emailFrom}</dd>
-              </>
-            )}
-            {sourceInbox && (
-              <>
-                <dt className="text-muted-foreground">{t('po.detail.emailInbox')}</dt>
-                <dd className="min-w-0 break-words">{sourceInbox}</dd>
+                <dd className="min-w-0 break-words font-medium">{customerFrom}</dd>
               </>
             )}
             {emailSubject && (
