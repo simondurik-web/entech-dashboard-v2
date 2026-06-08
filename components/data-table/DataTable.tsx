@@ -415,15 +415,26 @@ export function DataTable<T extends Record<string, unknown>>({
 
 function DefaultCard<T extends Record<string, unknown>>({ row, columns, className }: { row: T; columns: ColumnDef<T>[]; className?: string }) {
   const [first, ...rest] = columns
+  // Render one cell with the same per-cell error isolation the desktop TableRow has.
+  // Without this, a single throwing column render crashes the whole card (and the
+  // page) on mobile — the table view only showed "Error" in that one cell.
+  const renderCell = (col: ColumnDef<T>): React.ReactNode => {
+    try {
+      return col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])
+    } catch (err) {
+      console.error(`Error rendering column "${col.key}":`, err, 'row:', row, 'value:', row[col.key])
+      return <span className="text-destructive">Error</span>
+    }
+  }
   return (
     <Card className={cn('border-l-4', className)}>
       <CardContent className="pt-4 pb-3 px-4 space-y-2">
-        {first && <p className="font-semibold">{first.render ? safeCellRender(first.render(row[first.key], row)) : formatCellValue(row[first.key])}</p>}
+        {first && <p className="font-semibold">{renderCell(first)}</p>}
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           {rest.map((col) => (
             <div key={col.key}>
               <span className="text-muted-foreground">{col.label}</span>
-              <p className="font-medium">{col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])}</p>
+              <p className="font-medium">{renderCell(col)}</p>
             </div>
           ))}
         </div>
