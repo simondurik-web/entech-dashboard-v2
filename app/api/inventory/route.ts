@@ -7,13 +7,13 @@ export async function GET() {
     try {
       const items = await fetchInventoryFromDB()
       return NextResponse.json(items, {
-        headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' },
+        headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' },
       })
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
       const items = await fetchInventory()
       return NextResponse.json(items, {
-        headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' },
+        headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' },
       })
     }
   } catch (error) {

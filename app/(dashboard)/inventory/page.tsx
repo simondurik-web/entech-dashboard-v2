@@ -664,10 +664,14 @@ function InventoryPageContent() {
     if (isRefresh) setRefreshing(true); else setLoading(true)
     setError(null)
     try {
+      // Normal loads use the CDN-cached responses (fast). An explicit Refresh
+      // bypasses the cache so the user always gets the latest data on demand.
+      const bust = isRefresh ? `?t=${Date.now()}` : ''
+      const opts: RequestInit = isRefresh ? { cache: 'no-store' } : {}
       const [invRes, histRes, costRes] = await Promise.all([
-        fetch('/api/inventory'),
-        fetch('/api/inventory-history'),
-        fetchCosts ? fetch('/api/inventory-costs') : Promise.resolve(null),
+        fetch(`/api/inventory${bust}`, opts),
+        fetch(`/api/inventory-history${bust}`, opts),
+        fetchCosts ? fetch(`/api/inventory-costs${bust}`, opts) : Promise.resolve(null),
       ])
       if (!invRes.ok) throw new Error('Failed to fetch inventory')
       const invData: InventoryItem[] = await invRes.json()
@@ -761,11 +765,14 @@ function InventoryPageContent() {
         status,
         itemType: item.itemType,
         isManufactured: item.isManufactured,
-        department: (() => {
+        // Department now ships with the base inventory (non-sensitive), so it works
+        // for ALL users regardless of cost-view permission. Fall back to costData for
+        // safety (e.g. Google Sheets fallback path that lacks the dept field).
+        department: item.department || (() => {
           const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
           return costEntry?.department || ''
         })(),
-        subDepartment: (() => {
+        subDepartment: item.subDepartment || (() => {
           const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
           return costEntry?.subDepartment || ''
         })(),

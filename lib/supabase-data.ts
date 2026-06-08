@@ -242,9 +242,10 @@ export async function fetchAllDataFromDB(): Promise<Record<string, string>[]> {
 // ─── Inventory (inventory + production_totals tables) ───
 
 export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
-  const [inventoryData, productionData] = await Promise.all([
+  const [inventoryData, productionData, referenceData] = await Promise.all([
     fetchAllRows('inventory'),
     fetchAllRows('production_totals'),
+    fetchAllRows('inventory_reference'),
   ])
 
   // Build Fusion map: partNumber -> qty
@@ -252,6 +253,23 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
   for (const row of inventoryData) {
     const part = str(row.item_number).trim()
     if (part) fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+  }
+
+  // Build department map from inventory_reference (department is non-sensitive;
+  // it ships with the base inventory so EVERY user can filter by dept, regardless
+  // of cost-view permission). Keyed by fusion_id uppercased.
+  const deptMap = new Map<string, { department: string; subDepartment: string }>()
+  for (const row of referenceData) {
+    const fusionId = str(row.fusion_id).trim().toUpperCase()
+    if (!fusionId) continue
+    deptMap.set(fusionId, {
+      department: str(row.department).trim(),
+      subDepartment: str(row.sub_department).trim(),
+    })
+  }
+  const lookupDept = (partNumber: string): { department: string; subDepartment: string } => {
+    const key = partNumber.toUpperCase()
+    return deptMap.get(key) ?? deptMap.get(key.replace(/^0+/, '')) ?? { department: '', subDepartment: '' }
   }
 
   const items: InventoryItem[] = []
@@ -300,12 +318,14 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
       : (stock <= minimum && minimum > 0 ? 0 : null)
     const daysToZero = dailyUsage && dailyUsage > 0 ? Math.round(stock / dailyUsage) : null
 
+    const { department, subDepartment } = lookupDept(partNumber)
     items.push({
       partNumber, product, inStock: stock, minimum, target, moldType, lastUpdate: '',
       itemType, isManufactured,
       projectionRate: dailyUsage,
       usage7: null, usage30: null,
       daysToMin, daysToZero,
+      department, subDepartment,
     })
   }
 
@@ -316,12 +336,14 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
     if (seenParts.has(partNumber.toUpperCase())) continue
 
     const stock = num(row.real_number_value)
+    const { department, subDepartment } = lookupDept(partNumber)
     items.push({
       partNumber, product: '', inStock: stock, minimum: 0, target: 0, moldType: '', lastUpdate: '',
       itemType: '', isManufactured: false,
       projectionRate: null,
       usage7: null, usage30: null,
       daysToMin: null, daysToZero: null,
+      department, subDepartment,
     })
   }
 
@@ -552,8 +574,38 @@ export async function fetchInventoryCostsFromDB(): Promise<Record<string, Invent
 
 import type { InventoryHistoryData, InventoryHistoryPart } from './google-sheets-shared'
 
+// Days of history to load. The inventory page only needs ~30-day usage windows
+// plus the current month's opening snapshot (≤ ~38 days back), so 120 days is a
+// safe ceiling. The full table is ~200k+ rows spanning many months; limiting the
+// window keeps cold loads and the client payload small. Bump if the UI ever needs
+// a longer lookback.
+const INVENTORY_HISTORY_DAYS = 120
+
 export async function fetchInventoryHistoryFromDB(): Promise<InventoryHistoryData> {
-  const data = await fetchAllRows('inventory_history')
+  // Only fetch recent rows (date is stored as YYYY-MM-DD, which sorts lexically).
+  const cutoff = new Date(Date.now() - INVENTORY_HISTORY_DAYS * 86400000)
+    .toISOString()
+    .slice(0, 10)
+
+  const data: Record<string, unknown>[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data: page, error } = await supabase
+      .from('inventory_history')
+      .select('part_number, date, quantity')
+      .gte('date', cutoff)
+      // Stable ordering by the primary key is required: PostgREST does not
+      // guarantee row order across .range() pages without an explicit order,
+      // so without this, multi-page reads could skip or duplicate rows.
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(`Supabase inventory_history error: ${error.message}`)
+    if (!page || page.length === 0) break
+    data.push(...page)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
 
   // Group by part number, collect dates
   const partMap = new Map<string, Record<string, number>>()
