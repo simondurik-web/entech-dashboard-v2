@@ -88,10 +88,27 @@ export function useDataTable<T extends Record<string, unknown>>({
 
   useEffect(() => {
     const colKeys = new Set(columns.map((c) => c.key))
+    const defKeys = columns.map((c) => c.key)
     const orderKeys = new Set(columnOrder)
     const missing = columns.filter((c) => !orderKeys.has(c.key)).map((c) => c.key)
     if (missing.length > 0) {
-      setColumnOrder((prev) => [...prev.filter((k) => colKeys.has(k)), ...missing])
+      setColumnOrder((prev) => {
+        // Drop columns that no longer exist, then insert each new column at its
+        // definition-adjacent position (right after its preceding defined column
+        // that's already present) instead of appending at the end. So a newly
+        // added column shows up next to its neighbor, not tacked on the far right.
+        const next = prev.filter((k) => colKeys.has(k))
+        for (const key of missing) {
+          const defIdx = defKeys.indexOf(key)
+          let insertAt = next.length
+          for (let i = defIdx - 1; i >= 0; i--) {
+            const pos = next.indexOf(defKeys[i])
+            if (pos >= 0) { insertAt = pos + 1; break }
+          }
+          next.splice(insertAt, 0, key)
+        }
+        return next
+      })
     }
   }, [columns]) // eslint-disable-line react-hooks/exhaustive-deps
 

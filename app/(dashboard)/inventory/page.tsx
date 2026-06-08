@@ -36,6 +36,7 @@ interface InventoryRow extends Record<string, unknown> {
   isManufactured: boolean
   department: string
   subDepartment: string
+  netsuiteId: string
   unitCost: number | null
   totalValue: number | null
   monthValueChange: number | null
@@ -199,6 +200,16 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
       ),
     },
     ...(showCosts ? [
+      {
+        key: 'netsuiteId' as const,
+        label: t('inventory.colNetsuiteId'),
+        sortable: true,
+        filterable: true,
+        render: (v: unknown) => {
+          const s = String(v ?? '')
+          return s ? <span className="font-mono text-[11px] text-muted-foreground">{s}</span> : <span className="text-muted-foreground">-</span>
+        },
+      },
       {
         key: 'unitCost' as const,
         label: '💰 Unit Cost',
@@ -778,6 +789,10 @@ function InventoryPageContent() {
         subDepartment: item.subDepartment || (() => {
           const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
           return costEntry?.subDepartment || ''
+        })(),
+        netsuiteId: (() => {
+          const costEntry = costData[item.partNumber] || costData[item.partNumber.replace(/^0+/, '')]
+          return costEntry?.netsuiteId || ''
         })(),
         unitCost: (() => {
           // Try matching by partNumber (which is the Fusion ID)

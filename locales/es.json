@@ -52,6 +52,7 @@
   "inventory.colManualTarget": "Meta Manual",
   "inventory.colMinimum": "Mínimo",
   "inventory.colMoldType": "Tipo de Molde",
+  "inventory.colNetsuiteId": "ID de NetSuite",
   "inventory.colPartNumber": "Número de Parte",
   "inventory.colPartsToMake": "Partes por Hacer",
   "inventory.colProduct": "Tipo de Producto",
