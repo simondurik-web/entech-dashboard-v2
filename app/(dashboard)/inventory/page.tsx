@@ -244,11 +244,12 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
     { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs font-semibold">{Number(v).toLocaleString()}</span> },
     { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
-    // "Qty Needed" column intentionally removed — it duplicates "Parts to Make" for
-    // manufactured items (which has the red color formatting Simon prefers). The
-    // qtyNeeded value is still computed on the row and drives partsToBeMade + status.
+    // Single "Qty Needed" column for both make and buy: shortfall to minimum for ALL
+    // items (max(0, minimum - fusionQty)), with the red highlight when > 0. Replaces
+    // the old "Parts to Make" column (which was 0 for purchased items). partsToBeMade
+    // is still computed on the row and drives the Needs-Production filter + status.
     {
-      key: 'partsToBeMade', label: t('inventory.colPartsToMake'), sortable: true,
+      key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true,
       render: (v) => {
         const n = Number(v)
         return <span className={n > 0 ? 'text-red-400 font-semibold' : ''}>{n.toLocaleString()}</span>
