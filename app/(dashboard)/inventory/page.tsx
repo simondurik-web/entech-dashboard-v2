@@ -244,7 +244,9 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
     { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs font-semibold">{Number(v).toLocaleString()}</span> },
     { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
     { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
-    { key: 'qtyNeeded', label: t('inventory.colQtyNeeded'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    // "Qty Needed" column intentionally removed — it duplicates "Parts to Make" for
+    // manufactured items (which has the red color formatting Simon prefers). The
+    // qtyNeeded value is still computed on the row and drives partsToBeMade + status.
     {
       key: 'partsToBeMade', label: t('inventory.colPartsToMake'), sortable: true,
       render: (v) => {
