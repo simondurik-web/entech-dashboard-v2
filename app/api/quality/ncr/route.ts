@@ -63,10 +63,16 @@ export async function POST(req: Request) {
   }
 }
 
+const VALID_NCR_STATUS = new Set(["OPEN", "INVESTIGATING", "CLOSED"])
+
 export async function PUT(req: Request) {
   return updateRecord(req, TABLE, NCR_UPDATABLE, {
     beforeUpdate(updates, oldRecord, actor) {
       if (updates.product_type) updates.product_type = normalizeProductType(updates.product_type)
+      // Ignore an unrecognized status rather than writing garbage.
+      if (updates.status !== undefined && !VALID_NCR_STATUS.has(String(updates.status))) {
+        delete updates.status
+      }
       if (updates.status === "CLOSED" && oldRecord.status !== "CLOSED") {
         updates.closed_at = new Date().toISOString()
         updates.closed_by = actorName(actor)

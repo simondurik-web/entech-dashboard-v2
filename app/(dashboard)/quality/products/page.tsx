@@ -62,7 +62,7 @@ export default function QualityProductsPage() {
   const loadProducts = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/quality/products")
+      const res = await fetch("/api/quality/products", { headers: userHeaders(profile?.id) })
       const json = await res.json()
       setProducts(json.data || [])
     } finally {

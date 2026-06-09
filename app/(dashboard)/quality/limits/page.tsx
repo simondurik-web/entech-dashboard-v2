@@ -37,6 +37,7 @@ function rowToDraft(row?: LimitRow): DraftRow {
 
 export default function QualityLimitsPage() {
   const { t } = useI18n()
+  const { profile } = useAuth()
   const { canEditLimits } = useQualityAccess()
   const [limits, setLimits] = useState<LimitRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
@@ -48,7 +49,7 @@ export default function QualityLimitsPage() {
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch("/api/quality/limits")
+      const res = await fetch("/api/quality/limits", { headers: userHeaders(profile?.id) })
       const json = await res.json()
       setLimits(json.limits || [])
       setProducts(json.products || [])
@@ -254,7 +255,7 @@ function EditLimitsDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t("quality.admin.editLimits")}</DialogTitle>
-          <p className="text-sm text-muted-foreground">{productType} · <span className="font-mono">{productNumber}</span></p>
+          <p className="text-sm text-muted-foreground">{t(PRODUCT_TYPE_LABEL_KEY[productType])} · <span className="font-mono">{productNumber}</span></p>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-2 px-1 text-xs uppercase text-muted-foreground">

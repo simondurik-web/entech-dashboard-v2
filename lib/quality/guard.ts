@@ -57,9 +57,24 @@ export async function resolveQualityActor(
   const isSuper = email?.toLowerCase() === SUPER_ADMIN_EMAIL
   const moldingAdmin = dashboardRole === "admin" || dashboardRole === "super_admin" || isSuper
 
+  // Mirror the client useQualityAccess "grantedByDashboard" path: a signed-in,
+  // non-visitor dashboard role that the molding admin granted /quality via
+  // role_permissions can also view/enter QA data. Without this the server would
+  // 403 a user the client UI lets in.
+  let grantedByDashboard = false
+  if (!moldingAdmin && dashboardRole !== "visitor") {
+    const { data: rolePerm } = await supabaseAdmin
+      .from("role_permissions")
+      .select("menu_access")
+      .eq("role", dashboardRole)
+      .maybeSingle()
+    const menu = (rolePerm?.menu_access ?? {}) as Record<string, boolean>
+    grantedByDashboard = menu["/quality"] === true
+  }
+
   const canManage = moldingAdmin || qualityRole === "admin"
   const canEditLimits = canManage || qualityRole === "manager" || qualityRole === "qa_manager"
-  const canView = moldingAdmin || (!!qualityRole && qualityRole !== "visitor")
+  const canView = moldingAdmin || (!!qualityRole && qualityRole !== "visitor") || grantedByDashboard
 
   return {
     userId,

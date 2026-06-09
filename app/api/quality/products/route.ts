@@ -7,6 +7,8 @@ import { normalizeProductType } from "@/lib/quality/metrics"
 const TABLE = "qa_products"
 
 export async function GET(req: NextRequest) {
+  const gate = await requireQualityActor(req, "view")
+  if ("response" in gate) return gate.response
   const type = normalizeProductType(req.nextUrl.searchParams.get("type"))
   let query = supabaseAdmin.from(TABLE).select("*").order("product_number")
   if (type) query = query.eq("product_type", type)

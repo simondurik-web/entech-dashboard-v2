@@ -125,9 +125,17 @@ export async function POST(req: Request) {
       profile = upserted as UserProfileRow
     }
 
-    await supabaseAdmin
+    if (!userId) return errorJson("Failed to resolve user", 500)
+    // Apply the same self-protection as PUT/DELETE (super admin already blocked by email above).
+    if (userId === gate.actor.userId) return errorJson("Cannot modify yourself", 403)
+
+    const { error: roleError } = await supabaseAdmin
       .from("user_app_roles")
       .upsert({ user_id: userId, app_id: APP_ID, role, updated_at: new Date().toISOString() }, { onConflict: "user_id,app_id" })
+    if (roleError) {
+      console.error("quality/users POST role upsert failed:", roleError)
+      return errorJson("Failed to assign role", 500)
+    }
 
     await logQualityCreate("user_app_roles", 0, { user_id: userId, app_id: APP_ID, role }, actorName(gate.actor), gate.actor.email)
     return NextResponse.json({ user: { ...profile, role } })
@@ -166,13 +174,10 @@ export async function PUT(req: Request) {
       await logQualityUpdate("user_app_roles", 0, { role: oldRole?.role ?? null }, { role }, actorName(gate.actor), gate.actor.email)
     }
 
-    const profileUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-    if (body.custom_permissions !== undefined) profileUpdates.custom_permissions = body.custom_permissions
-    if (body.is_active !== undefined) profileUpdates.is_active = body.is_active
-    if (Object.keys(profileUpdates).length > 1) {
-      await supabaseAdmin.from("user_profiles").update(profileUpdates).eq("id", userId)
-    }
-
+    // Quality user management is scoped to the QA role only (user_app_roles[quality]).
+    // It deliberately does NOT write global user_profiles fields like
+    // custom_permissions or is_active — those are dashboard-wide and a QA admin
+    // (who may not be a dashboard admin) must not be able to change them here.
     const profile = await loadTarget(userId)
     return NextResponse.json({ user: { ...profile, role: role ?? "visitor" } })
   } catch (err) {

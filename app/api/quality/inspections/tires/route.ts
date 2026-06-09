@@ -7,7 +7,6 @@ export async function POST(req: Request) {
     timestamp: new Date().toISOString(),
     inspector_role: actorRole(actor),
     inspector_name: actorName(actor),
-    inspector_email: actor.email,
     tire_number: body.tire_number,
     thickness: nullable(body.thickness),
     thickness_target: nullable(body.thickness_target),

@@ -18,7 +18,9 @@ function validNumber(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value))
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const gate = await requireQualityActor(req, "view")
+  if ("response" in gate) return gate.response
   const { data: limits, error: lErr } = await supabaseAdmin
     .from("qa_product_limits")
     .select("*")

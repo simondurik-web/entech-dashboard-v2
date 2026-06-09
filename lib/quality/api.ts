@@ -32,7 +32,10 @@ export const NCR_UPDATABLE = new Set([
   "product_type", "product_number", "hub_style", "hub_mold", "mold_cavity",
   "defect_type", "defect_description", "quantity_affected",
   "disposition", "root_cause", "corrective_action", "preventive_action",
-  "status", "photos", "closed_at", "closed_by", "updated_at",
+  "status", "photos",
+  // NOTE: closed_at / closed_by / updated_at are intentionally NOT whitelisted —
+  // they are server-controlled and set only by the NCR route's beforeUpdate hook,
+  // so a client cannot forge who/when an NCR was closed.
 ])
 
 export const PRODUCT_UPDATABLE = new Set([

@@ -28,7 +28,6 @@ type UserRecord = {
 
 const ROLES = ["visitor", "operator", "group_leader", "qa_manager", "manager", "admin"] as const
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
-const QA_PERMISSIONS = ["/quality/hubs", "/quality/hubs/new", "/quality/tires", "/quality/tires/new", "/quality/finished", "/quality/finished/new", "/quality/products", "/quality/limits", "/quality/audit", "/quality/users"]
 
 const ROLE_ICONS: Record<string, typeof Shield> = {
   admin: Shield,
@@ -146,12 +145,6 @@ export default function QualityUsersPage() {
     }
   }
 
-  function togglePerm(user: UserRecord, path: string) {
-    const current = user.custom_permissions ?? []
-    const next = current.includes(path) ? current.filter((p) => p !== path) : [...current, path]
-    updateUser(user.id, { custom_permissions: next.length ? next : null })
-  }
-
   return (
     <div className="p-4 pb-20">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
@@ -240,33 +233,20 @@ export default function QualityUsersPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => updateUser(user.id, { is_active: !user.is_active })}
-                          disabled={saving === user.id || isSuper || isSelf}
-                          className={`rounded-full px-3 py-1 text-xs font-medium ${user.is_active ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-red-500/15 text-red-600 dark:text-red-400"}`}
-                        >
+                        {/* Read-only: account active/inactive is a dashboard-wide
+                            field, not managed from the Quality section. */}
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${user.is_active ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-red-500/15 text-red-600 dark:text-red-400"}`}>
                           {user.is_active ? t("quality.admin.active") : t("quality.admin.inactive")}
-                        </button>
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{user.last_login ? new Date(user.last_login).toLocaleDateString() : t("quality.admin.never")}</td>
                     </tr>
                     {expandedUser === user.id && (
                       <tr className="border-b border-border/70 bg-muted/20">
                         <td colSpan={5} className="px-8 py-4">
-                          <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{t("quality.admin.customPermissions")}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {QA_PERMISSIONS.map((path) => {
-                              const checked = user.custom_permissions?.includes(path) ?? false
-                              return (
-                                <label key={path} className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition ${checked ? "border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400" : "border-border text-muted-foreground hover:bg-muted"}`}>
-                                  <input type="checkbox" checked={checked} onChange={() => togglePerm(user, path)} className="sr-only" />
-                                  {path}
-                                </label>
-                              )
-                            })}
-                          </div>
+                          <p className="mb-3 text-xs text-muted-foreground">{t(`quality.role.${user.role}`)}</p>
                           {!isSuper && !isSelf && (
-                            <button onClick={() => { setDeleteError(null); setConfirmDelete(user) }} className="mt-4 flex items-center gap-1.5 border-t border-border pt-4 text-xs text-red-600 hover:text-red-500 dark:text-red-400">
+                            <button onClick={() => { setDeleteError(null); setConfirmDelete(user) }} className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-500 dark:text-red-400">
                               <Trash2 className="size-3.5" />{t("quality.admin.removeQualityUser")}
                             </button>
                           )}
