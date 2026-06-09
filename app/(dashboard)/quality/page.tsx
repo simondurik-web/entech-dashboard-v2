@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { useI18n } from "@/lib/i18n"
+import { useQualityAccess } from "@/lib/use-quality-access"
 import { CircleDot, Disc, PackageCheck, AlertTriangle } from "lucide-react"
 
 // Quality (EQDR) dashboard — ported from the standalone app. Counts come from
@@ -33,12 +34,17 @@ function fmtDate(ts: string | null): string {
 
 export default function QualityDashboardPage() {
   const { t } = useI18n()
+  const { canSeeQuality } = useQualityAccess()
   const [counts, setCounts] = useState<{ hub: number; tire: number; finished: number } | null>(null)
   const [recent, setRecent] = useState<RecentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    // Don't read QA data until the user is confirmed to have Quality access —
+    // AccessGuard renders children during the auth-loading window, so an
+    // ungated fetch here would let a non-QA user trigger QA reads.
+    if (!canSeeQuality) return
     let alive = true
     ;(async () => {
       try {
@@ -51,7 +57,7 @@ export default function QualityDashboardPage() {
           supabase.from("qa_finished_inspections").select("id,inspector_name,rt_number,timestamp").order("timestamp", { ascending: false }).limit(10),
         ])
         if (!alive) return
-        if (hubC.error || tireC.error || finC.error) { setError(true); return }
+        if (hubC.error || tireC.error || finC.error || hubR.error || tireR.error || finR.error) { setError(true); return }
         setCounts({ hub: hubC.count ?? 0, tire: tireC.count ?? 0, finished: finC.count ?? 0 })
         const merged: RecentRow[] = [
           ...(hubR.data ?? []).map((r) => ({ type: "hub" as const, id: r.id, identifier: r.hub_number ?? "—", inspector: r.inspector_name ?? "—", ts: r.timestamp })),
@@ -67,7 +73,7 @@ export default function QualityDashboardPage() {
       }
     })()
     return () => { alive = false }
-  }, [])
+  }, [canSeeQuality])
 
   const cards = useMemo(() => ([
     { key: "hub" as const, label: t("quality.totalHubs"), value: counts?.hub, meta: TYPE_META.hub },

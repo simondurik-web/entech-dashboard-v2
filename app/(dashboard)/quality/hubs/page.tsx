@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { useDataTable, type ColumnDef } from "@/lib/use-data-table"
 import { useI18n } from "@/lib/i18n"
+import { useQualityAccess } from "@/lib/use-quality-access"
 import { useViewFromUrl, useAutoExport } from "@/lib/use-view-from-url"
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { fetchAllQa, fetchLimitsIndex } from "@/lib/quality/fetch"
@@ -34,12 +35,17 @@ function QualityHubsContent() {
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
+  const { canSeeQuality } = useQualityAccess()
   const [data, setData] = useState<HubRow[]>([])
   const [limits, setLimits] = useState<LimitsIndex>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Gate the read on confirmed Quality access (AccessGuard renders children
+    // during the auth-loading window, so an ungated fetch would let a non-QA
+    // user trigger QA reads).
+    if (!canSeeQuality) return
     let alive = true
     Promise.all([fetchAllQa<HubRow>("qa_hub_inspections"), fetchLimitsIndex()])
       .then(([rows, idx]) => {
@@ -50,7 +56,7 @@ function QualityHubsContent() {
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [])
+  }, [canSeeQuality])
 
   const columns: ColumnDef<HubRow>[] = useMemo(() => {
     const spec = (key: string, metric: string): ColumnDef<HubRow> => ({

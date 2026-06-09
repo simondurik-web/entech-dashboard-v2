@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { useDataTable, type ColumnDef } from "@/lib/use-data-table"
 import { useI18n } from "@/lib/i18n"
+import { useQualityAccess } from "@/lib/use-quality-access"
 import { useViewFromUrl, useAutoExport } from "@/lib/use-view-from-url"
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { fetchAllQa } from "@/lib/quality/fetch"
@@ -26,11 +27,13 @@ function QualityNcrContent() {
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
+  const { canSeeQuality } = useQualityAccess()
   const [data, setData] = useState<NcrRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!canSeeQuality) return
     let alive = true
     // NCR rows are ordered by created_at (no `timestamp` column on this table).
     fetchAllQa<NcrRow>("qa_nonconformance_reports", "*", "created_at")
@@ -38,7 +41,7 @@ function QualityNcrContent() {
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [])
+  }, [canSeeQuality])
 
   const columns: ColumnDef<NcrRow>[] = useMemo(() => [
     { key: "ncr_number", label: t("quality.col.ncrNumber"), sortable: true, filterable: true, render: (v) => <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{str(v) || "—"}</span> },

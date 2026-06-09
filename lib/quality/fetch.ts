@@ -25,6 +25,9 @@ export async function fetchAllQa<T>(
     all.push(...rows)
     if (rows.length < PAGE) break
   }
+  if (all.length >= MAX_ROWS) {
+    console.warn(`fetchAllQa(${table}): hit ${MAX_ROWS}-row ceiling — results may be truncated. Raise MAX_ROWS if this dataset is legitimately larger.`)
+  }
   return all
 }
 
