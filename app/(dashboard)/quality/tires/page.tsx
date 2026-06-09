@@ -1,7 +1,10 @@
 "use client"
 
 import { Suspense, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { Plus } from "lucide-react"
 import { DataTable } from "@/components/data-table"
+import { Button } from "@/components/ui/button"
 import { useDataTable, type ColumnDef } from "@/lib/use-data-table"
 import { useI18n } from "@/lib/i18n"
 import { useQualityAccess } from "@/lib/use-quality-access"
@@ -73,8 +76,17 @@ function QualityTiresContent() {
 
   return (
     <div className="p-4 pb-20">
-      <h1 className="text-2xl font-bold mb-1">{t("nav.qualityTires")}</h1>
-      <p className="text-muted-foreground text-sm mb-4">{t("quality.page.tiresSubtitle")}</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">{t("nav.qualityTires")}</h1>
+          <p className="text-muted-foreground text-sm">{t("quality.page.tiresSubtitle")}</p>
+        </div>
+        {canSeeQuality && (
+          <Button asChild>
+            <Link href="/quality/tires/new"><Plus className="mr-2 size-4" />{t("quality.form.new")}</Link>
+          </Button>
+        )}
+      </div>
       {loading && <TableSkeleton rows={8} />}
       {error && <p className="text-center text-destructive py-10">{t("quality.loadError")}</p>}
       {!loading && !error && (
