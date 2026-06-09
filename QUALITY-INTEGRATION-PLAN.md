@@ -2,10 +2,21 @@
 
 ## STATUS / CHECKPOINT
 - Worktree: `~/clawd/projects/quality-integration` · branch `feat/quality-integration` (off `staging`).
-- **Phase 1 ✅ DONE** (commit `b9d3a26`, tsc clean): profile API `quality_role` overlay,
-  `lib/use-quality-access.ts`, AccessGuard `/quality` gating, Sidebar QUALITY section
-  (desktop+mobile), `/quality` placeholder landing page, EN+ES strings.
+- **Phase 1 ✅ DONE** (reviewed by 4 agents, fixed): profile API `quality_role` overlay,
+  `lib/use-quality-access.ts`, AccessGuard `/quality` gating, Sidebar QUALITY section, EN+ES.
+- **Phase 2 ✅ DONE + ON STAGING** (reviewed by 3 agents, all blockers fixed; build+tsc clean):
+  real Quality dashboard (counts + recent), Hub/Tire/Finished/NCR lists on the molding DataTable,
+  spec-color helpers (`lib/quality/limits.ts` + `components/quality/badges.tsx`), `lib/quality/fetch.ts`.
+  Staging branch fast-forwarded to `bdd12cb`; live at
+  https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality
+  Key fix: finished spec limits use product_type `finished_product` (not `finished`); all QA fetches
+  gated on `canSeeQuality`.
+- **NEXT → Phase 3**: data-entry forms (new hub/tire/finished inspection + NCR) and admin screens
+  (Products, Limits, Users, Audit) — currently the `quality/[...slug]` catch-all shows "coming soon".
+  These need guarded `/api/quality/*` write routes (server-side `canManageQuality`/`canEditLimits`,
+  copy lib/purchasing/guard.ts pattern). Then Phase 4 theme polish, Phase 5 verify, Phase 6 retire EQDR.
 - **Phase 1 fleet review DONE** (4 agents: Codex GPT-5.5 + 3 Claude — security/correctness/design).
+  (Phase 2 review: Codex + 2 Claude — fixes in commit `bdd12cb`.)
   Verdicts: 3× SHIP, 1× FIX-FIRST (Codex). No blocker, no regression confirmed by all four.
   Fixes applied (commit pending): (1) `grantedByDashboard` now requires authenticated non-visitor
   (closes visitor-grant footgun); (2) catch-all `quality/[...slug]` placeholder kills 404s on
