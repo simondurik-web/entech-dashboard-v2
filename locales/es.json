@@ -125,6 +125,8 @@
   "quality.title": "Calidad",
   "quality.subtitle": "Registros Digitales de Calidad de Entech",
   "quality.placeholder": "Más pantallas de Calidad se están integrando. Tu rol de Calidad:",
+  "quality.comingSoon": "Esta pantalla de Calidad estará disponible pronto.",
+  "quality.comingSoonBack": "Volver a Calidad",
   "nav.allData": "Todos los Datos",
   "nav.bom": "Explorador BOM",
   "nav.customerRef": "Referencia de Clientes",

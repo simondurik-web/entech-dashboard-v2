@@ -5,7 +5,7 @@ import { useQualityAccess } from "@/lib/use-quality-access"
 import { ClipboardCheck, CircleDot, Disc, PackageCheck, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 
-// Phase 1 placeholder landing page for the integrated Quality (EODR) section.
+// Phase 1 placeholder landing page for the integrated Quality (EQDR) section.
 // Renders inside the molding shell (sidebar + header), so "back to the molding
 // dashboard" is just clicking any other sidebar item. The real dashboard
 // (counts + recent inspections) is ported in Phase 2.

@@ -5,6 +5,18 @@
 - **Phase 1 ✅ DONE** (commit `b9d3a26`, tsc clean): profile API `quality_role` overlay,
   `lib/use-quality-access.ts`, AccessGuard `/quality` gating, Sidebar QUALITY section
   (desktop+mobile), `/quality` placeholder landing page, EN+ES strings.
+- **Phase 1 fleet review DONE** (4 agents: Codex GPT-5.5 + 3 Claude — security/correctness/design).
+  Verdicts: 3× SHIP, 1× FIX-FIRST (Codex). No blocker, no regression confirmed by all four.
+  Fixes applied (commit pending): (1) `grantedByDashboard` now requires authenticated non-visitor
+  (closes visitor-grant footgun); (2) catch-all `quality/[...slug]` placeholder kills 404s on
+  not-yet-built sub-routes; (3) AccessGuard uses exact-or-child path matching; (4) EODR→EQDR comment
+  typos; (5) Quality entries added to command palette gated by QA role. (agy/Gemini was unavailable —
+  Antigravity binary missing — so the 4th reviewer was Codex, not Gemini.)
+- **DEFERRED to Phase 2 (security prerequisites, documented):**
+  - `/api/quality/*` data routes MUST enforce server-side auth (copy lib/purchasing/guard.ts pattern);
+    Phase 1 has no API routes so client-only gating leaks nothing yet.
+  - AuthProvider clears `loading` before `fetchProfile` resolves, and AccessGuard renders children
+    while loading → Phase 2 data pages must self-gate their data fetches, not rely on AccessGuard.
 - **NEXT → Phase 2**: port the real screens (Quality dashboard counts+recent, Hub/Tire/Finished
   inspection lists, NCR list) onto the molding DataTable standard, EN+ES. Delegate bulk port to
   Codex per CODING-POLICY; Opus reviews. Then fleet review → push to staging → Simon tests.

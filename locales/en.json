@@ -125,6 +125,8 @@
   "quality.title": "Quality",
   "quality.subtitle": "Entech Quality Digital Records",
   "quality.placeholder": "More Quality screens are moving in. Your Quality role:",
+  "quality.comingSoon": "This Quality screen is coming soon.",
+  "quality.comingSoonBack": "Back to Quality",
   "nav.allData": "All Data",
   "nav.bom": "BOM Explorer",
   "nav.customerRef": "Customer Reference",

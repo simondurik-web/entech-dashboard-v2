@@ -37,15 +37,15 @@ export function AccessGuard({ children }: { children: ReactNode }) {
 
   if (loading) return <>{children}</>
 
-  // Quality (EODR) section — gated by the user's Quality role (user_app_roles[quality]),
+  // Quality (EQDR) section — gated by the user's Quality role (user_app_roles[quality]),
   // NOT the molding menu permissions, so the same QA users keep their existing access.
-  // Admin-only sub-pages (Products/Users/Audit) and the Limits editor mirror EODR's rules.
-  if (pathname.startsWith("/quality")) {
+  // Admin-only sub-pages (Products/Users/Audit) and the Limits editor mirror EQDR's rules.
+  // Exact-or-child matching avoids matching unrelated paths like "/quality-old".
+  const inPath = (base: string) => pathname === base || pathname.startsWith(base + "/")
+  if (inPath("/quality")) {
     const isQaAdminPath =
-      pathname.startsWith("/quality/products") ||
-      pathname.startsWith("/quality/users") ||
-      pathname.startsWith("/quality/audit")
-    const isLimitsPath = pathname.startsWith("/quality/limits")
+      inPath("/quality/products") || inPath("/quality/users") || inPath("/quality/audit")
+    const isLimitsPath = inPath("/quality/limits")
     const allowed = isQaAdminPath
       ? canManageQuality
       : isLimitsPath

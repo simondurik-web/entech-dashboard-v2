@@ -99,7 +99,7 @@ const toolsItems: NavItem[] = [
   { tKey: "nav.quotes", href: "/quotes", icon: <DollarSign className="size-4" /> },
 ]
 
-// Quality (EODR) section. Visibility is gated by the user's Quality role
+// Quality (EQDR) section. Visibility is gated by the user's Quality role
 // (see useQualityAccess) — not the molding menu permissions — so the existing
 // QA users keep their access. Admin sub-items are filtered separately.
 const qualityItems: NavItem[] = [
