@@ -1,5 +1,18 @@
 # Quality (EODR) → Molding Dashboard Integration Plan
 
+## STATUS / CHECKPOINT
+- Worktree: `~/clawd/projects/quality-integration` · branch `feat/quality-integration` (off `staging`).
+- **Phase 1 ✅ DONE** (commit `b9d3a26`, tsc clean): profile API `quality_role` overlay,
+  `lib/use-quality-access.ts`, AccessGuard `/quality` gating, Sidebar QUALITY section
+  (desktop+mobile), `/quality` placeholder landing page, EN+ES strings.
+- **NEXT → Phase 2**: port the real screens (Quality dashboard counts+recent, Hub/Tire/Finished
+  inspection lists, NCR list) onto the molding DataTable standard, EN+ES. Delegate bulk port to
+  Codex per CODING-POLICY; Opus reviews. Then fleet review → push to staging → Simon tests.
+- Source app to port from: `~/clawd/projects/quality-app-v1` (branch
+  feature/inspections-pagination-search-analytics). Same Supabase project — reuse molding's clients.
+
+---
+
 > Created 2026-06-09 by claude-3. Decision baseline from Simon:
 > **Q1=a** (single home — fold Quality in, retire standalone EQDR after parity),
 > **Q2** (same access as today's QA users — mirror QA roles, don't re-assign),
