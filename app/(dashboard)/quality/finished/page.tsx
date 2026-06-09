@@ -50,7 +50,7 @@ function QualityFinishedContent() {
     const spec = (key: string, metric: string): ColumnDef<FinRow> => ({
       key, label: t(`quality.col.${metric}`), sortable: true, filterable: true,
       render: (v, row) => (
-        <SpecValue value={num(v)} index={limits} productType="finished" productNumber={str(row.rt_number)} metricKey={key} />
+        <SpecValue value={num(v)} index={limits} productType="finished_product" productNumber={str(row.rt_number)} metricKey={key} />
       ),
     })
     const pf = (key: string, metric: string): ColumnDef<FinRow> => ({
