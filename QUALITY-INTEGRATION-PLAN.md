@@ -11,10 +11,22 @@
   https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality
   Key fix: finished spec limits use product_type `finished_product` (not `finished`); all QA fetches
   gated on `canSeeQuality`.
-- **NEXT → Phase 3**: data-entry forms (new hub/tire/finished inspection + NCR) and admin screens
-  (Products, Limits, Users, Audit) — currently the `quality/[...slug]` catch-all shows "coming soon".
-  These need guarded `/api/quality/*` write routes (server-side `canManageQuality`/`canEditLimits`,
-  copy lib/purchasing/guard.ts pattern). Then Phase 4 theme polish, Phase 5 verify, Phase 6 retire EQDR.
+- **Phase 3 ✅ DONE + ON STAGING** (reviewed by 4 agents, all findings fixed; build+tsc clean,
+  commit `cc2fb6b`): data-entry forms (new hub/tire/finished inspection + NCR) + admin screens
+  (Products, Limits, Users, Audit). Guarded write routes under `app/api/quality/*` all gate via
+  `lib/quality/guard.ts` resolveQualityActor (canView/canManage/canEditLimits); inspector/actor
+  resolved server-side; NCR via `qa_next_ncr_number()` RPC; audit via `lib/quality/audit.ts`.
+  Shared: `lib/quality/{api,form-utils,metrics}.ts`, `components/quality/form-shell.tsx`.
+  Built by Codex on the security core (guard+audit) I wrote. Key review fixes: dropped non-existent
+  inspector_email insert (was 500ing submits); NCR closed_* server-only; users route scoped to
+  user_app_roles[quality] (no global custom_permissions/is_active writes); gated products/limits GET;
+  server canView honors the dashboard /quality grant.
+- **KNOWN/FLAGGED to Simon:** API auth uses the app-wide `x-user-id` header pattern (same as
+  purchasing / /admin/users) — Bearer-token hardening is an app-wide task, not done here. Limits
+  upsert+history not atomic (matches source).
+- **NEXT → cutover**: after Simon signs off on staging, retire/redirect the standalone EQDR app to
+  `/quality` (Q1=a). Update Supabase Auth uri_allow_list if any redirect changes. Promote staging→main
+  with Simon's explicit yes (detached-HEAD per pre-push hook quirk).
 - **Phase 1 fleet review DONE** (4 agents: Codex GPT-5.5 + 3 Claude — security/correctness/design).
   (Phase 2 review: Codex + 2 Claude — fixes in commit `bdd12cb`.)
   Verdicts: 3× SHIP, 1× FIX-FIRST (Codex). No blocker, no regression confirmed by all four.
