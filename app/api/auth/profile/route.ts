@@ -3,17 +3,29 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 import { createClient } from "@supabase/supabase-js"
 
 const DASHBOARD_APP_ID = "dashboard"
+const QUALITY_APP_ID = "quality"
 
+// Overlay the dashboard role (user_app_roles[dashboard]) onto the base
+// user_profiles.role, and additionally attach the user's Quality-app role
+// (user_app_roles[quality]) as `quality_role` so the integrated Quality
+// section can gate on the SAME per-user roles the standalone EQDR app uses
+// — no re-assignment of QA users required.
 async function overlayAppRole(profile: Record<string, unknown>) {
   if (!profile?.id) return profile
-  const { data: appRole } = await supabaseAdmin
+  const { data: appRoles } = await supabaseAdmin
     .from("user_app_roles")
-    .select("role")
+    .select("app_id, role")
     .eq("user_id", profile.id)
-    .eq("app_id", DASHBOARD_APP_ID)
-    .single()
-  if (appRole) return { ...profile, role: appRole.role }
-  return profile
+    .in("app_id", [DASHBOARD_APP_ID, QUALITY_APP_ID])
+
+  const dashboardRole = appRoles?.find((r) => r.app_id === DASHBOARD_APP_ID)?.role
+  const qualityRole = appRoles?.find((r) => r.app_id === QUALITY_APP_ID)?.role ?? null
+
+  return {
+    ...profile,
+    ...(dashboardRole ? { role: dashboardRole } : {}),
+    quality_role: qualityRole,
+  }
 }
 
 async function getUserFromRequest(req: NextRequest) {

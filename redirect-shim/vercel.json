@@ -1,0 +1,19 @@
+{
+  "redirects": [
+    { "source": "/dashboard", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality", "permanent": false },
+    { "source": "/hubs/new", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/hubs/new", "permanent": false },
+    { "source": "/hubs", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/hubs", "permanent": false },
+    { "source": "/tires/new", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/tires/new", "permanent": false },
+    { "source": "/tires", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/tires", "permanent": false },
+    { "source": "/finished/new", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/finished/new", "permanent": false },
+    { "source": "/finished", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/finished", "permanent": false },
+    { "source": "/ncr/new", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/ncr/new", "permanent": false },
+    { "source": "/ncr", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/ncr", "permanent": false },
+    { "source": "/products", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/products", "permanent": false },
+    { "source": "/limits", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/limits", "permanent": false },
+    { "source": "/users", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/users", "permanent": false },
+    { "source": "/audit", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality/audit", "permanent": false },
+    { "source": "/login", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality", "permanent": false },
+    { "source": "/(.*)", "destination": "https://entech-dashboard-v2-git-staging-simons-projects-849cf04c.vercel.app/quality", "permanent": false }
+  ]
+}

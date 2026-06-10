@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw } from 'lucide-react'
+import { ArrowUp, ArrowDown, ArrowUpDown, Search, X, Trash2, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Fragment, isValidElement, Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Input } from '@/components/ui/input'
@@ -38,6 +38,8 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   onExcelExport?: (data: T[], columns: { key: keyof T & string; label: string }[], filename: string) => Promise<void>
   /** Disable framer-motion layout animations (recommended for large data sets or when browser extensions may interfere) */
   disableAnimation?: boolean
+  /** Opt-in client-side pagination. Undefined preserves existing render-all behavior. */
+  pageSize?: number
 }
 
 /** Per-row error boundary so one bad row doesn't crash the whole table */
@@ -154,6 +156,7 @@ export function DataTable<T extends Record<string, unknown>>({
   autoExport,
   onExcelExport,
   disableAnimation = false,
+  pageSize,
 }: DataTableProps<T>) {
   const { t } = useI18n()
   const {
@@ -207,6 +210,17 @@ export function DataTable<T extends Record<string, unknown>>({
   }, [autoExport, processedData, visibleColumns, exportFilename, onExcelExport])
 
   const hasActiveFilters = filters.size > 0 || searchTerm.trim() !== ''
+  const [currentPage, setCurrentPage] = useState(0)
+  const paginationEnabled = typeof pageSize === 'number' && pageSize > 0 && Number.isFinite(pageSize)
+  const totalRows = processedData.length
+  const totalPages = paginationEnabled ? Math.max(1, Math.ceil(totalRows / pageSize)) : 1
+  const safePage = Math.min(currentPage, totalPages - 1)
+  const pageStart = paginationEnabled ? safePage * pageSize : 0
+  const visibleRows = paginationEnabled ? processedData.slice(pageStart, pageStart + pageSize) : processedData
+
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [totalRows, searchTerm, filters.size])
 
   const [dragColKey, setDragColKey] = useState<string | null>(null)
   const [dragOverColKey, setDragOverColKey] = useState<string | null>(null)
@@ -362,12 +376,13 @@ export function DataTable<T extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody>
-            {processedData.map((row, i) => {
+            {visibleRows.map((row, i) => {
+              const absoluteIndex = pageStart + i
               return (
-                <RowErrorBoundary key={getRowKey?.(row, i) ?? i}>
+                <RowErrorBoundary key={getRowKey?.(row, absoluteIndex) ?? absoluteIndex}>
                 <TableRow
                   row={row}
-                  index={i}
+                  index={absoluteIndex}
                   visibleColumns={visibleColumns}
                   disableAnimation={disableAnimation}
                   expandedRowKey={expandedRowKey}
@@ -379,7 +394,7 @@ export function DataTable<T extends Record<string, unknown>>({
                 </RowErrorBoundary>
               )
             })}
-            {processedData.length === 0 && (
+            {visibleRows.length === 0 && (
               <tr>
                 <td colSpan={visibleColumns.length}>
                   <EmptyState
@@ -396,18 +411,46 @@ export function DataTable<T extends Record<string, unknown>>({
 
       {isMobile && (
       <div className="space-y-3">
-        {processedData.map((row, i) => (
-          <CardErrorBoundary key={i}>
-            {renderCard ? renderCard(row, i) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />}
+        {visibleRows.map((row, i) => {
+          const absoluteIndex = pageStart + i
+          return (
+          <CardErrorBoundary key={getRowKey?.(row, absoluteIndex) ?? absoluteIndex}>
+            {/* Phones get no table rows, so without this tap handler an
+                onRowClick feature (e.g. edit-inspection) would be desktop-only. */}
+            {onRowClick ? (
+              <div role="button" tabIndex={0} className="cursor-pointer active:opacity-75" onClick={() => onRowClick(row, absoluteIndex)}>
+                {renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />}
+              </div>
+            ) : (
+              renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />
+            )}
           </CardErrorBoundary>
-        ))}
-        {processedData.length === 0 && (
+          )
+        })}
+        {visibleRows.length === 0 && (
           <EmptyState
             type={hasActiveFilters ? 'filtered' : 'no-data'}
             onClearFilters={hasActiveFilters ? clearAllFilters : undefined}
           />
         )}
       </div>
+      )}
+      {paginationEnabled && totalPages > 1 && (
+        <div className="flex flex-col gap-2 rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            {t('ui.page')} {safePage + 1} {t('ui.of')} {totalPages} · {t('ui.showing')} {pageStart + 1}-{Math.min(pageStart + pageSize, totalRows)} {t('ui.of')} {totalRows}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.max(0, safePage - 1))} disabled={safePage === 0}>
+              <ChevronLeft className="mr-1 size-3.5" />
+              {t('ui.previous')}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.min(totalPages - 1, safePage + 1))} disabled={safePage >= totalPages - 1}>
+              {t('ui.next')}
+              <ChevronRight className="ml-1 size-3.5" />
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )
