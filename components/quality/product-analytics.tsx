@@ -31,7 +31,7 @@ interface Metric {
   key: string
   label: string
   unit?: string
-  targetKey: string
+  targetKey?: string
 }
 
 interface ProductAnalyticsProps<T> {
@@ -62,12 +62,12 @@ function computeStats(values: number[]) {
 }
 
 const COLORS = [
-  { stroke: "#2563eb", darkStroke: "#60a5fa" },
-  { stroke: "#059669", darkStroke: "#34d399" },
-  { stroke: "#d97706", darkStroke: "#fbbf24" },
-  { stroke: "#dc2626", darkStroke: "#f87171" },
-  { stroke: "#7c3aed", darkStroke: "#a78bfa" },
-  { stroke: "#db2777", darkStroke: "#f472b6" },
+  { stroke: "#2563eb" },
+  { stroke: "#059669" },
+  { stroke: "#d97706" },
+  { stroke: "#dc2626" },
+  { stroke: "#7c3aed" },
+  { stroke: "#db2777" },
 ]
 
 export function ProductAnalytics<T extends Record<string, unknown>>({
@@ -107,7 +107,7 @@ export function ProductAnalytics<T extends Record<string, unknown>>({
       const rows = data.filter((row) => String(row[productKey]) === product)
       const metricStats = metrics.map((metric) => {
         const values = rows.map((row) => toNumber(row[metric.key])).filter((value): value is number => value != null)
-        const rowTarget = rows.map((row) => toNumber(row[metric.targetKey])).find((value) => value != null) ?? null
+        const rowTarget = rows.map((row) => (metric.targetKey ? toNumber(row[metric.targetKey]) : null)).find((value) => value != null) ?? null
         const currentLimit = productType && limitsIndex ? findLimit(limitsIndex, productType, product, metric.key) : null
         const limitMin = currentLimit?.min ?? null
         const limitMax = currentLimit?.max ?? null
@@ -147,7 +147,7 @@ export function ProductAnalytics<T extends Record<string, unknown>>({
             const limit = productType && limitsIndex ? findLimit(limitsIndex, productType, product, metric.key) : null
             point[`__limitMin_${metric.key}`] = limit?.min ?? null
             point[`__limitMax_${metric.key}`] = limit?.max ?? null
-            point[`__limitTarget_${metric.key}`] = limit?.target ?? toNumber(row[metric.targetKey])
+            point[`__limitTarget_${metric.key}`] = limit?.target ?? (metric.targetKey ? toNumber(row[metric.targetKey]) : null)
           })
           return point
         })
@@ -317,7 +317,7 @@ export function ProductAnalytics<T extends Record<string, unknown>>({
                     if (prodData.length === 0) return null
                     const color = COLORS[productIndex % COLORS.length]
                     return (
-                      <div key={product} className="h-[180px] min-w-0 sm:h-[220px]">
+                      <div key={product} className="h-[180px] min-w-0 sm:h-[220px] text-gray-700 dark:text-gray-200">
                         {selectedProducts.length > 1 && <p className="mb-1 text-[10px] text-muted-foreground">{product}</p>}
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart data={prodData}>
@@ -328,9 +328,9 @@ export function ProductAnalytics<T extends Record<string, unknown>>({
                               </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" />
-                            <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                            <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={38} />
-                            <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'currentColor' }} interval="preserveStartEnd" />
+                            <YAxis tick={{ fontSize: 10, fill: 'currentColor' }} domain={["auto", "auto"]} width={38} />
+                            <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} labelStyle={{ color: "var(--foreground)" }} />
                             <Area dataKey={metric.key} stroke={color.stroke} fill={`url(#quality-grad-${productIndex}-${metricIndex})`} strokeWidth={2} dot={false} name={product} type="monotone" />
                             <Line type="stepAfter" dataKey={`__limitMin_${metric.key}`} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} dot={false} isAnimationActive={false} name={t("quality.analytics.min")} connectNulls={false} />
                             <Line type="stepAfter" dataKey={`__limitMax_${metric.key}`} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} dot={false} isAnimationActive={false} name={t("quality.analytics.max")} connectNulls={false} />
@@ -348,13 +348,13 @@ export function ProductAnalytics<T extends Record<string, unknown>>({
           {compareMode && comparisonData.length > 0 && (
             <div className="rounded-md border bg-background p-3">
               <h3 className="mb-3 text-sm font-medium text-foreground">{t("quality.analytics.averageComparison")}</h3>
-              <div className="h-[260px] sm:h-[320px]">
+              <div className="h-[260px] sm:h-[320px] text-gray-700 dark:text-gray-200">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={comparisonData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" />
-                    <XAxis dataKey="metric" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 10 }} width={38} />
-                    <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+                    <XAxis dataKey="metric" tick={{ fontSize: 11, fill: 'currentColor' }} />
+                    <YAxis tick={{ fontSize: 10, fill: 'currentColor' }} width={38} />
+                    <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} labelStyle={{ color: "var(--foreground)" }} />
                     <Legend />
                     {selectedProducts.map((product, productIndex) => (
                       <Bar key={product} dataKey={product} fill={COLORS[productIndex % COLORS.length].stroke} fillOpacity={0.75} radius={[4, 4, 0, 0]} name={product} />

@@ -99,7 +99,7 @@ function QualityHubsContent() {
   const table = useDataTable({ data, columns, storageKey: "quality-hubs" })
   const editFields: QualityEditFieldDef[] = useMemo(() => [
     { key: "timestamp", label: t("quality.colDate"), type: "text", readOnly: true },
-    { key: "inspector_name", label: t("quality.colInspector"), type: "text" },
+    { key: "inspector_name", label: t("quality.colInspector"), type: "text", readOnly: true },
     { key: "hub_number", label: t("quality.col.hubNumber"), type: "text" },
     { key: "hub_style", label: t("quality.col.hubStyle"), type: "text", readOnly: true },
     { key: "hub_mold", label: t("quality.col.hubMold"), type: "text", readOnly: true },
@@ -136,7 +136,7 @@ function QualityHubsContent() {
       {!loading && !error && (
         <div className="space-y-4">
           <ProductAnalytics
-            data={table.processedData}
+            data={data}
             productKey="hub_number"
             productLabel={t("quality.productType.hub")}
             metrics={analyticsMetrics}
@@ -165,7 +165,7 @@ function QualityHubsContent() {
         fields={editFields}
         apiEndpoint="/api/quality/inspections/hubs"
         onClose={() => setEditRecord(null)}
-        onSaved={() => { void loadData() }}
+        onSaved={() => { loadData().catch(() => setError(t("quality.loadError"))) }}
       />
     </div>
   )

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -27,10 +28,13 @@ import { userHeaders } from "@/lib/quality/form-utils"
 export interface QualityEditFieldDef {
   key: string
   label: string
-  type: "text" | "number" | "select"
+  type: "text" | "number" | "select" | "textarea"
   options?: string[]
   readOnly?: boolean
 }
+
+// Radix Select items can't have empty values — sentinel for "cleared".
+const SELECT_NONE = "__none__"
 
 interface EditInspectionModalProps {
   record: Record<string, unknown> | null
@@ -70,8 +74,14 @@ export function EditInspectionModal({
     setSaving(true)
     setError(null)
     try {
+      // Number fields are kept as RAW STRINGS while typing (so "12." and "0."
+      // aren't eaten mid-entry on iOS) and parsed only here.
       const payload = Object.fromEntries(
-        fields.filter((f) => !f.readOnly).map((f) => [f.key, values[f.key] ?? null]),
+        fields.filter((f) => !f.readOnly).map((f) => {
+          const raw = values[f.key]
+          if (f.type === "number") return [f.key, numberValue(raw == null ? "" : String(raw))]
+          return [f.key, raw ?? null]
+        }),
       )
       const res = await fetch(apiEndpoint, {
         method: "PUT",
@@ -108,33 +118,40 @@ export function EditInspectionModal({
 
         <div className="grid gap-3 sm:grid-cols-2">
           {fields.map((field) => (
-            <div key={field.key} className="space-y-1.5">
+            <div key={field.key} className={field.type === "textarea" ? "space-y-1.5 sm:col-span-2" : "space-y-1.5"}>
               <Label className="text-xs text-muted-foreground">{field.label}</Label>
               {field.type === "select" ? (
                 <Select
-                  value={values[field.key] == null || values[field.key] === "" ? undefined : String(values[field.key])}
-                  onValueChange={(value) => setValues((prev) => ({ ...prev, [field.key]: value }))}
+                  // Always controlled (sentinel for empty) so Radix never flips
+                  // between controlled/uncontrolled; "—" lets the user clear.
+                  value={values[field.key] == null || values[field.key] === "" ? SELECT_NONE : String(values[field.key])}
+                  onValueChange={(value) => setValues((prev) => ({ ...prev, [field.key]: value === SELECT_NONE ? "" : value }))}
                   disabled={field.readOnly || saving}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="-" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={SELECT_NONE}>—</SelectItem>
                     {field.options?.map((option) => (
                       <SelectItem key={option} value={option}>{option}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              ) : field.type === "textarea" ? (
+                <Textarea
+                  value={values[field.key] == null ? "" : String(values[field.key])}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  readOnly={field.readOnly}
+                  disabled={saving}
+                  rows={3}
+                />
               ) : (
                 <Input
-                  type={field.type}
-                  step={field.type === "number" ? "0.001" : undefined}
+                  type={field.type === "number" ? "text" : field.type}
                   inputMode={field.type === "number" ? "decimal" : undefined}
                   value={values[field.key] == null ? "" : String(values[field.key])}
-                  onChange={(e) => {
-                    const value = field.type === "number" ? numberValue(e.target.value) : e.target.value
-                    setValues((prev) => ({ ...prev, [field.key]: value }))
-                  }}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
                   readOnly={field.readOnly}
                   disabled={saving}
                 />

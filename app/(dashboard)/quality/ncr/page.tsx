@@ -82,13 +82,13 @@ function QualityNcrContent() {
     { key: "ncr_number", label: t("quality.col.ncrNumber"), type: "text", readOnly: true },
     { key: "created_at", label: t("quality.colDate"), type: "text", readOnly: true },
     { key: "reported_by", label: t("quality.col.reportedBy"), type: "text", readOnly: true },
-    { key: "defect_description", label: t("quality.col.defectDescription"), type: "text" },
+    { key: "defect_description", label: t("quality.col.defectDescription"), type: "textarea" },
     { key: "quantity_affected", label: t("quality.col.quantityAffected"), type: "number" },
     { key: "disposition", label: t("quality.col.disposition"), type: "select", options: ["HOLD", "SCRAP", "REWORK", "USE_AS_IS", "RETURN_TO_SUPPLIER"] },
     { key: "status", label: t("quality.col.status"), type: "select", options: ["OPEN", "INVESTIGATING", "CLOSED"] },
-    { key: "root_cause", label: t("quality.col.rootCause"), type: "text" },
-    { key: "corrective_action", label: t("quality.col.correctiveAction"), type: "text" },
-    { key: "preventive_action", label: t("quality.col.preventiveAction"), type: "text" },
+    { key: "root_cause", label: t("quality.col.rootCause"), type: "textarea" },
+    { key: "corrective_action", label: t("quality.col.correctiveAction"), type: "textarea" },
+    { key: "preventive_action", label: t("quality.col.preventiveAction"), type: "textarea" },
   ], [t])
 
   return (
@@ -114,7 +114,7 @@ function QualityNcrContent() {
         fields={editFields}
         apiEndpoint="/api/quality/ncr"
         onClose={() => setEditRecord(null)}
-        onSaved={() => { void loadData() }}
+        onSaved={() => { loadData().catch(() => setError(t("quality.loadError"))) }}
       />
     </div>
   )

@@ -89,7 +89,7 @@ function QualityTiresContent() {
   const table = useDataTable({ data, columns, storageKey: "quality-tires" })
   const editFields: QualityEditFieldDef[] = useMemo(() => [
     { key: "timestamp", label: t("quality.colDate"), type: "text", readOnly: true },
-    { key: "inspector_name", label: t("quality.colInspector"), type: "text" },
+    { key: "inspector_name", label: t("quality.colInspector"), type: "text", readOnly: true },
     { key: "tire_number", label: t("quality.col.tireNumber"), type: "text" },
     { key: "thickness", label: `${t("quality.col.thickness")} (mm)`, type: "number" },
     { key: "thickness_target", label: `${t("quality.col.thickness")} ${t("quality.form.target")}`, type: "number" },
@@ -120,7 +120,7 @@ function QualityTiresContent() {
       {!loading && !error && (
         <div className="space-y-4">
           <ProductAnalytics
-            data={table.processedData}
+            data={data}
             productKey="tire_number"
             productLabel={t("quality.productType.tire")}
             metrics={analyticsMetrics}
@@ -139,7 +139,7 @@ function QualityTiresContent() {
         fields={editFields}
         apiEndpoint="/api/quality/inspections/tires"
         onClose={() => setEditRecord(null)}
-        onSaved={() => { void loadData() }}
+        onSaved={() => { loadData().catch(() => setError(t("quality.loadError"))) }}
       />
     </div>
   )

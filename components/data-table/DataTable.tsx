@@ -415,7 +415,15 @@ export function DataTable<T extends Record<string, unknown>>({
           const absoluteIndex = pageStart + i
           return (
           <CardErrorBoundary key={getRowKey?.(row, absoluteIndex) ?? absoluteIndex}>
-            {renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />}
+            {/* Phones get no table rows, so without this tap handler an
+                onRowClick feature (e.g. edit-inspection) would be desktop-only. */}
+            {onRowClick ? (
+              <div role="button" tabIndex={0} className="cursor-pointer active:opacity-75" onClick={() => onRowClick(row, absoluteIndex)}>
+                {renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />}
+              </div>
+            ) : (
+              renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />
+            )}
           </CardErrorBoundary>
           )
         })}
@@ -433,11 +441,11 @@ export function DataTable<T extends Record<string, unknown>>({
             {t('ui.page')} {safePage + 1} {t('ui.of')} {totalPages} · {t('ui.showing')} {pageStart + 1}-{Math.min(pageStart + pageSize, totalRows)} {t('ui.of')} {totalRows}
           </span>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(0, p - 1))} disabled={safePage === 0}>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.max(0, safePage - 1))} disabled={safePage === 0}>
               <ChevronLeft className="mr-1 size-3.5" />
               {t('ui.previous')}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))} disabled={safePage >= totalPages - 1}>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.min(totalPages - 1, safePage + 1))} disabled={safePage >= totalPages - 1}>
               {t('ui.next')}
               <ChevronRight className="ml-1 size-3.5" />
             </Button>

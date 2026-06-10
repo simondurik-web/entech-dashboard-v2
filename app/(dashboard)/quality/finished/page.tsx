@@ -32,9 +32,9 @@ function num(v: unknown): number | null {
 }
 
 const finishedMetrics = [
-  { key: "tire_od", labelKey: "quality.col.tireOd", unit: "mm", targetKey: "tire_od" },
-  { key: "tire_thickness", labelKey: "quality.col.tireThickness", unit: "mm", targetKey: "tire_thickness" },
-  { key: "tire_weight", labelKey: "quality.col.tireWeight", unit: "lbs", targetKey: "tire_weight" },
+  { key: "tire_od", labelKey: "quality.col.tireOd", unit: "mm" },
+  { key: "tire_thickness", labelKey: "quality.col.tireThickness", unit: "mm" },
+  { key: "tire_weight", labelKey: "quality.col.tireWeight", unit: "lbs" },
 ]
 
 export default function QualityFinishedPage() {
@@ -108,7 +108,7 @@ function QualityFinishedContent() {
   const table = useDataTable({ data, columns, storageKey: "quality-finished" })
   const editFields: QualityEditFieldDef[] = useMemo(() => [
     { key: "timestamp", label: t("quality.colDate"), type: "text", readOnly: true },
-    { key: "inspector_name", label: t("quality.colInspector"), type: "text" },
+    { key: "inspector_name", label: t("quality.colInspector"), type: "text", readOnly: true },
     { key: "rt_number", label: t("quality.col.rtNumber"), type: "text" },
     { key: "correct_tire", label: t("quality.col.correctTire"), type: "select", options: ["YES", "NO", "PASS", "FAIL"] },
     { key: "correct_hub", label: t("quality.col.correctHub"), type: "select", options: ["YES", "NO", "PASS", "FAIL"] },
@@ -122,7 +122,7 @@ function QualityFinishedContent() {
     { key: "hub_visual", label: t("quality.col.hubVisual"), type: "select", options: ["PASS", "FAIL"] },
     { key: "comments", label: t("quality.col.comments"), type: "text" },
   ], [t])
-  const analyticsMetrics = useMemo(() => finishedMetrics.map((m) => ({ key: m.key, label: t(m.labelKey), unit: m.unit, targetKey: m.targetKey })), [t])
+  const analyticsMetrics = useMemo(() => finishedMetrics.map((m) => ({ key: m.key, label: t(m.labelKey), unit: m.unit })), [t])
 
   return (
     <div className="p-4 pb-20">
@@ -142,7 +142,7 @@ function QualityFinishedContent() {
       {!loading && !error && (
         <div className="space-y-4">
           <ProductAnalytics
-            data={table.processedData}
+            data={data}
             productKey="rt_number"
             productLabel={t("quality.productType.finished")}
             metrics={analyticsMetrics}
@@ -162,7 +162,7 @@ function QualityFinishedContent() {
         fields={editFields}
         apiEndpoint="/api/quality/inspections/finished"
         onClose={() => setEditRecord(null)}
-        onSaved={() => { void loadData() }}
+        onSaved={() => { loadData().catch(() => setError(t("quality.loadError"))) }}
       />
     </div>
   )
