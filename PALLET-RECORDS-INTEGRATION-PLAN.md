@@ -19,9 +19,11 @@
   https://entech-dashboard-v2.vercel.app/pallet-records/scan (1e21603) — labels printed during the
   staging window only resolve after cutover (told Simon). RT-Labels Apps Script (Sheet, ~line 1187)
   still old URL — repoint at cutover. Old printed labels covered by the redirect's query passthrough.
-- NEXT: Simon tests staging desktop/iPad/iPhone → then (his go) cutover: redirect
-  entech-production-app.vercel.app per-path incl /scan?query passthrough + repoint RT-Labels
-  Apps Script QR_APP_URL + promote to main.
+- **COMPLETE — LIVE IN PRODUCTION 2026-06-10** (main merge 2e020a1; old domain = static redirect
+  project w/ verified /scan query passthrough; project framework PATCHed to null first — same
+  Vercel quirk as quality cutover). Rollback: redeploy entech-production-app repo to its project.
+  Leftover (optional): RT-Labels Apps Script still emits old-URL QRs — fine via redirect; Simon has
+  repoint instructions (QR_APP_URL line ~1187).
 
 ## Source app facts that drive the design
 - Same Supabase project. Tables: `pallet_records`, `shipping_records`, `audit_trail`,
