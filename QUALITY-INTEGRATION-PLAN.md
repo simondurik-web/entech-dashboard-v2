@@ -41,6 +41,18 @@
   purchasing / /admin/users) — Bearer-token hardening is an app-wide task, not done here. Limits
   upsert+history not atomic (matches source). Pre-enrolled-user → first Google login auth-linking
   path is untested in this project (pre-dates migration; test once with a throwaway email).
+- **PARITY ROUND ✅ (2026-06-09 late):** Simon found missing EQDR features on staging → full parity
+  audit (deployed branch = feature/inspections-pagination-search-analytics; drawings + GLBs live in
+  the SHARED storage bucket so no file migration). Built (Codex) + review-fixed (2 Fable 5 agents):
+  edit-inspection modal on all 4 lists (PUTs tightened to "manage"), ProductAnalytics (pills/stats/
+  trend charts w/ limit lines/compare/print) on hubs+tires+finished, drawings API+viewer (in forms +
+  analytics), 3D GLB viewer (three/@react-three/* deps), opt-in DataTable pageSize=100 (quality only;
+  zero impact elsewhere), iPhone tap-to-edit on mobile cards. Commits bf1eafe + 92aa0f0.
+  GOTCHAS: build needs NODE_OPTIONS=--max-old-space-size=6144 locally (three.js graph); EQDR schema
+  quirk Metric.targetKey now optional (finished has no *_target cols); translations re-aligned to
+  EQDR ES vocabulary earlier (730ec70). Staging redirect dress-rehearsal live at
+  quality-app-v1-staging.vercel.app (new Vercel project, redirect-shim/ in repo).
+  Role grants DONE: 6 operators + Phil qa_manager (audited).
 - **NEXT → cutover**: after Simon signs off on staging, retire/redirect the standalone EQDR app to
   `/quality` (Q1=a). Update Supabase Auth uri_allow_list if any redirect changes. Promote staging→main
   with Simon's explicit yes (detached-HEAD per pre-push hook quirk).
