@@ -21,9 +21,26 @@
   inspector_email insert (was 500ing submits); NCR closed_* server-only; users route scoped to
   user_app_roles[quality] (no global custom_permissions/is_active writes); gated products/limits GET;
   server canView honors the dashboard /quality grant.
+- **Fable 5 deep re-review ✅ DONE** (2026-06-09 evening, Simon-requested, 4 parallel Fable 5
+  reviewers over the FULL diff + live-DB verification; fixes in `f2d4c1e`, on staging):
+  caught 2 new blockers — (1) `qa_nonconformance_reports.product_type` CHECK allows `'finished'`
+  NOT `'finished_product'` (schema inconsistent with qa_products!) so finished NCRs 500'd; route now
+  stores the NCR vocabulary; (2) products admin stale-closure sent empty x-user-id on hard refresh →
+  silent empty page. Plus: users-route ilike wildcard injection fixed (strict email validation +
+  LIKE escaping + resolved-row super-admin recheck), custom_permissions/dashboard-role no longer
+  leaked to QA-scoped admins, profile upsert no longer resets role/is_active (ignoreDuplicates),
+  listUsers perPage 1000, hub_style/hub_mold settable on products, dup product number → 409,
+  fetchAllQa id tiebreak, localized DataTable nouns, `/quality` registered in admin/permissions.
+  MIGRATION-IMPACT verdict: no regression for existing users (profile change additive; no new
+  fetches for non-QA users; no Sheet-synced tables touched; bundle clean). EQDR COEXISTENCE: safe
+  (NCR RPC atomic; insert shapes identical; minor audit changed_by format divergence — cosmetic).
+  USERS CONSOLIDATION (Simon's question): NOT needed now — /admin/users writes
+  user_app_roles[dashboard]+profile fields, /quality/users writes user_app_roles[quality] only;
+  disjoint write sets, can't fight. Consolidate into one screen when EQDR is retired.
 - **KNOWN/FLAGGED to Simon:** API auth uses the app-wide `x-user-id` header pattern (same as
   purchasing / /admin/users) — Bearer-token hardening is an app-wide task, not done here. Limits
-  upsert+history not atomic (matches source).
+  upsert+history not atomic (matches source). Pre-enrolled-user → first Google login auth-linking
+  path is untested in this project (pre-dates migration; test once with a throwaway email).
 - **NEXT → cutover**: after Simon signs off on staging, retire/redirect the standalone EQDR app to
   `/quality` (Q1=a). Update Supabase Auth uri_allow_list if any redirect changes. Promote staging→main
   with Simon's explicit yes (detached-HEAD per pre-push hook quirk).
