@@ -1,0 +1,57 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { forbidden } from '@/lib/pallets/api'
+import { palletActorFromRequest } from '@/lib/pallets/guard'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30
+
+const BUCKET = 'pallet-photos'
+
+export async function POST(request: NextRequest) {
+  const actor = await palletActorFromRequest(request)
+  if (!actor.canView) return forbidden()
+
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const ifNumber = formData.get('if_number') as string
+    const palletNumber = formData.get('pallet_number') as string
+
+    if (!file || !ifNumber || !palletNumber) {
+      return NextResponse.json({ error: 'Missing file, if_number, or pallet_number' }, { status: 400 })
+    }
+
+    const { data: buckets } = await supabaseAdmin.storage.listBuckets()
+    if (!buckets?.find((bucket) => bucket.name === BUCKET)) {
+      await supabaseAdmin.storage.createBucket(BUCKET, {
+        public: true,
+        fileSizeLimit: 10 * 1024 * 1024,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+      })
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const ext = file.name?.split('.').pop() || 'jpg'
+    const fileName = `${ifNumber}/pallet-${palletNumber}/${Date.now()}.${ext}`
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .upload(fileName, buffer, {
+        contentType: file.type || 'image/jpeg',
+        upsert: false,
+      })
+
+    if (error) {
+      console.error('Storage upload error:', error)
+      return NextResponse.json({ error: 'Upload failed', detail: error.message }, { status: 500 })
+    }
+
+    const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(data.path)
+    return NextResponse.json({ url: urlData.publicUrl, path: data.path })
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('Upload error:', msg)
+    return NextResponse.json({ error: 'Upload failed', detail: msg }, { status: 500 })
+  }
+}
