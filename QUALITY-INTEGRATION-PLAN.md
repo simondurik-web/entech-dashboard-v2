@@ -44,6 +44,13 @@
 - **NEXT → cutover**: after Simon signs off on staging, retire/redirect the standalone EQDR app to
   `/quality` (Q1=a). Update Supabase Auth uri_allow_list if any redirect changes. Promote staging→main
   with Simon's explicit yes (detached-HEAD per pre-push hook quirk).
+  **Redirect map (Simon confirmed 2026-06-09 — old bookmarks must keep working):** replace the
+  quality-app-v1 deployment with a redirect-only vercel.json on the same domain:
+  /dashboard→/quality, /hubs→/quality/hubs, /tires→/quality/tires, /finished→/quality/finished,
+  /ncr→/quality/ncr, /products→/quality/products, /limits→/quality/limits, /users→/quality/users,
+  /audit→/quality/audit, catch-all→/quality (target: https://entech-dashboard-v2.vercel.app).
+  Single login confirmed to Simon: one app = one session; same Supabase+Google auth as EQDR so
+  existing QA accounts/roles carry over with zero re-enrollment.
 - **Phase 1 fleet review DONE** (4 agents: Codex GPT-5.5 + 3 Claude — security/correctness/design).
   (Phase 2 review: Codex + 2 Claude — fixes in commit `bdd12cb`.)
   Verdicts: 3× SHIP, 1× FIX-FIRST (Codex). No blocker, no regression confirmed by all four.
