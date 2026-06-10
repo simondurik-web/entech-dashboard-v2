@@ -15,6 +15,10 @@
   push rewired onto the dashboard real push_subscriptions schema, formula-injection sanitized,
   ownership=userId only, upload sanitization, users enum+super-admin immutable, theme fixes).
   role_permissions /pallet-photos copied for all 6 roles. PUSHED TO STAGING (ba43162).
+- QR labels: dashboard lib/label-utils.ts now encodes
+  https://entech-dashboard-v2.vercel.app/pallet-records/scan (1e21603) — labels printed during the
+  staging window only resolve after cutover (told Simon). RT-Labels Apps Script (Sheet, ~line 1187)
+  still old URL — repoint at cutover. Old printed labels covered by the redirect's query passthrough.
 - NEXT: Simon tests staging desktop/iPad/iPhone → then (his go) cutover: redirect
   entech-production-app.vercel.app per-path incl /scan?query passthrough + repoint RT-Labels
   Apps Script QR_APP_URL + promote to main.
