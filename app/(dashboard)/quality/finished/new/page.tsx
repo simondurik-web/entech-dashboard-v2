@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { FieldError, QualityFormShell, TargetPanel } from "@/components/quality/form-shell"
+import { DrawingViewer } from "@/components/quality/drawing-viewer"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n"
 import { useQualityAccess } from "@/lib/use-quality-access"
 import { toFiniteOrNull, userHeaders } from "@/lib/quality/form-utils"
+import { getBOMMappings } from "@/lib/quality/bom-mappings"
 
 type Product = {
   id: string
@@ -59,6 +61,7 @@ export default function NewFinishedInspectionPage() {
   const { profile } = useAuth()
   const { canSeeQuality } = useQualityAccess()
   const [products, setProducts] = useState<Product[]>([])
+  const [bomMap, setBomMap] = useState<Record<string, { tire: string | null; hub: string | null }>>({})
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [manualEntry, setManualEntry] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -87,6 +90,12 @@ export default function NewFinishedInspectionPage() {
       .eq("product_type", "finished_product")
       .order("product_number")
       .then(({ data }) => { if (alive) setProducts((data || []) as Product[]) })
+    getBOMMappings().then((mappings) => {
+      if (!alive) return
+      const map: Record<string, { tire: string | null; hub: string | null }> = {}
+      mappings.forEach((mapping) => { map[mapping.rtNumber] = { tire: mapping.tire, hub: mapping.hub } })
+      setBomMap(map)
+    })
     return () => { alive = false }
   }, [canSeeQuality])
 
@@ -105,6 +114,21 @@ export default function NewFinishedInspectionPage() {
 
   const allPassFailComplete = PASS_FAIL_FIELDS.every((k) => ["PASS", "FAIL"].includes(form[k]))
   const canSubmit = !!form.rt_number && allPassFailComplete && !submitting
+  const drawingParts = useMemo(() => {
+    if (!form.rt_number) return { partNumbers: [] as string[], labels: [] as string[] }
+    const bom = bomMap[form.rt_number]
+    const parts = [form.rt_number]
+    const labels = [`${t("quality.analytics.finalProduct")} ${form.rt_number}`]
+    if (bom?.tire) {
+      parts.push(bom.tire)
+      labels.push(`${t("quality.productType.tire")} ${bom.tire}`)
+    }
+    if (bom?.hub) {
+      parts.push(bom.hub)
+      labels.push(`${t("quality.productType.hub")} ${bom.hub}`)
+    }
+    return { partNumbers: parts, labels }
+  }, [form.rt_number, bomMap, t])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -183,6 +207,10 @@ export default function NewFinishedInspectionPage() {
             <span>{t("quality.col.thickness")}: {selectedProduct.thickness_target ?? "—"}</span>
             <span>{t("quality.col.weight")}: {selectedProduct.weight_target ?? "—"}</span>
           </TargetPanel>
+        )}
+
+        {drawingParts.partNumbers.length > 0 && (
+          <DrawingViewer partNumbers={drawingParts.partNumbers} labels={drawingParts.labels} />
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -20,5 +20,5 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  return updateRecord(req, TABLE, TIRE_UPDATABLE)
+  return updateRecord(req, TABLE, TIRE_UPDATABLE, { permission: "manage" })
 }

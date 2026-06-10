@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { QualityFormShell, FieldError, InfoPill, TargetPanel } from "@/components/quality/form-shell"
+import { DrawingViewer } from "@/components/quality/drawing-viewer"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n"
@@ -154,6 +155,7 @@ export default function NewHubInspectionPage() {
               <InfoPill label={t("quality.col.hubStyle")} value={selectedProduct.hub_style} />
               <InfoPill label={t("quality.col.hubMold")} value={selectedProduct.hub_mold} />
             </div>
+            <DrawingViewer partNumbers={[form.hub_number]} labels={[`${t("quality.productType.hub")} ${form.hub_number}`]} />
             <TargetPanel title={t("quality.form.target")}>
               <span>{t("quality.col.boreSize")}: {selectedProduct.bore_size_target ?? "—"}</span>
               <span>{t("quality.col.boreLength")}: {selectedProduct.bore_length_target ?? "—"}</span>

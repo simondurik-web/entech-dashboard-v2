@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { DataTable } from "@/components/data-table"
@@ -13,6 +13,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { fetchAllQa } from "@/lib/quality/fetch"
 import { normalizeProductType, PRODUCT_TYPE_LABEL_KEY } from "@/lib/quality/metrics"
 import { NcrStatusBadge, DefectBadge, NeutralBadge } from "@/components/quality/badges"
+import { EditInspectionModal, type QualityEditFieldDef } from "@/components/quality/edit-inspection-modal"
 
 type NcrRow = Record<string, unknown>
 
@@ -31,21 +32,26 @@ function QualityNcrContent() {
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
-  const { canSeeQuality } = useQualityAccess()
+  const { canSeeQuality, canManageQuality } = useQualityAccess()
   const [data, setData] = useState<NcrRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editRecord, setEditRecord] = useState<NcrRow | null>(null)
+
+  const loadData = useCallback(async () => {
+    const rows = await fetchAllQa<NcrRow>("qa_nonconformance_reports", "*", "created_at")
+    setData(rows)
+  }, [])
 
   useEffect(() => {
     if (!canSeeQuality) return
     let alive = true
     // NCR rows are ordered by created_at (no `timestamp` column on this table).
-    fetchAllQa<NcrRow>("qa_nonconformance_reports", "*", "created_at")
-      .then((rows) => { if (alive) setData(rows) })
+    loadData()
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [canSeeQuality])
+  }, [canSeeQuality, loadData])
 
   const columns: ColumnDef<NcrRow>[] = useMemo(() => [
     { key: "ncr_number", label: t("quality.col.ncrNumber"), sortable: true, filterable: true, render: (v) => <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{str(v) || "—"}</span> },
@@ -72,6 +78,18 @@ function QualityNcrContent() {
   ], [t])
 
   const table = useDataTable({ data, columns, storageKey: "quality-ncr" })
+  const editFields: QualityEditFieldDef[] = useMemo(() => [
+    { key: "ncr_number", label: t("quality.col.ncrNumber"), type: "text", readOnly: true },
+    { key: "created_at", label: t("quality.colDate"), type: "text", readOnly: true },
+    { key: "reported_by", label: t("quality.col.reportedBy"), type: "text", readOnly: true },
+    { key: "defect_description", label: t("quality.col.defectDescription"), type: "text" },
+    { key: "quantity_affected", label: t("quality.col.quantityAffected"), type: "number" },
+    { key: "disposition", label: t("quality.col.disposition"), type: "select", options: ["HOLD", "SCRAP", "REWORK", "USE_AS_IS", "RETURN_TO_SUPPLIER"] },
+    { key: "status", label: t("quality.col.status"), type: "select", options: ["OPEN", "INVESTIGATING", "CLOSED"] },
+    { key: "root_cause", label: t("quality.col.rootCause"), type: "text" },
+    { key: "corrective_action", label: t("quality.col.correctiveAction"), type: "text" },
+    { key: "preventive_action", label: t("quality.col.preventiveAction"), type: "text" },
+  ], [t])
 
   return (
     <div className="p-4 pb-20">
@@ -89,8 +107,15 @@ function QualityNcrContent() {
       {loading && <TableSkeleton rows={8} />}
       {error && <p className="text-center text-destructive py-10">{t("quality.loadError")}</p>}
       {!loading && !error && (
-        <DataTable table={table} data={data} noun={t("quality.noun.report")} exportFilename="ncr-reports.csv" page="quality-ncr" initialView={initialView} autoExport={autoExport} />
+        <DataTable table={table} data={data} noun={t("quality.noun.report")} exportFilename="ncr-reports.csv" page="quality-ncr" initialView={initialView} autoExport={autoExport} pageSize={100} onRowClick={canManageQuality ? (row) => setEditRecord(row) : undefined} />
       )}
+      <EditInspectionModal
+        record={editRecord}
+        fields={editFields}
+        apiEndpoint="/api/quality/ncr"
+        onClose={() => setEditRecord(null)}
+        onSaved={() => { void loadData() }}
+      />
     </div>
   )
 }

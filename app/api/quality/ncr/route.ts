@@ -82,6 +82,7 @@ const VALID_NCR_STATUS = new Set(["OPEN", "INVESTIGATING", "CLOSED"])
 
 export async function PUT(req: Request) {
   return updateRecord(req, TABLE, NCR_UPDATABLE, {
+    permission: "manage",
     beforeUpdate(updates, oldRecord, actor) {
       if (updates.product_type) {
         // pickUpdates already normalized; map to the NCR table's vocabulary

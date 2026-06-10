@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { DataTable } from "@/components/data-table"
@@ -13,6 +13,8 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { fetchAllQa, fetchLimitsIndex } from "@/lib/quality/fetch"
 import type { LimitsIndex } from "@/lib/quality/limits"
 import { SpecValue, PassFail } from "@/components/quality/badges"
+import { ProductAnalytics } from "@/components/quality/product-analytics"
+import { EditInspectionModal, type QualityEditFieldDef } from "@/components/quality/edit-inspection-modal"
 
 type TireRow = Record<string, unknown>
 
@@ -28,6 +30,12 @@ function num(v: unknown): number | null {
   return Number.isNaN(n) ? null : n
 }
 
+const tireMetrics = [
+  { key: "thickness", labelKey: "quality.col.thickness", unit: "mm", targetKey: "thickness_target" },
+  { key: "diameter", labelKey: "quality.col.diameter", unit: "mm", targetKey: "diameter_target" },
+  { key: "weight", labelKey: "quality.col.weight", unit: "lbs", targetKey: "weight_target" },
+]
+
 export default function QualityTiresPage() {
   return <Suspense><QualityTiresContent /></Suspense>
 }
@@ -36,21 +44,27 @@ function QualityTiresContent() {
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
-  const { canSeeQuality } = useQualityAccess()
+  const { canSeeQuality, canManageQuality } = useQualityAccess()
   const [data, setData] = useState<TireRow[]>([])
   const [limits, setLimits] = useState<LimitsIndex>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editRecord, setEditRecord] = useState<TireRow | null>(null)
+
+  const loadData = useCallback(async () => {
+    const [rows, idx] = await Promise.all([fetchAllQa<TireRow>("qa_tire_inspections"), fetchLimitsIndex()])
+    setData(rows)
+    setLimits(idx)
+  }, [])
 
   useEffect(() => {
     if (!canSeeQuality) return
     let alive = true
-    Promise.all([fetchAllQa<TireRow>("qa_tire_inspections"), fetchLimitsIndex()])
-      .then(([rows, idx]) => { if (!alive) return; setData(rows); setLimits(idx) })
+    loadData()
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [canSeeQuality])
+  }, [canSeeQuality, loadData])
 
   const columns: ColumnDef<TireRow>[] = useMemo(() => {
     const spec = (key: string, metric: string): ColumnDef<TireRow> => ({
@@ -73,6 +87,20 @@ function QualityTiresContent() {
   }, [t, limits])
 
   const table = useDataTable({ data, columns, storageKey: "quality-tires" })
+  const editFields: QualityEditFieldDef[] = useMemo(() => [
+    { key: "timestamp", label: t("quality.colDate"), type: "text", readOnly: true },
+    { key: "inspector_name", label: t("quality.colInspector"), type: "text" },
+    { key: "tire_number", label: t("quality.col.tireNumber"), type: "text" },
+    { key: "thickness", label: `${t("quality.col.thickness")} (mm)`, type: "number" },
+    { key: "thickness_target", label: `${t("quality.col.thickness")} ${t("quality.form.target")}`, type: "number" },
+    { key: "diameter", label: `${t("quality.col.diameter")} (mm)`, type: "number" },
+    { key: "diameter_target", label: `${t("quality.col.diameter")} ${t("quality.form.target")}`, type: "number" },
+    { key: "weight", label: `${t("quality.col.weight")} (lbs)`, type: "number" },
+    { key: "weight_target", label: `${t("quality.col.weight")} ${t("quality.form.target")}`, type: "number" },
+    { key: "visual_inspection", label: t("quality.col.visualInspection"), type: "select", options: ["PASS", "FAIL"] },
+    { key: "comments", label: t("quality.col.comments"), type: "text" },
+  ], [t])
+  const analyticsMetrics = useMemo(() => tireMetrics.map((m) => ({ key: m.key, label: t(m.labelKey), unit: m.unit, targetKey: m.targetKey })), [t])
 
   return (
     <div className="p-4 pb-20">
@@ -90,8 +118,29 @@ function QualityTiresContent() {
       {loading && <TableSkeleton rows={8} />}
       {error && <p className="text-center text-destructive py-10">{t("quality.loadError")}</p>}
       {!loading && !error && (
-        <DataTable table={table} data={data} noun={t("quality.noun.inspection")} exportFilename="tire-inspections.csv" page="quality-tires" initialView={initialView} autoExport={autoExport} />
+        <div className="space-y-4">
+          <ProductAnalytics
+            data={table.processedData}
+            productKey="tire_number"
+            productLabel={t("quality.productType.tire")}
+            metrics={analyticsMetrics}
+            productType="tire"
+            limitsIndex={limits}
+            onProductsChange={(selected) => {
+              if (selected.length === 1) table.setSearch(selected[0])
+              else if (selected.length === 0) table.setSearch("")
+            }}
+          />
+          <DataTable table={table} data={data} noun={t("quality.noun.inspection")} exportFilename="tire-inspections.csv" page="quality-tires" initialView={initialView} autoExport={autoExport} pageSize={100} onRowClick={canManageQuality ? (row) => setEditRecord(row) : undefined} />
+        </div>
       )}
+      <EditInspectionModal
+        record={editRecord}
+        fields={editFields}
+        apiEndpoint="/api/quality/inspections/tires"
+        onClose={() => setEditRecord(null)}
+        onSaved={() => { void loadData() }}
+      />
     </div>
   )
 }

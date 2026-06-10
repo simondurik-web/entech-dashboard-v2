@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { DataTable } from "@/components/data-table"
@@ -13,6 +13,9 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { fetchAllQa, fetchLimitsIndex } from "@/lib/quality/fetch"
 import type { LimitsIndex } from "@/lib/quality/limits"
 import { SpecValue, PassFail } from "@/components/quality/badges"
+import { ProductAnalytics } from "@/components/quality/product-analytics"
+import { EditInspectionModal, type QualityEditFieldDef } from "@/components/quality/edit-inspection-modal"
+import { getBOMMappings } from "@/lib/quality/bom-mappings"
 
 type FinRow = Record<string, unknown>
 
@@ -28,6 +31,12 @@ function num(v: unknown): number | null {
   return Number.isNaN(n) ? null : n
 }
 
+const finishedMetrics = [
+  { key: "tire_od", labelKey: "quality.col.tireOd", unit: "mm", targetKey: "tire_od" },
+  { key: "tire_thickness", labelKey: "quality.col.tireThickness", unit: "mm", targetKey: "tire_thickness" },
+  { key: "tire_weight", labelKey: "quality.col.tireWeight", unit: "lbs", targetKey: "tire_weight" },
+]
+
 export default function QualityFinishedPage() {
   return <Suspense><QualityFinishedContent /></Suspense>
 }
@@ -36,21 +45,35 @@ function QualityFinishedContent() {
   const { t } = useI18n()
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
-  const { canSeeQuality } = useQualityAccess()
+  const { canSeeQuality, canManageQuality } = useQualityAccess()
   const [data, setData] = useState<FinRow[]>([])
   const [limits, setLimits] = useState<LimitsIndex>(new Map())
+  const [bomMap, setBomMap] = useState<Record<string, { tire: string | null; hub: string | null }>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editRecord, setEditRecord] = useState<FinRow | null>(null)
+
+  const loadData = useCallback(async () => {
+    const [rows, idx, mappings] = await Promise.all([
+      fetchAllQa<FinRow>("qa_finished_inspections"),
+      fetchLimitsIndex(),
+      getBOMMappings(),
+    ])
+    const map: Record<string, { tire: string | null; hub: string | null }> = {}
+    mappings.forEach((mapping) => { map[mapping.rtNumber] = { tire: mapping.tire, hub: mapping.hub } })
+    setData(rows)
+    setLimits(idx)
+    setBomMap(map)
+  }, [])
 
   useEffect(() => {
     if (!canSeeQuality) return
     let alive = true
-    Promise.all([fetchAllQa<FinRow>("qa_finished_inspections"), fetchLimitsIndex()])
-      .then(([rows, idx]) => { if (!alive) return; setData(rows); setLimits(idx) })
+    loadData()
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [canSeeQuality])
+  }, [canSeeQuality, loadData])
 
   const columns: ColumnDef<FinRow>[] = useMemo(() => {
     const spec = (key: string, metric: string): ColumnDef<FinRow> => ({
@@ -83,6 +106,23 @@ function QualityFinishedContent() {
   }, [t, limits])
 
   const table = useDataTable({ data, columns, storageKey: "quality-finished" })
+  const editFields: QualityEditFieldDef[] = useMemo(() => [
+    { key: "timestamp", label: t("quality.colDate"), type: "text", readOnly: true },
+    { key: "inspector_name", label: t("quality.colInspector"), type: "text" },
+    { key: "rt_number", label: t("quality.col.rtNumber"), type: "text" },
+    { key: "correct_tire", label: t("quality.col.correctTire"), type: "select", options: ["YES", "NO", "PASS", "FAIL"] },
+    { key: "correct_hub", label: t("quality.col.correctHub"), type: "select", options: ["YES", "NO", "PASS", "FAIL"] },
+    { key: "correct_hub_color", label: t("quality.col.correctHubColor"), type: "select", options: ["YES", "NO", "PASS", "FAIL"] },
+    { key: "tire_od", label: `${t("quality.col.tireOd")} (mm)`, type: "number" },
+    { key: "tire_thickness", label: `${t("quality.col.tireThickness")} (mm)`, type: "number" },
+    { key: "tire_weight", label: `${t("quality.col.tireWeight")} (lbs)`, type: "number" },
+    { key: "bore_check", label: t("quality.col.boreCheck"), type: "select", options: ["PASS", "FAIL"] },
+    { key: "locking_mechanism", label: t("quality.col.lockingMechanism"), type: "select", options: ["PASS", "FAIL"] },
+    { key: "tire_visual", label: t("quality.col.tireVisual"), type: "select", options: ["PASS", "FAIL"] },
+    { key: "hub_visual", label: t("quality.col.hubVisual"), type: "select", options: ["PASS", "FAIL"] },
+    { key: "comments", label: t("quality.col.comments"), type: "text" },
+  ], [t])
+  const analyticsMetrics = useMemo(() => finishedMetrics.map((m) => ({ key: m.key, label: t(m.labelKey), unit: m.unit, targetKey: m.targetKey })), [t])
 
   return (
     <div className="p-4 pb-20">
@@ -100,8 +140,30 @@ function QualityFinishedContent() {
       {loading && <TableSkeleton rows={8} />}
       {error && <p className="text-center text-destructive py-10">{t("quality.loadError")}</p>}
       {!loading && !error && (
-        <DataTable table={table} data={data} noun={t("quality.noun.inspection")} exportFilename="finished-inspections.csv" page="quality-finished" initialView={initialView} autoExport={autoExport} />
+        <div className="space-y-4">
+          <ProductAnalytics
+            data={table.processedData}
+            productKey="rt_number"
+            productLabel={t("quality.productType.finished")}
+            metrics={analyticsMetrics}
+            bomMapping={bomMap}
+            productType="finished_product"
+            limitsIndex={limits}
+            onProductsChange={(selected) => {
+              if (selected.length === 1) table.setSearch(selected[0])
+              else if (selected.length === 0) table.setSearch("")
+            }}
+          />
+          <DataTable table={table} data={data} noun={t("quality.noun.inspection")} exportFilename="finished-inspections.csv" page="quality-finished" initialView={initialView} autoExport={autoExport} pageSize={100} onRowClick={canManageQuality ? (row) => setEditRecord(row) : undefined} />
+        </div>
       )}
+      <EditInspectionModal
+        record={editRecord}
+        fields={editFields}
+        apiEndpoint="/api/quality/inspections/finished"
+        onClose={() => setEditRecord(null)}
+        onSaved={() => { void loadData() }}
+      />
     </div>
   )
 }

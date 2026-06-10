@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { FieldError, QualityFormShell, TargetPanel } from "@/components/quality/form-shell"
+import { DrawingViewer } from "@/components/quality/drawing-viewer"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n"
@@ -115,11 +116,14 @@ export default function NewTireInspectionPage() {
         </div>
 
         {selectedProduct && (
-          <TargetPanel title={t("quality.form.target")}>
-            <span>{t("quality.col.thickness")}: {selectedProduct.thickness_target ?? "—"}</span>
-            <span>{t("quality.col.diameter")}: {selectedProduct.diameter_target ?? "—"}</span>
-            <span>{t("quality.col.weight")}: {selectedProduct.weight_target ?? "—"}</span>
-          </TargetPanel>
+          <>
+            <DrawingViewer partNumbers={[form.tire_number]} labels={[`${t("quality.productType.tire")} ${form.tire_number}`]} />
+            <TargetPanel title={t("quality.form.target")}>
+              <span>{t("quality.col.thickness")}: {selectedProduct.thickness_target ?? "—"}</span>
+              <span>{t("quality.col.diameter")}: {selectedProduct.diameter_target ?? "—"}</span>
+              <span>{t("quality.col.weight")}: {selectedProduct.weight_target ?? "—"}</span>
+            </TargetPanel>
+          </>
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
