@@ -32,16 +32,24 @@ export interface LabelData {
 }
 
 /**
- * Generate QR deep-link URL for the Entech Production App.
- * Pattern matches the Google Sheets label script:
- *   https://entech-production-app.vercel.app/scan?line=2922&pallet=1&total=2
+ * Generate QR deep-link URL for pallet registration.
+ *
+ * Now points at the dashboard's own /pallet-records/scan (the ported pallet
+ * app) instead of the retired standalone entech-production-app. Same query
+ * contract as before: ?line=2922&pallet=1&total=2 — the scan page stashes it
+ * in localStorage and auto-opens the matching pallet form.
+ *
+ * Labels are physical and long-lived, so this encodes the PRODUCTION domain
+ * deliberately (not window.location.origin — staging-printed labels must not
+ * embed a staging URL). Old printed labels keep working after cutover via the
+ * per-path redirect on the old domain (incl. /scan query passthrough).
  */
 export function generateQrData(line: string, _customer: string, _part: string, pallet?: number, totalPallets?: number): string {
   const params = new URLSearchParams()
   params.set('line', line)
   if (pallet != null) params.set('pallet', String(pallet))
   if (totalPallets != null) params.set('total', String(totalPallets))
-  return `https://entech-production-app.vercel.app/scan?${params.toString()}`
+  return `https://entech-dashboard-v2.vercel.app/pallet-records/scan?${params.toString()}`
 }
 
 export function calculatePackages(orderQty: number, perPackage: number): { numPackages: number; lastPackageQty: number } {
