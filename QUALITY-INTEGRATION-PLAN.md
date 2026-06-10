@@ -44,6 +44,16 @@
 - **NEXT → cutover**: after Simon signs off on staging, retire/redirect the standalone EQDR app to
   `/quality` (Q1=a). Update Supabase Auth uri_allow_list if any redirect changes. Promote staging→main
   with Simon's explicit yes (detached-HEAD per pre-push hook quirk).
+  **USER GRANTS REQUIRED BEFORE CUTOVER (audit 2026-06-09):** the old EQDR app let ANY signed-in
+  user (even Visitor) enter inspections — its API was unauthenticated. The new system requires a
+  non-visitor quality role. These ACTIVE inspectors have NO quality role and would be locked out:
+  Sergio Flores (sergiof.entech@gmail.com, 408/60d), Olivia Donias (doniasolivia641, 305),
+  Jorge Sanchez (jorgesanchez.entech, 303), Elias Zacarias (zacariaselias41, 241),
+  Ivan Cuenca (myivan1703, 109), Eduardo Cruz (crusitohenrry1013, 19) → grant operator
+  (user_app_roles app_id=quality), pending Simon's pick of (a) I grant, (b) he uses Quality→Users.
+  Phil (philiphabecker) is dashboard manager but quality VISITOR → won't see Quality; Simon to
+  decide his role. Random-stranger write risk exists TODAY in the old app (open API) — retiring
+  EQDR closes it; new system rejects strangers (visitor + no QA role).
   **Redirect map (Simon confirmed 2026-06-09 — old bookmarks must keep working):** replace the
   quality-app-v1 deployment with a redirect-only vercel.json on the same domain:
   /dashboard→/quality, /hubs→/quality/hubs, /tires→/quality/tires, /finished→/quality/finished,
