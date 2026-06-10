@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorEmail, actorName, forbidden } from '@/lib/pallets/api'
+import { randomUUID } from 'node:crypto'
+import { actorId, actorName, forbidden } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { appendPalletRecord, getCustomerByLine } from '@/lib/pallets/google'
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const recordedBy = actorEmail(actor)
+    const recordedBy = actorId(actor)
     const recordedByName = actorName(actor)
     const customer = await getCustomerByLine(line_number)
 
@@ -38,14 +39,13 @@ export async function POST(request: NextRequest) {
         internal_status: 'STARTED',
       })
     } catch (sheetError) {
-      console.error('Sheet write error:', sheetError)
-      return NextResponse.json({ error: 'Failed to write to sheet' }, { status: 500 })
+      console.error('Started marker sheet write error (non-fatal):', sheetError)
     }
 
     try {
       await supabaseAdmin.from('audit_trail').insert({
         record_type: 'order_start',
-        record_id: `line-${line_number}`,
+        record_id: randomUUID(),
         action: 'start',
         old_data: null,
         new_data: { line_number, status: 'STARTED', customer },

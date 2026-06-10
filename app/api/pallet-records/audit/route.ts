@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorEmail, actorName, adminOnly, forbidden } from '@/lib/pallets/api'
+import { actorId, actorName, adminOnly, forbidden } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     if (!auditRecord) return NextResponse.json({ error: 'Audit record not found' }, { status: 404 })
 
-    const editedBy = actorEmail(actor)
+    const editedBy = actorId(actor)
     const editedByName = actorName(actor)
 
     if (restore_full) {
@@ -95,16 +95,20 @@ export async function POST(request: NextRequest) {
 
       if (insertError) throw insertError
 
-      await supabaseAdmin.from('audit_trail').insert({
-        record_type: auditRecord.record_type,
-        record_id: inserted.id,
-        action: 'restore',
-        old_data: null,
-        new_data: { ...inserted, __restored_from_audit: audit_id },
-        changed_by: editedBy,
-        changed_by_name: editedByName,
-        created_at: now,
-      })
+      try {
+        await supabaseAdmin.from('audit_trail').insert({
+          record_type: auditRecord.record_type,
+          record_id: inserted.id,
+          action: 'restore',
+          old_data: null,
+          new_data: { ...inserted, __restored_from_audit: audit_id },
+          changed_by: editedBy,
+          changed_by_name: editedByName,
+          created_at: now,
+        })
+      } catch (auditError) {
+        console.error('Audit trail error (non-fatal):', auditError)
+      }
 
       return NextResponse.json({ success: true, restored_record: inserted })
     }
@@ -148,16 +152,20 @@ export async function POST(request: NextRequest) {
 
     if (updateError) throw updateError
 
-    await supabaseAdmin.from('audit_trail').insert({
-      record_type: 'pallet',
-      record_id: recordId,
-      action: 'photo_restore',
-      old_data: currentRecord,
-      new_data: updated,
-      changed_by: editedBy,
-      changed_by_name: editedByName,
-      created_at: now,
-    })
+    try {
+      await supabaseAdmin.from('audit_trail').insert({
+        record_type: 'pallet',
+        record_id: recordId,
+        action: 'photo_restore',
+        old_data: currentRecord,
+        new_data: updated,
+        changed_by: editedBy,
+        changed_by_name: editedByName,
+        created_at: now,
+      })
+    } catch (auditError) {
+      console.error('Audit trail error (non-fatal):', auditError)
+    }
 
     return NextResponse.json({ success: true, restored_photos: restoredPhotos })
   } catch (error: unknown) {

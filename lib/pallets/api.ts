@@ -13,19 +13,16 @@ export function actorEmail(actor: PalletActor) {
   return actor.email || actor.userId || 'unknown'
 }
 
+export function actorId(actor: PalletActor) {
+  return actor.userId
+}
+
 export function actorName(actor: PalletActor) {
   return actor.name || actor.email || 'Unknown'
 }
 
-export function isOwnRecord(actor: PalletActor, record: { recorded_by?: string | null; recorded_by_name?: string | null }) {
-  const email = actor.email?.toLowerCase()
-  const name = actor.name?.toLowerCase()
-  const recordedBy = record.recorded_by?.toLowerCase()
-  const recordedName = record.recorded_by_name?.toLowerCase()
-  return !!(
-    (email && (recordedBy === email || recordedName === email)) ||
-    (name && (recordedBy === name || recordedName === name))
-  )
+export function isOwnRecord(actor: PalletActor, record: { recorded_by?: string | null }) {
+  return !!actor.userId && record.recorded_by === actor.userId
 }
 
 export function isWithinThreeDays(createdAt: string | null | undefined) {

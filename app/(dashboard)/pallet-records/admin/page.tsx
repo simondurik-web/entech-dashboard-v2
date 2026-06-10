@@ -47,7 +47,7 @@ export default function AdminPage() {
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex border-b border-border bg-card sticky top-0 z-10">
+      <div className="flex border-b border-border bg-card sticky top-14 lg:top-0 z-10">
         <button
           onClick={() => setTab('users')}
           className={`flex-1 py-3 text-center text-sm font-semibold transition-colors ${

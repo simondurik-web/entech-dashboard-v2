@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorEmail, actorName, forbidden } from '@/lib/pallets/api'
+import { actorId, actorName, forbidden } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const recordedBy = actorEmail(actor)
+    const recordedBy = actorId(actor)
     const recordedByName = actorName(actor)
     const customer = await getCustomerByLine(line_number)
 
@@ -129,7 +129,7 @@ export async function PUT(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     const now = new Date().toISOString()
-    const editedBy = actorEmail(actor)
+    const editedBy = actorId(actor)
     const editedByName = actorName(actor)
 
     const { data: oldRecord } = await supabaseAdmin
@@ -209,7 +209,7 @@ export async function DELETE(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     const now = new Date().toISOString()
-    const deletedBy = actorEmail(actor)
+    const deletedBy = actorId(actor)
     const deletedByName = actorName(actor)
 
     const { data: record } = await supabaseAdmin

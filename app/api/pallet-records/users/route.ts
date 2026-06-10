@@ -7,6 +7,12 @@ export const dynamic = 'force-dynamic'
 
 const APP_NAME = 'production'
 const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'
+const VALID_ROLES = new Set(['admin', 'user'])
+const VALID_STATUSES = new Set(['active', 'pending', 'disabled'])
+
+function isSuperAdminEmail(email: string | null | undefined) {
+  return (email || '').toLowerCase() === SUPER_ADMIN_EMAIL
+}
 
 export async function GET(request: Request) {
   const actor = await palletActorFromRequest(request)
@@ -36,6 +42,12 @@ export async function PUT(request: Request) {
   try {
     const { userId, role, status, name } = await request.json()
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+    if (role !== undefined && !VALID_ROLES.has(role)) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+    }
+    if (status !== undefined && !VALID_STATUSES.has(status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+    }
 
     const { data: targetUser } = await supabaseAdmin
       .from('users')
@@ -44,7 +56,7 @@ export async function PUT(request: Request) {
       .eq('app', APP_NAME)
       .single()
 
-    if (targetUser?.email === SUPER_ADMIN_EMAIL && (role || status)) {
+    if (isSuperAdminEmail(targetUser?.email)) {
       return NextResponse.json({ error: 'Cannot modify super admin' }, { status: 403 })
     }
 
@@ -73,12 +85,22 @@ export async function POST(request: Request) {
   if (!actor.isAdmin) return adminOnly()
 
   try {
-    const { email, name, role } = await request.json()
+    const { email, name, role = 'user', status = 'active' } = await request.json()
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Valid email required' }, { status: 400 })
     }
+    if (!VALID_ROLES.has(role)) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+    }
+    if (!VALID_STATUSES.has(status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+    }
 
     const cleanEmail = email.toLowerCase().trim()
+    if (isSuperAdminEmail(cleanEmail)) {
+      return NextResponse.json({ error: 'Cannot modify super admin' }, { status: 403 })
+    }
+
     const { data: existing } = await supabaseAdmin
       .from('users')
       .select('row_id, email')
@@ -138,8 +160,8 @@ export async function POST(request: Request) {
         id: authUserId,
         email: cleanEmail,
         name: name || cleanEmail.split('@')[0],
-        role: role || 'user',
-        status: 'active',
+        role,
+        status,
         app: APP_NAME,
       })
       .select()

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorEmail, actorName, adminOnly, forbidden, isOwnRecord, isWithinThreeDays } from '@/lib/pallets/api'
+import { actorId, actorName, adminOnly, forbidden, isOwnRecord, isWithinThreeDays } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { appendShippingRecord, getPalletSheets, markShippingDeletedInSheet, SHEET_ID } from '@/lib/pallets/google'
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const recordedBy = actorEmail(actor)
+    const recordedBy = actorId(actor)
     const recordedByName = actorName(actor)
     const effectiveOrderId =
       (if_number && String(if_number).trim()) ? if_number :
@@ -177,15 +177,19 @@ export async function POST(request: NextRequest) {
           .select()
           .single()
         if (updateError) throw updateError
-        await supabaseAdmin.from('audit_trail').insert({
-          record_type: 'shipping',
-          record_id: existingDraft.id,
-          action: 'merge-pallet-photo',
-          old_data: existingDraft,
-          new_data: updated,
-          changed_by: recordedBy,
-          changed_by_name: recordedByName,
-        })
+        try {
+          await supabaseAdmin.from('audit_trail').insert({
+            record_type: 'shipping',
+            record_id: existingDraft.id,
+            action: 'merge-pallet-photo',
+            old_data: existingDraft,
+            new_data: updated,
+            changed_by: recordedBy,
+            changed_by_name: recordedByName,
+          })
+        } catch (auditError) {
+          console.error('Audit trail error (non-fatal):', auditError)
+        }
         return NextResponse.json(updated)
       }
     }
@@ -214,19 +218,27 @@ export async function POST(request: NextRequest) {
 
     const inserted = data?.[0] as ShippingRecord | undefined
     if (inserted) {
-      await supabaseAdmin.from('audit_trail').insert({
-        record_type: 'shipping',
-        record_id: inserted.id,
-        action: hasCarrier ? 'create' : 'create-pallet-photo',
-        old_data: null,
-        new_data: inserted,
-        changed_by: recordedBy,
-        changed_by_name: recordedByName,
-      })
+      try {
+        await supabaseAdmin.from('audit_trail').insert({
+          record_type: 'shipping',
+          record_id: inserted.id,
+          action: hasCarrier ? 'create' : 'create-pallet-photo',
+          old_data: null,
+          new_data: inserted,
+          changed_by: recordedBy,
+          changed_by_name: recordedByName,
+        })
+      } catch (auditError) {
+        console.error('Audit trail error (non-fatal):', auditError)
+      }
     }
 
     if (hasCarrier && inserted) {
-      await appendShippingRecord(shippingSheetArgs(inserted, now))
+      try {
+        await appendShippingRecord(shippingSheetArgs(inserted, now))
+      } catch (sheetError) {
+        console.error('Sheet append error (non-fatal):', sheetError)
+      }
     }
 
     return NextResponse.json(inserted || {})
@@ -268,7 +280,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const editedBy = actorEmail(actor)
+    const editedBy = actorId(actor)
     const editedByName = actorName(actor)
     const updates: Record<string, unknown> = {
       edited_by: editedBy,
@@ -297,20 +309,28 @@ export async function PUT(request: NextRequest) {
 
     if (updateError) throw updateError
 
-    await supabaseAdmin.from('audit_trail').insert({
-      record_type: 'shipping',
-      record_id: id,
-      action: 'edit',
-      old_data: existing,
-      new_data: updated,
-      changed_by: editedBy,
-      changed_by_name: editedByName,
-    })
+    try {
+      await supabaseAdmin.from('audit_trail').insert({
+        record_type: 'shipping',
+        record_id: id,
+        action: 'edit',
+        old_data: existing,
+        new_data: updated,
+        changed_by: editedBy,
+        changed_by_name: editedByName,
+      })
+    } catch (auditError) {
+      console.error('Audit trail error (non-fatal):', auditError)
+    }
 
     const wasDraft = !existing.carrier || !String(existing.carrier).trim()
     const isNowShipment = !!(updated.carrier && String(updated.carrier).trim())
     if (wasDraft && isNowShipment) {
-      await appendShippingRecord(shippingSheetArgs(updated, now))
+      try {
+        await appendShippingRecord(shippingSheetArgs(updated, now))
+      } catch (sheetError) {
+        console.error('Sheet append error (non-fatal):', sheetError)
+      }
     }
 
     return NextResponse.json(updated)
@@ -331,7 +351,7 @@ export async function DELETE(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     const now = new Date().toISOString()
-    const deletedBy = actorEmail(actor)
+    const deletedBy = actorId(actor)
     const deletedByName = actorName(actor)
 
     const { data: record, error: fetchError } = await supabaseAdmin

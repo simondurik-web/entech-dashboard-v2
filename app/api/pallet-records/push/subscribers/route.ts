@@ -11,21 +11,34 @@ export async function GET(request: NextRequest) {
   try {
     const { data: subs, error } = await supabaseAdmin
       .from('push_subscriptions')
-      .select('user_email, user_name, created_at')
-      .eq('app', 'production')
+      .select('id, user_id, created_at')
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const grouped = new Map<string, { email: string; name: string | null; devices: number; latest: string }>()
+    const userIds = Array.from(new Set((subs || []).map((sub) => sub.user_id).filter(Boolean)))
+    const { data: profiles, error: profilesError } = userIds.length
+      ? await supabaseAdmin
+        .from('user_profiles')
+        .select('id, email, full_name')
+        .in('id', userIds)
+      : { data: [], error: null }
+
+    if (profilesError) return NextResponse.json({ error: profilesError.message }, { status: 500 })
+
+    const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]))
+    const grouped = new Map<string, { user_id: string; email: string; full_name: string | null; devices: number; latest: string }>()
     for (const sub of subs || []) {
-      const existing = grouped.get(sub.user_email)
+      const profile = profilesById.get(sub.user_id)
+      const email = profile?.email || sub.user_id
+      const existing = grouped.get(sub.user_id)
       if (existing) {
         existing.devices++
         if (sub.created_at > existing.latest) existing.latest = sub.created_at
       } else {
-        grouped.set(sub.user_email, {
-          email: sub.user_email,
-          name: sub.user_name,
+        grouped.set(sub.user_id, {
+          user_id: sub.user_id,
+          email,
+          full_name: profile?.full_name || null,
           devices: 1,
           latest: sub.created_at,
         })

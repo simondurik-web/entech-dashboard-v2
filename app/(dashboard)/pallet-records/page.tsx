@@ -41,8 +41,8 @@ type Tab = 'active' | 'completed'
 
 export default function ProductionPage() {
   const { t: translate } = useI18n()
-  const { profile } = useAuth()
-  const { isPalletAdmin } = usePalletAccess()
+  const { profile, loading: authLoading } = useAuth()
+  const { canSeePallets, isPalletAdmin } = usePalletAccess()
   const t = useCallback((key: string) => translate(`pallets.${key}`), [translate])
   const apiFetch = useCallback((input: RequestInfo | URL, init: RequestInit = {}) => {
     return fetch(input, {
@@ -91,8 +91,10 @@ export default function ProductionPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [prefilled, setPrefilled] = useState(false)
   const [startingOrder, setStartingOrder] = useState(false)
+  const realPallets = useMemo(() => pallets.filter((p) => p.pallet_number !== 0), [pallets])
 
   const fetchPalletCounts = useCallback(async (orderList: Order[]) => {
+    if (authLoading || !canSeePallets || !profile?.id) return
     if (orderList.length === 0) return
     const lineNumbers = orderList.map(o => o.line_number).join(',')
     try {
@@ -102,9 +104,10 @@ export default function ProductionPage() {
         setPalletCounts(prev => ({ ...prev, ...counts }))
       }
     } catch { /* ignore */ }
-  }, [apiFetch])
+  }, [apiFetch, authLoading, canSeePallets, profile?.id])
 
   const fetchOrders = useCallback(async () => {
+    if (authLoading || !canSeePallets || !profile?.id) return
     setLoading(true)
     setError('')
     try {
@@ -119,9 +122,10 @@ export default function ProductionPage() {
     } finally {
       setLoading(false)
     }
-  }, [apiFetch, t, fetchPalletCounts])
+  }, [apiFetch, authLoading, canSeePallets, profile?.id, t, fetchPalletCounts])
 
   const fetchCompletedOrders = useCallback(async () => {
+    if (authLoading || !canSeePallets || !profile?.id) return
     setCompletedLoading(true)
     try {
       const res = await apiFetch('/api/pallet-records/orders?include_completed=true')
@@ -136,14 +140,22 @@ export default function ProductionPage() {
     } finally {
       setCompletedLoading(false)
     }
-  }, [apiFetch, t, fetchPalletCounts])
+  }, [apiFetch, authLoading, canSeePallets, profile?.id, t, fetchPalletCounts])
 
   useEffect(() => {
-    setUserId(profile?.email || profile?.id || '')
+    setUserId(profile?.id || '')
     setUserName(profile?.full_name || profile?.email?.split('@')[0] || '')
     setUserRole(isPalletAdmin ? 'admin' : 'user')
+  }, [profile?.email, profile?.full_name, profile?.id, isPalletAdmin])
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!canSeePallets || !profile?.id) {
+      setLoading(false)
+      return
+    }
     fetchOrders()
-  }, [fetchOrders, profile?.email, profile?.full_name, profile?.id, isPalletAdmin])
+  }, [authLoading, canSeePallets, fetchOrders, profile?.id])
 
   // Handle QR scan deep-link: check localStorage for scan_context (survives OAuth redirects)
   useEffect(() => {
@@ -190,8 +202,8 @@ export default function ProductionPage() {
                   setPalletNumber(scan.pallet_number)
                   setPhotoUrls([])
                   // Pre-fill from last pallet if available
-                  if (data.length > 0) {
-                    const last = data[data.length - 1]
+                  if (realPallets.length > 0) {
+                    const last = realPallets[realPallets.length - 1]
                     setWeight(last.weight?.toString() || '')
                     setPartsPerPallet(last.parts_per_pallet?.toString() || '')
                     setLengthVal(last.length?.toString() || '')
@@ -264,14 +276,14 @@ export default function ProductionPage() {
     } else {
       // New pallet — auto-increment and pre-fill from previous
       setEditingPallet(null)
-      const nextNumber = pallets.length + 1
+      const nextNumber = Math.max(0, ...realPallets.map(p => p.pallet_number)) + 1
       setPalletNumber(nextNumber)
       setPhotoUrls([])
       setPrefilled(false)
 
-      if (pallets.length > 0) {
+      if (realPallets.length > 0) {
         // Pre-fill from last pallet
-        const lastPallet = pallets[pallets.length - 1]
+        const lastPallet = realPallets[realPallets.length - 1]
         setWeight(lastPallet.weight?.toString() || '')
         setPartsPerPallet(lastPallet.parts_per_pallet?.toString() || '')
         setLengthVal(lastPallet.length?.toString() || '')
@@ -352,7 +364,7 @@ export default function ProductionPage() {
         body: JSON.stringify({
           if_number: selectedOrder.if_number,
           pallet_number: palletNumber.toString(),
-          filename: compressed.name || 'photo.jpg',
+          content_type: compressed.type || 'image/jpeg',
         }),
       })
       const urlData = await urlRes.json()
@@ -503,7 +515,7 @@ export default function ProductionPage() {
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-amber-100 text-amber-800 border border-amber-200',
-      wip: 'bg-sky-100 dark:bg-sky-950 text-blue-800 border border-blue-200',
+      wip: 'bg-sky-100 dark:bg-sky-950 text-blue-800 dark:text-sky-300 border border-blue-200',
       completed: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
     }
     const labels: Record<string, string> = {
@@ -561,7 +573,7 @@ export default function ProductionPage() {
     return (
       <div className="p-4 max-w-2xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-card to-card text-white rounded-xl p-4 mb-4 shadow-lg">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-xl p-4 mb-4 shadow-lg">
           <h1 className="text-xl font-bold">{t('prod.title')}</h1>
           <p className="text-muted-foreground text-sm">{currentOrders.length} {t('prod.orders') || 'orders'}</p>
         </div>
@@ -597,7 +609,7 @@ export default function ProductionPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('prod.search') || '🔍 Search IF#, PO#, customer, line#, part#...'}
-            className="w-full border-2 border-border rounded-xl p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none bg-card shadow-sm"
+            className="w-full border-2 border-border rounded-xl p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none bg-card shadow-sm"
           />
         </div>
 
@@ -655,7 +667,7 @@ export default function ProductionPage() {
 
   // ==================== ORDER DETAIL ====================
   if (view === 'detail' && selectedOrder) {
-    const recorded = pallets.length
+    const recorded = realPallets.length
     const total = selectedOrder.num_pallets
     const pct = progressPercent(recorded, total)
 
@@ -688,7 +700,7 @@ export default function ProductionPage() {
             </div>
             <div className="w-full bg-muted rounded-full h-3">
               <div
-                className={`h-3 rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : 'bg-sky-50 dark:bg-sky-9500'}`}
+                className={`h-3 rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : 'bg-sky-500'}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -696,7 +708,7 @@ export default function ProductionPage() {
         </div>
 
         {/* Start Order button — only show when Pending and no pallets yet */}
-        {selectedOrder.status === 'pending' && pallets.length === 0 && (
+        {selectedOrder.status === 'pending' && realPallets.length === 0 && (
           <button
             onClick={startOrder}
             disabled={startingOrder}
@@ -714,14 +726,14 @@ export default function ProductionPage() {
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-lg font-bold text-foreground">{t('prod.palletList')}</h2>
           <div className="flex gap-2">
-            {userRole === 'admin' && pallets.length > 0 && (
+            {userRole === 'admin' && realPallets.length > 0 && (
               <button
                 onClick={() => {
                   if (bulkEditMode) {
                     setBulkEditMode(false)
                   } else {
                     const edits: Record<string, { weight: string; length: string; width: string; height: string }> = {}
-                    pallets.forEach(p => {
+                    realPallets.forEach(p => {
                       edits[p.id] = {
                         weight: p.weight?.toString() || '',
                         length: p.length?.toString() || '',
@@ -733,7 +745,7 @@ export default function ProductionPage() {
                     setBulkEditMode(true)
                   }
                 }}
-                className={`px-4 py-2 rounded-lg font-medium text-sm ${bulkEditMode ? 'bg-muted0 text-white' : 'bg-amber-500 text-white active:bg-amber-600'}`}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${bulkEditMode ? 'bg-gray-500 text-white' : 'bg-amber-500 text-white active:bg-amber-600'}`}
               >
                 {bulkEditMode ? '✕ Cancel' : '✏️ Edit All'}
               </button>
@@ -755,7 +767,7 @@ export default function ProductionPage() {
 
         {palletsLoading && <p className="text-center text-muted-foreground py-4">{t('common.loading')}</p>}
 
-        {!palletsLoading && pallets.length === 0 && (
+        {!palletsLoading && realPallets.length === 0 && (
           <div className="text-center py-8 bg-card rounded-xl shadow-sm border border-border">
             <p className="text-muted-foreground">{t('pallet.noPallets')}</p>
           </div>
@@ -770,7 +782,7 @@ export default function ProductionPage() {
               <span>Width</span>
               <span>Height</span>
             </div>
-            {pallets.map((p) => (
+            {realPallets.map((p) => (
               <div key={p.id} className="grid grid-cols-5 gap-2 bg-card rounded-lg p-2 border border-border">
                 <span className="flex items-center font-semibold text-sm text-foreground">#{p.pallet_number}</span>
                 <input type="number" value={bulkEdits[p.id]?.weight || ''} onChange={e => setBulkEdits(prev => ({...prev, [p.id]: {...prev[p.id], weight: e.target.value}}))} className="border rounded px-2 py-1 text-sm w-full text-foreground" placeholder="lbs" />
@@ -796,7 +808,7 @@ export default function ProductionPage() {
                   const wd = (document.getElementById('bulk-width') as HTMLInputElement)?.value || ''
                   const h = (document.getElementById('bulk-height') as HTMLInputElement)?.value || ''
                   const updated: Record<string, { weight: string; length: string; width: string; height: string }> = {}
-                  pallets.forEach(p => {
+                  realPallets.forEach(p => {
                     updated[p.id] = {
                       weight: w || bulkEdits[p.id]?.weight || '',
                       length: l || bulkEdits[p.id]?.length || '',
@@ -840,12 +852,12 @@ export default function ProductionPage() {
               disabled={bulkSaving}
               className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-base active:bg-emerald-700 disabled:opacity-50"
             >
-              {bulkSaving ? 'Saving...' : `💾 Save All (${pallets.length} pallets)`}
+              {bulkSaving ? 'Saving...' : `💾 Save All (${realPallets.length} pallets)`}
             </button>
           </div>
         ) : (
           <div className="space-y-2">
-            {pallets.map((p) => (
+            {realPallets.map((p) => (
               <div key={p.id} className="bg-card rounded-xl shadow-sm border border-border flex overflow-hidden">
                 <button
                   onClick={() => openPalletForm(p)}
@@ -901,7 +913,7 @@ export default function ProductionPage() {
 
         <div className="bg-card rounded-xl shadow-sm p-4 space-y-4 border border-border">
           {/* Order context */}
-          <div className="bg-slate-50 rounded-lg p-3 text-sm border border-border">
+          <div className="bg-muted rounded-lg p-3 text-sm border border-border">
             <p className="text-foreground"><strong>IF# {selectedOrder.if_number}</strong> · {selectedOrder.customer}</p>
             <p className="text-muted-foreground">Line: {selectedOrder.line_number} {selectedOrder.part_number && `· Part: ${selectedOrder.part_number}`}</p>
           </div>
@@ -932,7 +944,7 @@ export default function ProductionPage() {
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               placeholder="0"
-              className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+              className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
               inputMode="decimal"
             />
           </div>
@@ -945,7 +957,7 @@ export default function ProductionPage() {
               value={partsPerPallet}
               onChange={(e) => setPartsPerPallet(e.target.value)}
               placeholder="0"
-              className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+              className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
               inputMode="numeric"
             />
           </div>
@@ -961,7 +973,7 @@ export default function ProductionPage() {
                   value={lengthVal}
                   onChange={(e) => setLengthVal(e.target.value)}
                   placeholder="L"
-                  className="w-full border-2 border-border rounded-lg p-3 text-lg text-center text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+                  className="w-full border-2 border-border rounded-lg p-3 text-lg text-center text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
                   inputMode="decimal"
                 />
               </div>
@@ -972,7 +984,7 @@ export default function ProductionPage() {
                   value={widthVal}
                   onChange={(e) => setWidthVal(e.target.value)}
                   placeholder="W"
-                  className="w-full border-2 border-border rounded-lg p-3 text-lg text-center text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+                  className="w-full border-2 border-border rounded-lg p-3 text-lg text-center text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
                   inputMode="decimal"
                 />
               </div>
@@ -983,7 +995,7 @@ export default function ProductionPage() {
                   value={heightVal}
                   onChange={(e) => setHeightVal(e.target.value)}
                   placeholder="H"
-                  className="w-full border-2 border-border rounded-lg p-3 text-lg text-center text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+                  className="w-full border-2 border-border rounded-lg p-3 text-lg text-center text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
                   inputMode="decimal"
                 />
               </div>
@@ -1021,7 +1033,7 @@ export default function ProductionPage() {
                       </button>
                     </div>
                   ) : (
-                    <label className="block w-full h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:bg-sky-950 transition-colors">
+                    <label className="block w-full h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:active:bg-sky-950 transition-colors">
                       <div className="text-center">
                         <span className="text-2xl">📷</span>
                         <p className="text-xs text-muted-foreground font-medium">{t('pallet.photo')}</p>

@@ -93,6 +93,13 @@ export function getPalletSheets() {
 
 export const SHEET_ID = MAIN_SPREADSHEET_ID
 
+export function sanitizeCell<T>(value: T): T | string {
+  if (typeof value === 'string' && /^[=+\-@]/.test(value.trim())) {
+    return `'${value}`
+  }
+  return value
+}
+
 export async function getOrders(includeCompleted = false): Promise<PalletOrder[]> {
   const sheets = getPalletSheets()
   const res = await sheets.spreadsheets.values.get({
@@ -175,22 +182,22 @@ export async function appendPalletRecord(args: {
     requestBody: {
       values: [[
         args.now,
-        args.line_number,
+        sanitizeCell(args.line_number),
         args.pallet_number,
         args.weight || '',
         args.parts_per_pallet || '',
         args.length || '',
         args.width || '',
         args.height || '',
-        photos[0] || '',
-        photos[1] || '',
-        photos[2] || '',
-        photos[3] || '',
-        args.recorded_by_name || args.recorded_by || '',
+        sanitizeCell(photos[0] || ''),
+        sanitizeCell(photos[1] || ''),
+        sanitizeCell(photos[2] || ''),
+        sanitizeCell(photos[3] || ''),
+        sanitizeCell(args.recorded_by_name || args.recorded_by || ''),
         '',
         '',
-        args.internal_status || 'Work in Progress',
-        args.customer,
+        sanitizeCell(args.internal_status || 'Work in Progress'),
+        sanitizeCell(args.customer),
       ]],
     },
   })
@@ -231,22 +238,22 @@ export async function updatePalletRecordInSheet(args: {
     requestBody: {
       values: [[
         rows[rowIdx][0],
-        args.line_number,
+        sanitizeCell(args.line_number),
         args.pallet_number,
         args.weight || '',
         args.parts_per_pallet || '',
         args.length || '',
         args.width || '',
         args.height || '',
-        photos[0] || '',
-        photos[1] || '',
-        photos[2] || '',
-        photos[3] || '',
-        rows[rowIdx][12] || '',
-        args.edited_by_name || args.edited_by || '',
+        sanitizeCell(photos[0] || ''),
+        sanitizeCell(photos[1] || ''),
+        sanitizeCell(photos[2] || ''),
+        sanitizeCell(photos[3] || ''),
+        sanitizeCell(rows[rowIdx][12] || ''),
+        sanitizeCell(args.edited_by_name || args.edited_by || ''),
         args.now,
-        rows[rowIdx][15] || 'Work in Progress',
-        rows[rowIdx][16] || '',
+        sanitizeCell(rows[rowIdx][15] || 'Work in Progress'),
+        sanitizeCell(rows[rowIdx][16] || ''),
       ]],
     },
   })
@@ -283,9 +290,10 @@ export async function markPalletDeletedInSheet(args: {
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
-          args.now,
-          args.line_number,
-          args.pallet_number,
+        args.now,
+        sanitizeCell(args.line_number),
+        args.pallet_number,
+        '',
           '',
           '',
           '',
@@ -294,8 +302,7 @@ export async function markPalletDeletedInSheet(args: {
           '',
           '',
           '',
-          '',
-          args.deleted_by_name || args.deleted_by || '',
+          sanitizeCell(args.deleted_by_name || args.deleted_by || ''),
           '',
           args.now,
           'DELETED',
@@ -355,21 +362,21 @@ export async function appendShippingRecord(args: {
     requestBody: {
       values: [[
         args.now,
-        args.system_type || 'fusion',
-        args.order_id,
-        args.carrier,
-        args.customer || '',
-        (args.shipment_photos || [])[0] || '',
-        (args.paperwork_photos || [])[0] || '',
-        (args.closeup_photos || [])[0] || '',
-        args.recorded_by_name || args.recorded_by || '',
+        sanitizeCell(args.system_type || 'fusion'),
+        sanitizeCell(args.order_id),
+        sanitizeCell(args.carrier),
+        sanitizeCell(args.customer || ''),
+        sanitizeCell((args.shipment_photos || [])[0] || ''),
+        sanitizeCell((args.paperwork_photos || [])[0] || ''),
+        sanitizeCell((args.closeup_photos || [])[0] || ''),
+        sanitizeCell(args.recorded_by_name || args.recorded_by || ''),
         '',
         '',
-        args.if_number || '',
-        args.shopify_orders || args.veeqo_orders || '',
-        args.line_number || '',
+        sanitizeCell(args.if_number || ''),
+        sanitizeCell(args.shopify_orders || args.veeqo_orders || ''),
+        sanitizeCell(args.line_number || ''),
         '',
-        (args.pallet_photos || [])[0] || '',
+        sanitizeCell((args.pallet_photos || [])[0] || ''),
       ]],
     },
   })

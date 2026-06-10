@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { forbidden } from '@/lib/pallets/api'
+import { actorId, forbidden } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
     const { error } = await supabaseAdmin
       .from('push_subscriptions')
       .delete()
+      .eq('user_id', actorId(actor))
       .eq('endpoint', endpoint)
-      .eq('app', 'production')
 
     if (error) {
       console.error('Push unsubscribe error:', error)

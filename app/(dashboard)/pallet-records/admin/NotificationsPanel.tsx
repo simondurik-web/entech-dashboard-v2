@@ -2,23 +2,26 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 import { userHeaders } from '@/lib/quality/form-utils'
 
 interface Subscriber {
+  user_id: string
   email: string
-  name: string | null
+  full_name: string | null
   devices: number
   latest: string
 }
 
 export default function NotificationsPanel() {
   const { profile } = useAuth()
+  const { t } = useI18n()
   const [subscribers, setSubscribers] = useState<Subscriber[]>([])
   const [loading, setLoading] = useState(true)
   const [configured, setConfigured] = useState(true)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
-  const [sending, setSending] = useState<string | null>(null) // null | 'all' | email
+  const [sending, setSending] = useState<string | null>(null) // null | 'all' | user_id
   const [result, setResult] = useState<{ sent: number; failed: number } | null>(null)
 
   useEffect(() => {
@@ -37,9 +40,9 @@ export default function NotificationsPanel() {
     setLoading(false)
   }
 
-  async function sendNotification(email?: string) {
+  async function sendNotification(userId?: string) {
     if (!title.trim() || !body.trim()) return
-    setSending(email || 'all')
+    setSending(userId || 'all')
     setResult(null)
 
     if (!profile?.id) return
@@ -48,7 +51,7 @@ export default function NotificationsPanel() {
       const res = await fetch('/api/pallet-records/notify', {
         method: 'POST',
         headers: userHeaders(profile.id),
-        body: JSON.stringify({ email, title: title.trim(), body: body.trim() }),
+        body: JSON.stringify({ user_id: userId, title: title.trim(), body: body.trim() }),
       })
       const data = await res.json()
       if (res.status === 501) setConfigured(false)
@@ -61,7 +64,7 @@ export default function NotificationsPanel() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4">
-      <div className="bg-gradient-to-r from-card to-card text-white rounded-xl p-4 shadow-lg">
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-xl p-4 shadow-lg">
         <h1 className="text-xl font-bold">🔔 Push Notifications</h1>
         <p className="text-muted-foreground text-sm">
           {subscribers.length} subscribed user{subscribers.length !== 1 ? 's' : ''}
@@ -73,7 +76,7 @@ export default function NotificationsPanel() {
         <h3 className="font-semibold text-foreground text-sm">Compose Notification</h3>
         {!configured && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-            Push not configured. Set NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to send notifications.
+            {t('pallets.notify.pushNotConfigured')}
           </p>
         )}
         <input
@@ -81,14 +84,14 @@ export default function NotificationsPanel() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Title"
-          className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+          className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
         />
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Message body"
           rows={3}
-          className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none resize-none"
+          className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none resize-none"
         />
         <button
           onClick={() => sendNotification()}
@@ -117,13 +120,13 @@ export default function NotificationsPanel() {
       ) : (
         <div className="space-y-3">
           {subscribers.map((sub) => (
-            <div key={sub.email} className="bg-card rounded-xl p-4 border border-border shadow-sm">
+            <div key={sub.user_id} className="bg-card rounded-xl p-4 border border-border shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950 flex items-center justify-center text-sky-600 dark:text-sky-400 font-semibold">
-                  {(sub.name || sub.email)[0].toUpperCase()}
+                  {(sub.full_name || sub.email)[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground truncate">{sub.name || sub.email}</p>
+                  <p className="font-semibold text-foreground truncate">{sub.full_name || sub.email}</p>
                   <p className="text-sm text-muted-foreground truncate">{sub.email}</p>
                 </div>
                 <div className="text-right shrink-0">
@@ -134,11 +137,11 @@ export default function NotificationsPanel() {
               </div>
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={() => sendNotification(sub.email)}
+                  onClick={() => sendNotification(sub.user_id)}
                   disabled={!configured || !title.trim() || !body.trim() || !!sending}
                   className="px-3 py-2 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-50 text-muted-foreground font-medium"
                 >
-                  {sending === sub.email ? 'Sending...' : '🔔 Send Test'}
+                  {sending === sub.user_id ? 'Sending...' : '🔔 Send Test'}
                 </button>
               </div>
             </div>

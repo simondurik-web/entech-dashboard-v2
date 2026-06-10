@@ -7,6 +7,23 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 const BUCKET = 'pallet-photos'
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9._-]+$/
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heic',
+}
+
+function safePathSegment(value: string) {
+  return SAFE_PATH_SEGMENT.test(value)
+}
+
+function extensionFromMime(mimeType: string) {
+  return EXT_BY_MIME[mimeType.toLowerCase()]
+}
 
 export async function POST(request: NextRequest) {
   const actor = await palletActorFromRequest(request)
@@ -21,18 +38,24 @@ export async function POST(request: NextRequest) {
     if (!file || !ifNumber || !palletNumber) {
       return NextResponse.json({ error: 'Missing file, if_number, or pallet_number' }, { status: 400 })
     }
+    if (!safePathSegment(ifNumber) || !safePathSegment(palletNumber)) {
+      return NextResponse.json({ error: 'Invalid if_number or pallet_number' }, { status: 400 })
+    }
+    const ext = extensionFromMime(file.type || '')
+    if (!ext) {
+      return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
+    }
 
     const { data: buckets } = await supabaseAdmin.storage.listBuckets()
     if (!buckets?.find((bucket) => bucket.name === BUCKET)) {
       await supabaseAdmin.storage.createBucket(BUCKET, {
         public: true,
         fileSizeLimit: 10 * 1024 * 1024,
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
       })
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
-    const ext = file.name?.split('.').pop() || 'jpg'
     const fileName = `${ifNumber}/pallet-${palletNumber}/${Date.now()}.${ext}`
 
     const { data, error } = await supabaseAdmin.storage

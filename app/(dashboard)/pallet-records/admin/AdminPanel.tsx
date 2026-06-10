@@ -28,8 +28,8 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
   const updateUser = async (userId: string, updates: { role?: UserRole; status?: UserStatus; name?: string }) => {
     // Block changes to super admin
     const targetUser = users.find(u => u.id === userId)
-    if (targetUser?.email === SUPER_ADMIN_EMAIL && (updates.role || updates.status)) {
-      return // Can't change super admin's role or status
+    if (targetUser?.email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+      return // Can't change super admin
     }
 
     setLoading(userId)
@@ -52,6 +52,7 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
   }
 
   const startEditName = (user: AppUser) => {
+    if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL) return
     setEditingName(user.id)
     setNameInput(user.name || '')
   }
@@ -108,7 +109,7 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <div className="bg-gradient-to-r from-card to-card text-white rounded-xl p-4 mb-4 shadow-lg">
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-xl p-4 mb-4 shadow-lg">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold">User Management</h1>
@@ -116,7 +117,7 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
           </div>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="px-3 py-2 bg-card/20 hover:bg-card/30 rounded-lg text-sm font-medium transition-colors"
+            className="px-3 py-2 bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-lg text-sm font-medium transition-colors"
           >
             {showAddForm ? '✕ Cancel' : '+ Add User'}
           </button>
@@ -133,14 +134,14 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
             placeholder="employee@gmail.com"
-            className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+            className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
           />
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Display name (optional)"
-            className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+            className="w-full border-2 border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
           />
           <div className="flex gap-2">
             <button
@@ -179,7 +180,7 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
 
       <div className="space-y-3">
         {users.map((u) => {
-          const isSuperAdmin = u.email === SUPER_ADMIN_EMAIL
+          const isSuperAdmin = u.email.toLowerCase() === SUPER_ADMIN_EMAIL
 
           return (
             <div key={u.id} className="bg-card rounded-xl p-4 border border-border shadow-sm space-y-3">
@@ -218,13 +219,15 @@ export default function AdminPanel({ users: initialUsers, currentUserId }: Admin
                   ) : (
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-foreground truncate">{u.name || u.email}</p>
-                      <button
-                        onClick={() => startEditName(u)}
-                        className="text-muted-foreground hover:text-blue-500 text-xs"
-                        title="Edit display name"
-                      >
-                        ✏️
-                      </button>
+                      {!isSuperAdmin && (
+                        <button
+                          onClick={() => startEditName(u)}
+                          className="text-muted-foreground hover:text-blue-500 text-xs"
+                          title="Edit display name"
+                        >
+                          ✏️
+                        </button>
+                      )}
                     </div>
                   )}
                   <p className="text-sm text-muted-foreground truncate">{u.email}</p>

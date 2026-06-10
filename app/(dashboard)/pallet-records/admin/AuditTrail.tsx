@@ -47,7 +47,7 @@ export default function AuditTrail() {
 
   useEffect(() => {
     fetchEntries()
-    setUserId(profile?.email || profile?.id || '')
+    setUserId(profile?.id || '')
     setUserName(profile?.full_name || profile?.email?.split('@')[0] || '')
     setUserRole(isPalletAdmin ? 'admin' : 'user')
   }, [fetchEntries, profile?.email, profile?.full_name, profile?.id, isPalletAdmin])
@@ -166,7 +166,7 @@ export default function AuditTrail() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <div className="bg-gradient-to-r from-card to-card text-white rounded-xl p-4 mb-4 shadow-lg">
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-xl p-4 mb-4 shadow-lg">
         <h1 className="text-xl font-bold">📋 Audit Trail</h1>
         <p className="text-muted-foreground text-sm">Track all changes · Photo history & restore</p>
       </div>

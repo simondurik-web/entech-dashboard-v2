@@ -103,8 +103,8 @@ async function uploadWithRetry(formData: FormData, headers: HeadersInit, retries
 
 export default function ShippingPage() {
   const { t: translate } = useI18n()
-  const { profile } = useAuth()
-  const { isPalletAdmin } = usePalletAccess()
+  const { profile, loading: authLoading } = useAuth()
+  const { canSeePallets, isPalletAdmin } = usePalletAccess()
   const t = useCallback((key: string) => translate(`pallets.${key}`), [translate])
   const apiFetch = useCallback((input: RequestInfo | URL, init: RequestInit = {}) => {
     return fetch(input, {
@@ -153,6 +153,7 @@ export default function ShippingPage() {
   const [stagedSaving, setStagedSaving] = useState(false)
 
   const fetchOrders = useCallback(async () => {
+    if (authLoading || !canSeePallets || !profile?.id) return
     setLoading(true)
     setError('')
     try {
@@ -180,17 +181,22 @@ export default function ShippingPage() {
     } finally {
       setLoading(false)
     }
-  }, [apiFetch, t, userRole])
+  }, [apiFetch, authLoading, canSeePallets, profile?.id, t, userRole])
 
   useEffect(() => {
-    setUserId(profile?.email || profile?.id || '')
+    setUserId(profile?.id || '')
     setUserName(profile?.full_name || profile?.email?.split('@')[0] || '')
     setUserRole(isPalletAdmin ? 'admin' : 'user')
   }, [profile?.email, profile?.full_name, profile?.id, isPalletAdmin])
 
   useEffect(() => {
+    if (authLoading) return
+    if (!canSeePallets || !profile?.id) {
+      setLoading(false)
+      return
+    }
     fetchOrders()
-  }, [fetchOrders])
+  }, [authLoading, canSeePallets, fetchOrders, profile?.id])
 
   const openForm = async (order?: Order) => {
     setSelectedOrder(order || null)
@@ -575,7 +581,7 @@ export default function ShippingPage() {
         </div>
       )}
       {photos.length < max && (
-        <label className="block w-full h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:bg-sky-950">
+        <label className="block w-full h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:active:bg-sky-950">
           <div className="text-center">
             <span className="text-xl">📷</span>
             <p className="text-xs text-muted-foreground">{photos.length === 0 ? t('pallet.photo') : `+ Add (${photos.length}/${max})`}</p>
@@ -607,7 +613,7 @@ export default function ShippingPage() {
     return (
       <div className="p-4 max-w-2xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-card to-card text-white rounded-xl p-4 mb-4 shadow-lg">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-xl p-4 mb-4 shadow-lg">
           <h1 className="text-xl font-bold">{t('ship.title')}</h1>
           <p className="text-muted-foreground text-sm">{orders.length} {t('ship.staged').toLowerCase()}</p>
         </div>
@@ -618,7 +624,7 @@ export default function ShippingPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('ship.searchPlaceholder')}
-            className="flex-1 border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+            className="flex-1 border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
             aria-label={t('ship.searchPlaceholder')}
           />
           <button
@@ -792,11 +798,11 @@ export default function ShippingPage() {
             {/* Apply to All */}
             <div className="p-3 bg-sky-50 dark:bg-sky-950 rounded-lg border border-blue-200">
               <p className="text-xs font-medium text-sky-700 dark:text-sky-300 mb-2">Apply to all pallets:</p>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-[3rem_repeat(2,minmax(0,1fr))] sm:grid-cols-[3rem_repeat(4,minmax(0,1fr))] gap-2">
                 <span></span>
                 <input id="staged-bulk-weight" type="number" className="border rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground" placeholder="Weight" />
                 <input id="staged-bulk-length" type="number" className="border rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground" placeholder="L" />
-                <input id="staged-bulk-width" type="number" className="border rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground" placeholder="W" />
+                <input id="staged-bulk-width" type="number" className="border rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground sm:col-auto col-start-2" placeholder="W" />
                 <input id="staged-bulk-height" type="number" className="border rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground" placeholder="H" />
               </div>
               <button
@@ -826,7 +832,7 @@ export default function ShippingPage() {
             </div>
 
             {/* Column headers */}
-            <div className="grid grid-cols-5 gap-2 text-xs font-medium text-muted-foreground px-2">
+            <div className="hidden sm:grid grid-cols-[3rem_repeat(4,minmax(0,1fr))] gap-2 text-xs font-medium text-muted-foreground px-2">
               <span>#</span>
               <span>Weight (lbs)</span>
               <span>Length</span>
@@ -837,13 +843,13 @@ export default function ShippingPage() {
             {/* Per-pallet rows */}
             {stagedPallets.map((p) => (
               <div key={p.id} className="bg-card rounded-xl shadow-sm p-3 border border-border">
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-[3rem_repeat(2,minmax(0,1fr))] sm:grid-cols-[3rem_repeat(4,minmax(0,1fr))] gap-2">
                   <span className="flex items-center font-semibold text-sm text-foreground">#{p.pallet_number}</span>
                   <input
                     type="number"
                     value={stagedBulkEdits[p.id]?.weight || ''}
                     onChange={e => setStagedBulkEdits(prev => ({ ...prev, [p.id]: { ...prev[p.id], weight: e.target.value } }))}
-                    className="border rounded px-2 py-1 text-sm w-full text-foreground"
+                    className="border rounded px-2 py-1 text-sm w-full text-foreground sm:col-auto col-start-2"
                     placeholder="lbs"
                   />
                   <input
@@ -896,7 +902,7 @@ export default function ShippingPage() {
                     </div>
                   )}
                   {(stagedBulkEdits[p.id]?.photo_urls || []).length < 5 && (
-                    <label className="block w-full h-12 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:bg-sky-950">
+                    <label className="block w-full h-12 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:active:bg-sky-950">
                       <div className="text-center">
                         <span className="text-lg">📷</span>
                         <span className="text-xs text-muted-foreground ml-1">+ Add photo</span>
@@ -1000,7 +1006,7 @@ export default function ShippingPage() {
             value={carrier}
             onChange={(e) => setCarrier(e.target.value)}
             placeholder="XPO, Saia, UPS, FedEx..."
-            className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+            className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
           />
         </div>
 
@@ -1040,7 +1046,7 @@ export default function ShippingPage() {
                 value={shopifyOrders}
                 onChange={(e) => setShopifyOrders(e.target.value)}
                 placeholder="B2B-12345"
-                className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+                className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
               />
             </div>
           </>
@@ -1054,7 +1060,7 @@ export default function ShippingPage() {
                 type="text"
                 value={otherCustomer}
                 onChange={(e) => setOtherCustomer(e.target.value)}
-                className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+                className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
               />
             </div>
             <div>
@@ -1063,7 +1069,7 @@ export default function ShippingPage() {
                 type="text"
                 value={otherOrderNumber}
                 onChange={(e) => setOtherOrderNumber(e.target.value)}
-                className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:border-sky-400 focus:outline-none"
+                className="w-full border-2 border-border rounded-lg p-3 text-lg text-foreground placeholder:text-muted-foreground focus:border-sky-500 dark:focus:border-sky-400 focus:outline-none"
               />
             </div>
           </>
