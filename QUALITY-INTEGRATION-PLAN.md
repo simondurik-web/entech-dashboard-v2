@@ -1,6 +1,7 @@
 # Quality (EODR) → Molding Dashboard Integration Plan
 
 ## STATUS / CHECKPOINT
+- **COMPLETE — LIVE IN PRODUCTION 2026-06-10** (main merge 8b32db7; EQDR domain redirected; rollback = restore quality-app-v1 deploy or revert main). Remaining follow-ups (non-blocking): consolidate the two user screens when convenient; app-wide Bearer-token hardening; inherited NITs (untranslated enum values in selects, lightbox esc-close).
 - Worktree: `~/clawd/projects/quality-integration` · branch `feat/quality-integration` (off `staging`).
 - **Phase 1 ✅ DONE** (reviewed by 4 agents, fixed): profile API `quality_role` overlay,
   `lib/use-quality-access.ts`, AccessGuard `/quality` gating, Sidebar QUALITY section, EN+ES.

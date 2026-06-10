@@ -1,0 +1,385 @@
+'use client'
+
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DataTable } from '@/components/data-table'
+import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
+import { PhotoGrid } from '@/components/ui/PhotoGrid'
+import { AutoRefreshControl } from '@/components/ui/AutoRefreshControl'
+import { useAutoRefresh } from '@/lib/use-auto-refresh'
+import { Search } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
+import type { PalletRecord } from '@/lib/google-sheets-shared'
+import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+const CATEGORY_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'rolltech', label: 'Roll Tech' },
+  { key: 'molding', label: 'Molding' },
+  { key: 'snappad', label: 'Snap Pad' },
+] as const
+
+const ORDER_TYPE_FILTERS = [
+  { key: 'all', label: 'All Orders' },
+  { key: 'if', label: 'IF Orders' },
+  { key: 'b2b', label: 'B2B / Veeqo' },
+] as const
+
+type CategoryKey = (typeof CATEGORY_FILTERS)[number]['key']
+type OrderTypeKey = (typeof ORDER_TYPE_FILTERS)[number]['key']
+type PalletRow = PalletRecord & { _parsed: Date | null } & Record<string, unknown>
+
+function parseGSheetsDate(dateStr: string): Date | null {
+  if (!dateStr) return null
+  const m = dateStr.match(/^Date\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)$/)
+  if (m) return new Date(+m[1], +m[2], +m[3], +m[4], +m[5], +m[6])
+  const d = new Date(dateStr)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function formatDate(d: Date | null): string {
+  if (!d) return '-'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function safeString(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value.toLocaleString()
+  if (typeof value === 'boolean') return value.toString()
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function toDateInputValue(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+const COLUMNS: ColumnDef<PalletRow>[] = [
+  { key: 'timestamp', label: 'Date', sortable: true, render: (_v, row) => formatDate((row as PalletRow)._parsed) },
+  { key: 'customer', label: 'Customer', sortable: true, filterable: true },
+  { key: 'ifNumber', label: 'IF#', sortable: true },
+  { key: 'lineNumber', label: 'Line #', sortable: true, filterable: true, render: (v) => (v as string) || '-' },
+  { key: 'palletNumber', label: 'Pallet #', sortable: true },
+  { key: 'category', label: 'Category', sortable: true, filterable: true },
+  { key: 'weight', label: 'Weight', sortable: true, filterable: false },
+  { key: 'dimensions', label: 'Dimensions', filterable: false },
+  { key: 'partsPerPallet', label: 'Parts/Pallet', filterable: false },
+  {
+    key: 'photos', label: 'Photos', sortable: false, filterable: false,
+    render: (_v, row) => {
+      const r = row as PalletRow
+      return <PhotoGrid photos={r.photos} size="sm" maxVisible={3} context={{ ifNumber: r.ifNumber }} />
+    },
+  },
+]
+
+export default function PalletRecordsPage() {
+  return (
+    <ErrorBoundary>
+      <Suspense><PalletRecordsPageContent /></Suspense>
+    </ErrorBoundary>
+  )
+}
+
+function PalletRecordsPageContent() {
+  const [records, setRecords] = useState<PalletRow[]>([])
+  const initialView = useViewFromUrl()
+  const autoExport = useAutoExport()
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
+  const [orderTypeFilter, setOrderTypeFilter] = useState<OrderTypeKey>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const { t } = useI18n()
+
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return toDateInputValue(d)
+  })
+  const [endDate, setEndDate] = useState(() => toDateInputValue(new Date()))
+
+  const setPreset = (days: number | 'all') => {
+    if (days === 'all') { setStartDate(''); setEndDate('') }
+    else {
+      const end = new Date(); const start = new Date(); start.setDate(start.getDate() - days)
+      setStartDate(toDateInputValue(start)); setEndDate(toDateInputValue(end))
+    }
+  }
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true); else setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/pallet-records')
+      if (!res.ok) throw new Error('Failed to fetch pallet records')
+      const data: PalletRecord[] = await res.json()
+      // Add defensive checks for each record
+      const parsed: PalletRow[] = data
+        .filter((r): r is PalletRecord => r != null && typeof r === 'object')
+        .map((r) => ({ ...r, _parsed: parseGSheetsDate(r.timestamp) }))
+      parsed.sort((a, b) => (b._parsed?.getTime() ?? 0) - (a._parsed?.getTime() ?? 0))
+      setRecords(parsed)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to fetch') }
+    finally { setLoading(false); setRefreshing(false) }
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const autoRefresh = useAutoRefresh({ interval: 5 * 60 * 1000, onRefresh: () => fetchData(true) })
+
+  // Unique customers for quick stats
+  const uniqueCustomers = useMemo(() => new Set(records.map(r => r.customer).filter(Boolean)), [records])
+
+  const filtered = useMemo(() => {
+    // Guard against invalid records
+    let result = records.filter((r): r is PalletRow => r != null && typeof r === 'object')
+
+    // Date range - add NaN check for invalid dates
+    if (startDate) {
+      const s = new Date(startDate + 'T00:00:00')
+      if (!isNaN(s.getTime())) {
+        result = result.filter(r => r._parsed && !isNaN(r._parsed.getTime()) && r._parsed >= s)
+      }
+    }
+    if (endDate) {
+      const e = new Date(endDate + 'T23:59:59')
+      if (!isNaN(e.getTime())) {
+        result = result.filter(r => r._parsed && !isNaN(r._parsed.getTime()) && r._parsed <= e)
+      }
+    }
+
+    // Category
+    if (categoryFilter !== 'all') {
+      result = result.filter(r => {
+        const cat = (r.category || '').toLowerCase()
+        switch (categoryFilter) {
+          case 'rolltech': return cat.includes('roll')
+          case 'molding': return cat.includes('molding')
+          case 'snappad': return cat.includes('snap')
+          default: return true
+        }
+      })
+    }
+
+    // Order type (IF vs B2B)
+    if (orderTypeFilter !== 'all') {
+      result = result.filter(r => {
+        const ifUpper = (r.ifNumber || '').toUpperCase()
+        if (orderTypeFilter === 'if') return ifUpper.startsWith('IF')
+        if (orderTypeFilter === 'b2b') return ifUpper.startsWith('B2B')
+        return true
+      })
+    }
+
+    // Search (IF#, customer, line number) - add defensive checks
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      result = result.filter(r => {
+        try {
+          return (
+            String(r.ifNumber || '').toLowerCase().includes(q) ||
+            String(r.customer || '').toLowerCase().includes(q) ||
+            String(r.lineNumber || '').toLowerCase().includes(q) ||
+            String(r.orderNumber || '').toLowerCase().includes(q)
+          )
+        } catch {
+          return false
+        }
+      })
+    }
+
+    return result
+  }, [records, startDate, endDate, categoryFilter, orderTypeFilter, searchQuery])
+
+  const table = useDataTable({ data: filtered, columns: COLUMNS, storageKey: 'pallet-records' })
+
+  const totalPallets = filtered.length
+  const totalWithPhotos = filtered.filter(r => Array.isArray(r.photos) && r.photos.length > 0).length
+  const totalPhotos = filtered.reduce((sum, r) => sum + (Array.isArray(r.photos) ? r.photos.length : 0), 0)
+
+  return (
+    <div className="p-4 pb-20">
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">📷 {t('page.palletRecords')}</h1>
+        <AutoRefreshControl
+          isEnabled={autoRefresh.isAutoRefreshEnabled}
+          onToggle={autoRefresh.toggleAutoRefresh}
+          onRefreshNow={() => fetchData(true)}
+          isRefreshing={refreshing}
+          nextRefresh={autoRefresh.nextRefresh}
+          lastRefresh={autoRefresh.lastRefresh}
+        />
+      </div>
+      <p className="text-muted-foreground text-sm mb-4">{t('page.palletRecordsSubtitle')}</p>
+
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder={t('palletRecords.searchPlaceholder')}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg text-sm outline-none placeholder:text-muted-foreground/60"
+        />
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="bg-muted rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">{t('table.pallets')}</p>
+          <p className="text-xl font-bold">{totalPallets}</p>
+        </div>
+        <div className="bg-green-500/10 rounded-lg p-3">
+          <p className="text-xs text-green-600">{t('palletRecords.withPhotos')}</p>
+          <p className="text-xl font-bold text-green-600">{totalWithPhotos}</p>
+        </div>
+        <div className="bg-blue-500/10 rounded-lg p-3">
+          <p className="text-xs text-blue-600">{t('palletRecords.totalPhotos')}</p>
+          <p className="text-xl font-bold text-blue-600">{totalPhotos}</p>
+        </div>
+        <div className="bg-purple-500/10 rounded-lg p-3">
+          <p className="text-xs text-purple-600">{t('palletRecords.customers')}</p>
+          <p className="text-xl font-bold text-purple-600">{uniqueCustomers.size}</p>
+        </div>
+      </div>
+
+      {/* Date Range */}
+      <div className="mb-3">
+        <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+          {[
+            { label: t('palletRecords.7days'), days: 7 },
+            { label: t('palletRecords.30days'), days: 30 },
+            { label: t('palletRecords.90days'), days: 90 },
+            { label: t('ui.allTime'), days: 'all' as const },
+          ].map((p) => (
+            <button key={p.label} onClick={() => setPreset(p.days)}
+              className="px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors bg-muted hover:bg-muted/80">
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+            className="bg-muted rounded-lg px-3 py-1.5 text-sm border-none outline-none" />
+          <span className="text-muted-foreground text-sm">to</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+            className="bg-muted rounded-lg px-3 py-1.5 text-sm border-none outline-none" />
+        </div>
+      </div>
+
+      {/* Order type filters */}
+      <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+        {ORDER_TYPE_FILTERS.map((f) => (
+          <button key={f.key} onClick={() => setOrderTypeFilter(f.key)}
+            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
+              orderTypeFilter === f.key ? 'bg-blue-600 text-white' : 'bg-muted hover:bg-muted/80'
+            }`}>
+            {f.key === 'all' ? t('palletRecords.allOrders') : f.key === 'if' ? t('palletRecords.ifOrders') : t('palletRecords.b2bOrders')}
+          </button>
+        ))}
+      </div>
+
+      {/* Category filters */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {CATEGORY_FILTERS.map((f) => (
+          <button key={f.key} onClick={() => setCategoryFilter(f.key)}
+            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
+              categoryFilter === f.key ? 'bg-green-600 text-white' : 'bg-muted hover:bg-muted/80'
+            }`}>
+            {f.key === 'all' ? t('category.all') : f.key === 'rolltech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <TableSkeleton rows={8} />
+      )}
+
+      {error && <p className="text-center text-destructive py-10">{error}</p>}
+
+      {!loading && !error && (
+        <DataTable table={table} data={filtered} noun="pallet" exportFilename="pallet-records.csv"
+          page="pallet-records"
+          initialView={initialView}
+          autoExport={autoExport}
+          disableAnimation
+          cardClassName={() => 'border-l-4 border-l-green-500'}
+          renderCard={(row, i) => {
+            try {
+              const record = row as unknown as PalletRow
+              // Add defensive checks for record properties
+              if (!record || typeof record !== 'object') {
+                return (
+                  <Card key={`invalid-${i}`} className="border-l-4 border-l-red-500">
+                    <CardContent className="p-4">
+                      <p className="text-red-500 text-sm">Invalid record data</p>
+                    </CardContent>
+                  </Card>
+                )
+              }
+              const ifNum = String(record.ifNumber || '')
+              const isB2B = ifNum.toUpperCase().startsWith('B2B')
+              return (
+                <Card key={`${ifNum || 'unknown'}-${i}`} className={`border-l-4 ${isB2B ? 'border-l-blue-500' : 'border-l-green-500'}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
+                          IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                      <div>
+                        <span className="text-muted-foreground">{t('table.weight')}</span>
+                        <p className="font-semibold">{safeString(record.weight)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('table.dimensions')}</span>
+                        <p className="font-semibold text-xs">{safeString(record.dimensions)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">{t('table.partsPerPallet')}</span>
+                        <p className="font-semibold">{safeString(record.partsPerPallet)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                      <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full">
+                        {safeString(record.category) || 'Uncategorized'}
+                      </span>
+                      {record.orderNumber && <span>{t('table.orders')}: {safeString(record.orderNumber)}</span>}
+                    </div>
+                    <PhotoGrid photos={Array.isArray(record.photos) ? record.photos : []} size="md" context={{ ifNumber: ifNum }} />
+                  </CardContent>
+                </Card>
+              )
+            } catch (err) {
+              // Log the error but don't crash the whole page
+              console.error('Error rendering pallet card:', err, row)
+              return (
+                <Card key={`error-${i}`} className="border-l-4 border-l-red-500">
+                  <CardContent className="p-4">
+                    <p className="text-red-500 text-sm">Error rendering record</p>
+                  </CardContent>
+                </Card>
+              )
+            }
+          }}
+        />
+      )}
+    </div>
+  )
+}

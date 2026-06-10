@@ -10,13 +10,25 @@ const QUALITY_APP_ID = "quality"
 // (user_app_roles[quality]) as `quality_role` so the integrated Quality
 // section can gate on the SAME per-user roles the standalone EQDR app uses
 // — no re-assignment of QA users required.
+//
+// Likewise attach `production_access` from the shared `users` table
+// (app='production') — the pallet-registration app's own user store — so the
+// integrated Pallet Records section keeps that app's exact access list.
 async function overlayAppRole(profile: Record<string, unknown>) {
   if (!profile?.id) return profile
-  const { data: appRoles } = await supabaseAdmin
-    .from("user_app_roles")
-    .select("app_id, role")
-    .eq("user_id", profile.id)
-    .in("app_id", [DASHBOARD_APP_ID, QUALITY_APP_ID])
+  const [{ data: appRoles }, { data: prodUser }] = await Promise.all([
+    supabaseAdmin
+      .from("user_app_roles")
+      .select("app_id, role")
+      .eq("user_id", profile.id)
+      .in("app_id", [DASHBOARD_APP_ID, QUALITY_APP_ID]),
+    supabaseAdmin
+      .from("users")
+      .select("role, status")
+      .eq("id", profile.id)
+      .eq("app", "production")
+      .maybeSingle(),
+  ])
 
   const dashboardRole = appRoles?.find((r) => r.app_id === DASHBOARD_APP_ID)?.role
   const qualityRole = appRoles?.find((r) => r.app_id === QUALITY_APP_ID)?.role ?? null
@@ -25,6 +37,7 @@ async function overlayAppRole(profile: Record<string, unknown>) {
     ...profile,
     ...(dashboardRole ? { role: dashboardRole } : {}),
     quality_role: qualityRole,
+    production_access: prodUser ? { role: prodUser.role, status: prodUser.status } : null,
   }
 }
 

@@ -21,6 +21,9 @@ export type UserProfile = {
   // Role in the Quality (EODR) app, overlaid from user_app_roles[quality].
   // Null when the user has no Quality-app role. Used to gate the Quality section.
   quality_role: string | null
+  // Membership in the pallet-registration app (shared `users` table,
+  // app='production'). Null when not enrolled. Gates the Pallet Records section.
+  production_access: { role: string; status: string } | null
   custom_permissions: Record<string, boolean> | null
   is_active: boolean
 }
@@ -122,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     avatar_url: null,
     role: "visitor",
     quality_role: null,
+    production_access: null,
     custom_permissions: null,
     is_active: true,
   }
