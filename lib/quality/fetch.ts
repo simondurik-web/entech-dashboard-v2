@@ -19,6 +19,9 @@ export async function fetchAllQa<T>(
       .from(table)
       .select(columns)
       .order(orderColumn, { ascending: false })
+      // Stable tiebreak: timestamps cluster (bulk imports), and paging on a
+      // non-unique order can duplicate/skip rows at page boundaries.
+      .order("id", { ascending: false })
       .range(from, from + PAGE - 1)
     if (error) throw new Error(error.message)
     const rows = (data ?? []) as T[]

@@ -20,6 +20,8 @@ type Product = {
   product_type: ProductType
   product_number: string
   description: string | null
+  hub_style: string | null
+  hub_mold: string | null
   bore_size_target: number | null
   bore_length_target: number | null
   hub_diameter_target: number | null
@@ -33,6 +35,8 @@ const emptyForm = {
   product_type: "hub" as ProductType,
   product_number: "",
   description: "",
+  hub_style: "",
+  hub_mold: "",
   bore_size_target: "",
   bore_length_target: "",
   hub_diameter_target: "",
@@ -58,17 +62,26 @@ export default function QualityProductsPage() {
   const [form, setForm] = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
+  // Depend on profile?.id: on a hard refresh the profile loads async, and a
+  // [] dep here would freeze an empty x-user-id into the closure forever
+  // (every request 403s and the page silently shows "no products").
   const loadProducts = useCallback(async () => {
+    if (!profile?.id) return
     setLoading(true)
+    setLoadError(false)
     try {
-      const res = await fetch("/api/quality/products", { headers: userHeaders(profile?.id) })
+      const res = await fetch("/api/quality/products", { headers: userHeaders(profile.id) })
+      if (!res.ok) { setLoadError(true); return }
       const json = await res.json()
       setProducts(json.data || [])
+    } catch {
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [profile?.id])
 
   useEffect(() => {
     if (canManageQuality) loadProducts()
@@ -89,6 +102,8 @@ export default function QualityProductsPage() {
       product_type: product.product_type,
       product_number: product.product_number,
       description: product.description || "",
+      hub_style: product.hub_style || "",
+      hub_mold: product.hub_mold || "",
       bore_size_target: product.bore_size_target?.toString() || "",
       bore_length_target: product.bore_length_target?.toString() || "",
       hub_diameter_target: product.hub_diameter_target?.toString() || "",
@@ -114,6 +129,8 @@ export default function QualityProductsPage() {
       product_type: form.product_type,
       product_number: form.product_number,
       description: form.description || null,
+      hub_style: form.hub_style || null,
+      hub_mold: form.hub_mold || null,
       bore_size_target: parseTarget(form.bore_size_target),
       bore_length_target: parseTarget(form.bore_length_target),
       hub_diameter_target: parseTarget(form.hub_diameter_target),
@@ -184,6 +201,12 @@ export default function QualityProductsPage() {
     <div className="p-4 pb-20">
       <h1 className="mb-1 text-2xl font-bold">{t("nav.qualityProducts")}</h1>
       <p className="mb-4 text-sm text-muted-foreground">{t("quality.admin.productsSubtitle")}</p>
+      {loadError && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          <span>{t("quality.loadError")}</span>
+          <Button variant="outline" size="sm" onClick={loadProducts}>{t("quality.form.retry")}</Button>
+        </div>
+      )}
       <div className="rounded-lg border border-border bg-card p-4">
         <Tabs defaultValue="hub">
           <TabsList>
@@ -212,6 +235,12 @@ export default function QualityProductsPage() {
             )}
             <div className="space-y-2"><Label>{t("quality.admin.productNumber")}</Label><Input value={form.product_number} onChange={(e) => updateField("product_number", e.target.value)} placeholder="HUB-001" /></div>
             <div className="space-y-2"><Label>{t("quality.admin.description")}</Label><Input value={form.description} onChange={(e) => updateField("description", e.target.value)} placeholder={t("quality.admin.descriptionPlaceholder")} /></div>
+            {form.product_type === "hub" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2"><Label>{t("quality.col.hubStyle")}</Label><Input value={form.hub_style} onChange={(e) => updateField("hub_style", e.target.value)} /></div>
+                <div className="space-y-2"><Label>{t("quality.col.hubMold")}</Label><Input value={form.hub_mold} onChange={(e) => updateField("hub_mold", e.target.value)} /></div>
+              </div>
+            )}
             {(form.product_type === "hub" || form.product_type === "finished_product") && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2"><Label>{t("quality.admin.boreSizeTarget")}</Label><Input type="number" step="0.001" value={form.bore_size_target} onChange={(e) => updateField("bore_size_target", e.target.value)} /></div>

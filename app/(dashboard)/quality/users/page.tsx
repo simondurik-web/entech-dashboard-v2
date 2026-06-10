@@ -54,6 +54,7 @@ export default function QualityUsersPage() {
   const [enrollStatus, setEnrollStatus] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<UserRecord | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const fetchUsers = useCallback(async () => {
     if (!canManageQuality) return
@@ -88,13 +89,23 @@ export default function QualityUsersPage() {
 
   async function updateUser(userId: string, updates: Partial<UserRecord>) {
     setSaving(userId)
-    await fetch("/api/quality/users", {
-      method: "PUT",
-      headers: userHeaders(profile?.id),
-      body: JSON.stringify({ user_id: userId, ...updates }),
-    })
-    await fetchUsers()
-    setSaving(null)
+    setActionError(null)
+    try {
+      const res = await fetch("/api/quality/users", {
+        method: "PUT",
+        headers: userHeaders(profile?.id),
+        body: JSON.stringify({ user_id: userId, ...updates }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setActionError(json.error || t("quality.form.networkError"))
+      }
+    } catch {
+      setActionError(t("quality.form.networkError"))
+    } finally {
+      await fetchUsers()
+      setSaving(null)
+    }
   }
 
   async function enrollUser() {
@@ -193,6 +204,10 @@ export default function QualityUsersPage() {
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("quality.admin.search")} className="pl-10" />
       </div>
+
+      {actionError && (
+        <p className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{actionError}</p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
         {loading ? (

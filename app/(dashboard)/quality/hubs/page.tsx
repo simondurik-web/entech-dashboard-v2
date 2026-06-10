@@ -106,7 +106,7 @@ function QualityHubsContent() {
         <DataTable
           table={table}
           data={data}
-          noun="inspection"
+          noun={t("quality.noun.inspection")}
           exportFilename="hub-inspections.csv"
           page="quality-hubs"
           initialView={initialView}

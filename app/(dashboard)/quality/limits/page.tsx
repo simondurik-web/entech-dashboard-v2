@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,22 +45,28 @@ export default function QualityLimitsPage() {
   const [filter, setFilter] = useState<ProductType | "all">("all")
   const [search, setSearch] = useState("")
   const [edit, setEdit] = useState<{ type: ProductType; number: string } | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
+    if (!profile?.id) return
     setLoading(true)
+    setLoadError(false)
     try {
-      const res = await fetch("/api/quality/limits", { headers: userHeaders(profile?.id) })
+      const res = await fetch("/api/quality/limits", { headers: userHeaders(profile.id) })
+      if (!res.ok) { setLoadError(true); return }
       const json = await res.json()
       setLimits(json.limits || [])
       setProducts(json.products || [])
+    } catch {
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
-  }
+  }, [profile?.id])
 
   useEffect(() => {
     if (canEditLimits) load()
-  }, [canEditLimits])
+  }, [canEditLimits, load])
 
   const limitsByProduct = useMemo(() => {
     const out = new Map<string, Map<string, LimitRow>>()
@@ -97,12 +103,18 @@ export default function QualityLimitsPage() {
       </div>
 
       {loading && <p className="text-sm text-muted-foreground">{t("quality.admin.loading")}</p>}
-      {!loading && productsForView.length === 0 && <p className="text-sm text-muted-foreground">{t("quality.admin.noProducts")}</p>}
+      {loadError && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          <span>{t("quality.loadError")}</span>
+          <Button variant="outline" size="sm" onClick={load}>{t("quality.form.retry")}</Button>
+        </div>
+      )}
+      {!loading && !loadError && productsForView.length === 0 && <p className="text-sm text-muted-foreground">{t("quality.admin.noProducts")}</p>}
 
       <div className="space-y-2">
         {productsForView.map((product) => {
           const byMetric = limitsByProduct.get(`${product.product_type}::${product.product_number}`) ?? new Map<string, LimitRow>()
-          const metrics = METRICS_BY_TYPE[product.product_type]
+          const metrics = METRICS_BY_TYPE[product.product_type] ?? []
           const hasAnyLimit = metrics.some((m) => {
             const row = byMetric.get(m.key)
             return row && (row.min_value != null || row.target_value != null || row.max_value != null)

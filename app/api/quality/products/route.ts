@@ -34,6 +34,8 @@ export async function POST(req: Request) {
       product_type: productType,
       product_number: productNumber,
       description: nullable(body.description),
+      hub_style: nullable(body.hub_style),
+      hub_mold: nullable(body.hub_mold),
       bore_size_target: nullable(body.bore_size_target),
       bore_length_target: nullable(body.bore_length_target),
       hub_diameter_target: nullable(body.hub_diameter_target),
@@ -44,6 +46,10 @@ export async function POST(req: Request) {
     }
     const { data, error } = await supabaseAdmin.from(TABLE).insert(payload).select().single()
     if (error) {
+      // product_number has a global UNIQUE constraint — surface duplicates clearly.
+      if (error.code === "23505") {
+        return errorJson("A product with this number already exists", 409)
+      }
       console.error("products POST failed:", error)
       return errorJson("Could not save product", 500)
     }
@@ -63,8 +69,7 @@ export async function PUT(req: Request) {
     const body = await req.json() as Record<string, unknown>
     const id = body.id
     if (!id) return errorJson("Missing id", 400)
-    const updates = pickUpdates(body, PRODUCT_UPDATABLE)
-    if (updates.product_type) updates.product_type = normalizeProductType(updates.product_type)
+    const updates = pickUpdates(body, PRODUCT_UPDATABLE) // normalizes-or-drops product_type
     if (updates.product_number && typeof updates.product_number === "string") updates.product_number = updates.product_number.trim()
     if (Object.keys(updates).length === 0) return errorJson("No updatable fields supplied", 400)
 

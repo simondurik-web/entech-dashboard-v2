@@ -11,6 +11,7 @@ import { useQualityAccess } from "@/lib/use-quality-access"
 import { useViewFromUrl, useAutoExport } from "@/lib/use-view-from-url"
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { fetchAllQa } from "@/lib/quality/fetch"
+import { normalizeProductType, PRODUCT_TYPE_LABEL_KEY } from "@/lib/quality/metrics"
 import { NcrStatusBadge, DefectBadge, NeutralBadge } from "@/components/quality/badges"
 
 type NcrRow = Record<string, unknown>
@@ -49,7 +50,12 @@ function QualityNcrContent() {
   const columns: ColumnDef<NcrRow>[] = useMemo(() => [
     { key: "ncr_number", label: t("quality.col.ncrNumber"), sortable: true, filterable: true, render: (v) => <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{str(v) || "—"}</span> },
     { key: "created_at", label: t("quality.colDate"), sortable: true, filterable: true, render: (v) => fmtDate(v) },
-    { key: "product_type", label: t("quality.col.productType"), sortable: true, filterable: true, render: (v) => v ? <NeutralBadge value={v} /> : "—" },
+    { key: "product_type", label: t("quality.col.productType"), sortable: true, filterable: true, render: (v) => {
+      if (!v) return "—"
+      // NCR rows store 'finished' (table CHECK) — translate via the normalized type.
+      const pt = normalizeProductType(v)
+      return <NeutralBadge value={pt ? t(PRODUCT_TYPE_LABEL_KEY[pt]) : String(v)} />
+    } },
     { key: "product_number", label: t("quality.col.product"), sortable: true, filterable: true, render: (v) => str(v) || "—" },
     { key: "defect_type", label: t("quality.col.defectType"), sortable: true, filterable: true, render: (v) => <DefectBadge value={v} /> },
     { key: "quantity_affected", label: t("quality.col.quantityAffected"), sortable: true, filterable: true, render: (v) => str(v) || "—" },
@@ -83,7 +89,7 @@ function QualityNcrContent() {
       {loading && <TableSkeleton rows={8} />}
       {error && <p className="text-center text-destructive py-10">{t("quality.loadError")}</p>}
       {!loading && !error && (
-        <DataTable table={table} data={data} noun="report" exportFilename="ncr-reports.csv" page="quality-ncr" initialView={initialView} autoExport={autoExport} />
+        <DataTable table={table} data={data} noun={t("quality.noun.report")} exportFilename="ncr-reports.csv" page="quality-ncr" initialView={initialView} autoExport={autoExport} />
       )}
     </div>
   )

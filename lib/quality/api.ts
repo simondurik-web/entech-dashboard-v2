@@ -39,7 +39,7 @@ export const NCR_UPDATABLE = new Set([
 ])
 
 export const PRODUCT_UPDATABLE = new Set([
-  "product_type", "product_number", "description",
+  "product_type", "product_number", "description", "hub_style", "hub_mold",
   "bore_size_target", "bore_length_target", "hub_diameter_target", "weight_target",
   "thickness_target", "diameter_target", "specs_json",
 ])
@@ -77,7 +77,14 @@ export function nullable(value: unknown): unknown {
 export function pickUpdates(body: Mutable, whitelist: Set<string>): Mutable {
   const updates: Mutable = {}
   for (const [key, value] of Object.entries(body)) {
-    if (whitelist.has(key)) updates[key] = key === "product_type" ? normalizeProductType(value) : value
+    if (!whitelist.has(key)) continue
+    if (key === "product_type") {
+      // Reject (skip) an unrecognized product_type instead of nulling the column.
+      const pt = normalizeProductType(value)
+      if (pt) updates[key] = pt
+      continue
+    }
+    updates[key] = value
   }
   return updates
 }

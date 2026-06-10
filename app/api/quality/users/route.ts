@@ -12,8 +12,6 @@ type UserProfileRow = {
   email: string
   full_name: string | null
   avatar_url: string | null
-  role: string
-  custom_permissions: unknown
   is_active: boolean
   created_at: string
 }
@@ -22,14 +20,29 @@ function normalizeEmail(email: unknown): string {
   return typeof email === "string" ? email.trim().toLowerCase() : ""
 }
 
+// Strict-enough email shape check. Critically rejects '%' (LIKE wildcard) so a
+// crafted "email" like %@gmail.com can't wildcard-match other users' rows via
+// .ilike and bypass the exact-match super-admin guard.
+function isValidEmail(email: string): boolean {
+  return /^[^\s%@]+@[^\s%@]+\.[^\s%@]+$/.test(email)
+}
+
+// Escape LIKE wildcards for .ilike — '_' is legal in emails but is a
+// single-char wildcard in LIKE patterns.
+function escapeLike(value: string): string {
+  return value.replace(/([\\%_])/g, "\\$1")
+}
+
 function roleOrNull(role: unknown): string | null {
   return typeof role === "string" && ASSIGNABLE_ROLES.has(role) ? role : null
 }
 
 async function loadTarget(userId: string) {
+  // No custom_permissions / role here: this row is returned to the (QA-scoped)
+  // client in PUT responses and must not leak dashboard-wide fields.
   const { data } = await supabaseAdmin
     .from("user_profiles")
-    .select("id, email, full_name, avatar_url, role, custom_permissions, is_active, created_at")
+    .select("id, email, full_name, avatar_url, is_active, created_at")
     .eq("id", userId)
     .single()
   return data as UserProfileRow | null
@@ -46,9 +59,12 @@ export async function GET(req: Request) {
   const gate = await requireQualityActor(req, "manage")
   if ("response" in gate) return gate.response
 
+  // Deliberately NOT selecting custom_permissions or exposing the dashboard
+  // role: a QA admin is not necessarily a dashboard admin, and this endpoint
+  // must not leak dashboard-wide permission data across the app boundary.
   const { data: users, error } = await supabaseAdmin
     .from("user_profiles")
-    .select("id, email, full_name, avatar_url, role, custom_permissions, is_active, created_at")
+    .select("id, email, full_name, avatar_url, is_active, created_at")
     .order("created_at", { ascending: false })
   if (error) {
     console.error("quality/users GET failed:", error)
@@ -61,13 +77,15 @@ export async function GET(req: Request) {
     .eq("app_id", APP_ID)
 
   const roleMap = new Map((appRoles || []).map((r) => [r.user_id, r.role]))
-  const { data: authList } = await supabaseAdmin.auth.admin.listUsers()
-  const authMap = new Map((authList.users || []).map((u) => [u.id, u]))
+  // Default page size is 50 — request a high ceiling so last_login doesn't
+  // silently disappear once the user count grows past one page.
+  const { data: authList, error: authErr } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  if (authErr) console.error("quality/users listUsers failed:", authErr)
+  const authMap = new Map((authList?.users ?? []).map((u) => [u.id, u]))
 
   return NextResponse.json({
     users: (users || []).map((u) => ({
       ...u,
-      dashboard_role: u.role,
       role: u.email?.toLowerCase() === SUPER_ADMIN_EMAIL ? "admin" : roleMap.get(u.id) || "visitor",
       last_login: authMap.get(u.id)?.last_sign_in_at || null,
     })),
@@ -84,20 +102,26 @@ export async function POST(req: Request) {
     const role = roleOrNull(body.role)
     const fullName = typeof body.full_name === "string" ? body.full_name.trim() : ""
     if (!email || !role) return errorJson("Missing email or role", 400)
+    if (!isValidEmail(email)) return errorJson("Invalid email address", 400)
     if (email === SUPER_ADMIN_EMAIL) return errorJson("Cannot modify super admin", 403)
 
     const { data: existingProfile } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, email, full_name, avatar_url, role, custom_permissions, is_active, created_at")
-      .ilike("email", email)
+      .select("id, email, full_name, avatar_url, role, is_active, created_at")
+      .ilike("email", escapeLike(email))
       .maybeSingle()
+
+    // Defense in depth: re-check the RESOLVED row, not just the input string.
+    if (existingProfile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL) {
+      return errorJson("Cannot modify super admin", 403)
+    }
 
     let userId = existingProfile?.id as string | undefined
     let profile = existingProfile as UserProfileRow | null
 
     if (!userId) {
-      const { data: list } = await supabaseAdmin.auth.admin.listUsers()
-      const found = list.users.find((u) => u.email?.toLowerCase() === email)
+      const { data: list } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      const found = (list?.users ?? []).find((u) => u.email?.toLowerCase() === email)
       if (found) {
         userId = found.id
       } else {
@@ -113,16 +137,22 @@ export async function POST(req: Request) {
         userId = created.user.id
       }
 
-      const { data: upserted, error: profileError } = await supabaseAdmin
+      // ignoreDuplicates: if a profile row already exists for this auth id we
+      // must NOT overwrite it (the old onConflict-update path would have reset
+      // the dashboard role to 'visitor' and re-activated a deactivated user —
+      // a write a quality-scoped admin must never perform). Insert-if-absent,
+      // then read back whichever row exists.
+      const { error: profileError } = await supabaseAdmin
         .from("user_profiles")
-        .upsert({ id: userId, email, role: "visitor", full_name: fullName || null, is_active: true }, { onConflict: "id" })
-        .select("id, email, full_name, avatar_url, role, custom_permissions, is_active, created_at")
-        .single()
+        .upsert(
+          { id: userId, email, role: "visitor", full_name: fullName || null, is_active: true },
+          { onConflict: "id", ignoreDuplicates: true },
+        )
       if (profileError) {
         console.error("quality/users profile upsert failed:", profileError)
         return errorJson("Failed to create profile", 500)
       }
-      profile = upserted as UserProfileRow
+      profile = await loadTarget(userId)
     }
 
     if (!userId) return errorJson("Failed to resolve user", 500)
@@ -179,7 +209,17 @@ export async function PUT(req: Request) {
     // custom_permissions or is_active — those are dashboard-wide and a QA admin
     // (who may not be a dashboard admin) must not be able to change them here.
     const profile = await loadTarget(userId)
-    return NextResponse.json({ user: { ...profile, role: role ?? "visitor" } })
+    let effectiveRole = role
+    if (!effectiveRole) {
+      const { data: current } = await supabaseAdmin
+        .from("user_app_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("app_id", APP_ID)
+        .maybeSingle()
+      effectiveRole = current?.role ?? "visitor"
+    }
+    return NextResponse.json({ user: { ...profile, role: effectiveRole } })
   } catch (err) {
     console.error("quality/users PUT exception:", err)
     return errorJson("Internal server error", 500)

@@ -90,7 +90,7 @@ function QualityTiresContent() {
       {loading && <TableSkeleton rows={8} />}
       {error && <p className="text-center text-destructive py-10">{t("quality.loadError")}</p>}
       {!loading && !error && (
-        <DataTable table={table} data={data} noun="inspection" exportFilename="tire-inspections.csv" page="quality-tires" initialView={initialView} autoExport={autoExport} />
+        <DataTable table={table} data={data} noun={t("quality.noun.inspection")} exportFilename="tire-inspections.csv" page="quality-tires" initialView={initialView} autoExport={autoExport} />
       )}
     </div>
   )
