@@ -65,7 +65,7 @@ const PAGE_ROUTES: Record<string, string> = {
   'shipped': '/shipped',
   'inventory': '/inventory',
   'inventory-history': '/inventory-history',
-  'pallet-records': '/pallet-records',
+  'pallet-records': '/pallet-photos',
   'shipping-records': '/shipping-records',
   'all-data': '/all-data',
   'sales-by-part': '/sales-parts',

@@ -993,5 +993,10 @@
   "quality.model3d.title": "Modelo 3D",
   "quality.model3d.loading": "Cargando modelo...",
   "quality.model3d.pause": "Pausar",
-  "quality.model3d.rotate": "Girar"
+  "quality.model3d.rotate": "Girar",
+  "nav.palletPhotos": "Fotos de Pallets",
+  "nav.palletRecordsSection": "Registro de Pallets",
+  "pallets.nav.production": "Producción",
+  "pallets.nav.shipping": "Envíos",
+  "pallets.nav.admin": "Admin"
 }

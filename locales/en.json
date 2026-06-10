@@ -993,5 +993,10 @@
   "quality.model3d.title": "3D Model",
   "quality.model3d.loading": "Loading model...",
   "quality.model3d.pause": "Pause",
-  "quality.model3d.rotate": "Rotate"
+  "quality.model3d.rotate": "Rotate",
+  "nav.palletPhotos": "Pallet Photos",
+  "nav.palletRecordsSection": "Pallet Records",
+  "pallets.nav.production": "Production",
+  "pallets.nav.shipping": "Shipping",
+  "pallets.nav.admin": "Admin"
 }

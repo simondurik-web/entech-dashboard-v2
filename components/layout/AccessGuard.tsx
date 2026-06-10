@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { usePermissions } from "@/lib/use-permissions"
 import { useQualityAccess } from "@/lib/use-quality-access"
+import { usePalletAccess } from "@/lib/use-pallet-access"
 import { useI18n } from "@/lib/i18n"
 import { LogIn } from "lucide-react"
 import type { ReactNode } from "react"
@@ -13,6 +14,7 @@ export function AccessGuard({ children }: { children: ReactNode }) {
   const { user, loading, signIn } = useAuth()
   const { canAccess } = usePermissions()
   const { canSeeQuality, canManageQuality, canEditLimits } = useQualityAccess()
+  const { canSeePallets, isPalletAdmin } = usePalletAccess()
   const { t } = useI18n()
 
   const accessDenied = (
@@ -51,6 +53,16 @@ export function AccessGuard({ children }: { children: ReactNode }) {
       : isLimitsPath
         ? canEditLimits
         : canSeeQuality
+    return allowed ? <>{children}</> : accessDenied
+  }
+
+  // Pallet Records (ported pallet-registration app) — gated by membership in
+  // the shared users(app='production') table, NOT menu permissions. This MUST
+  // intercept before the generic canAccess check: legacy role_permissions still
+  // grant the '/pallet-records' path (it used to be the Sheets photo page, now
+  // at /pallet-photos) and must not leak the new section to non-members.
+  if (inPath("/pallet-records")) {
+    const allowed = inPath("/pallet-records/admin") ? isPalletAdmin : canSeePallets
     return allowed ? <>{children}</> : accessDenied
   }
 

@@ -53,6 +53,7 @@ import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
 import { CollapsibleNavSection } from "@/components/ui/collapsible-nav"
 import { useQualityAccess } from "@/lib/use-quality-access"
+import { usePalletAccess } from "@/lib/use-pallet-access"
 
 type NavItem = {
   tKey: string
@@ -75,7 +76,7 @@ const productionItems: NavItem[] = [
 const shippingItems: NavItem[] = [
   { tKey: "nav.ordersStaged", href: "/staged", icon: <PackageCheck className="size-4" /> },
   { tKey: "nav.ordersShipped", href: "/shipped", icon: <Truck className="size-4" /> },
-  { tKey: "nav.palletRecords", href: "/pallet-records", icon: <Camera className="size-4" /> },
+  { tKey: "nav.palletPhotos", href: "/pallet-photos", icon: <Camera className="size-4" /> },
   { tKey: "nav.shippingRecords", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { tKey: "nav.shippingOverview", href: "/shipping-overview", icon: <Ship className="size-4" /> },
 ]
@@ -115,6 +116,15 @@ const qualityUsersItem: NavItem = { tKey: "nav.qualityUsers", href: "/quality/us
 const qualityAuditItem: NavItem = { tKey: "nav.qualityAudit", href: "/quality/audit", icon: <FileText className="size-4" />, sub: true }
 const qualityLimitsItem: NavItem = { tKey: "nav.qualityLimits", href: "/quality/limits", icon: <Ruler className="size-4" />, sub: true }
 
+// Pallet Records (ported pallet-registration app). Visibility is gated by
+// membership in users(app='production') — see usePalletAccess — mirroring the
+// standalone app's own user list. Admin item only for production admins.
+const palletItems: NavItem[] = [
+  { tKey: "pallets.nav.production", href: "/pallet-records", icon: <Factory className="size-4" /> },
+  { tKey: "pallets.nav.shipping", href: "/pallet-records/shipping", icon: <Truck className="size-4" />, sub: true },
+]
+const palletAdminItem: NavItem = { tKey: "pallets.nav.admin", href: "/pallet-records/admin", icon: <Settings className="size-4" />, sub: true }
+
 const adminItems: NavItem[] = [
   { tKey: "User Management", href: "/admin/users", icon: <Users className="size-4" /> },
   { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
@@ -150,6 +160,7 @@ export function Sidebar({
   const { user, profile, signIn, signOut } = useAuth()
   const { canAccess } = usePermissions()
   const { canSeeQuality, canManageQuality, canEditLimits } = useQualityAccess()
+  const { canSeePallets, isPalletAdmin } = usePalletAccess()
   const [mounted, setMounted] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -246,6 +257,11 @@ export function Sidebar({
     ...qualityItems,
     ...(canManageQuality ? [qualityProductsItem, qualityUsersItem, qualityAuditItem] : []),
     ...(canEditLimits ? [qualityLimitsItem] : []),
+  ]
+
+  const palletNav: NavItem[] = [
+    ...palletItems,
+    ...(isPalletAdmin ? [palletAdminItem] : []),
   ]
 
   const renderNavItem = (item: NavItem, useTranslation = true) => {
@@ -450,6 +466,14 @@ export function Sidebar({
               <CollapsibleNavSection label={t('nav.quality')} expanded={expanded} storageKey="quality" defaultOpen={true}>
                 <ul className="space-y-0.5 mt-1">
                   {qualityNav.map((item) => renderNavItem(item))}
+                </ul>
+              </CollapsibleNavSection>
+            )}
+
+            {canSeePallets && (
+              <CollapsibleNavSection label={t('nav.palletRecordsSection')} expanded={expanded} storageKey="pallet-records" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
+                  {palletNav.map((item) => renderNavItem(item))}
                 </ul>
               </CollapsibleNavSection>
             )}
@@ -700,6 +724,29 @@ export function Sidebar({
               <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.quality')}</p>
               <ul className="space-y-0.5">
                 {qualityNav.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        item.sub && "ml-4 text-xs",
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+                      )}>
+                        {item.icon}
+                        <span>{t(item.tKey)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
+
+          {canSeePallets && (
+            <>
+              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.palletRecordsSection')}</p>
+              <ul className="space-y-0.5">
+                {palletNav.map((item) => {
                   const isActive = pathname === item.href
                   return (
                     <li key={item.href}>
