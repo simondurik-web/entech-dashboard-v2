@@ -223,15 +223,52 @@ export function PhilChat({ userId }: Props) {
       }
 
       if (!resolved) {
-        updatePlaceholder({ role: 'assistant', content: '', error: 'stream_ended', pending: false, pendingPhase: undefined })
-        setBannerError(t('phil.error.generic'))
+        // Long answers (3+ SQL rounds can take 2-3 min) sometimes outlive the
+        // browser's SSE connection even though the server finishes and SAVES
+        // the answer to history. Before declaring failure, check history once —
+        // if the assistant's reply landed, render it instead of an error.
+        const recovered = await recoverFromHistory()
+        if (!recovered) {
+          updatePlaceholder({ role: 'assistant', content: '', error: 'stream_ended', pending: false, pendingPhase: undefined })
+          setBannerError(t('phil.error.generic'))
+        }
       }
     } catch (err) {
-      const detail = err instanceof Error ? err.message : 'network_error'
-      updatePlaceholder({ role: 'assistant', content: '', error: detail, pending: false, pendingPhase: undefined })
-      setBannerError(t('phil.error.generic'))
+      const recovered = await recoverFromHistory()
+      if (!recovered) {
+        const detail = err instanceof Error ? err.message : 'network_error'
+        updatePlaceholder({ role: 'assistant', content: '', error: detail, pending: false, pendingPhase: undefined })
+        setBannerError(t('phil.error.generic'))
+      }
     } finally {
       setSending(false)
+    }
+
+    // Fetch the session history and, if the last message is a fresh assistant
+    // answer (the server completed after our stream died), swap it in.
+    async function recoverFromHistory(): Promise<boolean> {
+      try {
+        const res = await fetch(`/api/chat/phil?sessionId=${encodeURIComponent(sessionId)}`, {
+          headers: { 'x-user-id': userId },
+        })
+        if (!res.ok) return false
+        const data = await res.json()
+        const msgs = (data.messages ?? []) as Array<Record<string, unknown>>
+        const last = msgs[msgs.length - 1]
+        if (!last || last.role !== 'assistant' || !(last.content as string)?.trim() || last.error) return false
+        updatePlaceholder({
+          role: 'assistant',
+          content: (last.content as string) ?? '',
+          report: (last.report as PhilReport | null) ?? null,
+          model: (last.model as string | null) ?? null,
+          latency_ms: (last.latency_ms as number | null) ?? null,
+          pending: false,
+          pendingPhase: undefined,
+        })
+        return true
+      } catch {
+        return false
+      }
     }
   }, [input, sending, sessionId, userId, language, t])
 
