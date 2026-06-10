@@ -10,7 +10,14 @@
   node_modules symlinked to quality-integration's (real install, has googleapis/web-push).
 - Recon DONE (agent report 2026-06-10): source = `~/clawd/projects/entech-production-app/entech-app`
   (nested repo, deployed from main @21e33a8; working tree == production). 41 files / 6.2k LOC.
-- NEXT: Phase A access core (me) → Phase B Codex bulk port → reviews → staging.
+- Phase A ✅ (b248885) + Phase B ✅ (a07a024, Codex; sandbox font/webpack hacks reverted) + 4-agent
+  review fixes ✅ (ba43162: identity→auth-UUID matching live DB, audit/Sheets writes non-fatal,
+  push rewired onto the dashboard real push_subscriptions schema, formula-injection sanitized,
+  ownership=userId only, upload sanitization, users enum+super-admin immutable, theme fixes).
+  role_permissions /pallet-photos copied for all 6 roles. PUSHED TO STAGING (ba43162).
+- NEXT: Simon tests staging desktop/iPad/iPhone → then (his go) cutover: redirect
+  entech-production-app.vercel.app per-path incl /scan?query passthrough + repoint RT-Labels
+  Apps Script QR_APP_URL + promote to main.
 
 ## Source app facts that drive the design
 - Same Supabase project. Tables: `pallet_records`, `shipping_records`, `audit_trail`,
