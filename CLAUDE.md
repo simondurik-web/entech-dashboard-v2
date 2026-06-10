@@ -70,6 +70,13 @@ Supabase tables: `dashboard_orders` (2698), `inventory` (999), `production_total
 - **Joseles** — worker (Amazon Fulfillment Center, Origen RV, Technoflex orders auto-assigned)
 
 ## Rules for this project
+- **HARD RULE — Phil Assistant scope (2026-06-10):** every NEW dashboard section/page MUST ship
+  Phil Assistant coverage in the same effort: add a domain entry to
+  `~/clawd/projects/molding/scripts/phil_domains.py` (tables, EN/ES keywords, schema hint,
+  permission mirroring the page's access rules) — or add the route to `DRIFT_IGNORE_PATHS` if
+  genuinely out of scope — then restart `com.simon.phil-ai-server`. A daily drift check
+  (`com.simon.phil-scope-drift`, 03:50) alerts #molding-dashboard when a sidebar section lacks
+  coverage. Same enforcement spirit as the bilingual rule.
 - **NEVER push directly to `main`** — always ask Simon; must get explicit "yes" before pushing to production
 - **All new features go to `staging` first**, verified before merging to main
 - **All code changes must go through agent fleet review** (codex + gemini + claude-code) before pushing — no exceptions, even small fixes
