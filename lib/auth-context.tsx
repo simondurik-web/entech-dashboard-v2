@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react"
 import { supabase } from "./supabase"
 import { setDataCacheOwner, clearDataCache, prefetchHeavyData } from "./data-cache"
-import { getDeviceToken, clearDeviceToken, checkDeviceStatus } from "./device-auth"
+import { getDeviceToken, checkDeviceStatus } from "./device-auth"
 import type { User, Session } from "@supabase/supabase-js"
 
 export type UserRole = 'visitor' | 'regular_user' | 'group_leader' | 'shipping_manager' | 'manager' | 'admin'
@@ -194,10 +194,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         custom_permissions: null,
         is_active: true,
       })
-    } else if (result && (result.status === "revoked" || result.status === "unknown")) {
-      // Revoked or deleted in Admin → back to "request access" mode.
+    } else {
+      // Pending, revoked, deleted, or not yet registered — no session, but
+      // KEEP the token: "unknown" can be a registration still in flight
+      // (clearing here raced the login page's request POST and orphaned the
+      // pairing), and a revoked device must unlock again on re-approval
+      // without a re-pairing.
       deviceSessionRef.current = false
-      clearDeviceToken()
     }
   }, [])
 
