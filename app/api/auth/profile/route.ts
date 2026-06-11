@@ -68,12 +68,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const { id, email, full_name, avatar_url } = body
-
-  if (!id || !email) {
-    return NextResponse.json({ error: "Missing id or email" }, { status: 400 })
+  // Identity comes ONLY from the verified token. Accepting id/email from the
+  // body let an anonymous caller claim pre-enrolled rows or overwrite other
+  // profiles via the admin client — hardened 2026-06-10.
+  const user = await getUserFromRequest(req)
+  if (!user?.id || !user.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  const body = await req.json().catch(() => ({}))
+  const { full_name, avatar_url } = body
+  const id = user.id
+  const email = user.email
 
   // Check if a pre-enrolled profile exists with this email
   const { data: existing } = await supabaseAdmin
@@ -83,6 +89,20 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (existing) {
+    // Already fully synced (id claimed, name/avatar present or unchanged)?
+    // Skip the write — this endpoint gets hit on logins, and an unconditional
+    // UPDATE per login is wasted latency + churn.
+    const nextName = full_name || existing.full_name
+    const nextAvatar = avatar_url || existing.avatar_url
+    if (
+      existing.id === id &&
+      existing.full_name === nextName &&
+      existing.avatar_url === nextAvatar
+    ) {
+      const profileWithRole = await overlayAppRole(existing)
+      return NextResponse.json({ profile: profileWithRole })
+    }
+
     // Update the pre-enrolled row: set the real auth id, name, avatar, but KEEP existing role
     const { data: profile, error } = await supabaseAdmin
       .from("user_profiles")

@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react"
 import { supabase } from "./supabase"
 import type { User, Session } from "@supabase/supabase-js"
 
@@ -49,58 +49,120 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchProfile = useCallback(async (u: User) => {
+  // The user id we last loaded a profile for — prevents the boot sequence
+  // (getSession + the INITIAL_SESSION/SIGNED_IN auth event) from fetching the
+  // profile twice on every page load. Cleared on failure so a transient
+  // network error doesn't lock the tab into the visitor role forever.
+  const loadedForUserRef = useRef<string | null>(null)
+  const lastLoadAtRef = useRef(0)
+  // Re-read the profile on TOKEN_REFRESHED at most this often, so admin role
+  // grants/revocations still reach long-lived tabs without a manual reload.
+  const ROLE_REFRESH_MS = 15 * 60 * 1000
+
+  const applyProfile = useCallback((u: User, p: UserProfile | null) => {
+    // Enforce super admin — always admin regardless of DB
+    if (isSuperAdmin(u.email) && p) {
+      p.role = 'admin'
+    }
+    setProfile(p)
+  }, [])
+
+  // Write path: upserts the profile row (creates it on first-ever login or
+  // claims a pre-enrolled row). Identity comes from the Bearer token
+  // server-side; the body only carries cosmetic fields.
+  const upsertProfile = useCallback(async (u: User, accessToken: string) => {
     try {
-      // Upsert profile via API
       const res = await fetch("/api/auth/profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
-          id: u.id,
-          email: u.email,
           full_name: u.user_metadata?.full_name || u.user_metadata?.name || "",
           avatar_url: u.user_metadata?.avatar_url || u.user_metadata?.picture || "",
         }),
       })
       if (res.ok) {
         const data = await res.json()
-        // Enforce super admin — always admin regardless of DB
-        if (isSuperAdmin(u.email) && data.profile) {
-          data.profile.role = 'admin'
+        applyProfile(u, data.profile)
+        return true
+      }
+    } catch (err) {
+      console.error("Failed to upsert profile:", err)
+    }
+    return false
+  }, [applyProfile])
+
+  // Read path: plain GET with the session token — no DB writes. Falls back to
+  // the upsert when the profile row doesn't exist yet (first-ever login or a
+  // pre-enrolled row that still has its placeholder id).
+  const loadProfile = useCallback(async (u: User, accessToken: string) => {
+    let applied = false
+    try {
+      const res = await fetch("/api/auth/profile", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.profile) {
+          applyProfile(u, data.profile)
+          applied = true
         }
-        setProfile(data.profile)
+      }
+      if (!applied) {
+        applied = await upsertProfile(u, accessToken)
       }
     } catch (err) {
       console.error("Failed to fetch profile:", err)
     }
-  }, [])
+    if (applied) {
+      lastLoadAtRef.current = Date.now()
+    } else {
+      // Let the next auth event retry instead of leaving the tab as visitor.
+      loadedForUserRef.current = null
+    }
+  }, [applyProfile, upsertProfile])
 
   useEffect(() => {
     // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user)
-        fetchProfile(session.user)
+        if (loadedForUserRef.current !== session.user.id) {
+          loadedForUserRef.current = session.user.id
+          loadProfile(session.user, session.access_token)
+        }
       }
       setLoading(false)
     })
 
     // Listen to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (session?.user) {
           setUser(session.user)
-          await fetchProfile(session.user)
+          const isNewUser = loadedForUserRef.current !== session.user.id
+          // TOKEN_REFRESHED fires ~hourly; use it as a cheap opportunity to
+          // pick up role changes, throttled by ROLE_REFRESH_MS.
+          const isStaleRefresh =
+            event === "TOKEN_REFRESHED" &&
+            Date.now() - lastLoadAtRef.current > ROLE_REFRESH_MS
+          if (isNewUser || isStaleRefresh) {
+            loadedForUserRef.current = session.user.id
+            await loadProfile(session.user, session.access_token)
+          }
         } else {
           setUser(null)
           setProfile(null)
+          loadedForUserRef.current = null
         }
         setLoading(false)
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [fetchProfile])
+  }, [loadProfile])
 
   const signIn = async () => {
     await supabase.auth.signInWithOAuth({
