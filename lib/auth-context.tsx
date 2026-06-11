@@ -44,6 +44,47 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 })
 
+// Device-side profile cache (Simon 2026-06-10: "caching on the device").
+// Hydrates the UI with the last-known profile instantly on boot; the network
+// load still runs and overwrites it, so a role change is corrected within
+// ~1s of page load. Lives alongside the Supabase session (also localStorage)
+// and is cleared on sign-out.
+const PROFILE_CACHE_KEY = "edv2.profile.v1"
+
+function readCachedProfile(userId: string): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { userId: string; profile: UserProfile }
+    return parsed.userId === userId ? parsed.profile : null
+  } catch {
+    return null
+  }
+}
+
+function writeCachedProfile(userId: string, profile: UserProfile | null) {
+  try {
+    if (profile) {
+      localStorage.setItem(
+        PROFILE_CACHE_KEY,
+        JSON.stringify({ userId, profile }),
+      )
+    } else {
+      localStorage.removeItem(PROFILE_CACHE_KEY)
+    }
+  } catch {
+    // storage blocked — cache is best-effort
+  }
+}
+
+function clearCachedProfile() {
+  try {
+    localStorage.removeItem(PROFILE_CACHE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -65,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       p.role = 'admin'
     }
     setProfile(p)
+    if (p) writeCachedProfile(u.id, p)
   }, [])
 
   // Write path: upserts the profile row (creates it on first-ever login or
@@ -131,6 +173,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session.user)
         if (loadedForUserRef.current !== session.user.id) {
           loadedForUserRef.current = session.user.id
+          // Paint with the device-cached profile immediately; the network
+          // load below revalidates and overwrites it.
+          const cached = readCachedProfile(session.user.id)
+          if (cached) applyProfile(session.user, cached)
           loadProfile(session.user, session.access_token)
         }
       }
@@ -156,13 +202,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setProfile(null)
           loadedForUserRef.current = null
+          clearCachedProfile()
         }
         setLoading(false)
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [loadProfile])
+  }, [loadProfile, applyProfile])
 
   const signIn = async () => {
     await supabase.auth.signInWithOAuth({

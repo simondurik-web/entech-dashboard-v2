@@ -9,27 +9,73 @@ type RolePermission = {
   menu_access: Record<string, boolean>
 }
 
+// Device-side cache of the role_permissions table so the menu/role gating
+// renders instantly on boot instead of waiting a network round trip. The
+// table is small, non-secret (it's only a UI gate — every API route does its
+// own server-side authorization), and changes rarely; a background refetch on
+// first mount keeps it current within ~1s of page load.
+const PERMS_CACHE_KEY = "edv2.perms.v1"
+
+function readStoredPermissions(): RolePermission[] | null {
+  try {
+    const raw = localStorage.getItem(PERMS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as RolePermission[]) : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredPermissions(perms: RolePermission[]) {
+  try {
+    localStorage.setItem(PERMS_CACHE_KEY, JSON.stringify(perms))
+  } catch {
+    // storage blocked — cache is best-effort
+  }
+}
+
 let cachedPermissions: RolePermission[] | null = null
+// Whether this page load has refetched from the DB yet. The localStorage
+// seed alone must not suppress the refetch (it could be stale).
+let revalidatedThisLoad = false
+
 const PATH_FALLBACKS: Record<string, string[]> = {
   // No fallbacks — each path must be explicitly granted
 }
 
 export function usePermissions() {
   const { profile } = useAuth()
-  const [permissions, setPermissions] = useState<RolePermission[]>(cachedPermissions || [])
+  const [permissions, setPermissions] = useState<RolePermission[]>(
+    cachedPermissions || [],
+  )
 
   useEffect(() => {
-    if (cachedPermissions) {
+    // Seed from the device cache post-hydration (server and client first
+    // paint both render with [] — no hydration mismatch).
+    if (!cachedPermissions) {
+      const stored = readStoredPermissions()
+      if (stored && stored.length > 0) {
+        cachedPermissions = stored
+        setPermissions(stored)
+      }
+    } else {
       setPermissions(cachedPermissions)
-      return
     }
+    if (revalidatedThisLoad) return
+    revalidatedThisLoad = true
     supabase
       .from("role_permissions")
       .select("role, menu_access")
       .then(({ data }) => {
-        if (data) {
+        if (data && data.length > 0) {
           cachedPermissions = data as RolePermission[]
-          setPermissions(data as RolePermission[])
+          writeStoredPermissions(cachedPermissions)
+          setPermissions(cachedPermissions)
+        } else {
+          // Failed/empty fetch — let the next mount retry instead of leaving
+          // the whole SPA session with empty menus.
+          revalidatedThisLoad = false
         }
       })
   }, [])
@@ -70,7 +116,8 @@ export function usePermissions() {
     const { data } = await supabase.from("role_permissions").select("role, menu_access")
     if (data) {
       cachedPermissions = data as RolePermission[]
-      setPermissions(data as RolePermission[])
+      writeStoredPermissions(cachedPermissions)
+      setPermissions(cachedPermissions)
     }
   }, [])
 
@@ -80,4 +127,10 @@ export function usePermissions() {
 // Clear cache (useful after admin updates permissions)
 export function clearPermissionsCache() {
   cachedPermissions = null
+  revalidatedThisLoad = false
+  try {
+    localStorage.removeItem(PERMS_CACHE_KEY)
+  } catch {
+    // ignore
+  }
 }
