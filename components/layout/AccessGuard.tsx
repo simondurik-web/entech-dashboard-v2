@@ -6,7 +6,8 @@ import { usePermissions } from "@/lib/use-permissions"
 import { useQualityAccess } from "@/lib/use-quality-access"
 import { usePalletAccess } from "@/lib/use-pallet-access"
 import { useI18n } from "@/lib/i18n"
-import { LogIn } from "lucide-react"
+import { LogIn, MonitorSmartphone } from "lucide-react"
+import Link from "next/link"
 import type { ReactNode } from "react"
 
 export function AccessGuard({ children }: { children: ReactNode }) {
@@ -25,13 +26,22 @@ export function AccessGuard({ children }: { children: ReactNode }) {
           {t('auth.accessDeniedMessage')}
         </p>
         {!user && (
-          <button
-            onClick={signIn}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            <LogIn className="size-4" />
-            {t('ui.signIn')}
-          </button>
+          <>
+            <button
+              onClick={signIn}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <LogIn className="size-4" />
+              {t('ui.signIn')}
+            </button>
+            <Link
+              href="/login"
+              className="mt-3 flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <MonitorSmartphone className="size-4" />
+              {t('device.sharedComputerLink')}
+            </Link>
+          </>
         )}
       </div>
     </div>
@@ -92,13 +102,22 @@ export function AccessGuard({ children }: { children: ReactNode }) {
             {t('auth.accessDeniedMessage')}
           </p>
           {!user && (
-            <button
-              onClick={signIn}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <LogIn className="size-4" />
-              {t('ui.signIn')}
-            </button>
+            <>
+              <button
+                onClick={signIn}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <LogIn className="size-4" />
+                {t('ui.signIn')}
+              </button>
+              <Link
+                href="/login"
+                className="mt-3 flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <MonitorSmartphone className="size-4" />
+                {t('device.sharedComputerLink')}
+              </Link>
+            </>
           )}
         </div>
       </div>

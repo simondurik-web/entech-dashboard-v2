@@ -1136,5 +1136,6 @@
   "device.approve": "Aprobar",
   "device.revoke": "Revocar",
   "device.delete": "Eliminar",
-  "device.deleteConfirm": "¿Eliminar este dispositivo? Tendrá que solicitar acceso de nuevo."
+  "device.deleteConfirm": "¿Eliminar este dispositivo? Tendrá que solicitar acceso de nuevo.",
+  "device.sharedComputerLink": "¿Computadora compartida de la empresa? Solicite acceso del dispositivo"
 }

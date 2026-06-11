@@ -1136,5 +1136,6 @@
   "device.approve": "Approve",
   "device.revoke": "Revoke",
   "device.delete": "Delete",
-  "device.deleteConfirm": "Delete this device? It will have to request access again."
+  "device.deleteConfirm": "Delete this device? It will have to request access again.",
+  "device.sharedComputerLink": "Shared company computer? Request device access"
 }
