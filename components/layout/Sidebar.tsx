@@ -48,6 +48,8 @@ import {
   CircleDot,
   Disc,
   AlertTriangle,
+  BookOpen,
+  ExternalLink,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -60,6 +62,8 @@ type NavItem = {
   href: string
   icon: React.ReactNode
   sub?: boolean
+  // Opens in a new tab via <a target="_blank"> instead of a Next <Link>.
+  external?: boolean
 }
 
 const productionItems: NavItem[] = [
@@ -129,6 +133,9 @@ const adminItems: NavItem[] = [
   { tKey: "User Management", href: "/admin/users", icon: <Users className="size-4" /> },
   { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
   { tKey: "Notifications", href: "/admin/notifications", icon: <Bell className="size-4" /> },
+  // Public Roll-Tech catalog — opens in a new tab so Phil & co. can grab a
+  // shareable customer-facing link without leaving the dashboard.
+  { tKey: "Catalog", href: "https://rolltech-catalog.vercel.app", icon: <BookOpen className="size-4" />, external: true },
 ]
 
 const ROLE_LABELS: Record<string, string> = {
@@ -266,6 +273,32 @@ export function Sidebar({
 
   const renderNavItem = (item: NavItem, useTranslation = true) => {
     const isActive = pathname === item.href
+    if (item.external) {
+      return (
+        <li key={item.href}>
+          <a
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            title={!expanded ? (useTranslation ? t(item.tKey) : item.tKey) : undefined}
+            className={cn(
+              "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
+              "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+            )}
+          >
+            <span className="relative shrink-0">{item.icon}</span>
+            <span className={cn(
+              "relative flex items-center gap-1.5 transition-all duration-300",
+              expanded ? "opacity-100 w-auto" : "opacity-0 w-0"
+            )}>
+              {useTranslation ? t(item.tKey) : item.tKey}
+              <ExternalLink className="size-3 opacity-50" />
+            </span>
+          </a>
+        </li>
+      )
+    }
     return (
       <li key={item.href}>
         <Link
@@ -801,6 +834,16 @@ export function Sidebar({
               <ul className="space-y-0.5">
                 {adminItems.map((item) => {
                   const isActive = pathname === item.href
+                  if (item.external) {
+                    return (
+                      <li key={item.href}>
+                        <a href={item.href} target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent">
+                          {item.icon}
+                          <span className="flex items-center gap-1.5">{item.tKey}<ExternalLink className="size-3 opacity-50" /></span>
+                        </a>
+                      </li>
+                    )
+                  }
                   return (
                     <li key={item.href}>
                       <Link href={item.href} onClick={onClose} className={cn(
