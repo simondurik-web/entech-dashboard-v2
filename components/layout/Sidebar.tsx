@@ -48,6 +48,8 @@ import {
   CircleDot,
   Disc,
   AlertTriangle,
+  BookOpen,
+  ExternalLink,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -60,6 +62,8 @@ type NavItem = {
   href: string
   icon: React.ReactNode
   sub?: boolean
+  // Opens in a new tab via <a target="_blank"> instead of a Next <Link>.
+  external?: boolean
 }
 
 const productionItems: NavItem[] = [
@@ -130,6 +134,12 @@ const adminItems: NavItem[] = [
   { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
   { tKey: "Notifications", href: "/admin/notifications", icon: <Bell className="size-4" /> },
 ]
+
+// Public Roll-Tech catalog — opens in a new tab so anyone (Phil, visitors)
+// can grab the shareable customer-facing link without leaving the dashboard.
+// Deliberately NOT role-gated: the catalog is public information (Simon,
+// 2026-06-10).
+const catalogItem: NavItem = { tKey: "nav.catalog", href: "https://rolltech-catalog.vercel.app", icon: <BookOpen className="size-4" />, external: true }
 
 const ROLE_LABELS: Record<string, string> = {
   visitor: "Visitor",
@@ -266,6 +276,32 @@ export function Sidebar({
 
   const renderNavItem = (item: NavItem, useTranslation = true) => {
     const isActive = pathname === item.href
+    if (item.external) {
+      return (
+        <li key={item.href}>
+          <a
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            title={!expanded ? (useTranslation ? t(item.tKey) : item.tKey) : undefined}
+            className={cn(
+              "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
+              "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+            )}
+          >
+            <span className="relative shrink-0">{item.icon}</span>
+            <span className={cn(
+              "relative flex items-center gap-1.5 transition-all duration-300",
+              expanded ? "opacity-100 w-auto" : "opacity-0 w-0"
+            )}>
+              {useTranslation ? t(item.tKey) : item.tKey}
+              <ExternalLink className="size-3 opacity-50" />
+            </span>
+          </a>
+        </li>
+      )
+    }
     return (
       <li key={item.href}>
         <Link
@@ -500,6 +536,10 @@ export function Sidebar({
                 </ul>
               </CollapsibleNavSection>
             )}
+
+            <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
+              {renderNavItem(catalogItem)}
+            </ul>
             </LayoutGroup>
             </nav>
             {expanded && canScrollDown && (
@@ -816,6 +856,15 @@ export function Sidebar({
               </ul>
             </>
           )}
+
+          <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
+            <li>
+              <a href={catalogItem.href} target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent">
+                {catalogItem.icon}
+                <span className="flex items-center gap-1.5">{t(catalogItem.tKey)}<ExternalLink className="size-3 opacity-50" /></span>
+              </a>
+            </li>
+          </ul>
         </nav>
 
         {canAccess('/phil-assistant') && (
