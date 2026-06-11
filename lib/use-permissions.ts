@@ -39,6 +39,15 @@ let cachedPermissions: RolePermission[] | null = null
 // Whether this page load has refetched from the DB yet. The localStorage
 // seed alone must not suppress the refetch (it could be stale).
 let revalidatedThisLoad = false
+// Every mounted hook instance, so a fetch completion reaches ALL of them.
+// Without this, an instance that mounts while another instance's fetch is
+// in flight (fresh browser: AccessGuard mounts right after Sidebar starts
+// the fetch) skips the fetch via revalidatedThisLoad and its permissions
+// state stays [] forever — it deadlocks on Access Denied.
+const subscribers = new Set<(perms: RolePermission[]) => void>()
+function broadcastPermissions(perms: RolePermission[]) {
+  subscribers.forEach((notify) => notify(perms))
+}
 
 const PATH_FALLBACKS: Record<string, string[]> = {
   // No fallbacks — each path must be explicitly granted
@@ -51,6 +60,9 @@ export function usePermissions() {
   )
 
   useEffect(() => {
+    // Stay subscribed for the lifetime of the instance so a fetch finishing
+    // after mount (or triggered by a later instance) still lands here.
+    subscribers.add(setPermissions)
     // Seed from the device cache post-hydration (server and client first
     // paint both render with [] — no hydration mismatch).
     if (!cachedPermissions) {
@@ -62,22 +74,26 @@ export function usePermissions() {
     } else {
       setPermissions(cachedPermissions)
     }
-    if (revalidatedThisLoad) return
-    revalidatedThisLoad = true
-    supabase
-      .from("role_permissions")
-      .select("role, menu_access")
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          cachedPermissions = data as RolePermission[]
-          writeStoredPermissions(cachedPermissions)
-          setPermissions(cachedPermissions)
-        } else {
-          // Failed/empty fetch — let the next mount retry instead of leaving
-          // the whole SPA session with empty menus.
-          revalidatedThisLoad = false
-        }
-      })
+    if (!revalidatedThisLoad) {
+      revalidatedThisLoad = true
+      supabase
+        .from("role_permissions")
+        .select("role, menu_access")
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            cachedPermissions = data as RolePermission[]
+            writeStoredPermissions(cachedPermissions)
+            broadcastPermissions(cachedPermissions)
+          } else {
+            // Failed/empty fetch — let the next mount retry instead of leaving
+            // the whole SPA session with empty menus.
+            revalidatedThisLoad = false
+          }
+        })
+    }
+    return () => {
+      subscribers.delete(setPermissions)
+    }
   }, [])
 
   const canAccess = useCallback(
@@ -117,7 +133,7 @@ export function usePermissions() {
     if (data) {
       cachedPermissions = data as RolePermission[]
       writeStoredPermissions(cachedPermissions)
-      setPermissions(cachedPermissions)
+      broadcastPermissions(cachedPermissions)
     }
   }, [])
 
