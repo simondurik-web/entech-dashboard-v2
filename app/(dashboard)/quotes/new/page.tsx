@@ -84,6 +84,10 @@ export default function NewQuotePage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [genericMode, setGenericMode] = useState(false)
   const [prospectName, setProspectName] = useState('')
+  // Payment terms for generic quotes: pick from the terms already in the
+  // system, or '__custom__' + free text. Defaults to Net 30 (the most common).
+  const [genericTerms, setGenericTerms] = useState('Net 30')
+  const [customTerms, setCustomTerms] = useState('')
   const [catalog, setCatalog] = useState<CatalogPart[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<QuoteItem[]>([])
@@ -221,6 +225,13 @@ export default function NewQuotePage() {
 
   const totalAmount = items.reduce((sum, i) => sum + (i.displayMode === 'quantity' ? i.total : 0), 0)
 
+  // Distinct payment terms already in the system, most-used first ordering
+  // comes naturally from sorting; always include Net 30 as a base option.
+  const knownTerms = Array.from(
+    new Set(['Net 30', ...customers.map(c => (c.payment_terms || '').trim()).filter(Boolean)])
+  ).sort()
+  const effectiveGenericTerms = (genericTerms === '__custom__' ? customTerms : genericTerms).trim()
+
   const handleGenerate = useCallback(async () => {
     if (!genericMode && !selectedCustomer) return setError('Select a customer')
     if (genericMode && !prospectName.trim()) return setError(t('quotes.genericNameRequired'))
@@ -241,7 +252,7 @@ export default function NewQuotePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(genericMode ? {
           customerName: prospectName.trim(),
-          paymentTerms: '',
+          paymentTerms: effectiveGenericTerms,
           notes,
           totalAmount,
           items: validItems.map(i => ({
@@ -279,7 +290,7 @@ export default function NewQuotePage() {
     } finally {
       setGenerating(false)
     }
-  }, [genericMode, prospectName, selectedCustomer, items, notes, totalAmount, t])
+  }, [genericMode, prospectName, effectiveGenericTerms, selectedCustomer, items, notes, totalAmount, t])
 
   if (loading) {
     return (
@@ -337,6 +348,30 @@ export default function NewQuotePage() {
               value={prospectName}
               onChange={e => setProspectName(e.target.value)}
             />
+            <div className="mt-3">
+              <label className="block text-xs text-zinc-400 mb-1">{t('quotes.genericTerms')}</label>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                  value={genericTerms}
+                  onChange={e => setGenericTerms(e.target.value)}
+                >
+                  {knownTerms.map(term => (
+                    <option key={term} value={term}>{term}</option>
+                  ))}
+                  <option value="__custom__">✏️ {t('quotes.genericTermsCustom')}</option>
+                </select>
+                {genericTerms === '__custom__' && (
+                  <input
+                    type="text"
+                    className="flex-1 min-w-48 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    placeholder={t('quotes.genericTermsPlaceholder')}
+                    value={customTerms}
+                    onChange={e => setCustomTerms(e.target.value)}
+                  />
+                )}
+              </div>
+            </div>
             <p className="mt-2 text-xs text-zinc-500">{t('quotes.genericHint')}</p>
           </div>
         )}

@@ -1145,5 +1145,8 @@
   "quotes.genericQty": "Quantity",
   "quotes.genericUnitPrice": "Price per part",
   "quotes.genericNameRequired": "Enter the customer / prospect name",
-  "quotes.genericPriceRequired": "Every line needs a quantity and a price per part"
+  "quotes.genericPriceRequired": "Every line needs a quantity and a price per part",
+  "quotes.genericTerms": "Payment terms",
+  "quotes.genericTermsCustom": "Custom…",
+  "quotes.genericTermsPlaceholder": "Type the payment terms (e.g. Net 15, 50% deposit)"
 }

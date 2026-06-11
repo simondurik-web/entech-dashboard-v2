@@ -1145,5 +1145,8 @@
   "quotes.genericQty": "Cantidad",
   "quotes.genericUnitPrice": "Precio por pieza",
   "quotes.genericNameRequired": "Ingrese el nombre del cliente / prospecto",
-  "quotes.genericPriceRequired": "Cada línea necesita una cantidad y un precio por pieza"
+  "quotes.genericPriceRequired": "Cada línea necesita una cantidad y un precio por pieza",
+  "quotes.genericTerms": "Términos de pago",
+  "quotes.genericTermsCustom": "Personalizado…",
+  "quotes.genericTermsPlaceholder": "Escriba los términos de pago (ej. Net 15, 50% de anticipo)"
 }
