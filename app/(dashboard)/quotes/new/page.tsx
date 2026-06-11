@@ -2,6 +2,17 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
+import { useI18n } from '@/lib/i18n'
+
+// Sentinel "customer" for ad-hoc quotes: no customer record, parts picked
+// from the full catalog, prices typed manually (Simon 2026-06-11 — quoting
+// new business without mapping a customer first).
+const GENERIC_CUSTOMER_ID = '__generic__'
+
+interface CatalogPart {
+  partNumber: string
+  category: string | null
+}
 
 interface Customer {
   id: string
@@ -33,6 +44,8 @@ interface Tier {
 interface QuoteItem {
   id: number
   product: Product | null
+  // Generic mode: free-typed or catalog-picked part number (product stays null)
+  partNumber: string
   displayMode: 'tiers' | 'quantity'
   quantity: number
   unitPrice: number
@@ -66,8 +79,12 @@ function formatCurrency(n: number) {
 }
 
 export default function NewQuotePage() {
+  const { t } = useI18n()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [genericMode, setGenericMode] = useState(false)
+  const [prospectName, setProspectName] = useState('')
+  const [catalog, setCatalog] = useState<CatalogPart[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<QuoteItem[]>([])
   const [notes, setNotes] = useState('')
@@ -86,10 +103,25 @@ export default function NewQuotePage() {
   }, [])
 
   const handleCustomerChange = useCallback(async (customerId: string) => {
-    const customer = customers.find(c => c.id === customerId) || null
-    setSelectedCustomer(customer)
     setItems([])
     setProducts([])
+
+    if (customerId === GENERIC_CUSTOMER_ID) {
+      setGenericMode(true)
+      setSelectedCustomer(null)
+      try {
+        const res = await fetch('/api/parts-catalog')
+        const data = await res.json()
+        if (Array.isArray(data)) setCatalog(data)
+      } catch {
+        // free-text part entry still works without the catalog
+      }
+      return
+    }
+
+    setGenericMode(false)
+    const customer = customers.find(c => c.id === customerId) || null
+    setSelectedCustomer(customer)
 
     if (customer) {
       try {
@@ -108,13 +140,15 @@ export default function NewQuotePage() {
     setItems(prev => [...prev, {
       id: newId,
       product: null,
-      displayMode: 'tiers',
+      partNumber: '',
+      // Generic quotes are always qty × manual price — tiers need a customer mapping
+      displayMode: genericMode ? 'quantity' : 'tiers',
       quantity: 0,
       unitPrice: 0,
       total: 0,
       tiers: [],
     }])
-  }, [itemCounter])
+  }, [itemCounter, genericMode])
 
   const addAllProducts = useCallback(() => {
     const existingProductIds = new Set(items.map(i => i.product?.id).filter(Boolean))
@@ -127,6 +161,7 @@ export default function NewQuotePage() {
       return {
         id: counter,
         product,
+        partNumber: '',
         displayMode: 'tiers' as const,
         quantity: 0,
         unitPrice: 0,
@@ -165,12 +200,38 @@ export default function NewQuotePage() {
     }))
   }, [])
 
+  // ── Generic-mode item handlers (manual part number + manual price) ──
+  const updateGenericPart = useCallback((id: number, partNumber: string) => {
+    setItems(prev => prev.map(item =>
+      item.id === id ? { ...item, partNumber } : item
+    ))
+  }, [])
+
+  const updateGenericQty = useCallback((id: number, qty: number) => {
+    setItems(prev => prev.map(item =>
+      item.id === id ? { ...item, quantity: qty, total: qty * item.unitPrice } : item
+    ))
+  }, [])
+
+  const updateGenericPrice = useCallback((id: number, price: number) => {
+    setItems(prev => prev.map(item =>
+      item.id === id ? { ...item, unitPrice: price, total: item.quantity * price } : item
+    ))
+  }, [])
+
   const totalAmount = items.reduce((sum, i) => sum + (i.displayMode === 'quantity' ? i.total : 0), 0)
 
   const handleGenerate = useCallback(async () => {
-    if (!selectedCustomer) return setError('Select a customer')
-    const validItems = items.filter(i => i.product)
+    if (!genericMode && !selectedCustomer) return setError('Select a customer')
+    if (genericMode && !prospectName.trim()) return setError(t('quotes.genericNameRequired'))
+
+    const validItems = genericMode
+      ? items.filter(i => i.partNumber.trim())
+      : items.filter(i => i.product)
     if (validItems.length === 0) return setError('Add at least one product')
+    if (genericMode && validItems.some(i => i.quantity <= 0 || i.unitPrice <= 0)) {
+      return setError(t('quotes.genericPriceRequired'))
+    }
 
     setGenerating(true)
     setError(null)
@@ -178,10 +239,24 @@ export default function NewQuotePage() {
       const res = await fetch('/api/quotes/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerName: selectedCustomer.name,
-          customerId: selectedCustomer.id,
-          paymentTerms: selectedCustomer.payment_terms,
+        body: JSON.stringify(genericMode ? {
+          customerName: prospectName.trim(),
+          paymentTerms: '',
+          notes,
+          totalAmount,
+          items: validItems.map(i => ({
+            internalPartNumber: i.partNumber.trim(),
+            customerPartNumber: '',
+            displayMode: 'quantity',
+            tiers: [],
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            total: i.total,
+          })),
+        } : {
+          customerName: selectedCustomer!.name,
+          customerId: selectedCustomer!.id,
+          paymentTerms: selectedCustomer!.payment_terms,
           notes,
           totalAmount,
           items: validItems.map(i => ({
@@ -204,7 +279,7 @@ export default function NewQuotePage() {
     } finally {
       setGenerating(false)
     }
-  }, [selectedCustomer, items, notes, totalAmount])
+  }, [genericMode, prospectName, selectedCustomer, items, notes, totalAmount, t])
 
   if (loading) {
     return (
@@ -243,14 +318,28 @@ export default function NewQuotePage() {
         <h2 className="font-semibold mb-3">👤 Customer Selection</h2>
         <select
           className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
-          value={selectedCustomer?.id || ''}
+          value={genericMode ? GENERIC_CUSTOMER_ID : (selectedCustomer?.id || '')}
           onChange={e => handleCustomerChange(e.target.value)}
         >
           <option value="">-- Select Customer --</option>
+          <option value={GENERIC_CUSTOMER_ID}>✏️ {t('quotes.genericOption')}</option>
           {customers.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+
+        {genericMode && (
+          <div className="mt-3">
+            <input
+              type="text"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              placeholder={t('quotes.genericNamePlaceholder')}
+              value={prospectName}
+              onChange={e => setProspectName(e.target.value)}
+            />
+            <p className="mt-2 text-xs text-zinc-500">{t('quotes.genericHint')}</p>
+          </div>
+        )}
 
         {selectedCustomer && (
           <div className="mt-3 bg-blue-900/20 border border-blue-800 rounded p-3">
@@ -265,7 +354,69 @@ export default function NewQuotePage() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-4">
         <h2 className="font-semibold mb-3">📦 Products</h2>
 
-        {items.map(item => (
+        {genericMode && items.map(item => (
+          <div key={item.id} className="border border-zinc-700 rounded p-4 mb-3 relative">
+            <button
+              onClick={() => removeItem(item.id)}
+              className="absolute top-2 right-3 text-red-400 hover:text-red-300 text-xl font-bold"
+            >✕</button>
+
+            <input
+              type="text"
+              list="parts-catalog-list"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white mb-3"
+              placeholder={t('quotes.genericPartPlaceholder')}
+              value={item.partNumber}
+              onChange={e => updateGenericPart(item.id, e.target.value)}
+            />
+
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">{t('quotes.genericQty')}</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white w-32"
+                  placeholder="0"
+                  value={item.quantity || ''}
+                  onChange={e => updateGenericQty(item.id, parseInt(e.target.value) || 0)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">{t('quotes.genericUnitPrice')}</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-zinc-400">$</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white w-32"
+                    placeholder="0.00"
+                    value={item.unitPrice || ''}
+                    onChange={e => updateGenericPrice(item.id, parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+              {item.quantity > 0 && item.unitPrice > 0 && (
+                <div className="font-bold text-red-400 pb-2">
+                  {formatCurrency(item.total)} ({formatCurrency(item.unitPrice)}/ea)
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {genericMode && (
+          <datalist id="parts-catalog-list">
+            {catalog.map(p => (
+              <option key={p.partNumber} value={p.partNumber}>
+                {p.category ? `${p.partNumber} — ${p.category}` : p.partNumber}
+              </option>
+            ))}
+          </datalist>
+        )}
+
+        {!genericMode && items.map(item => (
           <div key={item.id} className="border border-zinc-700 rounded p-4 mb-3 relative">
             <button
               onClick={() => removeItem(item.id)}
@@ -344,18 +495,20 @@ export default function NewQuotePage() {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={addItem}
-            disabled={!selectedCustomer || products.length === 0}
+            disabled={genericMode ? false : (!selectedCustomer || products.length === 0)}
             className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             ➕ Add Product
           </button>
-          <button
-            onClick={addAllProducts}
-            disabled={!selectedCustomer || products.length === 0}
-            className="px-4 py-2 bg-blue-900/40 border border-blue-700 rounded text-sm text-blue-300 hover:bg-blue-800/60 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ➕➕ Add All Products
-          </button>
+          {!genericMode && (
+            <button
+              onClick={addAllProducts}
+              disabled={!selectedCustomer || products.length === 0}
+              className="px-4 py-2 bg-blue-900/40 border border-blue-700 rounded text-sm text-blue-300 hover:bg-blue-800/60 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ➕➕ Add All Products
+            </button>
+          )}
         </div>
       </div>
 
@@ -382,7 +535,9 @@ export default function NewQuotePage() {
       <div className="text-center">
         <button
           onClick={handleGenerate}
-          disabled={generating || !selectedCustomer || items.filter(i => i.product).length === 0}
+          disabled={generating || (genericMode
+            ? (!prospectName.trim() || items.filter(i => i.partNumber.trim()).length === 0)
+            : (!selectedCustomer || items.filter(i => i.product).length === 0))}
           className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg text-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {generating ? '⏳ Generating...' : '🚀 Generate Quote'}

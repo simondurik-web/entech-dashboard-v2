@@ -1137,5 +1137,13 @@
   "device.revoke": "Revocar",
   "device.delete": "Eliminar",
   "device.deleteConfirm": "¿Eliminar este dispositivo? Tendrá que solicitar acceso de nuevo.",
-  "device.sharedComputerLink": "¿Computadora compartida de la empresa? Solicite acceso del dispositivo"
+  "device.sharedComputerLink": "¿Computadora compartida de la empresa? Solicite acceso del dispositivo",
+  "quotes.genericOption": "Cotización genérica — sin cliente (precios manuales)",
+  "quotes.genericNamePlaceholder": "Nombre del cliente / prospecto (ej. \"Acme Trucking — John\")",
+  "quotes.genericHint": "Para negocios nuevos: elija cualquier pieza del catálogo (o escriba un número de pieza nuevo) y asigne usted mismo el precio por pieza. No se guarda nada en las tablas de precios de clientes.",
+  "quotes.genericPartPlaceholder": "Número de pieza — elija de la lista o escriba uno",
+  "quotes.genericQty": "Cantidad",
+  "quotes.genericUnitPrice": "Precio por pieza",
+  "quotes.genericNameRequired": "Ingrese el nombre del cliente / prospecto",
+  "quotes.genericPriceRequired": "Cada línea necesita una cantidad y un precio por pieza"
 }

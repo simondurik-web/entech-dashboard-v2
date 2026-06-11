@@ -1137,5 +1137,13 @@
   "device.revoke": "Revoke",
   "device.delete": "Delete",
   "device.deleteConfirm": "Delete this device? It will have to request access again.",
-  "device.sharedComputerLink": "Shared company computer? Request device access"
+  "device.sharedComputerLink": "Shared company computer? Request device access",
+  "quotes.genericOption": "Generic quote — no customer (manual prices)",
+  "quotes.genericNamePlaceholder": "Customer / prospect name (e.g. \"Acme Trucking — John\")",
+  "quotes.genericHint": "For new business: pick any part from the catalog (or type a new part number) and set the price per part yourself. Nothing is saved to the customer pricing tables.",
+  "quotes.genericPartPlaceholder": "Part number — pick from the list or type any",
+  "quotes.genericQty": "Quantity",
+  "quotes.genericUnitPrice": "Price per part",
+  "quotes.genericNameRequired": "Enter the customer / prospect name",
+  "quotes.genericPriceRequired": "Every line needs a quantity and a price per part"
 }
