@@ -13,7 +13,9 @@ export function normalizeStatus(status: string, ifStatus: string): string {
   // Standard statuses (order matters — check more specific first)
   if (s.includes('pending') || s.includes('approved') || s.includes('released')) return 'pending'
   if (s.includes('completed')) return 'completed'
-  if (s.includes('staged')) return 'staged'
+  // "Loaded" = shipping's post-staging step (IF loaded on the trailer,
+  // Simon 2026-06-11) — the order is physically ready to ship.
+  if (s.includes('staged') || s.includes('loaded')) return 'staged'
   if (s.includes('work in progress') || s.includes('wip') || s.includes('in production')) return 'wip'
   if (s.includes('shipped') || s.includes('invoiced') || s.includes('to bill')) return 'shipped'
   

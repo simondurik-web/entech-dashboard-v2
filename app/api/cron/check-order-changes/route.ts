@@ -18,7 +18,8 @@ function normalizeStatus(status: string, ifStatus: string): string {
   const s = (status || ifStatus || '').toLowerCase()
   if (s.includes('cancel') || s.includes('closed') || s.includes('void')) return 'cancelled'
   if (s.includes('shipped') || s.includes('invoiced') || s.includes('to bill')) return 'shipped'
-  if (s.includes('staged')) return 'staged'
+  // "Loaded" = shipping's post-staging step — physically ready to ship
+  if (s.includes('staged') || s.includes('loaded')) return 'staged'
   if (s.includes('work in progress') || s.includes('wip') || s.includes('in production')) return 'wip'
   if (s.includes('pending') || s.includes('approved') || s.includes('released')) return 'pending'
   return s || 'unknown'
