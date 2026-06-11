@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react"
 import { supabase } from "./supabase"
+import { setDataCacheOwner, clearDataCache, prefetchHeavyData } from "./data-cache"
 import type { User, Session } from "@supabase/supabase-js"
 
 export type UserRole = 'visitor' | 'regular_user' | 'group_leader' | 'shipping_manager' | 'manager' | 'admin'
@@ -171,6 +172,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user)
+        // Wipes the table cache if it belongs to a different user before
+        // any page can paint it, then warms the heavy endpoints.
+        setDataCacheOwner(session.user.id)
+        prefetchHeavyData()
         if (loadedForUserRef.current !== session.user.id) {
           loadedForUserRef.current = session.user.id
           // Paint with the device-cached profile immediately; the network
@@ -188,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (session?.user) {
           setUser(session.user)
+          setDataCacheOwner(session.user.id)
           const isNewUser = loadedForUserRef.current !== session.user.id
           // TOKEN_REFRESHED fires ~hourly; use it as a cheap opportunity to
           // pick up role changes, throttled by ROLE_REFRESH_MS.
@@ -203,6 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null)
           loadedForUserRef.current = null
           clearCachedProfile()
+          // Shared-computer hygiene: signed out = no cached tables left behind.
+          void clearDataCache()
         }
         setLoading(false)
       }

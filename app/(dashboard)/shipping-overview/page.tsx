@@ -11,6 +11,7 @@ import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/componen
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import type { ShippingOverviewOrder, ShippingOverviewResponse } from '@/components/shipping-overview/types'
 import type { Order } from '@/lib/google-sheets-shared'
+import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
 
 const DAY_OPTIONS = [1, 7, 10, 14, 30, 60, 90]
 
@@ -93,10 +94,20 @@ function ShippingOverviewPageContent() {
     else setLoading(true)
     setError(null)
 
+    const url = `/api/shipping-overview?days=${selectedDays}`
+
+    // Paint instantly from the device cache; the network fetch below
+    // revalidates and overwrites within ~1s. Skipped on explicit Refresh.
+    if (!isRefresh) {
+      const cached = await cacheGetJson<ShippingOverviewResponse>(url)
+      if (cached && mountedRef.current) {
+        setData(cached)
+        setLoading(false)
+      }
+    }
+
     try {
-      const response = await fetch(`/api/shipping-overview?days=${selectedDays}`)
-      if (!response.ok) throw new Error('Failed to fetch shipping overview')
-      const json: ShippingOverviewResponse = await response.json()
+      const json = await fetchJsonAndCache<ShippingOverviewResponse>(url)
       if (mountedRef.current) setData(json)
     } catch (err) {
       if (mountedRef.current) setError(err instanceof Error ? err.message : 'Failed to fetch shipping overview')

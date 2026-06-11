@@ -29,6 +29,7 @@ import { Tag } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { DataFreshness } from '@/components/ui/data-freshness'
+import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
 
 const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -448,13 +449,25 @@ function OrdersPageContent() {
     else setLoading(true)
     setError(null)
 
-    try {
-      const res = await fetch('/api/sheets')
-      if (!res.ok) throw new Error('Failed to fetch orders')
-      const data: Order[] = await res.json()
-      // Add effectivePriority for filtering/display
+    // Add effectivePriority for filtering/display
+    const applyOrders = (data: Order[]) => {
       const enriched = data.map(o => ({ ...o, effectivePriority: getEffectivePriority(o) || '-' }))
       setOrders(enriched as Order[])
+    }
+
+    // Paint instantly from the device cache; the network fetch below
+    // revalidates and overwrites within ~1s. Skipped on explicit Refresh.
+    if (!isRefresh) {
+      const cached = await cacheGetJson<Order[]>('/api/sheets')
+      if (cached) {
+        applyOrders(cached)
+        setLoading(false)
+      }
+    }
+
+    try {
+      const data = await fetchJsonAndCache<Order[]>('/api/sheets')
+      applyOrders(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')
     } finally {

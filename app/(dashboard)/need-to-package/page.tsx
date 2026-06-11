@@ -23,6 +23,7 @@ import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
 import { AssigneeEditor } from '@/components/AssigneeEditor'
+import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
@@ -396,11 +397,7 @@ function NeedToPackagePageContent() {
   }, [])
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/sheets').then((res) => res.json()),
-      fetch('/api/inventory').then((res) => res.json()),
-    ])
-      .then(([ordersData, inventoryData]: [Order[], InventoryItem[]]) => {
+    const applyData = ([ordersData, inventoryData]: [Order[], InventoryItem[]]) => {
         const stockMap = new Map<string, number>()
         inventoryData.forEach((item) => {
           stockMap.set(item.partNumber.toUpperCase(), item.inStock)
@@ -439,7 +436,25 @@ function NeedToPackagePageContent() {
           })
 
         setOrders(needToPackage.map(o => ({ ...o, effectivePriority: getEffectivePriority(o as unknown as Order) || '-' })) as typeof needToPackage)
-      })
+    }
+
+    // Paint instantly from the device cache when both payloads are present;
+    // the network fetch below revalidates and overwrites within ~1s.
+    Promise.all([
+      cacheGetJson<Order[]>('/api/sheets'),
+      cacheGetJson<InventoryItem[]>('/api/inventory'),
+    ]).then(([cachedOrders, cachedInventory]) => {
+      if (cachedOrders && cachedInventory) {
+        applyData([cachedOrders, cachedInventory])
+        setLoading(false)
+      }
+    })
+
+    Promise.all([
+      fetchJsonAndCache<Order[]>('/api/sheets'),
+      fetchJsonAndCache<InventoryItem[]>('/api/inventory'),
+    ])
+      .then(applyData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])

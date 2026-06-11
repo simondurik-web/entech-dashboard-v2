@@ -7,6 +7,7 @@ import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets-shared'
+import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
 import Link from 'next/link'
 import { usePermissions } from '@/lib/use-permissions'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
@@ -677,23 +678,33 @@ function InventoryPageContent() {
   const fetchData = useCallback(async (isRefresh = false, fetchCosts = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true)
     setError(null)
+    // Paint instantly from the device cache; the network fetch below
+    // revalidates and overwrites within ~1s. Skipped on explicit Refresh.
+    if (!isRefresh) {
+      const [cachedInv, cachedHist] = await Promise.all([
+        cacheGetJson<InventoryItem[]>('/api/inventory'),
+        cacheGetJson<InventoryHistoryData>('/api/inventory-history'),
+      ])
+      if (cachedInv) {
+        setItems(cachedInv)
+        if (cachedHist) setHistoryData(cachedHist)
+        setLoading(false)
+      }
+    }
     try {
       // Normal loads use the CDN-cached responses (fast). An explicit Refresh
       // bypasses the cache so the user always gets the latest data on demand.
       const bust = isRefresh ? `?t=${Date.now()}` : ''
       const opts: RequestInit = isRefresh ? { cache: 'no-store' } : {}
-      const [invRes, histRes, costRes] = await Promise.all([
-        fetch(`/api/inventory${bust}`, opts),
-        fetch(`/api/inventory-history${bust}`, opts),
+      const [invData, histData, costRes] = await Promise.all([
+        fetchJsonAndCache<InventoryItem[]>(`/api/inventory${bust}`, { init: opts, key: '/api/inventory' }),
+        fetchJsonAndCache<InventoryHistoryData>(`/api/inventory-history${bust}`, { init: opts, key: '/api/inventory-history' })
+          .catch(() => null),
+        // Costs are permission-gated — fetched fresh, never device-cached.
         fetchCosts ? fetch(`/api/inventory-costs${bust}`, opts) : Promise.resolve(null),
       ])
-      if (!invRes.ok) throw new Error('Failed to fetch inventory')
-      const invData: InventoryItem[] = await invRes.json()
       setItems(invData)
-      if (histRes.ok) {
-        const hd: InventoryHistoryData = await histRes.json()
-        setHistoryData(hd)
-      }
+      if (histData) setHistoryData(histData)
       if (costRes?.ok) {
         const cd = await costRes.json()
         setCostData(cd.costs ?? {})
