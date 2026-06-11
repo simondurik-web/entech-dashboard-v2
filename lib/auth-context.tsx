@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react"
 import { supabase } from "./supabase"
 import { setDataCacheOwner, clearDataCache, prefetchHeavyData } from "./data-cache"
+import { getDeviceToken, clearDeviceToken, checkDeviceStatus } from "./device-auth"
 import type { User, Session } from "@supabase/supabase-js"
 
 export type UserRole = 'visitor' | 'regular_user' | 'group_leader' | 'shipping_manager' | 'manager' | 'admin'
@@ -97,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // network error doesn't lock the tab into the visitor role forever.
   const loadedForUserRef = useRef<string | null>(null)
   const lastLoadAtRef = useRef(0)
+  // True while this browser is running as an approved shared device
+  // (authorized_devices) instead of a personal Google session.
+  const deviceSessionRef = useRef(false)
   // Re-read the profile on TOKEN_REFRESHED at most this often, so admin role
   // grants/revocations still reach long-lived tabs without a manual reload.
   const ROLE_REFRESH_MS = 15 * 60 * 1000
@@ -167,9 +171,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [applyProfile, upsertProfile])
 
+  // Shared floor computers: no Google session, but an admin-approved device
+  // token in localStorage. Builds a pseudo-profile from the device's assigned
+  // role; the id is the device uuid, which no user-keyed server guard
+  // matches, so device sessions are read-only by construction.
+  const tryDeviceSession = useCallback(async () => {
+    const token = getDeviceToken()
+    if (!token) return
+    const result = await checkDeviceStatus(token)
+    if (result?.status === "approved" && result.device) {
+      deviceSessionRef.current = true
+      setDataCacheOwner(`device:${result.device.id}`)
+      prefetchHeavyData()
+      setProfile({
+        id: result.device.id,
+        email: "",
+        full_name: result.device.name,
+        avatar_url: null,
+        role: result.device.role,
+        quality_role: null,
+        production_access: null,
+        custom_permissions: null,
+        is_active: true,
+      })
+    } else if (result && (result.status === "revoked" || result.status === "unknown")) {
+      // Revoked or deleted in Admin → back to "request access" mode.
+      deviceSessionRef.current = false
+      clearDeviceToken()
+    }
+  }, [])
+
   useEffect(() => {
     // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user)
         // Wipes the table cache if it belongs to a different user before
@@ -184,6 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (cached) applyProfile(session.user, cached)
           loadProfile(session.user, session.access_token)
         }
+      } else {
+        await tryDeviceSession()
       }
       setLoading(false)
     })
@@ -193,6 +229,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (session?.user) {
           setUser(session.user)
+          // A personal Google session always outranks device mode.
+          deviceSessionRef.current = false
           setDataCacheOwner(session.user.id)
           const isNewUser = loadedForUserRef.current !== session.user.id
           // TOKEN_REFRESHED fires ~hourly; use it as a cheap opportunity to
@@ -204,20 +242,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             loadedForUserRef.current = session.user.id
             await loadProfile(session.user, session.access_token)
           }
-        } else {
+        } else if (!deviceSessionRef.current) {
+          // INITIAL_SESSION fires with a null session on every logged-out
+          // boot — only a real sign-out clears the device's table cache,
+          // and an active device session is never clobbered.
           setUser(null)
           setProfile(null)
           loadedForUserRef.current = null
           clearCachedProfile()
-          // Shared-computer hygiene: signed out = no cached tables left behind.
-          void clearDataCache()
+          if (event === "SIGNED_OUT") {
+            // Shared-computer hygiene: signed out = no cached tables left
+            // behind. An approved device then falls back to device mode.
+            void clearDataCache().then(() => tryDeviceSession())
+          }
         }
         setLoading(false)
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [loadProfile, applyProfile])
+  }, [loadProfile, applyProfile, tryDeviceSession])
 
   const signIn = async () => {
     await supabase.auth.signInWithOAuth({

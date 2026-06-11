@@ -1,11 +1,99 @@
 "use client"
 
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
-import { LogIn } from "lucide-react"
+import { useI18n } from "@/lib/i18n"
+import { LogIn, MonitorSmartphone, Clock, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
+import {
+  getDeviceToken,
+  getOrCreateDeviceToken,
+  checkDeviceStatus,
+} from "@/lib/device-auth"
+
+type DeviceUiState =
+  | { phase: "idle" }
+  | { phase: "pending"; code: string }
+  | { phase: "approved" }
+  | { phase: "error" }
+
+const POLL_MS = 5000
 
 export default function LoginPage() {
   const { signIn } = useAuth()
+  const { t } = useI18n()
+  const [device, setDevice] = useState<DeviceUiState>({ phase: "idle" })
+  const pollRef = useRef<number | null>(null)
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  const startPolling = useCallback((token: string) => {
+    stopPolling()
+    pollRef.current = window.setInterval(async () => {
+      const status = await checkDeviceStatus(token)
+      if (status?.status === "approved") {
+        stopPolling()
+        setDevice({ phase: "approved" })
+        // Full reload so AuthProvider boots into the device session.
+        window.location.href = "/orders"
+      }
+    }, POLL_MS)
+  }, [stopPolling])
+
+  // A device that already requested access resumes the waiting screen on
+  // reload (or unlocks immediately if it was approved meanwhile).
+  useEffect(() => {
+    const token = getDeviceToken()
+    if (!token) return
+    let cancelled = false
+    checkDeviceStatus(token).then((status) => {
+      if (cancelled || !status) return
+      if (status.status === "approved") {
+        setDevice({ phase: "approved" })
+        window.location.href = "/orders"
+      } else if (status.status === "pending") {
+        setDevice({ phase: "pending", code: "" })
+        // Re-request is idempotent and returns the pairing code.
+        requestAccess(token)
+      }
+    })
+    return () => {
+      cancelled = true
+      stopPolling()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function requestAccess(existingToken?: string) {
+    const token = existingToken ?? getOrCreateDeviceToken()
+    if (!token) {
+      setDevice({ phase: "error" })
+      return
+    }
+    try {
+      const res = await fetch("/api/devices/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+      if (!res.ok) throw new Error("request failed")
+      const data = await res.json()
+      if (data.status === "approved") {
+        setDevice({ phase: "approved" })
+        window.location.href = "/orders"
+        return
+      }
+      setDevice({ phase: "pending", code: data.code ?? "" })
+      startPolling(token)
+    } catch {
+      setDevice({ phase: "error" })
+    }
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0e1a]">
@@ -34,6 +122,55 @@ export default function LoginPage() {
         >
           Continue as visitor →
         </Link>
+
+        <div className="mt-6 border-t border-white/10 pt-5">
+          {device.phase === "idle" && (
+            <button
+              onClick={() => requestAccess()}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+            >
+              <MonitorSmartphone className="size-4" />
+              {t("device.requestAccess")}
+            </button>
+          )}
+
+          {device.phase === "pending" && (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-left">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
+                <Clock className="size-4 shrink-0" />
+                {t("device.waitingApproval")}
+              </div>
+              {device.code && (
+                <p className="mt-2 text-sm text-white/70">
+                  {t("device.pairingCode")}{" "}
+                  <span className="font-mono text-lg font-bold tracking-widest text-white">
+                    {device.code}
+                  </span>
+                </p>
+              )}
+              <p className="mt-1 text-xs text-white/50">{t("device.waitingHint")}</p>
+            </div>
+          )}
+
+          {device.phase === "approved" && (
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-300">
+              <CheckCircle2 className="size-4" />
+              {t("device.approvedRedirect")}
+            </div>
+          )}
+
+          {device.phase === "error" && (
+            <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+              {t("device.requestError")}
+              <button
+                onClick={() => requestAccess()}
+                className="ml-2 underline hover:text-red-200"
+              >
+                {t("device.retry")}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <style jsx>{`

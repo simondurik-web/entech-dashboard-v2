@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useAuth, type UserRole, SUPER_ADMIN_EMAIL } from '@/lib/auth-context'
 import { Search, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { DevicesPanel } from '@/components/admin/DevicesPanel'
 
 interface UserRecord {
   id: string
@@ -338,6 +339,9 @@ export default function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Authorized devices (shared floor computers) */}
+      {user && <DevicesPanel adminUserId={user.id} />}
     </div>
   )
 }
