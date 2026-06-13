@@ -383,11 +383,27 @@ function CustomerReferencePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customerForm),
       })
-      if (!res.ok) throw new Error('Failed')
+      const newCust = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(newCust?.error || 'Failed to create customer')
       setShowCustomerDialog(false)
       setCustomerForm({ name: '', payment_terms: 'Net 30', notes: '' })
+      // Optimistically add so the dropdown shows it immediately, then refresh.
+      if (newCust?.id) {
+        setCustomers((prev) =>
+          prev.some((c) => c.id === newCust.id)
+            ? prev
+            : [...prev, newCust].sort((a, b) => a.name.localeCompare(b.name))
+        )
+        // If the part-mapping dialog is open, auto-select the new customer.
+        if (showMappingDialog) {
+          setFormData((prev) => ({ ...prev, customer_id: newCust.id }))
+        }
+      }
       fetchData()
-    } catch { /* ignore */ } finally { setSaving(false) }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create customer'
+      toast({ title: 'Add customer failed', description: msg, type: 'error' })
+    } finally { setSaving(false) }
   }
 
   const handleSaveMapping = async () => {
@@ -815,7 +831,15 @@ function CustomerReferencePageContent() {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <Label>Customer *</Label>
-              <Select value={formData.customer_id} onValueChange={(v) => setFormData({ ...formData, customer_id: v })}>
+              <Select value={formData.customer_id} onValueChange={(v) => {
+                if (v === '__add_customer__') {
+                  // Open the Add Customer dialog on top; the new customer is
+                  // auto-selected here once saved (see handleSaveCustomer).
+                  setShowCustomerDialog(true)
+                  return
+                }
+                setFormData({ ...formData, customer_id: v })
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder={t('customerRef.selectCustomer')} />
                 </SelectTrigger>
@@ -823,6 +847,9 @@ function CustomerReferencePageContent() {
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
+                  <SelectItem value="__add_customer__" className="text-primary font-medium border-t mt-1 pt-1">
+                    + {t('customerRef.addNewCustomer')}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
