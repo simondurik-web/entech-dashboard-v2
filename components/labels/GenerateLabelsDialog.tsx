@@ -36,9 +36,13 @@ interface GenerateLabelsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onGenerated: (label?: LabelData) => void
+  /** When opened from a specific order (e.g. the Need-to-Package tag button),
+   * pre-filter the list to this line and expand its row so the user lands
+   * straight on the qty / full-pallet options for that order. */
+  initialLine?: string
 }
 
-export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: GenerateLabelsDialogProps) {
+export function GenerateLabelsDialog({ open, onOpenChange, onGenerated, initialLine }: GenerateLabelsDialogProps) {
   const { t } = useI18n()
   const { user } = useAuth()
   const [orders, setOrders] = useState<OrderOption[]>([])
@@ -67,8 +71,8 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
     if (!open) return
     setLoading(true)
     setError(null)
-    setSearch('')
-    setExpandedLine(null)
+    setSearch(initialLine ?? '')
+    setExpandedLine(initialLine ?? null)
     setCustomPPP({})
     setPackagingMode({})
     setPackagingOther({})
@@ -114,7 +118,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [open])
+  }, [open, initialLine])
 
   // Filter
   const filtered = useMemo(() => {

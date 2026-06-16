@@ -20,6 +20,7 @@ import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import { GenerateLabelsDialog } from '@/components/labels/GenerateLabelsDialog'
 import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
 import { AssigneeEditor } from '@/components/AssigneeEditor'
@@ -289,6 +290,9 @@ function NeedToPackagePageContent() {
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelWarning, setLabelWarning] = useState<string | null>(null)
   const [printedLines, setPrintedLines] = useState<Set<string>>(new Set())
+  // Generate Labels dialog (opened from a row's tag button) — focused on one line
+  const [genDialogOpen, setGenDialogOpen] = useState(false)
+  const [genDialogLine, setGenDialogLine] = useState<string | undefined>(undefined)
 
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
     setOrders(prev => prev.map(o => {
@@ -322,49 +326,31 @@ function NeedToPackagePageContent() {
     }
   }, [user, profile])
 
-  const handleLabelClick = useCallback(async (order: PackageOrder) => {
+  // Tag button now opens the Generate Labels dialog focused on this order, so
+  // the user can pick a custom qty / "use full pallets" before generating —
+  // rather than silently generating with the sheet's even-split parts_per_package.
+  const handleLabelClick = useCallback((order: PackageOrder) => {
     setLabelWarning(null)
-    // Validate parts_per_package
-    if (!order.partsPerPackage || order.partsPerPackage <= 0) {
-      setLabelWarning(t('labels.missingPackagingInfo').replace('{partNumber}', order.partNumber))
-      return
-    }
+    setGenDialogLine(String(order.line))
+    setGenDialogOpen(true)
+  }, [])
 
+  // After the dialog generates/reprints, refresh the printed-state and open the
+  // print preview for the freshly generated label set.
+  const handleLabelGenerated = useCallback(async (label?: LabelData) => {
+    if (!label) return
     try {
-      // Check if label already exists
-      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(order.line)}`)
-      const existing = await res.json()
-
-      if (Array.isArray(existing) && existing.length > 0) {
-        setLabelPreview(existing[0])
-        setAllLabelsForOrder(existing)
-        setShowLabelPreview(true)
-      } else {
-        // Generate new label
-        const genRes = await fetch('/api/labels', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(user ? { 'x-user-id': user.id } : {}),
-          },
-          body: JSON.stringify({ order_lines: [order.line] }),
-        })
-        const genData = await genRes.json()
-        const result = genData.results?.[0]
-        if (result?.error) {
-          setLabelWarning(result.error)
-          return
-        }
-        if (result?.labels?.[0]) {
-          setLabelPreview(result.labels[0])
-          setAllLabelsForOrder(result.labels)
-          setShowLabelPreview(true)
-        }
-      }
-    } catch (e) {
-      setLabelWarning((e as Error).message)
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(label.order_line)}`)
+      const all = await res.json()
+      setLabelPreview(label)
+      setAllLabelsForOrder(Array.isArray(all) && all.length ? all : [label])
+      setShowLabelPreview(true)
+    } catch {
+      setLabelPreview(label)
+      setAllLabelsForOrder([label])
+      setShowLabelPreview(true)
     }
-  }, [user, t])
+  }, [])
 
   const FILTERS = useMemo(() => [
     { key: 'all' as const, label: t('category.all') },
@@ -609,6 +595,13 @@ function NeedToPackagePageContent() {
         open={showLabelPreview}
         onOpenChange={setShowLabelPreview}
         onPrint={handleLabelPrint}
+      />
+
+      <GenerateLabelsDialog
+        open={genDialogOpen}
+        onOpenChange={setGenDialogOpen}
+        initialLine={genDialogLine}
+        onGenerated={handleLabelGenerated}
       />
     </div>
   )
