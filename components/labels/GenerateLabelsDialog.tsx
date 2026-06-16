@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -55,6 +56,12 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
   const [packagingOther, setPackagingOther] = useState<Record<string, string>>({})
   // Expanded row for detail editing
   const [expandedLine, setExpandedLine] = useState<string | null>(null)
+  // Full-pallet mode per line. When on, parts-per-package is forced to the BOM
+  // standard max-per-pallet so every pallet ships full and only the LAST pallet
+  // takes the balance — avoids repackaging already-wrapped pallets.
+  const [fullPallets, setFullPallets] = useState<Record<string, boolean>>({})
+  // Standard max parts-per-pallet from the BOM, keyed by part number.
+  const [maxPerPalletMap, setMaxPerPalletMap] = useState<Record<string, number>>({})
 
   useEffect(() => {
     if (!open) return
@@ -65,17 +72,28 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
     setCustomPPP({})
     setPackagingMode({})
     setPackagingOther({})
+    setFullPallets({})
 
-    // Fetch ALL orders + existing labels
+    // Fetch ALL orders + existing labels + BOM (for standard max parts-per-pallet)
     Promise.all([
       fetch('/api/sheets').then(r => r.json()),
       fetch('/api/labels').then(r => r.json()),
+      fetch('/api/bom').then(r => r.json()).catch(() => []),
     ])
-      .then(([allOrders, existingLabels]) => {
+      .then(([allOrders, existingLabels, bom]) => {
         const labelMap = new Map<string, string>()
         for (const l of existingLabels as Array<{ order_line: string; label_status: string }>) {
           labelMap.set(l.order_line, l.label_status)
         }
+
+        // BOM standard max parts-per-pallet, keyed by part number.
+        const maxMap: Record<string, number> = {}
+        for (const b of (Array.isArray(bom) ? bom : []) as Array<Record<string, unknown>>) {
+          const pn = String(b.partNumber || b.part_number || '')
+          const qpp = Number(b.qtyPerPallet ?? b.parts_per_package ?? 0)
+          if (pn && qpp > 0) maxMap[pn] = qpp
+        }
+        setMaxPerPalletMap(maxMap)
 
         const mapped = (allOrders as Array<Record<string, unknown>>)
           .filter((o) => {
@@ -141,7 +159,16 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
     </th>
   )
 
-  const getEffectivePPP = (o: OrderOption) => customPPP[o.line] ?? o.partsPerPackage
+  // BOM standard max parts-per-pallet for this part (0 if unknown).
+  const getMaxPerPallet = (o: OrderOption) => maxPerPalletMap[o.partNumber] ?? 0
+  const getEffectivePPP = (o: OrderOption) => {
+    // Full-pallet mode forces the BOM max so all-but-last pallets ship full.
+    if (fullPallets[o.line]) {
+      const max = getMaxPerPallet(o)
+      if (max > 0) return max
+    }
+    return customPPP[o.line] ?? o.partsPerPackage
+  }
 
   /** Returns the chosen packaging string for this line, or `undefined` if the user
    * didn't touch the selector (in which case the API falls back to the sheet value). */
@@ -278,7 +305,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
                   const isExpanded = expandedLine === o.line
                   const ppp = getEffectivePPP(o)
                   const numPkg = getNumPackages(o)
-                  const isCustom = customPPP[o.line] != null && customPPP[o.line] !== o.partsPerPackage
+                  const isCustom = ppp !== o.partsPerPackage
                   const isGenerating = generating === o.line
 
                   return (
@@ -343,6 +370,51 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
                 </Badge>
               </div>
 
+              {/* Full-pallet mode — fill each pallet to the BOM standard max so
+                  already-wrapped pallets don't need repacking; last takes balance. */}
+              {(() => {
+                const max = getMaxPerPallet(order)
+                const checked = !!fullPallets[order.line]
+                return (
+                  <div className="flex items-start gap-2 rounded-md border bg-background/50 p-2">
+                    <Checkbox
+                      id={`full-pallets-${order.line}`}
+                      checked={checked}
+                      disabled={max <= 0}
+                      onCheckedChange={(v) => {
+                        setFullPallets(prev => ({ ...prev, [order.line]: v === true }))
+                        // Full-pallet mode owns the qty — clear any manual override
+                        // so the BOM max is what drives the split.
+                        if (v === true) {
+                          setCustomPPP(prev => {
+                            const next = { ...prev }
+                            delete next[order.line]
+                            return next
+                          })
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-0.5"
+                    />
+                    <label
+                      htmlFor={`full-pallets-${order.line}`}
+                      className="text-sm leading-tight cursor-pointer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="font-medium">{t('labels.useFullPallets')}</span>
+                      {max > 0 ? (
+                        <span className="text-muted-foreground"> · {t('labels.maxPerPallet')}: {max}</span>
+                      ) : (
+                        <span className="text-muted-foreground"> · {t('labels.noStandardPallet')}</span>
+                      )}
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        {t('labels.useFullPalletsHint')}
+                      </span>
+                    </label>
+                  </div>
+                )
+              })()}
+
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <label className="text-muted-foreground text-xs block mb-1">Order Qty</label>
@@ -360,6 +432,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated }: Genera
                     className="h-8 w-28"
                     value={ppp || ''}
                     min={1}
+                    disabled={!!fullPallets[order.line]}
                     onChange={(e) => {
                       const val = parseInt(e.target.value)
                       if (!isNaN(val) && val > 0) {
