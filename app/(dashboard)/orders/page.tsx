@@ -24,6 +24,7 @@ import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 import { AssigneeEditor } from '@/components/AssigneeEditor'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
+import { GenerateLabelsDialog } from '@/components/labels/GenerateLabelsDialog'
 import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -177,6 +178,9 @@ function OrdersPageContent() {
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelWarning, setLabelWarning] = useState<string | null>(null)
   const [printedLines, setPrintedLines] = useState<Set<string>>(new Set())
+  // Generate Labels dialog (opened from a row's tag button) — focused on one line
+  const [genDialogOpen, setGenDialogOpen] = useState(false)
+  const [genDialogLine, setGenDialogLine] = useState<string | undefined>(undefined)
 
   // Optimistic priority update handler
   const handlePriorityUpdate = useCallback((line: string, newPriority: PriorityValue) => {
@@ -197,35 +201,30 @@ function OrdersPageContent() {
     ))
   }, [])
 
-  const handleLabelClick = useCallback(async (order: Order) => {
+  // Tag button opens the Generate Labels dialog focused on this order, so the
+  // user can pick a custom qty / "use full pallets" before generating — rather
+  // than silently generating with the sheet's even-split parts_per_package.
+  const handleLabelClick = useCallback((order: Order) => {
     setLabelWarning(null)
+    setGenDialogLine(String(order.line))
+    setGenDialogOpen(true)
+  }, [])
+
+  // After the dialog generates/reprints, open the print preview for the new set.
+  const handleLabelGenerated = useCallback(async (label?: LabelData) => {
+    if (!label) return
     try {
-      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(order.line)}`)
-      const existing = await res.json()
-      if (Array.isArray(existing) && existing.length > 0) {
-        setLabelPreview(existing[0])
-        setAllLabelsForOrder(existing)
-        setShowLabelPreview(true)
-      } else {
-        const genRes = await fetch('/api/labels', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(user ? { 'x-user-id': user.id } : {}),
-          },
-          body: JSON.stringify({ order_lines: [order.line] }),
-        })
-        const genData = await genRes.json()
-        const result = genData.results?.[0]
-        if (result?.error) { setLabelWarning(result.error); return }
-        if (result?.labels?.[0]) {
-          setLabelPreview(result.labels[0])
-          setAllLabelsForOrder(result.labels)
-          setShowLabelPreview(true)
-        }
-      }
-    } catch (e) { setLabelWarning((e as Error).message) }
-  }, [user])
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(label.order_line)}`)
+      const all = await res.json()
+      setLabelPreview(label)
+      setAllLabelsForOrder(Array.isArray(all) && all.length ? all : [label])
+      setShowLabelPreview(true)
+    } catch {
+      setLabelPreview(label)
+      setAllLabelsForOrder([label])
+      setShowLabelPreview(true)
+    }
+  }, [])
 
   const showLabels = canAccess('/labels')
   const canAssign = canAccess('assign_orders')
@@ -717,6 +716,13 @@ function OrdersPageContent() {
           }}
         />
       )}
+
+      <GenerateLabelsDialog
+        open={genDialogOpen}
+        onOpenChange={setGenDialogOpen}
+        initialLine={genDialogLine}
+        onGenerated={handleLabelGenerated}
+      />
     </div>
   )
 }
