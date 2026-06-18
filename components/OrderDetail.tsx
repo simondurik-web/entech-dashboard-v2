@@ -286,10 +286,12 @@ export function OrderDetail({
         setPallets(palletData.filter((r) => {
           const rIf = normalizeIf(r.ifNumber)
           const rLine = normalize(r.lineNumber)
-          // Primary: match by IF number (strip IF prefix for consistent comparison)
+          // If the record carries its own line number, scope strictly to THIS order's
+          // line. Two order lines can share one IF# (e.g. 3718 & 3719 both on IF153050);
+          // matching on IF# alone would mix their pallet records/photos together.
+          if (rLine) return Boolean(targetLine) && rLine === targetLine
+          // Legacy/sheet records without a line number: fall back to IF# match.
           if (targetIf && rIf && rIf === targetIf) return true
-          // Fallback: match by lineNumber only (NOT orderNumber which may contain IF#)
-          if (targetLine && rLine && rLine === targetLine) return true
           return false
         }))
         setStaged(stagedData.filter((r) => normalizeIf(r.ifNumber) === targetIf))
