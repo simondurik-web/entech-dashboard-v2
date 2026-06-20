@@ -146,38 +146,29 @@ function ShippingOverviewPageContent() {
     [data?.shipped, shippedSearch, shippedCategories],
   )
 
-  // Fetch pallet records separately for PalletLoadCalculator enrichment
-  // (same pattern as staged/Ready to Ship page — ensures calculator gets correct data)
-  const [palletEnrichment, setPalletEnrichment] = useState<Map<string, { avgWeight: number; w: number; l: number; count: number }>>(new Map())
-
-  useEffect(() => {
-    fetch('/api/pallet-records')
-      .then(r => r.ok ? r.json() : [])
-      .then((recs: Array<{ lineNumber: string; orderNumber?: string; weight: string; dimensions: string }>) => {
-        const grouped = new Map<string, typeof recs>()
-        for (const pr of recs) {
-          const key = (pr.lineNumber || '').trim() || (pr.orderNumber || '').trim()
-          if (!key) continue
-          const arr = grouped.get(key) || []
-          arr.push(pr)
-          grouped.set(key, arr)
-        }
-        const byLine = new Map<string, { avgWeight: number; w: number; l: number; count: number }>()
-        for (const [line, records] of grouped) {
-          const totalW = records.reduce((s, p) => s + (parseFloat(p.weight) || 0), 0)
-          const avgWeight = records.length > 0 ? Math.round(totalW / records.length) : 0
-          let w = 0, l = 0
-          const firstDims = records.find(p => p.dimensions)?.dimensions || ''
-          if (firstDims) {
-            const parts = firstDims.split(/x/i).map(s => parseFloat(s.trim()))
-            if (parts.length >= 2) { w = parts[0] || 0; l = parts[1] || 0 }
-          }
-          byLine.set(line, { avgWeight, w, l, count: records.length })
-        }
-        setPalletEnrichment(byLine)
-      })
-      .catch(() => {})
-  }, [data?.staged]) // re-fetch when staged data changes
+  // PalletLoadCalculator enrichment — derived directly from the overview
+  // payload (each staged order already carries its grouped pallets with
+  // weight + dimensions). This avoids a second full /api/pallet-records round
+  // trip on every load; photos still only render when a card is expanded.
+  const palletEnrichment = useMemo(() => {
+    const byLine = new Map<string, { avgWeight: number; w: number; l: number; count: number }>()
+    for (const order of data?.staged ?? []) {
+      const pallets = order.pallets ?? []
+      if (pallets.length === 0) continue
+      const key = (order.line || '').toString().trim()
+      if (!key) continue
+      const totalW = pallets.reduce((s, p) => s + (p.weight || 0), 0)
+      const avgWeight = pallets.length > 0 ? Math.round(totalW / pallets.length) : 0
+      let w = 0, l = 0
+      const firstDims = pallets.find((p) => p.dimensions)?.dimensions || ''
+      if (firstDims) {
+        const parts = firstDims.split(/x/i).map((s) => parseFloat(s.trim()))
+        if (parts.length >= 2) { w = parts[0] || 0; l = parts[1] || 0 }
+      }
+      byLine.set(key, { avgWeight, w, l, count: pallets.length })
+    }
+    return byLine
+  }, [data?.staged])
 
   const stagedOrdersForCalc = useMemo(() => {
     const staged = data?.staged ?? []

@@ -49,11 +49,12 @@ import {
   Disc,
   AlertTriangle,
   BookOpen,
+  Building2,
   ExternalLink,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
-import { CollapsibleNavSection } from "@/components/ui/collapsible-nav"
+import { CollapsibleNavSection, NavAccordionProvider } from "@/components/ui/collapsible-nav"
 import { useQualityAccess } from "@/lib/use-quality-access"
 import { usePalletAccess } from "@/lib/use-pallet-access"
 
@@ -140,6 +141,11 @@ const adminItems: NavItem[] = [
 // Deliberately NOT role-gated: the catalog is public information (Simon,
 // 2026-06-10).
 const catalogItem: NavItem = { tKey: "nav.catalog", href: "https://rolltech-catalog.vercel.app", icon: <BookOpen className="size-4" />, external: true }
+
+// ERPNext (erp.4molding.com) — opens in a new tab. Like the catalog, this is a
+// shortcut to an external system; not role-gated here (the ERP enforces its own
+// login).
+const erpItem: NavItem = { tKey: "nav.erp", href: "https://erp.4molding.com/app/home", icon: <Building2 className="size-4" />, external: true }
 
 const ROLE_LABELS: Record<string, string> = {
   visitor: "Visitor",
@@ -273,6 +279,33 @@ export function Sidebar({
     ...palletItems,
     ...(isPalletAdmin ? [palletAdminItem] : []),
   ]
+
+  // Accordion (Option A): figure out which section contains the current page
+  // so it auto-opens and the rest stay collapsed. Longest-prefix match handles
+  // nested routes (e.g. /quality/hubs → quality, /orders/123 → production).
+  const navSections: { key: string; hrefs: string[] }[] = [
+    { key: "production", hrefs: productionItems.map((i) => i.href) },
+    { key: "shipping", hrefs: shippingItems.map((i) => i.href) },
+    { key: "sales", hrefs: salesItems.map((i) => i.href) },
+    { key: "tools", hrefs: toolsItems.map((i) => i.href) },
+    { key: "quality", hrefs: qualityNav.map((i) => i.href) },
+    { key: "pallet-records", hrefs: palletNav.map((i) => i.href) },
+    { key: "reports", hrefs: ["/reports"] },
+    { key: "raw-data", hrefs: ["/all-data"] },
+    { key: "admin", hrefs: adminItems.map((i) => i.href) },
+  ]
+  let activeSectionKey: string | null = null
+  let activeMatchLen = -1
+  for (const section of navSections) {
+    for (const href of section.hrefs) {
+      if (pathname === href || pathname.startsWith(`${href}/`)) {
+        if (href.length > activeMatchLen) {
+          activeMatchLen = href.length
+          activeSectionKey = section.key
+        }
+      }
+    }
+  }
 
   const renderNavItem = (item: NavItem, useTranslation = true) => {
     const isActive = pathname === item.href
@@ -466,6 +499,7 @@ export function Sidebar({
               )}
             >
             <LayoutGroup>
+            <NavAccordionProvider activeKey={activeSectionKey}>
             {filteredProduction.length > 0 && (
               <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
                 <ul className="space-y-0.5">
@@ -537,8 +571,10 @@ export function Sidebar({
               </CollapsibleNavSection>
             )}
 
+            </NavAccordionProvider>
             <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
               {renderNavItem(catalogItem)}
+              {renderNavItem(erpItem)}
             </ul>
             </LayoutGroup>
             </nav>
@@ -862,6 +898,12 @@ export function Sidebar({
               <a href={catalogItem.href} target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent">
                 {catalogItem.icon}
                 <span className="flex items-center gap-1.5">{t(catalogItem.tKey)}<ExternalLink className="size-3 opacity-50" /></span>
+              </a>
+            </li>
+            <li>
+              <a href={erpItem.href} target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent">
+                {erpItem.icon}
+                <span className="flex items-center gap-1.5">{t(erpItem.tKey)}<ExternalLink className="size-3 opacity-50" /></span>
               </a>
             </li>
           </ul>
