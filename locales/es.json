@@ -769,5 +769,13 @@
   "po.bol.delete": "Eliminar",
   "po.bol.deleteConfirm": "¿Eliminar este conocimiento de embarque? Esto no se puede deshacer.",
   "po.bol.unavailable": "Archivo no disponible",
-  "po.shipping.poBol": "OC / BOL"
+  "po.shipping.poBol": "OC / BOL",
+  "inventoryOps.title": "Localizador de Inventario",
+  "inventoryOps.subtitle": "Busca una pieza para ver cada ubicación donde está almacenada - en vivo desde ERPNext.",
+  "inventoryOps.searchPlaceholder": "Buscar por número o nombre de pieza (ej. Trio A)...",
+  "inventoryOps.onHand": "en existencia",
+  "inventoryOps.noStock": "Sin existencias",
+  "inventoryOps.noResults": "No se encontraron piezas.",
+  "inventoryOps.error": "La búsqueda falló. Inténtalo de nuevo.",
+  "inventoryOps.noAccess": "No tienes acceso a esta página."
 }

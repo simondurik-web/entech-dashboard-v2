@@ -769,5 +769,13 @@
   "po.bol.delete": "Delete",
   "po.bol.deleteConfirm": "Delete this bill of lading? This can't be undone.",
   "po.bol.unavailable": "File unavailable",
-  "po.shipping.poBol": "PO / BOL"
+  "po.shipping.poBol": "PO / BOL",
+  "inventoryOps.title": "Inventory Locator",
+  "inventoryOps.subtitle": "Search a part to see every bin it's stored in - live from ERPNext.",
+  "inventoryOps.searchPlaceholder": "Search by part number or name (e.g. Trio A)...",
+  "inventoryOps.onHand": "on hand",
+  "inventoryOps.noStock": "No stock on hand",
+  "inventoryOps.noResults": "No matching parts found.",
+  "inventoryOps.error": "Lookup failed. Please try again.",
+  "inventoryOps.noAccess": "You don't have access to this page."
 }
