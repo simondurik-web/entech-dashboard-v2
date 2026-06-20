@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { normalizeStatus } from '@/lib/google-sheets'
 import { canAccessPoAutomation } from '@/lib/po-automation/guard'
 import { resolvePoActor } from '@/lib/po-automation/edit'
 import { isToterCustomer, TOTER_ACTIVE_STATUSES, type ToterEntryStatus } from '@/lib/po-automation/toter'
@@ -18,10 +19,11 @@ type ToterEntryRow = {
   status: ToterEntryStatus
   shipment_number: string | null
   entered_at: string | null
+  error: string | null
   created_at: string
 }
 
-const SELECT_COLS = 'id, line, if_number, po_number, customer, status, shipment_number, entered_at, created_at'
+const SELECT_COLS = 'id, line, if_number, po_number, customer, status, shipment_number, entered_at, error, created_at'
 
 async function gate(req: NextRequest): Promise<NextResponse | string> {
   const userId = req.headers.get('x-user-id')
@@ -33,17 +35,25 @@ async function gate(req: NextRequest): Promise<NextResponse | string> {
 }
 
 /**
- * Find the most recent entry for an order. `line` is the primary per-order key
- * (multiple lines can share one IF#); `if` is a fallback for legacy callers.
+ * Find the most recent entry for an order. Keyed by IF# first — the downstream
+ * Toter skill is per-IF# (one IF# = one portal shipment), and a dashboard order
+ * can have multiple lines sharing that IF#, so dedup/lookup MUST be by IF# to
+ * avoid double freight bookings. `line` is only a fallback. Returns
+ * `{ entry, errored }` so callers can fail closed when the lookup itself errors
+ * (otherwise a flaky DB read would silently bypass idempotency).
  */
-async function latestEntry(line: string, ifNumber: string): Promise<ToterEntryRow | null> {
+async function latestEntry(
+  ifNumber: string,
+  line: string,
+): Promise<{ entry: ToterEntryRow | null; errored: boolean }> {
   let query = supabaseAdmin.schema(SCHEMA).from(TABLE).select(SELECT_COLS)
-  if (line) query = query.eq('line', line)
-  else if (ifNumber) query = query.eq('if_number', ifNumber)
-  else return null
+  if (ifNumber) query = query.eq('if_number', ifNumber)
+  else if (line) query = query.eq('line', line)
+  else return { entry: null, errored: false }
 
-  const { data } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle()
-  return (data as ToterEntryRow | null) ?? null
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) return { entry: null, errored: true }
+  return { entry: (data as ToterEntryRow | null) ?? null, errored: false }
 }
 
 /**
@@ -60,7 +70,8 @@ export async function GET(req: NextRequest) {
   const ifNumber = (sp.get('if') ?? '').trim()
   if (!line && !ifNumber) return NextResponse.json({ entry: null })
 
-  const entry = await latestEntry(line, ifNumber)
+  const { entry, errored } = await latestEntry(ifNumber, line)
+  if (errored) return NextResponse.json({ error: 'Lookup failed' }, { status: 503 })
   return NextResponse.json({ entry })
 }
 
@@ -88,17 +99,45 @@ export async function POST(req: NextRequest) {
   const line = (body.line ?? '').trim()
   const ifNumber = (body.ifNumber ?? '').trim()
   const poNumber = (body.poNumber ?? '').trim()
-  const customer = (body.customer ?? '').trim()
 
-  if (!isToterCustomer(customer)) {
-    return NextResponse.json({ error: 'Not a Toter order' }, { status: 400 })
-  }
   if (!line && !ifNumber) {
     return NextResponse.json({ error: 'Missing order line / IF number' }, { status: 400 })
   }
 
-  // Idempotency: reuse an existing active or entered request for this order.
-  const existing = await latestEntry(line, ifNumber)
+  // Validate the order server-side against dashboard_orders rather than trusting
+  // the request body: it must exist, be a Toter/Wastequip order, and be staged.
+  // Customer / PO / IF# are taken from the DB row so a permitted caller can't
+  // enqueue arbitrary or non-Toter work by spoofing the body.
+  let orderQuery = supabaseAdmin
+    .from('dashboard_orders')
+    .select('line, if_number, po_number, customer, work_order_status, if_status_fusion')
+  orderQuery = line ? orderQuery.eq('line', line) : orderQuery.eq('if_number', ifNumber)
+  const { data: orderRow, error: orderErr } = await orderQuery.limit(1).maybeSingle()
+  if (orderErr) return NextResponse.json({ error: 'Lookup failed, try again' }, { status: 503 })
+  if (!orderRow) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+
+  const dbCustomer = (orderRow.customer ?? '').trim()
+  const dbIf = (orderRow.if_number ?? '').trim() || ifNumber
+  const dbPo = (orderRow.po_number ?? '').trim() || poNumber
+
+  if (!isToterCustomer(dbCustomer)) {
+    return NextResponse.json({ error: 'Not a Toter order' }, { status: 400 })
+  }
+  // IF# is required — it is the sole key the downstream Toter skill runs on.
+  if (!dbIf) {
+    return NextResponse.json({ error: 'Order has no IF number' }, { status: 400 })
+  }
+  if (normalizeStatus(orderRow.work_order_status ?? '', orderRow.if_status_fusion ?? '') !== 'staged') {
+    return NextResponse.json({ error: 'Order is not staged' }, { status: 400 })
+  }
+
+  // Idempotency (keyed by IF#): reuse an existing active or entered request.
+  // Fail closed if the lookup itself errored, so a flaky read can't bypass dedup
+  // and let claude-5 book the same freight twice.
+  const { entry: existing, errored } = await latestEntry(dbIf, line)
+  if (errored) {
+    return NextResponse.json({ error: 'Lookup failed, try again' }, { status: 503 })
+  }
   if (existing && (existing.status === 'entered' || (TOTER_ACTIVE_STATUSES as readonly string[]).includes(existing.status))) {
     return NextResponse.json({ entry: existing, reused: true })
   }
@@ -109,9 +148,9 @@ export async function POST(req: NextRequest) {
     .from(TABLE)
     .insert({
       line: line || null,
-      if_number: ifNumber || null,
-      po_number: poNumber || null,
-      customer: customer || null,
+      if_number: dbIf,
+      po_number: dbPo || null,
+      customer: dbCustomer || null,
       status: 'queued',
       requested_by: userId,
       requested_by_name: actor.name,
@@ -120,6 +159,12 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) {
+    // 23505 = the partial unique index fired (a concurrent click already
+    // enqueued/entered this IF#). Treat as reuse, not an error.
+    if ((error as { code?: string }).code === '23505') {
+      const { entry: raced } = await latestEntry(dbIf, line)
+      if (raced) return NextResponse.json({ entry: raced, reused: true })
+    }
     console.error('toter-portal enqueue failed:', error)
     return NextResponse.json({ error: 'Failed to enqueue Toter entry' }, { status: 500 })
   }

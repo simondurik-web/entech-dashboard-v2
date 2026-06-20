@@ -8,12 +8,13 @@
 export const TOTER_PORTAL_URL = 'https://wastequip.pcssoft.com/'
 
 /** Active (in-flight) request statuses — button shows "requested", not actionable. */
-export const TOTER_ACTIVE_STATUSES = ['queued', 'notified', 'running'] as const
+export const TOTER_ACTIVE_STATUSES = ['queued', 'notified', 'running', 'awaiting_approval'] as const
 
 export type ToterEntryStatus =
   | 'queued'
   | 'notified'
   | 'running'
+  | 'awaiting_approval'
   | 'entered'
   | 'failed'
   | 'canceled'

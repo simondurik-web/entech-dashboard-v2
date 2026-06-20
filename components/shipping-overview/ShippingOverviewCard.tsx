@@ -77,7 +77,10 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
   // Toter portal entry: only for Ready-to-Ship (staged) Toter/Wastequip orders,
   // and only for users who can access PO Automation.
   const showToterPortal =
-    canAccess('/po-automation') && order.status === 'staged' && isToterCustomer(order.customer)
+    canAccess('/po-automation') &&
+    order.status === 'staged' &&
+    !!order.ifNumber?.trim() &&
+    isToterCustomer(order.customer)
   const [poBolOpen, setPoBolOpen] = useState(false)
   const statusLabel = getDueState(order)
   const badgeLabel = useMemo(() => {
