@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { fetchOrders, fetchPalletRecords, fetchShippingRecords, normalizeStatus, type Order, type PalletRecord, type ShippingRecord } from '@/lib/google-sheets'
-import { resolveRecordPhotos } from '@/lib/photo-resolver'
+import { unstable_cache } from 'next/cache'
+import { fetchOrders, normalizeStatus, type Order, type PalletRecord, type ShippingRecord } from '@/lib/google-sheets'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import type { ShippingOverviewOrder, ShippingOverviewPallet, ShippingOverviewResponse, ShippingOverviewShippingRecord } from '@/components/shipping-overview/types'
 
@@ -46,6 +46,11 @@ type DashboardOrderRow = {
   assigned_to: string | null
   daily_capacity: number | null
 }
+
+// Only pallet/shipping records from the last year are ever relevant to this
+// view (staged + last ≤90 days shipped). Windowing the Supabase queries keeps
+// them fast as the tables grow.
+const LOOKBACK_DAYS = 365
 
 function str(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -200,7 +205,7 @@ function toOverviewPallet(record: PalletRecord): ShippingOverviewPallet {
     weightDisplay: str(record.weight),
     dimensions: str(record.dimensions),
     photos: uniqueStrings(record.photos ?? []),
-    source: record._source ?? 'sheet',
+    source: record._source ?? 'app',
   }
 }
 
@@ -225,22 +230,37 @@ function mergeShippingRecords(records: ShippingRecord[]): ShippingOverviewShippi
   }
 }
 
-export async function GET(request: Request) {
-  try {
-    const [orders, sheetPallets, dbPalletResult, sheetShipping, dbShippingResult] = await Promise.all([
-      fetchDashboardOrders(),
-      fetchPalletRecords(),
-      supabaseAdmin.from('pallet_records').select('*').order('created_at', { ascending: false }),
-      fetchShippingRecords(),
-      supabaseAdmin.from('shipping_records').select('*').order('created_at', { ascending: false }),
-    ])
+type BuiltOverview = {
+  staged: ShippingOverviewOrder[]
+  // All shipped orders within LOOKBACK_DAYS; the request slices this by `days`.
+  shipped: ShippingOverviewOrder[]
+  generatedAt: string
+}
 
-    const resolvedSheetPallets = await resolveRecordPhotos(sheetPallets, ['photos'])
-    const resolvedSheetShipping = await resolveRecordPhotos(sheetShipping, [
-      'photos',
-      'shipmentPhotos',
-      'paperworkPhotos',
-      'closeUpPhotos',
+// The expensive part — orders + pallets + shipping records from Supabase, then
+// grouped/merged into the overview shape. Wrapped in unstable_cache so it runs
+// at most once per `revalidate` window and is shared across all serverless
+// instances (so cold starts and concurrent users read a ready-built blob
+// instead of each rebuilding from the database). Pallet/shipping reads are
+// Supabase-only and windowed to the last year — no live Google Sheets calls.
+const buildOverview = unstable_cache(
+  async (): Promise<BuiltOverview> => {
+    const cutoffIso = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+    const [orders, dbPalletResult, dbShippingResult] = await Promise.all([
+      fetchDashboardOrders(),
+      supabaseAdmin
+        .from('pallet_records')
+        .select('id, created_at, line_number, order_id, pallet_number, weight, length, width, height, parts_per_pallet, photo_urls, shipment_photo_urls, work_paper_photo_urls, edited_by_name, edited_at')
+        .gte('created_at', cutoffIso)
+        .order('created_at', { ascending: false })
+        .limit(5000),
+      supabaseAdmin
+        .from('shipping_records')
+        .select('id, created_at, customer, if_number, carrier, shipment_photos, paperwork_photos, closeup_photos')
+        .gte('created_at', cutoffIso)
+        .order('created_at', { ascending: false })
+        .limit(5000),
     ])
 
     const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => {
@@ -257,18 +277,18 @@ export async function GET(request: Request) {
         weight: String(record.weight || ''),
         dimensions,
         partsPerPallet: String(record.parts_per_pallet || ''),
-      photos: record.photo_urls || [],
-      shipmentPhotos: record.shipment_photo_urls || [],
-      workPaperPhotos: record.work_paper_photo_urls || [],
-      _source: 'app',
-      length: record.length,
-      width: record.width,
-      height: record.height,
-      order_id: record.order_id,
-      edited_by_name: record.edited_by_name || undefined,
-      edited_at: record.edited_at || undefined,
-    }
-  })
+        photos: record.photo_urls || [],
+        shipmentPhotos: record.shipment_photo_urls || [],
+        workPaperPhotos: record.work_paper_photo_urls || [],
+        _source: 'app',
+        length: record.length,
+        width: record.width,
+        height: record.height,
+        order_id: record.order_id,
+        edited_by_name: record.edited_by_name || undefined,
+        edited_at: record.edited_at || undefined,
+      }
+    })
 
     const dbShipping: ShippingRecord[] = (dbShippingResult.data ?? []).map((record) => ({
       timestamp: record.created_at || '',
@@ -285,11 +305,7 @@ export async function GET(request: Request) {
       closeUpPhotos: record.closeup_photos || [],
     }))
 
-    const mergedPallets = [
-      ...resolvedSheetPallets.map((record) => ({ ...record, _source: 'sheet' as const })),
-      ...dbPallets,
-    ]
-      .filter((record) => !isGhostPallet(record))
+    const mergedPallets = dbPallets.filter((record) => !isGhostPallet(record))
 
     const palletGroups = new Map<string, PalletRecord[]>()
     for (const record of mergedPallets) {
@@ -302,18 +318,12 @@ export async function GET(request: Request) {
 
     const palletsByLine = new Map<string, ShippingOverviewPallet[]>()
     for (const [line, records] of palletGroups) {
-      const hasAppRecords = records.some((record) => record._source === 'app')
-      const keptRecords = hasAppRecords
-        ? records.filter((record) => record._source === 'app')
-        : records
-
-      const overviewPallets = keptRecords.map(toOverviewPallet)
-      palletsByLine.set(line, overviewPallets)
+      palletsByLine.set(line, records.map(toOverviewPallet))
     }
 
     const shippingByIf = new Map<string, ShippingOverviewShippingRecord>()
     const shippingGroups = new Map<string, ShippingRecord[]>()
-    for (const record of [...resolvedSheetShipping, ...dbShipping]) {
+    for (const record of dbShipping) {
       const ifNumber = normalizeIfNumber(record.ifNumber || '')
       if (!ifNumber) continue
       const group = shippingGroups.get(ifNumber) ?? []
@@ -326,18 +336,17 @@ export async function GET(request: Request) {
       if (merged) shippingByIf.set(ifNumber, merged)
     }
 
-    const url = new URL(request.url)
-    const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 10, 1), 365)
-
     const now = new Date()
     const shippedCutoff = new Date(now)
-    shippedCutoff.setDate(shippedCutoff.getDate() - days)
+    shippedCutoff.setDate(shippedCutoff.getDate() - LOOKBACK_DAYS)
 
     const staged: ShippingOverviewOrder[] = []
     const shipped: ShippingOverviewOrder[] = []
 
     for (const order of orders) {
       const status = normalizeStatus(order.internalStatus, order.ifStatus)
+      if (status !== 'staged' && status !== 'shipped') continue
+
       const line = normalizeLine(order.line)
       const ifNumber = normalizeIfNumber(order.ifNumber)
       const pallets = palletsByLine.get(line) ?? []
@@ -350,7 +359,6 @@ export async function GET(request: Request) {
         + (shipping?.paperworkPhotos.length ?? 0)
         + (shipping?.closeUpPhotos.length ?? 0)
 
-      // Extract pallet dimensions for calculator (from first pallet if available)
       const firstPallet = pallets[0]
       const dimensions = firstPallet?.dimensions || ''
       const dims = dimensions.split('x').map((d) => parseInt(d.trim(), 10))
@@ -382,7 +390,6 @@ export async function GET(request: Request) {
         dimensionsSummary,
         shipping,
         shippingPhotoCount,
-        // Pallet calculator enrichment
         palletWidth,
         palletLength,
         palletWeightEach,
@@ -393,16 +400,38 @@ export async function GET(request: Request) {
         continue
       }
 
-      if (status === 'shipped') {
-        const shippedDate = parseDate(order.shippedDate)
-        if (shippedDate && shippedDate >= shippedCutoff) {
-          shipped.push(overviewOrder)
-        }
+      // shipped
+      const shippedDate = parseDate(order.shippedDate)
+      if (shippedDate && shippedDate >= shippedCutoff) {
+        shipped.push(overviewOrder)
       }
     }
 
     staged.sort((a, b) => (a.daysUntilDue ?? Number.MAX_SAFE_INTEGER) - (b.daysUntilDue ?? Number.MAX_SAFE_INTEGER))
     shipped.sort((a, b) => (parseDate(b.shippedDate)?.getTime() ?? 0) - (parseDate(a.shippedDate)?.getTime() ?? 0))
+
+    return { staged, shipped, generatedAt: now.toISOString() }
+  },
+  ['shipping-overview-build'],
+  { revalidate: 60, tags: ['shipping-overview'] },
+)
+
+export async function GET(request: Request) {
+  try {
+    const { staged, shipped: shippedWithinLookback, generatedAt } = await buildOverview()
+
+    const url = new URL(request.url)
+    const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 10, 1), 365)
+
+    const shippedCutoff = new Date()
+    shippedCutoff.setDate(shippedCutoff.getDate() - days)
+
+    // The cached build holds up to a year of shipped orders; slice to the
+    // requested window here (cheap, no DB work).
+    const shipped = shippedWithinLookback.filter((order) => {
+      const shippedDate = parseDate(order.shippedDate)
+      return shippedDate ? shippedDate >= shippedCutoff : false
+    })
 
     const response: ShippingOverviewResponse = {
       staged,
@@ -417,7 +446,7 @@ export async function GET(request: Request) {
         totalRevenue: [...staged, ...shipped].reduce((sum, order) => sum + order.revenue, 0),
         totalUnits: [...staged, ...shipped].reduce((sum, order) => sum + order.orderQty, 0),
       },
-      generatedAt: new Date().toISOString(),
+      generatedAt,
     }
 
     return NextResponse.json(response, {

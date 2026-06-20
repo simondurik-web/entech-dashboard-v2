@@ -54,7 +54,7 @@ import {
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
-import { CollapsibleNavSection } from "@/components/ui/collapsible-nav"
+import { CollapsibleNavSection, NavAccordionProvider } from "@/components/ui/collapsible-nav"
 import { useQualityAccess } from "@/lib/use-quality-access"
 import { usePalletAccess } from "@/lib/use-pallet-access"
 
@@ -280,6 +280,33 @@ export function Sidebar({
     ...(isPalletAdmin ? [palletAdminItem] : []),
   ]
 
+  // Accordion (Option A): figure out which section contains the current page
+  // so it auto-opens and the rest stay collapsed. Longest-prefix match handles
+  // nested routes (e.g. /quality/hubs → quality, /orders/123 → production).
+  const navSections: { key: string; hrefs: string[] }[] = [
+    { key: "production", hrefs: productionItems.map((i) => i.href) },
+    { key: "shipping", hrefs: shippingItems.map((i) => i.href) },
+    { key: "sales", hrefs: salesItems.map((i) => i.href) },
+    { key: "tools", hrefs: toolsItems.map((i) => i.href) },
+    { key: "quality", hrefs: qualityNav.map((i) => i.href) },
+    { key: "pallet-records", hrefs: palletNav.map((i) => i.href) },
+    { key: "reports", hrefs: ["/reports"] },
+    { key: "raw-data", hrefs: ["/all-data"] },
+    { key: "admin", hrefs: adminItems.map((i) => i.href) },
+  ]
+  let activeSectionKey: string | null = null
+  let activeMatchLen = -1
+  for (const section of navSections) {
+    for (const href of section.hrefs) {
+      if (pathname === href || pathname.startsWith(`${href}/`)) {
+        if (href.length > activeMatchLen) {
+          activeMatchLen = href.length
+          activeSectionKey = section.key
+        }
+      }
+    }
+  }
+
   const renderNavItem = (item: NavItem, useTranslation = true) => {
     const isActive = pathname === item.href
     if (item.external) {
@@ -472,6 +499,7 @@ export function Sidebar({
               )}
             >
             <LayoutGroup>
+            <NavAccordionProvider activeKey={activeSectionKey}>
             {filteredProduction.length > 0 && (
               <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
                 <ul className="space-y-0.5">
@@ -543,6 +571,7 @@ export function Sidebar({
               </CollapsibleNavSection>
             )}
 
+            </NavAccordionProvider>
             <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
               {renderNavItem(catalogItem)}
               {renderNavItem(erpItem)}
