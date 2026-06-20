@@ -53,6 +53,8 @@ const LABELS = {
     linkOrders: 'Link Orders',
     search: 'Search orders...',
     linkedTo: 'Pallet',
+    partNo: 'P/N',
+    due: 'Due',
   },
   es: {
     title: 'Calculadora de Carga de Tarimas',
@@ -81,6 +83,8 @@ const LABELS = {
     linkOrders: 'Vincular Órdenes',
     search: 'Buscar órdenes...',
     linkedTo: 'Tarima',
+    partNo: 'N/P',
+    due: 'Vence',
   },
 }
 
@@ -446,13 +450,21 @@ export default function PalletLoadCalculator({
       }
 
       // Selecting order on empty pallet
-      // If order has pallet configurations, create pallet types based on them and clear the empty one
+      // Fill THIS (clicked, empty) pallet with the order's first config in place,
+      // then append any additional configs. Previously this left the empty pallet
+      // untouched (qty 0) and appended every config, so the order landed on
+      // pallet #2 while pallet #1 stayed empty — matching the reported bug. The
+      // first config now reuses the clicked pallet's slot (id + color) so the
+      // behavior mirrors the Ready-to-Ship calculator.
       if (palletConfigs && palletConfigs.length > 0) {
         const newPallets = palletConfigs.map((config, i) => {
-          const ci = (prev.length + i) % PLC_COLORS.length
+          const reuseExisting = i === 0
+          const ci = reuseExisting ? pt.colorIdx : (prev.length + i - 1) % PLC_COLORS.length
           return {
-            id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${i}`,
-            label: order.customer ? `${order.customer.substring(0, 20)} (${config.width}"x${config.length}")` : `Pallet ${prev.length + i + 1}`,
+            id: reuseExisting ? pt.id : `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${i}`,
+            label: order.customer
+              ? `${order.customer.substring(0, 20)} (${config.width}"x${config.length}")`
+              : (reuseExisting ? pt.label : `Pallet ${prev.length + i}`),
             colorIdx: ci,
             width: config.width,
             length: config.length,
@@ -465,8 +477,8 @@ export default function PalletLoadCalculator({
             linkSource: pt.linkSource,
           } as PalletType
         })
-        // Clear the empty pallet and add the new ones
-        return prev.map((p, i) => (i === idx ? { ...p, qty: 0 } : p)).concat(newPallets)
+        // First config replaces the empty pallet in place; extras are appended.
+        return prev.map((p, i) => (i === idx ? newPallets[0] : p)).concat(newPallets.slice(1))
       }
 
       // Single pallet configuration - update the empty pallet
@@ -689,21 +701,31 @@ export default function PalletLoadCalculator({
                         return (
                           <label
                             key={key}
-                            className={`flex items-center gap-2 text-xs py-0.5 ${
+                            className={`flex items-start gap-2 text-xs py-0.5 ${
                               isLinkedElsewhere ? 'opacity-50' : 'cursor-pointer'
                             }`}
                           >
                             <input
                               type="checkbox"
+                              className="mt-0.5"
                               checked={isLinkedHere}
                               disabled={isLinkedElsewhere}
                               onChange={() => toggleOrderLink(pt.id, key, o)}
                             />
-                            <span>
-                              {o.ifNumber} — {o.customer} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : (Array.isArray((o as any).pallets) && (o as any).pallets.length > 0 ? `${(o as any).pallets.length} pallets` : `${o.orderQty} pcs`)}
-                              {o.palletWidth && o.palletLength ? ` · ${o.palletWidth}×${o.palletLength}"` : ''}
-                              {o.palletWeightEach ? ` · ${o.palletWeightEach} lbs` : ''}
-                              {!o.palletWidth && !o.palletWeightEach && !Array.isArray((o as any).pallets) && pt.linkSource !== 'package' ? ' · no dims' : ''}
+                            <span className="flex flex-col">
+                              <span>
+                                {o.ifNumber} — {o.customer} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : (Array.isArray((o as any).pallets) && (o as any).pallets.length > 0 ? `${(o as any).pallets.length} pallets` : `${o.orderQty} pcs`)}
+                                {o.palletWidth && o.palletLength ? ` · ${o.palletWidth}×${o.palletLength}"` : ''}
+                                {o.palletWeightEach ? ` · ${o.palletWeightEach} lbs` : ''}
+                                {!o.palletWidth && !o.palletWeightEach && !Array.isArray((o as any).pallets) && pt.linkSource !== 'package' ? ' · no dims' : ''}
+                              </span>
+                              {(o.partNumber || o.requestedDate) && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  {o.partNumber ? `${t.partNo} ${o.partNumber}` : ''}
+                                  {o.partNumber && o.requestedDate ? ' · ' : ''}
+                                  {o.requestedDate ? `${t.due} ${o.requestedDate}` : ''}
+                                </span>
+                              )}
                             </span>
                             {isLinkedElsewhere && (
                               <span className="text-muted-foreground">
