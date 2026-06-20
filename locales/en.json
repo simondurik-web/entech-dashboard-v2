@@ -1162,5 +1162,13 @@
   "quotes.genericPriceRequired": "Every line needs a quantity and a price per part",
   "quotes.genericTerms": "Payment terms",
   "quotes.genericTermsCustom": "Custom…",
-  "quotes.genericTermsPlaceholder": "Type the payment terms (e.g. Net 15, 50% deposit)"
+  "quotes.genericTermsPlaceholder": "Type the payment terms (e.g. Net 15, 50% deposit)",
+  "inventoryOps.title": "Inventory Locator",
+  "inventoryOps.subtitle": "Search a part to see every bin it's stored in - live from ERPNext.",
+  "inventoryOps.searchPlaceholder": "Search by part number or name (e.g. Trio A)...",
+  "inventoryOps.onHand": "on hand",
+  "inventoryOps.noStock": "No stock on hand",
+  "inventoryOps.noResults": "No matching parts found.",
+  "inventoryOps.error": "Lookup failed. Please try again.",
+  "inventoryOps.noAccess": "You don't have access to this page."
 }

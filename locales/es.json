@@ -1162,5 +1162,13 @@
   "quotes.genericPriceRequired": "Cada línea necesita una cantidad y un precio por pieza",
   "quotes.genericTerms": "Términos de pago",
   "quotes.genericTermsCustom": "Personalizado…",
-  "quotes.genericTermsPlaceholder": "Escriba los términos de pago (ej. Net 15, 50% de anticipo)"
+  "quotes.genericTermsPlaceholder": "Escriba los términos de pago (ej. Net 15, 50% de anticipo)",
+  "inventoryOps.title": "Localizador de Inventario",
+  "inventoryOps.subtitle": "Busca una pieza para ver cada ubicación donde está almacenada - en vivo desde ERPNext.",
+  "inventoryOps.searchPlaceholder": "Buscar por número o nombre de pieza (ej. Trio A)...",
+  "inventoryOps.onHand": "en existencia",
+  "inventoryOps.noStock": "Sin existencias",
+  "inventoryOps.noResults": "No se encontraron piezas.",
+  "inventoryOps.error": "La búsqueda falló. Inténtalo de nuevo.",
+  "inventoryOps.noAccess": "No tienes acceso a esta página."
 }
