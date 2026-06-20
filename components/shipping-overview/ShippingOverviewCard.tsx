@@ -5,6 +5,8 @@ import { ChevronDown, ChevronRight, FileText, Inbox, Package2, Truck } from 'luc
 import { PalletTable } from '@/components/shipping-overview/PalletTable'
 import { PhotoGallery } from '@/components/shipping-overview/PhotoGallery'
 import { OrderPoBolSection } from '@/components/po-automation/OrderPoBolSection'
+import { ToterPortalSection } from '@/components/shipping-overview/ToterPortalSection'
+import { isToterCustomer } from '@/lib/po-automation/toter'
 import type { ShippingOverviewOrder } from '@/components/shipping-overview/types'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -72,6 +74,13 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
   // when we have a customer + PO to look up. Gating here means the fetch never
   // fires for unpermitted users or orders missing the keys.
   const showPoBol = canAccess('/po-automation') && !!order.customer?.trim() && !!order.poNumber?.trim()
+  // Toter portal entry: only for Ready-to-Ship (staged) Toter/Wastequip orders,
+  // and only for users who can access PO Automation.
+  const showToterPortal =
+    canAccess('/po-automation') &&
+    order.status === 'staged' &&
+    !!order.ifNumber?.trim() &&
+    isToterCustomer(order.customer)
   const [poBolOpen, setPoBolOpen] = useState(false)
   const statusLabel = getDueState(order)
   const badgeLabel = useMemo(() => {
@@ -188,6 +197,23 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
                   />
                 </div>
               )}
+            </section>
+          )}
+
+          {showToterPortal && (
+            <section className="rounded-xl border-l-4 border-l-violet-500 bg-muted/20 p-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-foreground">
+                <Truck className="size-4" />
+                <span>{t('toter.section')}</span>
+              </div>
+              <ToterPortalSection
+                key={`toter|${order.line || order.ifNumber}`}
+                line={order.line?.trim() ?? ''}
+                ifNumber={order.ifNumber?.trim() ?? ''}
+                poNumber={order.poNumber?.trim() ?? ''}
+                customer={order.customer?.trim() ?? ''}
+                userId={userId ?? user?.id ?? null}
+              />
             </section>
           )}
 
