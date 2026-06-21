@@ -16,7 +16,7 @@ import { useI18n } from '@/lib/i18n'
 // filled from a distance and the decoder sees it magnified.
 
 const BASE32 = /[0-9A-HJKMNP-TV-Z]{3,12}/ // Crockford base32 (no I/L/O/U)
-const ZOOM_CAP = 6 // total usable zoom; past this the camera can't focus and nothing decodes
+const DIGITAL_MAX = 4 // digital zoom multiplier allowed on top of the hardware zoom
 const MAX_CANVAS = 1000 // decode the crop near its native resolution (avoid upscale blur)
 
 function extractPalletCode(raw: string): string {
@@ -89,7 +89,9 @@ export default function PalletScanner({
   const [hwMax, setHwMax] = useState(1) // hardware zoom max (1 = none)
   const [zoom, setZoom] = useState(1) // unified zoom (hardware x digital)
 
-  const sliderMax = ZOOM_CAP
+  // Hardware zoom (OS-handled, stays sharp) to its full max, then up to DIGITAL_MAX
+  // more via centre-crop. So the high end roughly matches the native Camera range.
+  const sliderMax = Math.max(6, Math.round(hwMax * DIGITAL_MAX))
 
   const applyZoom = (value: number) => {
     const z = Math.min(sliderMax, Math.max(1, value))
