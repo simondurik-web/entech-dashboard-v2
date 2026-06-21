@@ -44,15 +44,18 @@ function z(value: string | undefined, max = 42): string {
   return stripped.replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-// Render `text` as a QR into a ^GFA field of roughly `targetPx` square. A quiet
-// zone of `quiet` modules is baked in (scanners need it). Bit = 1 prints black in
-// ZPL ^GF, and the qrcode matrix marks dark modules as 1, so no inversion needed.
-function qrGfaField(text: string, targetPx: number, quiet = 4): { field: string; px: number } {
-  const qr = QRCode.create(text, { errorCorrectionLevel: 'M' })
+// Render `text` as a QR into a ^GFA field whose VISIBLE pattern is ~targetPx square.
+// `targetPx` sizes the data pattern itself (not counting the quiet zone), so the
+// printed code measures what we ask for. A short pallet code is only a 21x21
+// (version 1) symbol, so we use the highest error correction (H) for maximum scan
+// robustness — it doesn't change the size but makes a big, low-density code very
+// easy to read. Bit = 1 prints black in ZPL ^GF; the matrix marks dark modules as 1.
+function qrGfaField(text: string, targetPx: number, quiet = 2): { field: string; px: number } {
+  const qr = QRCode.create(text, { errorCorrectionLevel: 'H' })
   const n = qr.modules.size
   const data = qr.modules.data
   const totalModules = n + quiet * 2
-  const scale = Math.max(1, Math.floor(targetPx / totalModules))
+  const scale = Math.max(1, Math.round(targetPx / n)) // size the pattern, not pattern+quiet
   const px = totalModules * scale
   const bytesPerRow = Math.ceil(px / 8)
   let hex = ''
@@ -86,8 +89,8 @@ function qrGfaField(text: string, targetPx: number, quiet = 4): { field: string;
 // higher media-X is nearer the reading top. Coordinates are grouped so a single
 // test-print can dial them in. NO company name/logo (Simon 2026-06-21).
 export function buildPalletZpl(label: PalletLabel): string {
-  const itemCode = z(label.itemCode, 24)
-  const itemName = z(label.itemName, 46)
+  const itemCode = z(label.itemCode, 20)
+  const itemName = z(label.itemName, 30)
   const customer = z(label.customer, 44)
   const salesOrder = z(label.salesOrder, 34)
   const weight = z(label.weight, 24)
@@ -109,16 +112,17 @@ export function buildPalletZpl(label: PalletLabel): string {
   const lines: string[] = ['^XA', '^PW812', '^LL1218', '^CI28', '^LH0,0']
 
   // Header block (reading top -> down): part number, qty, then the pallet id
-  // directly under the qty (Simon 2026-06-21).
-  lines.push(T(786, Y, 26, 'PART No.'))
-  lines.push(T(682, Y, 100, itemCode))
-  lines.push(T(636, Y, 34, itemName))
-  lines.push(T(528, Y, 96, `QTY: ${qty} ${uom}`))
-  lines.push(T(486, Y, 26, 'PALLET'))
-  lines.push(T(398, Y, 84, batch))
+  // directly under the qty (Simon 2026-06-21). Fonts are sized so the longest
+  // line stays left of the big QR (which begins at reading-x ~600).
+  lines.push(T(788, Y, 26, 'PART No.'))
+  lines.push(T(694, Y, 88, itemCode))
+  lines.push(T(648, Y, 32, itemName))
+  lines.push(T(548, Y, 84, `QTY: ${qty} ${uom}`))
+  lines.push(T(506, Y, 26, 'PALLET'))
+  lines.push(T(420, Y, 84, batch))
 
   // Optional rows (only what's provided), stepping further down (lower x).
-  let x = 344
+  let x = 360
   if (weight) {
     lines.push(T(x, Y, 32, `Weight: ${weight}`))
     x -= 44
@@ -136,11 +140,12 @@ export function buildPalletZpl(label: PalletLabel): string {
     x -= 44
   }
 
-  // Scan zone (reading right side): big QR + "SCAN PALLET" caption.
-  const qrX = 150 // vertical placement (reading); qrX + 508 <= 812
-  const qrY = 660 // horizontal placement (reading right); qrY + 508 <= 1218
+  // Scan zone (reading right side): big ~2.5in QR + "SCAN PALLET" caption.
+  // qr.px is the full bitmap (pattern + quiet); keep it on the media.
+  const qrX = Math.max(20, Math.min(150, 812 - qr.px - 20))
+  const qrY = Math.min(610, 1218 - qr.px - 10)
   lines.push(`^FO${qrX},${qrY}${qr.field}^FS`)
-  lines.push(T(qrX - 44, qrY + 150, 30, 'SCAN PALLET'))
+  lines.push(T(qrX - 44, qrY + Math.round(qr.px / 2) - 90, 30, 'SCAN PALLET'))
 
   lines.push('^XZ')
   return lines.join('\n')
