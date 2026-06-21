@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Search, MapPin, Package, Loader2, AlertCircle } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
+import { useAuth } from '@/lib/auth-context'
 
 interface BinLocation {
   warehouse: string
@@ -21,15 +22,15 @@ interface LocateResult {
 export default function InventoryOpsPage() {
   const { t } = useI18n()
   const { canAccess } = usePermissions()
+  const { user } = useAuth()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<LocateResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const runSearch = useCallback(
-    async (q: string) => {
+    async (q: string, signal: AbortSignal) => {
       if (q.trim().length < 2) {
         setResults([])
         setSearched(false)
@@ -38,26 +39,33 @@ export default function InventoryOpsPage() {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/erpnext/locate?q=${encodeURIComponent(q.trim())}`)
+        const res = await fetch(`/api/erpnext/locate?q=${encodeURIComponent(q.trim())}`, {
+          headers: { 'x-user-id': user?.id ?? '' },
+          signal,
+        })
         if (!res.ok) throw new Error('lookup failed')
         const data = await res.json()
         setResults(data.results ?? [])
         setSearched(true)
-      } catch {
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return // superseded by a newer query
         setError(t('inventoryOps.error'))
         setResults([])
       } finally {
         setLoading(false)
       }
     },
-    [t]
+    [t, user?.id]
   )
 
+  // Debounce + cancel the in-flight request when the query changes, so a slow
+  // earlier response can't land after a newer one.
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => runSearch(query), 350)
+    const controller = new AbortController()
+    const id = setTimeout(() => runSearch(query, controller.signal), 350)
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
+      clearTimeout(id)
+      controller.abort()
     }
   }, [query, runSearch])
 

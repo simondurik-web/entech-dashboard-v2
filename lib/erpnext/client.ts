@@ -33,11 +33,13 @@ function authHeaders(): Record<string, string> {
   }
 }
 
-/** Low-level GET against the ERPNext REST API. `path` starts with `/api/...`. */
+/** Low-level GET against the ERPNext REST API. `path` starts with `/api/...`.
+ *  Bounded by an 8s timeout so a slow/hung ERPNext can't pin a Vercel function. */
 export async function erpnextGet<T = unknown>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: authHeaders(),
     cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -45,6 +47,16 @@ export async function erpnextGet<T = unknown>(path: string): Promise<T> {
   }
   return res.json() as Promise<T>
 }
+
+/** Escape SQL LIKE metacharacters so a user typing % or _ doesn't broaden the
+ *  match (or hammer ERPNext). MariaDB default escape char is backslash. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, '\\$&')
+}
+
+// Cap the code set used in `in` filters so the GET URL can't blow past
+// Cloudflare/ERPNext URL limits on a broad search.
+const MAX_CODES = 100
 
 function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
@@ -93,11 +105,13 @@ export async function locateItems(query: string): Promise<LocateResult[]> {
   const q = query.trim()
   if (q.length < 2) return []
 
+  const like = `%${escapeLike(q)}%`
+
   // 1) Items matching by code OR name (case-insensitive LIKE) — display info.
   const items = await fetchItems(
     listParam('or_filters', [
-      ['item_code', 'like', `%${q}%`],
-      ['item_name', 'like', `%${q}%`],
+      ['item_code', 'like', like],
+      ['item_name', 'like', like],
     ])
   )
 
@@ -106,7 +120,7 @@ export async function locateItems(query: string): Promise<LocateResult[]> {
   // (a broad term like "EB" can match dozens of zero-stock variants first).
   const binByCodeQs = [
     listParam('filters', [
-      ['item_code', 'like', `%${q}%`],
+      ['item_code', 'like', like],
       ['actual_qty', '>', 0],
     ]),
     listParam('fields', ['item_code', 'warehouse', 'actual_qty']),
@@ -116,20 +130,22 @@ export async function locateItems(query: string): Promise<LocateResult[]> {
     (await erpnextGet<{ data: BinRow[] }>(`/api/resource/Bin?${binByCodeQs}`)).data ?? []
 
   // Full code set = name/code matches + any stocked code found directly.
+  // Cap it so the `in` filters below can't produce an over-long GET URL.
   const codeSet = new Set<string>(items.map((i) => i.item_code))
   for (const b of stockedByCode) codeSet.add(b.item_code)
   if (codeSet.size === 0) return []
+  const codes = [...codeSet].slice(0, MAX_CODES)
+  const codeAllow = new Set(codes)
 
   // 3) Display info for stocked codes not already described.
   const described = new Set(items.map((i) => i.item_code))
-  const missing = [...codeSet].filter((c) => !described.has(c))
+  const missing = codes.filter((c) => !described.has(c))
   if (missing.length > 0) {
     const extra = await fetchItems(listParam('filters', [['item_code', 'in', missing]]))
     items.push(...extra)
   }
 
   // 4) All bins (with stock) for the full code set, in one call.
-  const codes = [...codeSet]
   const binQs = [
     listParam('filters', [
       ['item_code', 'in', codes],
@@ -143,7 +159,7 @@ export async function locateItems(query: string): Promise<LocateResult[]> {
 
   const byItem = new Map<string, LocateResult>()
   for (const it of items) {
-    if (byItem.has(it.item_code)) continue
+    if (!codeAllow.has(it.item_code) || byItem.has(it.item_code)) continue
     byItem.set(it.item_code, {
       itemCode: it.item_code,
       itemName: it.item_name,
