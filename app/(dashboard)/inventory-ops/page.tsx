@@ -451,6 +451,38 @@ export default function InventoryOpsPage() {
     }
   }
 
+  const submitReprint = async (itemCode: string, batch: string) => {
+    const station = addStation || stations[0]?.id
+    if (!station) {
+      showFlash('err', t('inventoryOps.addMissing'))
+      return
+    }
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusyBatch(batch)
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/reprint', {
+        method: 'POST',
+        body: JSON.stringify({ batch, itemCode, station, idempotencyKey: uuid() }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'reprint failed')
+      showFlash('ok', `${t('inventoryOps.reprinted')} ${batch}`)
+      if (historyOpen === batch) {
+        setHistory((h) => {
+          const n = { ...h }
+          delete n[batch]
+          return n
+        })
+      }
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setBusyBatch(null)
+      busyRef.current = false
+    }
+  }
+
   if (!canAccess('/inventory-ops')) {
     return <div className="p-8 text-sm text-muted-foreground">{t('inventoryOps.noAccess')}</div>
   }
@@ -776,6 +808,14 @@ export default function InventoryOpsPage() {
                                 className={`hover:text-foreground ${movingBatch === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
                               >
                                 <ArrowLeftRight className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => submitReprint(r.itemCode, p.batch)}
+                                disabled={busyBatch === p.batch}
+                                title={t('inventoryOps.reprint')}
+                                className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                              >
+                                <Printer className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => {

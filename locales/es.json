@@ -1217,5 +1217,7 @@
   "inventoryOps.moveTo": "Mover esta tarima a:",
   "inventoryOps.moveConfirm": "Mover",
   "inventoryOps.moved": "Tarima movida",
+  "inventoryOps.reprint": "Reimprimir etiqueta",
+  "inventoryOps.reprinted": "Reimprimiendo etiqueta de",
   "nav.inventoryOps": "Operaciones de Inventario"
 }
