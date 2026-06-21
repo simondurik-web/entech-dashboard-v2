@@ -18,6 +18,7 @@ import {
   ChevronUp,
   ChevronRight,
   ScanLine,
+  Clock,
 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -50,8 +51,54 @@ interface Station {
   id: string
   name: string
 }
+interface HistEvent {
+  action: string
+  at: string | null
+  by: string
+  qty: number | null
+  warehouse: string | null
+}
 
 const OFFICE_ROLES = ['admin', 'super_admin', 'manager', 'shipping_manager']
+
+// Turn the ordered ops-log events into human timeline lines, deriving qty and
+// bin transitions from the sequence itself (no need to store before/after).
+function describeEvents(events: HistEvent[], t: (k: string) => string) {
+  let prevQty: number | null = null
+  let prevWh: string | null = null
+  return events.map((e) => {
+    let text: string
+    switch (e.action) {
+      case 'add':
+        text = `${t('inventoryOps.histCreated')}${e.qty != null ? ` · ${e.qty} ${t('inventoryOps.units')}` : ''}${e.warehouse ? ` · ${e.warehouse}` : ''}`
+        break
+      case 'adjust':
+        text =
+          prevQty != null && e.qty != null
+            ? `${t('inventoryOps.histAdjusted')}: ${prevQty} → ${e.qty}`
+            : `${t('inventoryOps.histAdjusted')}${e.qty != null ? `: ${e.qty}` : ''}`
+        break
+      case 'move':
+        text =
+          prevWh && e.warehouse
+            ? `${t('inventoryOps.histMoved')}: ${prevWh} → ${e.warehouse}`
+            : `${t('inventoryOps.histMoved')}${e.warehouse ? `: ${e.warehouse}` : ''}`
+        break
+      case 'remove':
+        text = t('inventoryOps.histRemoved')
+        break
+      case 'reprint':
+        text = t('inventoryOps.histReprinted')
+        break
+      default:
+        text = e.action
+    }
+    if (e.qty != null) prevQty = e.qty
+    if (e.warehouse) prevWh = e.warehouse
+    const at = e.at ? new Date(e.at) : null
+    return { text, by: e.by, at: at && !isNaN(at.getTime()) ? at.toLocaleString() : '' }
+  })
+}
 const uuid = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
@@ -176,6 +223,33 @@ export default function InventoryOpsPage() {
       if (!pallets[itemCode]) loadPallets(itemCode)
     }
   }
+
+  // ─── pallet history (traceability) ───
+  const [historyOpen, setHistoryOpen] = useState<string | null>(null)
+  const [history, setHistory] = useState<Record<string, HistEvent[]>>({})
+  const [historyLoading, setHistoryLoading] = useState<string | null>(null)
+
+  const toggleHistory = useCallback(
+    async (batch: string) => {
+      if (historyOpen === batch) {
+        setHistoryOpen(null)
+        return
+      }
+      setHistoryOpen(batch)
+      if (history[batch]) return
+      setHistoryLoading(batch)
+      try {
+        const r = await authedFetch(`/api/erpnext/inventory/history?batch=${encodeURIComponent(batch)}`)
+        const d = await r.json()
+        setHistory((h) => ({ ...h, [batch]: d.events ?? [] }))
+      } catch {
+        setHistory((h) => ({ ...h, [batch]: [] }))
+      } finally {
+        setHistoryLoading(null)
+      }
+    },
+    [historyOpen, history, authedFetch]
+  )
 
   // ─── flash + refresh helper ───
   const [flash, setFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
@@ -615,7 +689,8 @@ export default function InventoryOpsPage() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {(pallets[r.itemCode] ?? []).map((p) => (
-                        <li key={p.batch} className="flex items-center justify-between gap-2 py-2 text-sm">
+                        <li key={p.batch} className="py-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <div className="truncate font-mono text-xs">{p.batch}</div>
                             <div className="text-xs text-muted-foreground">{p.warehouse}</div>
@@ -644,6 +719,13 @@ export default function InventoryOpsPage() {
                             <div className="flex items-center gap-3">
                               <span className="font-semibold tabular-nums">{p.qty.toLocaleString()}</span>
                               <button
+                                onClick={() => toggleHistory(p.batch)}
+                                title={t('inventoryOps.history')}
+                                className={`hover:text-foreground ${historyOpen === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
+                              >
+                                <Clock className="h-3.5 w-3.5" />
+                              </button>
+                              <button
                                 onClick={() => {
                                   setEditBatch(p.batch)
                                   setEditQty(String(p.qty))
@@ -662,6 +744,35 @@ export default function InventoryOpsPage() {
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
+                              )}
+                            </div>
+                          )}
+                          </div>
+
+                          {historyOpen === p.batch && (
+                            <div className="mt-2 rounded-md border border-border bg-muted/30 p-2">
+                              {historyLoading === p.batch ? (
+                                <div className="flex items-center gap-2 p-1 text-xs text-muted-foreground">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  {t('inventoryOps.loading')}
+                                </div>
+                              ) : (history[p.batch] ?? []).length === 0 ? (
+                                <div className="p-1 text-xs text-muted-foreground">{t('inventoryOps.noHistory')}</div>
+                              ) : (
+                                <ol className="space-y-1.5">
+                                  {describeEvents(history[p.batch] ?? [], t).map((ev, i) => (
+                                    <li key={i} className="flex items-start gap-2 text-xs">
+                                      <Clock className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                                      <span>
+                                        <span className="font-medium">{ev.text}</span>
+                                        <span className="text-muted-foreground">
+                                          {ev.by ? ` · ${ev.by}` : ''}
+                                          {ev.at ? ` · ${ev.at}` : ''}
+                                        </span>
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ol>
                               )}
                             </div>
                           )}
