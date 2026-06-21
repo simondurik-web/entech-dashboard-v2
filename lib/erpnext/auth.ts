@@ -1,21 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-// Server-side access guard for the ERPNext routes. Mirrors the client
-// usePermissions().canAccess('/inventory-ops') check so the API can't be hit
-// directly without the same role the UI requires. Uses the x-user-id header
-// the dashboard sends on authed requests (same pattern as the scheduling/admin
-// routes).
+// Server-side access guard for the ERPNext inventory routes.
+//
+// HARDENED (Simon 2026-06-21): identity comes from the VERIFIED Supabase session
+// (the Authorization: Bearer <access_token> the dashboard sends), validated here
+// with supabaseAdmin.auth.getUser(). The old forgeable `x-user-id` header is NOT
+// trusted for identity any more — so the recorded "who did it" (labels + history)
+// can't be spoofed. Returns the verified user id + email so routes attribute
+// actions to the real person. Shared floor devices have no Supabase session, so
+// they can't pass this guard (read-only by construction, unchanged).
 
 const INVENTORY_OPS_PATH = '/inventory-ops'
 
-type Guard = { ok: true; role: string } | { ok: false; res: NextResponse }
+type Guard =
+  | { ok: true; role: string; userId: string; email: string }
+  | { ok: false; res: NextResponse }
+
+function bearer(req: NextRequest): string | null {
+  const h = req.headers.get('authorization') ?? ''
+  return h.startsWith('Bearer ') ? h.slice(7).trim() || null : null
+}
 
 export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
-  const userId = req.headers.get('x-user-id')
-  if (!userId) {
+  const token = bearer(req)
+  if (!token) {
     return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
+
+  // Verify the JWT and derive identity from it (not from any client header).
+  const { data: authData, error: authErr } = await supabaseAdmin.auth.getUser(token)
+  const authedUser = authData?.user
+  if (authErr || !authedUser) {
+    return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+  const userId = authedUser.id
+  const email = authedUser.email ?? ''
 
   const { data: profile } = await supabaseAdmin
     .from('user_profiles')
@@ -35,7 +55,7 @@ export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
     .single()
   const role: string = appRole?.role ?? profile.role ?? 'visitor'
 
-  if (role === 'admin' || role === 'super_admin') return { ok: true, role }
+  if (role === 'admin' || role === 'super_admin') return { ok: true, role, userId, email }
 
   const { data: perm } = await supabaseAdmin
     .from('role_permissions')
@@ -43,7 +63,7 @@ export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
     .eq('role', role)
     .single()
   const menu = (perm?.menu_access ?? {}) as Record<string, boolean>
-  if (menu[INVENTORY_OPS_PATH] === true) return { ok: true, role }
+  if (menu[INVENTORY_OPS_PATH] === true) return { ok: true, role, userId, email }
 
   return { ok: false, res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
 }

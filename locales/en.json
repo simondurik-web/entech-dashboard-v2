@@ -1180,6 +1180,7 @@
   "inventoryOps.scrollUp": "Scroll up",
   "inventoryOps.scrollDown": "Scroll down",
   "inventoryOps.onHand": "on hand",
+  "inventoryOps.inPallet": "in this pallet",
   "inventoryOps.noStock": "No stock on hand",
   "inventoryOps.noResults": "No matching parts found.",
   "inventoryOps.error": "Lookup failed. Please try again.",

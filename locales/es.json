@@ -1180,6 +1180,7 @@
   "inventoryOps.scrollUp": "Desplazar hacia arriba",
   "inventoryOps.scrollDown": "Desplazar hacia abajo",
   "inventoryOps.onHand": "en existencia",
+  "inventoryOps.inPallet": "en esta tarima",
   "inventoryOps.noStock": "Sin existencias",
   "inventoryOps.noResults": "No se encontraron piezas.",
   "inventoryOps.error": "La búsqueda falló. Inténtalo de nuevo.",

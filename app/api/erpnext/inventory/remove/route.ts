@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
   }
-  const userId = req.headers.get('x-user-id')
+  const userId = guard.userId // verified from the session, not a client header
 
   const result = await runInventoryOp({
     key: idempotencyKey,

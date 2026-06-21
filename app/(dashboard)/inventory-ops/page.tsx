@@ -21,6 +21,7 @@ import {
   Clock,
   ArrowLeftRight,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
@@ -142,12 +143,22 @@ export default function InventoryOpsPage() {
     delete opKeysRef.current[`${action}:${batch}:${JSON.stringify(payload)}`]
   }
 
+  // Send the verified Supabase session token; the server derives identity from it
+  // (not the x-user-id header) so the recorded "who" can't be spoofed.
   const authedFetch = useCallback(
-    (url: string, opts: RequestInit = {}) =>
-      fetch(url, {
+    async (url: string, opts: RequestInit = {}) => {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      return fetch(url, {
         ...opts,
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id ?? '', ...(opts.headers ?? {}) },
-      }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'x-user-id': user?.id ?? '',
+          ...(opts.headers ?? {}),
+        },
+      })
+    },
     [user?.id]
   )
 
@@ -744,7 +755,11 @@ export default function InventoryOpsPage() {
       )}
 
       <div className="space-y-3">
-        {results.map((r) => (
+        {results.map((r) => {
+          // On an exact pallet scan, focus on THAT pallet: its own qty (not the part
+          // family's total) and its bin.
+          const mp = matchedPallet ? (r.pallets ?? []).find((p) => p.batch === matchedPallet) ?? null : null
+          return (
           <div key={r.itemCode} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-baseline justify-between gap-3">
               <div>
@@ -752,9 +767,9 @@ export default function InventoryOpsPage() {
                 <div className="font-mono text-xs text-muted-foreground">{r.itemCode}</div>
               </div>
               <div className="text-right">
-                <div className="text-lg font-semibold tabular-nums">{r.total.toLocaleString()}</div>
+                <div className="text-lg font-semibold tabular-nums">{(mp ? mp.qty : r.total).toLocaleString()}</div>
                 <div className="text-xs text-muted-foreground">
-                  {r.uom} {t('inventoryOps.onHand')}
+                  {r.uom} {mp ? t('inventoryOps.inPallet') : t('inventoryOps.onHand')}
                 </div>
               </div>
             </div>
@@ -1004,7 +1019,8 @@ export default function InventoryOpsPage() {
               )}
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

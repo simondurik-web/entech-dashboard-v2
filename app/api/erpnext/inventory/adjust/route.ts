@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Unknown or disabled printer station: ${station}` }, { status: 400 })
   }
 
-  const userId = req.headers.get('x-user-id')
+  const userId = guard.userId // verified from the session, not a client header
   const printedBy = await resolveUserName(userId)
 
   const result = await runInventoryOp({

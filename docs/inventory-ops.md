@@ -77,7 +77,14 @@ any change here.
    same); mirrors the old Fusion behavior.
 2. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
 3. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
-4. **Locations view** — toggle to search a bin and list its contents.
+4. **Locations view** (Simon 2026-06-21) — a bin COMBO BOX (one box: type to filter, or
+   open the dropdown to see all bins) -> select a bin -> list everything stored in it
+   (parts, qty, pallet IDs). Use this same combo-box pattern for ALL bin pickers
+   (incl. Move) for consistency.
+5. **Bin contents report** — export a bin's contents as **PDF and CSV** (for auditing:
+   verify "Bin 51 = 10" against a physical count). Foundation for the audit feature.
+6. **Audit feature** (FUTURE) — structured inventory audit/verification flow built on
+   the bin report; tracked as a pending item to design later.
 
 Done: search/locate, add, adjust, remove, list pallets, history (traceability),
 **bin Move**, **Reprint**, generated date/time on label, scanner zoom + reticle.
