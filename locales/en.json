@@ -804,7 +804,8 @@
   "inventoryOps.removed": "Removed pallet",
   "inventoryOps.managePallets": "Manage pallets",
   "inventoryOps.loading": "Loading...",
-  "inventoryOps.noPallets": "No pallets on hand.",
+  "inventoryOps.noPallets": "No labeled pallets for this part yet. The stock above isn't on a tracked pallet - add one with Add Inventory.",
+  "inventoryOps.palletsError": "Couldn't load pallets - tap to retry.",
   "inventoryOps.editQty": "Edit quantity",
   "inventoryOps.remove": "Remove pallet",
   "nav.inventoryOps": "Inventory Ops"

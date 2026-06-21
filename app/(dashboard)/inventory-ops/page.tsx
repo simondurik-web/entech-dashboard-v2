@@ -145,15 +145,21 @@ export default function InventoryOpsPage() {
   const [openItem, setOpenItem] = useState<string | null>(null)
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
   const [palletsLoading, setPalletsLoading] = useState<string | null>(null)
+  const [palletsError, setPalletsError] = useState<Record<string, boolean>>({})
 
   const loadPallets = useCallback(
     async (itemCode: string) => {
       setPalletsLoading(itemCode)
+      setPalletsError((e) => ({ ...e, [itemCode]: false }))
       try {
         const r = await authedFetch(`/api/erpnext/inventory/pallets?itemCode=${encodeURIComponent(itemCode)}`)
+        if (!r.ok) throw new Error('pallets lookup failed')
         const d = await r.json()
         setPallets((p) => ({ ...p, [itemCode]: d.pallets ?? [] }))
       } catch {
+        // A genuine fetch/ERP failure — distinct from an item that simply has no
+        // pallets, so the UI doesn't show "no pallets" when it actually couldn't load.
+        setPalletsError((e) => ({ ...e, [itemCode]: true }))
         setPallets((p) => ({ ...p, [itemCode]: [] }))
       } finally {
         setPalletsLoading(null)
@@ -191,6 +197,21 @@ export default function InventoryOpsPage() {
   const [itemOptions, setItemOptions] = useState<ItemOption[]>([])
   const itemListRef = useRef<HTMLDivElement>(null)
   const scrollItems = (dir: 1 | -1) => itemListRef.current?.scrollBy({ top: dir * 140, behavior: 'smooth' })
+
+  // Keep the wheel inside the part list: scroll the list, never the page behind
+  // it. overscroll-contain alone doesn't cover a short list or the gaps between
+  // rows, so we take the wheel over fully (passive:false so preventDefault works).
+  // Touch scrolling is unaffected — it uses the native overflow on the list.
+  useEffect(() => {
+    const el = itemListRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      el.scrollTop += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [itemOptions.length])
   const [addQty, setAddQty] = useState('')
   const [addWarehouse, setAddWarehouse] = useState('')
   const [whFilter, setWhFilter] = useState('')
@@ -581,6 +602,14 @@ export default function InventoryOpsPage() {
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       {t('inventoryOps.loading')}
                     </div>
+                  ) : palletsError[r.itemCode] ? (
+                    <button
+                      onClick={() => loadPallets(r.itemCode)}
+                      className="flex items-center gap-2 p-2 text-xs text-red-600 hover:underline"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {t('inventoryOps.palletsError')}
+                    </button>
                   ) : (pallets[r.itemCode] ?? []).length === 0 ? (
                     <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noPallets')}</div>
                   ) : (

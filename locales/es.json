@@ -804,7 +804,8 @@
   "inventoryOps.removed": "Tarima eliminada",
   "inventoryOps.managePallets": "Administrar tarimas",
   "inventoryOps.loading": "Cargando...",
-  "inventoryOps.noPallets": "Sin tarimas disponibles.",
+  "inventoryOps.noPallets": "Aún no hay tarimas etiquetadas para esta pieza. La existencia de arriba no está en una tarima registrada - crea una con Agregar Inventario.",
+  "inventoryOps.palletsError": "No se pudieron cargar las tarimas - toca para reintentar.",
   "inventoryOps.editQty": "Editar cantidad",
   "inventoryOps.remove": "Eliminar tarima",
   "nav.inventoryOps": "Operaciones de Inventario"
