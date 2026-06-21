@@ -101,10 +101,11 @@ export async function POST(req: NextRequest) {
             idempotency_key: `print-${idempotencyKey}`,
             status: 'pending',
           },
-          { onConflict: 'idempotency_key' }
+          // Insert-or-IGNORE: never reset an already-claimed/printed job to pending.
+          { onConflict: 'idempotency_key', ignoreDuplicates: true }
         )
         .select('id')
-        .single()
+        .maybeSingle()
       if (error) throw new Error(error.message)
       return job?.id ?? null
     },

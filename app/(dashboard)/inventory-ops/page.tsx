@@ -118,6 +118,19 @@ export default function InventoryOpsPage() {
   const busyRef = useRef(false)
   const addKeyRef = useRef<string | null>(null)
 
+  // Stable idempotency keys per (action, pallet): a timeout+retry of the SAME action
+  // on the SAME pallet reuses the key so the server dedupes it (no double adjust/move/
+  // remove/reprint). Cleared only on success, so the next deliberate action is fresh.
+  const opKeysRef = useRef<Record<string, string>>({})
+  const opKey = (action: string, batch: string) => {
+    const k = `${action}:${batch}`
+    if (!opKeysRef.current[k]) opKeysRef.current[k] = uuid()
+    return opKeysRef.current[k]
+  }
+  const clearOpKey = (action: string, batch: string) => {
+    delete opKeysRef.current[`${action}:${batch}`]
+  }
+
   const authedFetch = useCallback(
     (url: string, opts: RequestInit = {}) =>
       fetch(url, {
@@ -176,7 +189,7 @@ export default function InventoryOpsPage() {
         // Seed the pallet lists from the inline pallet ids (no refetch needed).
         const seeded: Record<string, Pallet[]> = {}
         for (const r of rows) if (r.pallets) seeded[r.itemCode] = r.pallets
-        if (Object.keys(seeded).length) setPallets((p) => ({ ...seeded, ...p }))
+        if (Object.keys(seeded).length) setPallets((p) => ({ ...p, ...seeded }))
         // On an exact pallet-id scan, open that one item's pallets automatically.
         if (data.matchedPallet && rows.length === 1) setOpenItem(rows[0].itemCode)
         setSearched(true)
@@ -394,10 +407,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/adjust', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, newQty: qty, station: addStation || stations[0]?.id, idempotencyKey: uuid() }),
+        body: JSON.stringify({ batch, itemCode, newQty: qty, station: addStation || stations[0]?.id, idempotencyKey: opKey('adjust', batch) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'adjust failed')
+      clearOpKey('adjust', batch)
       showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}`)
       setEditBatch(null)
       loadPallets(itemCode)
@@ -418,10 +432,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/remove', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, reason: reason.trim(), idempotencyKey: uuid() }),
+        body: JSON.stringify({ batch, itemCode, reason: reason.trim(), idempotencyKey: opKey('remove', batch) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'remove failed')
+      clearOpKey('remove', batch)
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
       loadPallets(itemCode)
     } catch (e) {
@@ -440,10 +455,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/move', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, toWarehouse: moveWarehouse, idempotencyKey: uuid() }),
+        body: JSON.stringify({ batch, itemCode, toWarehouse: moveWarehouse, idempotencyKey: opKey('move', batch) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'move failed')
+      clearOpKey('move', batch)
       showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
       setMovingBatch(null)
       setMoveWarehouse('')
@@ -475,10 +491,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/reprint', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, station, idempotencyKey: uuid() }),
+        body: JSON.stringify({ batch, itemCode, station, idempotencyKey: opKey('reprint', batch) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'reprint failed')
+      clearOpKey('reprint', batch)
       showFlash('ok', `${t('inventoryOps.reprinted')} ${batch}`)
       if (historyOpen === batch) {
         setHistory((h) => {

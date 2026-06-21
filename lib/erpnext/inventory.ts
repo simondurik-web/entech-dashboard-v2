@@ -92,6 +92,16 @@ async function preflight(itemCode: string, warehouse: string): Promise<{ itemNam
   return { itemName: item.item_name ?? itemCode, uom: item.stock_uom ?? 'Nos' }
 }
 
+/** Guard before any mutate/reprint: the batch must exist, belong to `itemCode`, and
+ *  (by default) be active. Stops a forged/typo'd itemCode from acting on the wrong
+ *  pallet or a disabled (superseded/removed) one. Throws -> failed_pre_erp (no write). */
+export async function assertBatchItem(batch: string, itemCode: string, requireActive = true): Promise<void> {
+  const b = await erpnextGetDoc<{ item?: string; disabled?: number }>('Batch', batch).catch(() => null)
+  if (!b) throw new Error(`Pallet ${batch} not found`)
+  if (b.item !== itemCode) throw new Error(`Pallet ${batch} does not belong to ${itemCode}`)
+  if (requireActive && b.disabled) throw new Error(`Pallet ${batch} is disabled (superseded or removed)`)
+}
+
 async function submitStockEntry(doc: Record<string, unknown>): Promise<string> {
   const draft = await erpnextCreate<{ name: string }>('Stock Entry', doc)
   const fresh = await erpnextGetDoc('Stock Entry', draft.name)
@@ -225,6 +235,7 @@ export async function adjustInventory(input: {
   opKey: string
 }): Promise<AdjustResult> {
   const { batch, itemCode, newQty, opKey } = input
+  await assertBatchItem(batch, itemCode)
   const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
   const itemName = item.item_name ?? itemCode
   const uom = item.stock_uom ?? 'Nos'
@@ -273,6 +284,7 @@ export async function removeInventory(input: {
   opKey: string
 }): Promise<RemoveResult> {
   const { batch, itemCode, reason, opKey } = input
+  await assertBatchItem(batch, itemCode)
   const item = await erpnextGetDoc<{ stock_uom?: string }>('Item', itemCode)
   const uom = item.stock_uom ?? 'Nos'
 
@@ -322,8 +334,10 @@ export async function transferInventory(input: {
   opKey: string
 }): Promise<TransferResult> {
   const { batch, itemCode, toWarehouse, opKey } = input
-  const item = await erpnextGetDoc<{ stock_uom?: string }>('Item', itemCode)
-  const uom = item.stock_uom ?? 'Nos'
+  await assertBatchItem(batch, itemCode)
+  // Validate the destination bin (exists, not a group, enabled, right company).
+  const item = await preflight(itemCode, toWarehouse)
+  const uom = item.uom
 
   const loc = await getBatchLocation(batch, itemCode)
   if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)

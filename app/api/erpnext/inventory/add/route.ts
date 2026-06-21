@@ -111,12 +111,14 @@ export async function POST(req: NextRequest) {
             batch: committed.batch ?? batch,
             created_by: userId,
             idempotency_key: `print-${idempotencyKey}`,
-            status: 'pending', // resume/retry re-queues the label rather than leaving it lost
+            status: 'pending',
           },
-          { onConflict: 'idempotency_key' }
+          // Insert-or-IGNORE: a retry with the same key must never reset an
+          // already-claimed/printed job back to pending (would reprint it).
+          { onConflict: 'idempotency_key', ignoreDuplicates: true }
         )
         .select('id')
-        .single()
+        .maybeSingle()
       if (error) throw new Error(error.message)
       return job?.id ?? null
     },

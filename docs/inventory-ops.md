@@ -84,6 +84,17 @@ Done: search/locate, add, adjust, remove, list pallets, history (traceability),
 
 ## 4-agent review findings (2026-06-21: Codex/GPT-5.5, Grok/Composer-2.5, Gemini-Ultra, Opus) — hardening backlog
 
+STAGE 1 DONE (shipped): stable per-(action,pallet) idempotency keys on adjust/move/
+remove/reprint; `assertBatchItem` guard (batch belongs to item + active) on adjust/
+remove/move/reprint; Move preflights the destination warehouse; reprint validates
+batch active + qty>0 and has a reconcile (no stuck pending); fresh search data wins the
+pallet-cache merge; label upserts are insert-or-ignore (no reprint of a printed job).
+STAGE 2 (next): auth hardening (verified session identity). STAGE 3: serialization.
+Still open from the list below: per-batch in-flight lock, idempotency-key payload
+binding, listPallets 25-cap, labelPending surfaced on adjust/reprint, adjust-to-0 soft
+remove.
+
+
 Shipped-code fixes (do with the serialization work):
 - Stable idempotency keys for adjust/move/remove/reprint (currently a fresh uuid per
   click → a timeout can double-apply). Mirror `addKeyRef`.

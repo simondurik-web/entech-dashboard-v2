@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { getBatchLocation } from '@/lib/erpnext/inventory'
+import { getBatchLocation, assertBatchItem } from '@/lib/erpnext/inventory'
 import { buildPalletZpl } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -50,8 +50,19 @@ export async function POST(req: NextRequest) {
 
   const userId = req.headers.get('x-user-id')
   const printedBy = await resolveUserName(userId)
+
+  // Validate before printing: the batch must belong to this item, be active, and
+  // have stock — so we never print a label for a wrong/empty/superseded pallet.
+  try {
+    await assertBatchItem(batch, itemCode)
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 })
+  }
   const loc = await getBatchLocation(batch, itemCode)
   const qty = loc?.qty ?? 0
+  if (qty <= 0) {
+    return NextResponse.json({ error: `Pallet ${batch} has no stock to reprint` }, { status: 400 })
+  }
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -61,6 +72,9 @@ export async function POST(req: NextRequest) {
     // Reprint changes no stock — the "erp" step is a no-op so the op is logged and
     // the label step (re)enqueues the print.
     erp: async () => ({ batch }),
+    // No ERP artifact to detect; on a stuck 'pending' retry just resume (re-enqueue
+    // the label, which is idempotent on print-<key>) instead of 409-ing forever.
+    reconcile: async () => ({ batch }),
     label: async () => {
       const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
       const zpl = buildPalletZpl({
@@ -91,10 +105,11 @@ export async function POST(req: NextRequest) {
             idempotency_key: `print-${idempotencyKey}`,
             status: 'pending',
           },
-          { onConflict: 'idempotency_key' }
+          // Insert-or-IGNORE: never reset an already-claimed/printed job to pending.
+          { onConflict: 'idempotency_key', ignoreDuplicates: true }
         )
         .select('id')
-        .single()
+        .maybeSingle()
       if (error) throw new Error(error.message)
       return job?.id ?? null
     },
