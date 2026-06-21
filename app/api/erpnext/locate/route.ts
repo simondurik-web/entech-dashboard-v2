@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { locateItems } from '@/lib/erpnext/client'
-import { listPallets } from '@/lib/erpnext/inventory'
+import { listPallets, getBatchLocation } from '@/lib/erpnext/inventory'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 
 // Search-by-location: GET /api/erpnext/locate?q=Trio%20A
@@ -35,6 +35,15 @@ export async function GET(req: NextRequest) {
         }
       })
     )
+    // On an exact pallet scan, make sure the matched pallet's own qty+bin is attached
+    // even if it fell outside the enrichment cap — so the UI can show the pallet's
+    // quantity (not the part-family total).
+    if (matchedPallet && results[0] && !(results[0].pallets ?? []).some((p) => p.batch === matchedPallet)) {
+      const loc = await getBatchLocation(matchedPallet, results[0].itemCode)
+      if (loc && loc.qty > 0) {
+        results[0].pallets = [{ batch: matchedPallet, warehouse: loc.warehouse, qty: loc.qty }, ...(results[0].pallets ?? [])]
+      }
+    }
     // Live stock — never cache at the edge.
     return NextResponse.json({ results, matchedPallet }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

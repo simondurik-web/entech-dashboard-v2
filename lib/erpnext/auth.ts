@@ -19,7 +19,8 @@ type Guard =
 
 function bearer(req: NextRequest): string | null {
   const h = req.headers.get('authorization') ?? ''
-  return h.startsWith('Bearer ') ? h.slice(7).trim() || null : null
+  // Case-insensitive scheme match (proxies/clients may normalize the header case).
+  return /^bearer /i.test(h) ? h.slice(7).trim() || null : null
 }
 
 export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {

@@ -144,23 +144,29 @@ export default function InventoryOpsPage() {
   }
 
   // Send the verified Supabase session token; the server derives identity from it
-  // (not the x-user-id header) so the recorded "who" can't be spoofed.
-  const authedFetch = useCallback(
-    async (url: string, opts: RequestInit = {}) => {
+  // so the recorded "who" can't be spoofed. Caller headers are spread FIRST so they
+  // can't strip the Authorization. If a request 401s (token expired / hydration lag),
+  // refresh the session once and retry so a logged-in user isn't blocked.
+  const authedFetch = useCallback(async (url: string, opts: RequestInit = {}) => {
+    const run = async () => {
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token
       return fetch(url, {
         ...opts,
         headers: {
+          ...(opts.headers ?? {}),
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          'x-user-id': user?.id ?? '',
-          ...(opts.headers ?? {}),
         },
       })
-    },
-    [user?.id]
-  )
+    }
+    let res = await run()
+    if (res.status === 401) {
+      await supabase.auth.refreshSession().catch(() => {})
+      res = await run()
+    }
+    return res
+  }, [])
 
   // ─── reference data ───
   const [warehouses, setWarehouses] = useState<string[]>([])

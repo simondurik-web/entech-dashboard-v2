@@ -102,7 +102,13 @@ recover the existing print_job_id on conflict (no nulled link); removeInventory 
 the active-check (its own retry); transfer returns success if already at destination;
 Move type-ahead fills the input on select; matched scan shows only the matched bin
 (+ "superseded" note if the pallet isn't active).
-STAGE 2 (next): auth hardening (verified session identity). STAGE 3: serialization.
+STAGE 2 DONE (auth hardening): requireInventoryAccess verifies the Supabase JWT
+(Authorization: Bearer) via getUser() and derives identity from it; routes attribute
+to guard.userId; authedFetch sends the token + retries once on 401 (refresh); devices
+stay read-only. 4-agent reviewed — no bypass; fixed token-timing 401 retry, scanned-
+pallet qty always attached, safe header order, case-insensitive Bearer. Noted future
+perf: verify JWT locally (jose + SUPABASE_JWT_SECRET) instead of getUser per request.
+STAGE 3 (next): serialization. Then: Locations view + bin PDF/CSV report; audit (future).
 Still open from the list below: per-batch in-flight lock, idempotency-key payload
 binding, listPallets 25-cap, labelPending surfaced on adjust/reprint, adjust-to-0 soft
 remove.
