@@ -16,8 +16,8 @@ import { useI18n } from '@/lib/i18n'
 // filled from a distance and the decoder sees it magnified.
 
 const BASE32 = /[0-9A-HJKMNP-TV-Z]{3,12}/ // Crockford base32 (no I/L/O/U)
-const DIGITAL_MAX = 4 // extra digital zoom on top of hardware zoom
-const CANVAS = 640 // decode canvas size (square crop)
+const ZOOM_CAP = 6 // total usable zoom; past this the camera can't focus and nothing decodes
+const MAX_CANVAS = 1000 // decode the crop near its native resolution (avoid upscale blur)
 
 function extractPalletCode(raw: string): string {
   const tail = raw.includes(',') ? raw.slice(raw.lastIndexOf(',') + 1) : raw
@@ -89,7 +89,7 @@ export default function PalletScanner({
   const [hwMax, setHwMax] = useState(1) // hardware zoom max (1 = none)
   const [zoom, setZoom] = useState(1) // unified zoom (hardware x digital)
 
-  const sliderMax = Math.max(2, hwMax * DIGITAL_MAX)
+  const sliderMax = ZOOM_CAP
 
   const applyZoom = (value: number) => {
     const z = Math.min(sliderMax, Math.max(1, value))
@@ -120,10 +120,18 @@ export default function PalletScanner({
 
     ;(async () => {
       try {
-        const { BrowserQRCodeReader } = await import('@zxing/browser')
-        reader = new BrowserQRCodeReader()
+        const [{ BrowserQRCodeReader }, zxlib] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library'),
+        ])
+        // TRY_HARDER makes ZXing work much harder per frame — worth it for a
+        // small/blurry QR (we only decode the centre crop, so cost is bounded).
+        const hints = new Map()
+        hints.set(zxlib.DecodeHintType.TRY_HARDER, true)
+        reader = new BrowserQRCodeReader(hints)
+        // Request a high-res feed so digital zoom (centre crop) keeps real detail.
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         })
         if (stopped) {
           stream.getTracks().forEach((tr) => tr.stop())
@@ -136,17 +144,20 @@ export default function PalletScanner({
 
         const track = stream.getVideoTracks()[0] ?? null
         trackRef.current = track
+        // Keep the camera continuously focused (default can lock focus).
+        track
+          ?.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as unknown as MediaTrackConstraints)
+          .catch(() => {})
         const caps = track?.getCapabilities?.() as (MediaTrackCapabilities & { zoom?: { max?: number; min?: number } }) | undefined
         if (caps?.zoom && typeof caps.zoom.max === 'number' && caps.zoom.max > 1) {
           setHwMax(caps.zoom.max)
         }
 
         const canvas = canvasRef.current!
-        canvas.width = CANVAS
-        canvas.height = CANVAS
         const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-        // Decode loop: crop the centre by the digital-zoom factor, decode that.
+        // Decode loop: crop the centre by the digital-zoom factor and decode it at
+        // (close to) native resolution — no upscaling, which would just blur it.
         const tick = () => {
           if (stopped) return
           const v = videoRef.current
@@ -154,7 +165,10 @@ export default function PalletScanner({
             const side = Math.min(v.videoWidth, v.videoHeight) / digitalRef.current
             const sx = (v.videoWidth - side) / 2
             const sy = (v.videoHeight - side) / 2
-            ctx.drawImage(v, sx, sy, side, side, 0, 0, CANVAS, CANVAS)
+            const size = Math.min(Math.round(side), MAX_CANVAS)
+            canvas.width = size
+            canvas.height = size
+            ctx.drawImage(v, sx, sy, side, side, 0, 0, size, size)
             try {
               const res = reader.decodeFromCanvas(canvas)
               if (res && !stopped) {
