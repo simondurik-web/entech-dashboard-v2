@@ -36,9 +36,15 @@ import {
   FileBarChart,
   Inbox,
   ShoppingCart,
+  CircleDot,
+  Disc,
+  AlertTriangle,
+  FileText,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { usePermissions } from "@/lib/use-permissions"
+import { useQualityAccess } from "@/lib/use-quality-access"
+import { useI18n } from "@/lib/i18n"
 
 const baseCommandPaletteItems = [
   { label: 'Orders', href: '/orders', section: 'Production', icon: <ClipboardList className="size-4" /> },
@@ -48,10 +54,9 @@ const baseCommandPaletteItems = [
   { label: 'Staged', href: '/staged', section: 'Production', icon: <PackageCheck className="size-4" /> },
   { label: 'Shipped', href: '/shipped', section: 'Production', icon: <Truck className="size-4" /> },
   { label: 'Inventory', href: '/inventory', section: 'Production', icon: <Archive className="size-4" /> },
-  { label: 'Inventory Ops', href: '/inventory-ops', section: 'Production', icon: <Package className="size-4" /> },
   { label: 'Inventory History', href: '/inventory-history', section: 'Production', icon: <TrendingUp className="size-4" /> },
   { label: 'Drawings', href: '/drawings', section: 'Production', icon: <Ruler className="size-4" /> },
-  { label: 'Pallet Records', href: '/pallet-records', section: 'Production', icon: <Camera className="size-4" /> },
+  { label: 'Pallet Photos', href: '/pallet-photos', section: 'Production', icon: <Camera className="size-4" /> },
   { label: 'Shipping Records', href: '/shipping-records', section: 'Production', icon: <Truck className="size-4" /> },
   { label: 'Shipping Overview', href: '/shipping-overview', section: 'Production', icon: <Ship className="size-4" /> },
   { label: 'Scheduling', href: '/scheduling', section: 'Production', icon: <CalendarDays className="size-4" /> },
@@ -78,12 +83,35 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const { canAccess } = usePermissions()
+  const { canSeeQuality, canManageQuality, canEditLimits } = useQualityAccess()
+  const { t } = useI18n()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
   const commandPaletteItems = useMemo(
-    () => baseCommandPaletteItems.filter((item) => !item.href || canAccess(item.href)),
-    [canAccess]
+    () => {
+      const base = baseCommandPaletteItems.filter((item) => !item.href || canAccess(item.href))
+      if (!canSeeQuality) return base
+      // Quality entries are gated by the QA role (not canAccess), so they're
+      // added here rather than living in baseCommandPaletteItems.
+      const quality = [
+        { label: `${t('nav.quality')} · ${t('nav.qualityDashboard')}`, href: '/quality', section: 'Quality', icon: <ClipboardCheck className="size-4" /> },
+        { label: t('nav.qualityHubs'), href: '/quality/hubs', section: 'Quality', icon: <CircleDot className="size-4" /> },
+        { label: t('nav.qualityTires'), href: '/quality/tires', section: 'Quality', icon: <Disc className="size-4" /> },
+        { label: t('nav.qualityFinished'), href: '/quality/finished', section: 'Quality', icon: <PackageCheck className="size-4" /> },
+        { label: t('nav.qualityNcr'), href: '/quality/ncr', section: 'Quality', icon: <AlertTriangle className="size-4" /> },
+        ...(canManageQuality ? [
+          { label: t('nav.qualityProducts'), href: '/quality/products', section: 'Quality', icon: <Package className="size-4" /> },
+          { label: t('nav.qualityUsers'), href: '/quality/users', section: 'Quality', icon: <Users className="size-4" /> },
+          { label: t('nav.qualityAudit'), href: '/quality/audit', section: 'Quality', icon: <FileText className="size-4" /> },
+        ] : []),
+        ...(canEditLimits ? [
+          { label: t('nav.qualityLimits'), href: '/quality/limits', section: 'Quality', icon: <Ruler className="size-4" /> },
+        ] : []),
+      ]
+      return [...base, ...quality]
+    },
+    [canAccess, canSeeQuality, canManageQuality, canEditLimits, t]
   )
 
   useEffect(() => {
