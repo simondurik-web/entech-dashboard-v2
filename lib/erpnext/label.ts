@@ -96,9 +96,9 @@ export function buildPalletZpl(label: PalletLabel): string {
   const uom = z(label.uom || 'pcs', 8)
   const qty = Number.isFinite(label.qty) ? Math.max(0, Math.round(label.qty)) : 0
 
-  // Larger QR than before (~2.25in). Bitmap is axis-aligned; a QR scans at any
+  // QR ~2.5in (508 dots @ 203dpi). Bitmap is axis-aligned; a QR scans at any
   // rotation, so it needs no rotation to match the rotated text.
-  const qr = qrGfaField(batch, 460)
+  const qr = qrGfaField(batch, 508)
 
   // Rotated text line: x = distance from the reading top (we step DOWN by reducing x),
   // y = distance from the reading left. h = font height.
@@ -108,14 +108,17 @@ export function buildPalletZpl(label: PalletLabel): string {
   const Y = 36 // left margin (reading)
   const lines: string[] = ['^XA', '^PW812', '^LL1218', '^CI28', '^LH0,0']
 
-  // Header block (reading top -> down): part number is the prominent field.
-  lines.push(T(782, Y, 28, 'PART No.'))
-  lines.push(T(676, Y, 100, itemCode))
-  lines.push(T(628, Y, 34, itemName))
-  lines.push(T(520, Y, 96, `QTY: ${qty} ${uom}`))
+  // Header block (reading top -> down): part number, qty, then the pallet id
+  // directly under the qty (Simon 2026-06-21).
+  lines.push(T(786, Y, 26, 'PART No.'))
+  lines.push(T(682, Y, 100, itemCode))
+  lines.push(T(636, Y, 34, itemName))
+  lines.push(T(528, Y, 96, `QTY: ${qty} ${uom}`))
+  lines.push(T(486, Y, 26, 'PALLET'))
+  lines.push(T(398, Y, 84, batch))
 
   // Optional rows (only what's provided), stepping further down (lower x).
-  let x = 472
+  let x = 344
   if (weight) {
     lines.push(T(x, Y, 32, `Weight: ${weight}`))
     x -= 44
@@ -133,13 +136,11 @@ export function buildPalletZpl(label: PalletLabel): string {
     x -= 44
   }
 
-  // Scan zone (reading right side): big QR + "SCAN PALLET" + the pallet id.
-  const qrX = 110 // vertical placement (reading)
-  const qrY = 720 // horizontal placement (reading right)
+  // Scan zone (reading right side): big QR + "SCAN PALLET" caption.
+  const qrX = 150 // vertical placement (reading); qrX + 508 <= 812
+  const qrY = 660 // horizontal placement (reading right); qrY + 508 <= 1218
   lines.push(`^FO${qrX},${qrY}${qr.field}^FS`)
-  lines.push(T(qrX - 40, qrY + 60, 30, 'SCAN PALLET'))
-  lines.push(T(qrX + qr.px + 30, qrY, 30, 'PALLET'))
-  lines.push(T(qrX + qr.px - 60, qrY, 88, batch))
+  lines.push(T(qrX - 44, qrY + 150, 30, 'SCAN PALLET'))
 
   lines.push('^XZ')
   return lines.join('\n')
