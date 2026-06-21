@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { locateItems } from '@/lib/erpnext/client'
-import { listPallets, getBatchLocation } from '@/lib/erpnext/inventory'
+import { listPallets, getBatchLocation, resolveCurrentSerial } from '@/lib/erpnext/inventory'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 
 // Search-by-location: GET /api/erpnext/locate?q=Trio%20A
@@ -23,7 +23,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [], matchedPallet: null })
   }
   try {
-    const { results, matchedPallet } = await locateItems(q)
+    const located = await locateItems(q)
+    const results = located.results
+    let matchedPallet = located.matchedPallet
+    // If a pallet id was scanned, resolve it to the CURRENT serial in its family. A
+    // superseded (reprinted/qty-changed) label points the UI at the live pallet and
+    // flags that the scanned label is stale.
+    let superseded: { scanned: string; current: string | null } | null = null
+    if (matchedPallet) {
+      const res = await resolveCurrentSerial(matchedPallet)
+      if (res.superseded) superseded = { scanned: matchedPallet, current: res.current }
+      if (res.current) matchedPallet = res.current
+    }
     // Attach pallet ids to stocked items so they show next to the part + location.
     const stocked = results.filter((r) => r.total > 0).slice(0, MAX_PALLET_ENRICH)
     await Promise.all(
@@ -35,9 +46,7 @@ export async function GET(req: NextRequest) {
         }
       })
     )
-    // On an exact pallet scan, make sure the matched pallet's own qty+bin is attached
-    // even if it fell outside the enrichment cap — so the UI can show the pallet's
-    // quantity (not the part-family total).
+    // Make sure the matched pallet's own qty+bin is attached even if outside the cap.
     if (matchedPallet && results[0] && !(results[0].pallets ?? []).some((p) => p.batch === matchedPallet)) {
       const loc = await getBatchLocation(matchedPallet, results[0].itemCode)
       if (loc && loc.qty > 0) {
@@ -45,7 +54,7 @@ export async function GET(req: NextRequest) {
       }
     }
     // Live stock — never cache at the edge.
-    return NextResponse.json({ results, matchedPallet }, { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json({ results, matchedPallet, superseded }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('ERPNext locate failed:', error)
     return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })

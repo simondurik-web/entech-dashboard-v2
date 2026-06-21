@@ -329,6 +329,18 @@ export interface TransferResult extends Committed {
 /** Move a pallet between bins: a Material Transfer of the batch's full on-hand qty
  *  from its current warehouse to `toWarehouse`. Refuses split pallets (can't guess
  *  which bin to move) and no-op moves. */
+/** Deterministic, READ-ONLY validation for a move: batch belongs to the item + active,
+ *  destination bin is valid, pallet has stock and isn't split. Throws on any violation.
+ *  Call this in the route BEFORE the op-log row is inserted so a deterministic failure is
+ *  a clean 400 — not a post-insert throw that would lock the family in failed_pre_erp. */
+export async function transferPreflight(batch: string, itemCode: string, toWarehouse: string): Promise<void> {
+  await assertBatchItem(batch, itemCode)
+  await preflight(itemCode, toWarehouse) // destination bin: exists, not a group, enabled, right company
+  const loc = await getBatchLocation(batch, itemCode)
+  if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
+  if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
+}
+
 export async function transferInventory(input: {
   batch: string
   itemCode: string
@@ -371,4 +383,225 @@ export async function transferInventory(input: {
   })
 
   return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+}
+
+// ─── Serialization (reprint / qty-change reissue) ────────────────────────────────
+// To stop two physical labels with the same code being usable, a reprint or a qty
+// change REISSUES the pallet as a new serial (base -> base-02 -> base-03): produce
+// the target qty into the new batch, empty + disable the old one. ERPNext then
+// rejects the old/empty/disabled batch natively everywhere (incl. scan-to-ship), so
+// stale labels can't be used. See docs/inventory-ops.md.
+
+/** The family base of a serial: "D79C" -> "D79C", "D79C-03" -> "D79C". Only OUR serial
+ *  shape (a base32 root + "-NN" suffix) is stripped; a hyphenated non-conforming name
+ *  (e.g. a legacy "FOO-12-BAR") is returned whole so unrelated codes never get grouped. */
+export function palletBase(b: string): string {
+  // Root must be Crockford base32 (digits + A-Z minus I, L, O, U) — the exact alphabet
+  // generatePalletId emits — so only OUR serials are split; a legacy hyphenated name
+  // (e.g. "FOO-12", with the non-Crockford 'O') is returned whole, never mis-grouped.
+  const m = b.match(/^([0-9A-HJKMNP-TV-Z]+)-(\d{2,})$/)
+  return m ? m[1] : b
+}
+
+/** COMPUTE (do not create) the next serial in a pallet's family. base (no suffix) is
+ *  generation 1; serials are base-02, base-03, ... This is compute-only ON PURPOSE: the
+ *  caller persists the returned name to inventory_ops_log.result_batch (durable, atomic
+ *  with the family lock), and reissuePallet creates the Batch idempotently. Because the
+ *  family lock allows only ONE active op per family at a time, no two ops ever allocate a
+ *  serial for the same family concurrently — so nothing is created before the op row
+ *  exists (no orphaned batch on a crash/race) and there's no cross-op name collision. */
+export async function reserveNextSerial(oldBatch: string): Promise<string> {
+  const base = palletBase(oldBatch)
+  // Highest existing suffix in the family (base itself counts as gen 1).
+  const qs = [listParam('filters', [['name', 'like', `${base}-%`]]), listParam('fields', ['name']), 'limit_page_length=0'].join('&')
+  const fam = (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Batch?${qs}`)).data ?? []
+  let n = 1
+  for (const r of fam) {
+    const m = r.name.match(/-(\d+)$/)
+    if (m && r.name.startsWith(`${base}-`)) n = Math.max(n, parseInt(m[1], 10))
+  }
+  return `${base}-${String(n + 1).padStart(2, '0')}`
+}
+
+export interface ReissueResult extends Committed {
+  newBatch: string
+  qty: number
+  fromWarehouse: string
+}
+
+/** Reissue `oldBatch` as the pre-reserved `newBatch` at `targetQty`. FULLY IDEMPOTENT
+ *  / resumable: it recomputes from the CURRENT on-hand of both batches each call and
+ *  only does the steps still needed, so it's safe to re-enter after a partial failure
+ *  and is used for BOTH erp() and reconcile() under runInventoryOp. End state: new batch
+ *  at exactly target, old batch emptied + disabled. The old/empty batch is rejected by
+ *  ERPNext natively, so a stale label can't be used. Repacks are 1:1 (qty in = out) so
+ *  valuation isn't concentrated; the qty-down excess is issued out and a qty-up shortfall
+ *  is received in. */
+export async function reissuePallet(input: {
+  oldBatch: string
+  newBatch: string
+  itemCode: string
+  targetQty: number
+  opKey: string
+}): Promise<ReissueResult> {
+  const { oldBatch, newBatch, itemCode, targetQty, opKey } = input
+  // Don't require the old batch active: on a retry it may already be disabled/empty.
+  await assertBatchItem(oldBatch, itemCode, false)
+  const target = targetQty
+  if (!(target > 0)) throw new Error('reissue target qty must be > 0 (use Remove to zero a pallet)')
+  const item = await erpnextGetDoc<{ stock_uom?: string }>('Item', itemCode)
+  const uom = item.stock_uom ?? 'Nos'
+
+  // Ensure the (reserved) new batch exists; skip-if-exists so a retry reuses it.
+  if (!(await erpnextGet(`/api/resource/Batch/${encodeURIComponent(newBatch)}`).then(() => true).catch(() => false))) {
+    await erpnextCreate('Batch', { batch_id: newBatch, item: itemCode, custom_pallet_qty: target })
+  }
+
+  const locNew = await getBatchLocation(newBatch, itemCode)
+  const currentNew = locNew?.qty ?? 0
+  if (locNew?.split) throw new Error(`Pallet ${newBatch} is split across multiple bins; consolidate in ERPNext first`)
+  const locOld = await getBatchLocation(oldBatch, itemCode)
+  const currentOld = locOld?.qty ?? 0
+  if (locOld?.split) throw new Error(`Pallet ${oldBatch} is split across multiple bins; consolidate in ERPNext first`)
+  const wh = locOld?.warehouse ?? locNew?.warehouse
+  // target is > 0 (asserted above), so we MUST have a bin to place stock. No bin means
+  // neither batch holds stock (e.g. a lost concurrency race emptied the old batch first);
+  // fail loudly rather than print a label for a zero-stock pallet.
+  if (!wh) throw new Error(`Cannot reissue ${oldBatch}: no stock found in either ${oldBatch} or ${newBatch}`)
+
+  const row = (qty: number, batch_no: string, dir: 's_warehouse' | 't_warehouse') => ({
+    item_code: itemCode,
+    qty,
+    [dir]: wh,
+    use_serial_batch_fields: 1,
+    batch_no,
+    allow_zero_valuation_rate: 1,
+    uom,
+    stock_uom: uom,
+    conversion_factor: 1,
+  })
+
+  let stockEntry: string | null = null
+  // 1) Move from old -> new (1:1 repack), up to what the new batch still needs.
+  const moveQty = Math.max(0, Math.min(target - currentNew, currentOld))
+  if (moveQty > 0) {
+    stockEntry = await submitStockEntry({
+      stock_entry_type: 'Repack',
+      company: COMPANY,
+      remarks: `Dashboard reissue [op:${opKey}]`,
+      items: [row(moveQty, oldBatch, 's_warehouse'), row(moveQty, newBatch, 't_warehouse')],
+    })
+  }
+  // 2) Issue out any leftover still in the old batch (qty-down excess).
+  const leftoverOld = currentOld - moveQty
+  if (leftoverOld > 0) {
+    await submitStockEntry({
+      stock_entry_type: 'Material Issue',
+      company: COMPANY,
+      remarks: `Dashboard reissue-excess [op:${opKey}]`,
+      items: [row(leftoverOld, oldBatch, 's_warehouse')],
+    })
+  }
+  // 3) Receipt any remaining shortfall into the new batch (qty-up beyond old's stock).
+  const shortfall = target - (currentNew + moveQty)
+  if (shortfall > 0) {
+    await submitStockEntry({
+      stock_entry_type: 'Material Receipt',
+      company: COMPANY,
+      remarks: `Dashboard reissue-delta [op:${opKey}]`,
+      items: [row(shortfall, newBatch, 't_warehouse')],
+    })
+  }
+  // 4) Defensive: if the new batch somehow holds MORE than target (e.g. a duplicated
+  //    receipt from an earlier aborted run), issue the excess back out so it converges.
+  const excessNew = currentNew - target
+  if (excessNew > 0) {
+    await submitStockEntry({
+      stock_entry_type: 'Material Issue',
+      company: COMPANY,
+      remarks: `Dashboard reissue-trim [op:${opKey}]`,
+      items: [row(excessNew, newBatch, 's_warehouse')],
+    })
+  }
+
+  // Postcondition: new must hold exactly target and old must be empty before we report
+  // success (and hand a label to the caller). Otherwise throw -> the op lands
+  // failed_pre_erp and a retry/verify finishes the remaining steps.
+  const newAfter = await getBatchLocation(newBatch, itemCode)
+  if ((newAfter?.qty ?? 0) !== target) {
+    throw new Error(`Reissue postcondition failed: ${newBatch} holds ${newAfter?.qty ?? 0}, expected ${target}`)
+  }
+  const oldAfter = await getBatchLocation(oldBatch, itemCode)
+  if (oldAfter && oldAfter.qty > 0) {
+    throw new Error(`Reissue postcondition failed: ${oldBatch} still holds ${oldAfter.qty}`)
+  }
+
+  await erpnextUpdate('Batch', newBatch, { custom_pallet_qty: target })
+  await erpnextUpdate('Batch', oldBatch, { disabled: 1 })
+
+  return { batch: newBatch, stockEntry, newBatch, qty: target, fromWarehouse: wh }
+}
+
+/** READ-ONLY completion check for a reissue, used as runInventoryOp's reconcile(). It
+ *  NEVER mutates ERP, so it is safe to call while a peer request may still be inside
+ *  erp() (the pending/duplicate path). Returns committed ONLY when the reissue is fully
+ *  done — new batch holds exactly target AND old batch is drained — else null, so the
+ *  state machine refuses or re-runs the mutating erp() under its CAS claim. */
+export async function verifyReissue(input: {
+  oldBatch: string
+  newBatch: string
+  itemCode: string
+  targetQty: number
+}): Promise<Committed | null> {
+  const { oldBatch, newBatch, itemCode, targetQty } = input
+  const locNew = await getBatchLocation(newBatch, itemCode)
+  if ((locNew?.qty ?? 0) !== targetQty) return null
+  const locOld = await getBatchLocation(oldBatch, itemCode)
+  if (locOld && locOld.qty > 0) return null
+  // The old batch must also be disabled, not merely drained: if the disable step was the
+  // part that failed, report NOT-complete so the state machine re-runs erp() and retries
+  // it. (If the old batch doc is simply gone, there's nothing left to disable.)
+  const oldDoc = await erpnextGetDoc<{ disabled?: number }>('Batch', oldBatch).catch(() => null)
+  if (oldDoc && oldDoc.disabled !== 1) return null
+  return { batch: newBatch, stockEntry: null }
+}
+
+/** Resolve any serial in a family to the CURRENT one and whether the scanned id is
+ *  superseded. The current pallet is the highest-numbered ACTIVE (disabled=0) serial
+ *  THAT HOLDS STOCK. We can't just take the highest active serial: reserveNextSerial
+ *  creates the next serial as an active, zero-stock batch BEFORE the reissue moves stock
+ *  into it, and if that reissue fails permanently the real stock is still in the prior
+ *  serial. Preferring the highest stocked serial keeps a scan pointed at the physical
+ *  pallet. Only if NONE hold stock do we fall back to the highest active serial (so we
+ *  never strand the user on null). The per-candidate stock check is bounded — a family
+ *  has at most a handful of serials over its life. */
+export async function resolveCurrentSerial(scanned: string): Promise<{ current: string | null; superseded: boolean }> {
+  const base = palletBase(scanned)
+  const qs = [
+    listParam('or_filters', [['name', '=', base], ['name', 'like', `${base}-%`]]),
+    listParam('filters', [['disabled', '=', 0]]),
+    listParam('fields', ['name']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows = (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Batch?${qs}`)).data ?? []
+  const ranked = rows
+    .filter((r) => r.name === base || r.name.startsWith(`${base}-`))
+    .sort((a, b) => {
+      const na = parseInt(a.name.match(/-(\d+)$/)?.[1] ?? '1', 10)
+      const nb = parseInt(b.name.match(/-(\d+)$/)?.[1] ?? '1', 10)
+      return nb - na
+    })
+  if (ranked.length === 0) return { current: null, superseded: true }
+  // Every serial in a family is the same item; read it once from a real batch doc
+  // rather than trusting the caller to pass the right item code.
+  const fam = await erpnextGetDoc<{ item?: string }>('Batch', ranked[0].name).catch(() => null)
+  const itemCode = fam?.item
+  if (itemCode) {
+    for (const r of ranked) {
+      const loc = await getBatchLocation(r.name, itemCode)
+      if (loc && loc.qty > 0) return { current: r.name, superseded: r.name !== scanned }
+    }
+  }
+  const current = ranked[0].name
+  return { current, superseded: current !== scanned }
 }

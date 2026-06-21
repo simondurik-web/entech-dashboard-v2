@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { removeInventory, reconcileStockEntry } from '@/lib/erpnext/inventory'
+import { removeInventory, reconcileStockEntry, palletBase, assertBatchItem, getBatchLocation } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/remove
 // Remove a pallet from stock (issue out remaining qty + disable the batch).
@@ -42,11 +43,31 @@ export async function POST(req: NextRequest) {
   }
   const userId = guard.userId // verified from the session, not a client header
 
+  // Deterministic preflight on the FIRST attempt, BEFORE the locked op row exists: a
+  // batch/item mismatch or a split pallet returns 400 here rather than throwing inside
+  // erp() (which would leave the family locked in failed_pre_erp). Skipped on retry.
+  const { data: priorOp } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('idempotency_key')
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle()
+  if (!priorOp) {
+    try {
+      await assertBatchItem(batch, itemCode, false)
+      const loc = await getBatchLocation(batch, itemCode)
+      if (loc?.split) {
+        return NextResponse.json({ error: `Pallet ${batch} is split across multiple bins; consolidate in ERPNext first.` }, { status: 400 })
+      }
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 })
+    }
+  }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'remove',
     createdBy: userId,
-    meta: { item_code: itemCode, batch },
+    meta: { item_code: itemCode, batch, family: palletBase(batch) },
     erp: async () => {
       const r = await removeInventory({ batch, itemCode, reason: reason.trim(), opKey: idempotencyKey })
       return { batch: r.batch, stockEntry: r.stockEntry }

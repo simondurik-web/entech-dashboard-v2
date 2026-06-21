@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { addInventory, generatePalletId, reconcileStockEntry } from '@/lib/erpnext/inventory'
+import { addInventory, generatePalletId, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
 import { buildPalletZpl } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     key: idempotencyKey,
     action: 'add',
     createdBy: userId,
-    meta: { item_code: itemCode, qty, warehouse, station_id: station, batch },
+    meta: { item_code: itemCode, qty, warehouse, station_id: station, batch, family: palletBase(batch) },
     erp: () => addInventory({ itemCode, qty, warehouse, opKey: idempotencyKey, batch }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)

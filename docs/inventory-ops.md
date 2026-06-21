@@ -55,12 +55,14 @@ any change here.
   auto-opens + highlights it — never a fuzzy multi-part list (safety).
 - `add` — Material Receipt + Batch + mandatory label; idempotent (ops-log state
   machine, retry-safe).
-- `adjust` — correct a pallet qty (delta receipt/issue) + reprint label.
+- `adjust` — change a pallet qty. A non-zero change REISSUES the pallet as the next
+  serial at the new qty (see Serialization) + prints the new label; equal-qty is a no-op;
+  qty 0 is a soft remove. Pins the target qty to the first logged intent on retry.
 - `remove` — issue-out + disable batch (office roles); cancel-not-delete.
 - `move` — Material Transfer of a pallet to another bin; logged as `move` (shows in
   history). No label reprint (location isn't on the label).
-- `reprint` — re-enqueue a pallet's label to a printer; no stock change; logged as
-  `reprint` (shows in history); idempotent per key.
+- `reprint` — REISSUES the pallet as the next serial (old label voided) and prints it;
+  logged as `reprint` (shows in history); idempotent per key. See Serialization.
 - `pallets` — list on-hand pallets for an item.
 - `history` — **traceability**: per-pallet timeline from `inventory_ops_log` (every
   op stamps `created_by` + `created_at`); UI derives qty/bin transitions from order.
@@ -69,25 +71,57 @@ any change here.
 - `inventory_ops_log` (Supabase) records every action with `created_by`, `created_at`,
   `action`, `qty`, `warehouse`, `batch`, `status`. This is the audit source.
 
+## Serialization (Stage 3 — SHIPPED) — `lib/erpnext/inventory.ts`
+To stop two physical labels from sharing a code, a reprint OR a qty change REISSUES the
+pallet as the next serial in its family (`D79C` → `D79C-02` → `D79C-03`) and disables the
+old batch. ERPNext then rejects the old/empty/disabled batch natively everywhere (incl.
+scan-to-ship), so a stale label can't be used.
+- **`reissuePallet`** (the only mutator): recomputes from the LIVE on-hand of both batches
+  each call, so it's resumable after any partial failure. It moves old→new 1:1 (Repack),
+  issues out qty-down excess, receipts a qty-up shortfall, trims any over-target excess on
+  the new batch, then asserts its postcondition (new holds exactly target AND old drained)
+  before reporting success. THROWS (no ghost-success) if no bin holds stock.
+- **`verifyReissue`** (READ-ONLY): runInventoryOp's `reconcile()`. Reports done only if the
+  reissue already completed; never mutates. So a duplicate/retry on the `pending` path
+  can't run a second reissue alongside the in-flight one — only `erp()` mutates, re-run
+  under the state machine's compare-and-swap claim.
+- **Concurrency:** a partial unique index `inventory_ops_active_family_uniq` on
+  `inventory_ops_log(family) WHERE status IN ('pending','erp_committed','failed_pre_erp')`
+  gives ATOMIC one-active-op-per-pallet-FAMILY exclusion across the whole reissue (the
+  read-then-insert pre-check is just friendly UX). `family = palletBase(batch)`, set by
+  every mutating route. The lock is intentionally HELD through `failed_pre_erp` so a
+  half-finished reissue can't be stepped on — it stays locked until the same-key retry
+  drives it to `done`. **Escape hatch:** a permanently-failed op (e.g. a split-bin pallet,
+  or a lasting ERP fault) keeps its family locked; an admin clears it by setting that
+  `inventory_ops_log` row's `status` to `done` (if ERP state is actually correct) or
+  `cancelled` after reconciling stock in ERPNext. A future admin UI button can wrap this.
+- **Serial reservation:** `reserveNextSerial` creates the next Batch atomically (the unique
+  Batch name is the lock); persisted to `result_batch` so a retry reuses it.
+- **`resolveCurrentSerial`:** maps any scanned serial to the current one = highest active
+  serial THAT HOLDS STOCK (falls back to highest active only if none do), so a reserved-
+  but-empty serial never strands a scan. `locate` returns `superseded` when the scanned
+  label isn't current; the UI shows a banner and follows the live serial.
+- **History** chains the whole family (base + `base-NN`); batch codes are whitelisted to
+  `[0-9A-Z]` before the PostgREST `.or()` filter.
+
 ## Open / pending (in build order)
-1. **Reprint serialization** (safety) — to prevent two physical labels with the same
-   id, each reprint supersedes the previous: the printed/QR code carries a version
-   suffix (e.g. `D79C-02`), only the LATEST is valid, and scanning/searching an older
-   version warns/blocks. Tracked dashboard-side (the ERPNext Batch name stays the
-   same); mirrors the old Fusion behavior.
-2. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
-3. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
-4. **Locations view** (Simon 2026-06-21) — a bin COMBO BOX (one box: type to filter, or
+1. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
+2. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
+3. **Locations view** (Simon 2026-06-21) — a bin COMBO BOX (one box: type to filter, or
    open the dropdown to see all bins) -> select a bin -> list everything stored in it
    (parts, qty, pallet IDs). Use this same combo-box pattern for ALL bin pickers
    (incl. Move) for consistency.
-5. **Bin contents report** — export a bin's contents as **PDF and CSV** (for auditing:
+4. **Bin contents report** — export a bin's contents as **PDF and CSV** (for auditing:
    verify "Bin 51 = 10" against a physical count). Foundation for the audit feature.
-6. **Audit feature** (FUTURE) — structured inventory audit/verification flow built on
+5. **Audit feature** (FUTURE) — structured inventory audit/verification flow built on
    the bin report; tracked as a pending item to design later.
+6. **Inline pallet actions** (Simon 2026-06-21) — drop the "Manage pallets" expander; put
+   the Clock/Move/Reprint/Edit/Remove buttons directly next to each pallet (one fewer
+   click, no mirrored info). Do this with the Locations frontend pass.
 
 Done: search/locate, add, adjust, remove, list pallets, history (traceability),
-**bin Move**, **Reprint**, generated date/time on label, scanner zoom + reticle.
+**bin Move**, **Reprint**, generated date/time on label, scanner zoom + reticle,
+**Stage 3 serialization** (reissue-on-reprint/qty-change, see above).
 
 ## 4-agent review findings (2026-06-21: Codex/GPT-5.5, Grok/Composer-2.5, Gemini-Ultra, Opus) — hardening backlog
 

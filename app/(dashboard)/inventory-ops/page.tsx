@@ -196,6 +196,7 @@ export default function InventoryOpsPage() {
   const [searched, setSearched] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
   const [matchedPallet, setMatchedPallet] = useState<string | null>(null)
+  const [superseded, setSuperseded] = useState<{ scanned: string; current: string | null } | null>(null)
 
   const runSearch = useCallback(
     async (q: string, signal: AbortSignal) => {
@@ -203,6 +204,7 @@ export default function InventoryOpsPage() {
         setResults([])
         setSearched(false)
         setMatchedPallet(null)
+        setSuperseded(null)
         return
       }
       setSearching(true)
@@ -214,6 +216,7 @@ export default function InventoryOpsPage() {
         const rows: LocateResult[] = data.results ?? []
         setResults(rows)
         setMatchedPallet(data.matchedPallet ?? null)
+        setSuperseded(data.superseded ?? null)
         // Seed the pallet lists from the inline pallet ids (no refetch needed).
         const seeded: Record<string, Pallet[]> = {}
         for (const r of rows) if (r.pallets) seeded[r.itemCode] = r.pallets
@@ -226,6 +229,7 @@ export default function InventoryOpsPage() {
         setSearchError(t('inventoryOps.error'))
         setResults([])
         setMatchedPallet(null)
+        setSuperseded(null)
       } finally {
         if (!signal.aborted) setSearching(false)
       }
@@ -440,8 +444,12 @@ export default function InventoryOpsPage() {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'adjust failed')
       clearOpKey('adjust', batch, qty)
-      showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}`)
+      const serial = (d.batch as string) ?? batch
+      // A qty change reissues the pallet as a new serial; follow it so the exact-pallet
+      // view keeps showing the live pallet rather than the now-disabled old code.
+      showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
       setEditBatch(null)
+      setMatchedPallet((mp) => (mp === batch ? serial : mp))
       loadPallets(itemCode)
     } catch (e) {
       showFlash('err', (e as Error).message)
@@ -524,7 +532,11 @@ export default function InventoryOpsPage() {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'reprint failed')
       clearOpKey('reprint', batch, station)
-      showFlash('ok', `${t('inventoryOps.reprinted')} ${batch}`)
+      const serial = (d.batch as string) ?? batch
+      // A reprint reissues the pallet as a new serial (old label is voided); follow it.
+      showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      setMatchedPallet((mp) => (mp === batch ? serial : mp))
+      loadPallets(itemCode)
       if (historyOpen === batch) {
         setHistory((h) => {
           const n = { ...h }
@@ -758,6 +770,18 @@ export default function InventoryOpsPage() {
       )}
       {!searchError && searched && !searching && results.length === 0 && (
         <p className="text-sm text-muted-foreground">{t('inventoryOps.noResults')}</p>
+      )}
+
+      {superseded && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {t('inventoryOps.supersededScan')} <span className="font-mono">{superseded.scanned}</span>.{' '}
+            {superseded.current
+              ? <>{t('inventoryOps.supersededCurrent')} <span className="font-mono font-semibold">{superseded.current}</span>.</>
+              : t('inventoryOps.supersededGone')}
+          </span>
+        </div>
       )}
 
       <div className="space-y-3">

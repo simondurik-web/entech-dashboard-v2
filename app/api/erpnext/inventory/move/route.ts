@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { transferInventory, reconcileStockEntry } from '@/lib/erpnext/inventory'
+import { transferInventory, transferPreflight, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/move — transfer a pallet to a different bin.
 // No label reprint: the bin/location is deliberately not printed on the label.
@@ -38,11 +39,28 @@ export async function POST(req: NextRequest) {
 
   const userId = guard.userId // verified from the session, not a client header
 
+  // Deterministic preflight on the FIRST attempt, BEFORE the locked op row exists: bad
+  // warehouse / split / no-stock returns 400 here instead of throwing inside erp() (which
+  // would leave the family locked in failed_pre_erp). Skipped on retry (the row exists and
+  // runInventoryOp resumes/reconciles).
+  const { data: priorOp } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('idempotency_key')
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle()
+  if (!priorOp) {
+    try {
+      await transferPreflight(batch, itemCode, toWarehouse)
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 })
+    }
+  }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'move',
     createdBy: userId,
-    meta: { item_code: itemCode, warehouse: toWarehouse, batch },
+    meta: { item_code: itemCode, warehouse: toWarehouse, batch, family: palletBase(batch) },
     erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)

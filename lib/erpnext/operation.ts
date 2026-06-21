@@ -71,12 +71,48 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
 
   if (insErr) {
     const { data: ex } = await LOG()
-      .select('status, batch, erp_stock_entry, print_job_id')
+      .select('status, action, family, batch, item_code, station_id, qty, warehouse, erp_stock_entry, print_job_id, error')
       .eq('idempotency_key', key)
-      .single()
-    if (!ex) return { status: 500, body: { error: 'operation log conflict' } }
+      .maybeSingle()
+    if (!ex) {
+      // No row for THIS key, yet the insert still hit a unique violation -> it tripped the
+      // partial unique index on `family` (an active op already holds this pallet family).
+      // This is the atomic backstop for the same-pallet concurrency guard: refuse cleanly.
+      if (insErr.code === '23505') {
+        return { status: 409, body: { error: 'Another operation is in progress for this pallet; try again shortly.' } }
+      }
+      return { status: 500, body: { error: 'operation log conflict' } }
+    }
+
+    // Idempotency-key identity binding: a retry MUST describe the same operation. If a key
+    // is reused for a different action/pallet (client bug), refuse — otherwise we'd run the
+    // CURRENT closure against an unrelated row and (worse) without the right family lock.
+    // Bind the full operation identity so a reused key can't run THIS request's closures
+    // (esp. the label) against a different payload. We compare action + every stable
+    // identity field: family (= palletBase, invariant; `batch` is excluded because it's
+    // rewritten to the new serial on commit), the label inputs item_code + station, and
+    // the stock inputs qty + warehouse. Legit retries match (adjust/reprint pin qty from
+    // the prior op; add/move resend the same payload); only a changed-payload key reuse
+    // (a client bug) is rejected. (The client key already hashes the payload.)
+    const sameField = (a: unknown, b: unknown) => (a ?? null) === (b ?? null)
+    const sameNum = (a: unknown, b: unknown) =>
+      (a == null ? null : Number(a)) === (b == null ? null : Number(b))
+    const sameOp =
+      ex.action === action &&
+      sameField(ex.family, meta.family) &&
+      sameField(ex.item_code, meta.item_code) &&
+      sameField(ex.station_id, meta.station_id) &&
+      sameField(ex.warehouse, meta.warehouse) &&
+      sameNum(ex.qty, meta.qty)
+    if (!sameOp) {
+      return { status: 409, body: { error: 'This idempotency key was already used for a different operation.' } }
+    }
 
     if (ex.status === 'done') {
+      // A 'done' row whose stock committed but whose label FAILED carries a `label:` error
+      // and no print_job_id. Surface labelPending on the duplicate too, so a client retry
+      // after a lost response still learns the label needs reprinting.
+      const labelFailed = !ex.print_job_id && typeof ex.error === 'string' && ex.error.startsWith('label:')
       return {
         status: 200,
         body: {
@@ -85,6 +121,7 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
           batch: ex.batch,
           stockEntry: ex.erp_stock_entry,
           printJobId: ex.print_job_id,
+          ...(labelFailed ? { labelPending: true, message: 'Stock recorded; label print failed — use Reprint.' } : {}),
         },
       }
     }
@@ -163,7 +200,13 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       printJobId = await label(committed)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      await LOG().update({ error: `label: ${msg.slice(0, 400)}` }).eq('idempotency_key', key)
+      // Stock is already correct; only the label failed. Move to a TERMINAL 'done' state
+      // (recording the label error + committed batch) so the active-family lock RELEASES —
+      // otherwise the row sits at erp_committed, the family stays locked, and the user's
+      // Reprint would hit 409. Reprint then reissues normally to recover the label.
+      await LOG()
+        .update({ status: 'done', batch: committed.batch ?? null, erp_stock_entry: committed.stockEntry ?? null, error: `label: ${msg.slice(0, 400)}` })
+        .eq('idempotency_key', key)
       return {
         status: 200,
         body: {
@@ -177,7 +220,13 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
     }
   }
 
-  await LOG().update({ status: 'done', print_job_id: printJobId }).eq('idempotency_key', key)
+  // Persist batch + stock entry again on the final write: the mid-flight erp_committed
+  // checkpoint is best-effort (its failure is swallowed), and for a reissue that's where
+  // `batch` flips from the old serial to the new one. Writing it here too guarantees the
+  // row ends up pointing at the committed (new) serial even if the checkpoint was lost.
+  await LOG()
+    .update({ status: 'done', print_job_id: printJobId, batch: committed.batch ?? null, erp_stock_entry: committed.stockEntry ?? null })
+    .eq('idempotency_key', key)
   return {
     status: 200,
     body: { ok: true, batch: committed.batch, stockEntry: committed.stockEntry, printJobId },
