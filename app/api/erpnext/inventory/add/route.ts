@@ -1,0 +1,106 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { requireInventoryAccess } from '@/lib/erpnext/auth'
+import { addInventory, batchIdFor, reconcileStockEntry } from '@/lib/erpnext/inventory'
+import { buildPalletZpl } from '@/lib/erpnext/label'
+import { erpnextGetDoc } from '@/lib/erpnext/client'
+import { runInventoryOp } from '@/lib/erpnext/operation'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+
+// POST /api/erpnext/inventory/add
+// Receives a new pallet into ERPNext AND always creates + enqueues a label.
+// Idempotent + resumable via the client-supplied idempotencyKey (a double-tap
+// or a timeout-then-retry can never create two receipts).
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+const MAX_QTY = 10_000_000
+
+interface AddBody {
+  itemCode?: string
+  qty?: number
+  warehouse?: string
+  station?: string
+  customer?: string
+  ref?: string
+  idempotencyKey?: string
+}
+
+export async function POST(req: NextRequest) {
+  const guard = await requireInventoryAccess(req)
+  if (!guard.ok) return guard.res
+
+  let body: AddBody
+  try {
+    body = (await req.json()) as AddBody
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
+  const qty = Number(body.qty)
+  if (!itemCode || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY || !warehouse || !station || !idempotencyKey) {
+    return NextResponse.json(
+      { error: 'itemCode, qty (1..10M), warehouse, station, and idempotencyKey are required' },
+      { status: 400 }
+    )
+  }
+
+  // Validate the station before any ERP write.
+  const { data: stationRow } = await supabaseAdmin
+    .from('print_stations')
+    .select('id')
+    .eq('id', station)
+    .eq('enabled', true)
+    .single()
+  if (!stationRow) {
+    return NextResponse.json({ error: `Unknown or disabled printer station: ${station}` }, { status: 400 })
+  }
+
+  const userId = req.headers.get('x-user-id')
+  const batch = batchIdFor(itemCode, idempotencyKey)
+
+  const result = await runInventoryOp({
+    key: idempotencyKey,
+    action: 'add',
+    createdBy: userId,
+    meta: { item_code: itemCode, qty, warehouse, station_id: station, batch },
+    erp: () => addInventory({ itemCode, qty, warehouse, opKey: idempotencyKey }),
+    reconcile: async () => {
+      const se = await reconcileStockEntry(idempotencyKey)
+      return se ? { batch, stockEntry: se } : null
+    },
+    label: async (committed) => {
+      const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
+      const zpl = buildPalletZpl({
+        itemCode,
+        itemName: item.item_name ?? itemCode,
+        qty,
+        uom: item.stock_uom ?? 'pcs',
+        batch: committed.batch ?? batch,
+        customer,
+        ref,
+      })
+      const { data: job, error } = await supabaseAdmin
+        .from('print_jobs')
+        .upsert(
+          {
+            station_id: station,
+            zpl,
+            item_code: itemCode,
+            batch: committed.batch ?? batch,
+            created_by: userId,
+            idempotency_key: `print-${idempotencyKey}`,
+            status: 'pending', // resume/retry re-queues the label rather than leaving it lost
+          },
+          { onConflict: 'idempotency_key' }
+        )
+        .select('id')
+        .single()
+      if (error) throw new Error(error.message)
+      return job?.id ?? null
+    },
+  })
+
+  return NextResponse.json(result.body, { status: result.status })
+}

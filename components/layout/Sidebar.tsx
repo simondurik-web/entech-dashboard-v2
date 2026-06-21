@@ -45,26 +45,16 @@ import {
   Bell,
   Inbox,
   ShoppingCart,
-  CircleDot,
-  Disc,
-  AlertTriangle,
-  BookOpen,
-  Building2,
-  ExternalLink,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
-import { CollapsibleNavSection, NavAccordionProvider } from "@/components/ui/collapsible-nav"
-import { useQualityAccess } from "@/lib/use-quality-access"
-import { usePalletAccess } from "@/lib/use-pallet-access"
+import { CollapsibleNavSection } from "@/components/ui/collapsible-nav"
 
 type NavItem = {
   tKey: string
   href: string
   icon: React.ReactNode
   sub?: boolean
-  // Opens in a new tab via <a target="_blank"> instead of a Next <Link>.
-  external?: boolean
 }
 
 const productionItems: NavItem[] = [
@@ -72,6 +62,7 @@ const productionItems: NavItem[] = [
   { tKey: "nav.productionMake", href: "/need-to-make", icon: <Factory className="size-4" />, sub: true },
   { tKey: "nav.ordersQueue", href: "/need-to-package", icon: <Package className="size-4" />, sub: true },
   { tKey: "nav.inventory", href: "/inventory", icon: <Archive className="size-4" /> },
+  { tKey: "nav.inventoryOps", href: "/inventory-ops", icon: <Package className="size-4" />, sub: true },
   { tKey: "nav.inventoryHistory", href: "/inventory-history", icon: <TrendingUp className="size-4" />, sub: true },
   { tKey: "nav.drawingsLibrary", href: "/drawings", icon: <Ruler className="size-4" />, sub: true },
   { tKey: "nav.scheduling", href: "/scheduling", icon: <CalendarDays className="size-4" /> },
@@ -81,7 +72,7 @@ const productionItems: NavItem[] = [
 const shippingItems: NavItem[] = [
   { tKey: "nav.ordersStaged", href: "/staged", icon: <PackageCheck className="size-4" /> },
   { tKey: "nav.ordersShipped", href: "/shipped", icon: <Truck className="size-4" /> },
-  { tKey: "nav.palletPhotos", href: "/pallet-photos", icon: <Camera className="size-4" /> },
+  { tKey: "nav.palletRecords", href: "/pallet-records", icon: <Camera className="size-4" /> },
   { tKey: "nav.shippingRecords", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { tKey: "nav.shippingOverview", href: "/shipping-overview", icon: <Ship className="size-4" /> },
 ]
@@ -105,47 +96,11 @@ const toolsItems: NavItem[] = [
   { tKey: "nav.quotes", href: "/quotes", icon: <DollarSign className="size-4" /> },
 ]
 
-// Quality (EQDR) section. Visibility is gated by the user's Quality role
-// (see useQualityAccess) — not the molding menu permissions — so the existing
-// QA users keep their access. Admin sub-items are filtered separately.
-const qualityItems: NavItem[] = [
-  { tKey: "nav.qualityDashboard", href: "/quality", icon: <ClipboardCheck className="size-4" /> },
-  { tKey: "nav.qualityHubs", href: "/quality/hubs", icon: <CircleDot className="size-4" />, sub: true },
-  { tKey: "nav.qualityTires", href: "/quality/tires", icon: <Disc className="size-4" />, sub: true },
-  { tKey: "nav.qualityFinished", href: "/quality/finished", icon: <PackageCheck className="size-4" />, sub: true },
-  { tKey: "nav.qualityNcr", href: "/quality/ncr", icon: <AlertTriangle className="size-4" />, sub: true },
-]
-
-const qualityProductsItem: NavItem = { tKey: "nav.qualityProducts", href: "/quality/products", icon: <Package className="size-4" />, sub: true }
-const qualityUsersItem: NavItem = { tKey: "nav.qualityUsers", href: "/quality/users", icon: <Users className="size-4" />, sub: true }
-const qualityAuditItem: NavItem = { tKey: "nav.qualityAudit", href: "/quality/audit", icon: <FileText className="size-4" />, sub: true }
-const qualityLimitsItem: NavItem = { tKey: "nav.qualityLimits", href: "/quality/limits", icon: <Ruler className="size-4" />, sub: true }
-
-// Pallet Records (ported pallet-registration app). Visibility is gated by
-// membership in users(app='production') — see usePalletAccess — mirroring the
-// standalone app's own user list. Admin item only for production admins.
-const palletItems: NavItem[] = [
-  { tKey: "pallets.nav.production", href: "/pallet-records", icon: <Factory className="size-4" /> },
-  { tKey: "pallets.nav.shipping", href: "/pallet-records/shipping", icon: <Truck className="size-4" />, sub: true },
-]
-const palletAdminItem: NavItem = { tKey: "pallets.nav.admin", href: "/pallet-records/admin", icon: <Settings className="size-4" />, sub: true }
-
 const adminItems: NavItem[] = [
   { tKey: "User Management", href: "/admin/users", icon: <Users className="size-4" /> },
   { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
   { tKey: "Notifications", href: "/admin/notifications", icon: <Bell className="size-4" /> },
 ]
-
-// Public Roll-Tech catalog — opens in a new tab so anyone (Phil, visitors)
-// can grab the shareable customer-facing link without leaving the dashboard.
-// Deliberately NOT role-gated: the catalog is public information (Simon,
-// 2026-06-10).
-const catalogItem: NavItem = { tKey: "nav.catalog", href: "https://rolltech-catalog.vercel.app", icon: <BookOpen className="size-4" />, external: true }
-
-// ERPNext (erp.4molding.com) — opens in a new tab. Like the catalog, this is a
-// shortcut to an external system; not role-gated here (the ERP enforces its own
-// login).
-const erpItem: NavItem = { tKey: "nav.erp", href: "https://erp.4molding.com/app/home", icon: <Building2 className="size-4" />, external: true }
 
 const ROLE_LABELS: Record<string, string> = {
   visitor: "Visitor",
@@ -175,8 +130,6 @@ export function Sidebar({
   const { t } = useI18n()
   const { user, profile, signIn, signOut } = useAuth()
   const { canAccess } = usePermissions()
-  const { canSeeQuality, canManageQuality, canEditLimits } = useQualityAccess()
-  const { canSeePallets, isPalletAdmin } = usePalletAccess()
   const [mounted, setMounted] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -267,74 +220,8 @@ export function Sidebar({
   const showAllData = canAccess("/all-data")
   const isAdmin = profile?.role === "admin"
 
-  // Quality nav: base items for anyone who can see the section, plus admin
-  // items (Products/Users/Audit gated by canManageQuality, Limits by canEditLimits).
-  const qualityNav: NavItem[] = [
-    ...qualityItems,
-    ...(canManageQuality ? [qualityProductsItem, qualityUsersItem, qualityAuditItem] : []),
-    ...(canEditLimits ? [qualityLimitsItem] : []),
-  ]
-
-  const palletNav: NavItem[] = [
-    ...palletItems,
-    ...(isPalletAdmin ? [palletAdminItem] : []),
-  ]
-
-  // Accordion (Option A): figure out which section contains the current page
-  // so it auto-opens and the rest stay collapsed. Longest-prefix match handles
-  // nested routes (e.g. /quality/hubs → quality, /orders/123 → production).
-  const navSections: { key: string; hrefs: string[] }[] = [
-    { key: "production", hrefs: productionItems.map((i) => i.href) },
-    { key: "shipping", hrefs: shippingItems.map((i) => i.href) },
-    { key: "sales", hrefs: salesItems.map((i) => i.href) },
-    { key: "tools", hrefs: toolsItems.map((i) => i.href) },
-    { key: "quality", hrefs: qualityNav.map((i) => i.href) },
-    { key: "pallet-records", hrefs: palletNav.map((i) => i.href) },
-    { key: "reports", hrefs: ["/reports"] },
-    { key: "raw-data", hrefs: ["/all-data"] },
-    { key: "admin", hrefs: adminItems.map((i) => i.href) },
-  ]
-  let activeSectionKey: string | null = null
-  let activeMatchLen = -1
-  for (const section of navSections) {
-    for (const href of section.hrefs) {
-      if (pathname === href || pathname.startsWith(`${href}/`)) {
-        if (href.length > activeMatchLen) {
-          activeMatchLen = href.length
-          activeSectionKey = section.key
-        }
-      }
-    }
-  }
-
   const renderNavItem = (item: NavItem, useTranslation = true) => {
     const isActive = pathname === item.href
-    if (item.external) {
-      return (
-        <li key={item.href}>
-          <a
-            href={item.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={onClose}
-            title={!expanded ? (useTranslation ? t(item.tKey) : item.tKey) : undefined}
-            className={cn(
-              "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 whitespace-nowrap overflow-hidden",
-              "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
-            )}
-          >
-            <span className="relative shrink-0">{item.icon}</span>
-            <span className={cn(
-              "relative flex items-center gap-1.5 transition-all duration-300",
-              expanded ? "opacity-100 w-auto" : "opacity-0 w-0"
-            )}>
-              {useTranslation ? t(item.tKey) : item.tKey}
-              <ExternalLink className="size-3 opacity-50" />
-            </span>
-          </a>
-        </li>
-      )
-    }
     return (
       <li key={item.href}>
         <Link
@@ -499,7 +386,6 @@ export function Sidebar({
               )}
             >
             <LayoutGroup>
-            <NavAccordionProvider activeKey={activeSectionKey}>
             {filteredProduction.length > 0 && (
               <CollapsibleNavSection label={t('nav.production')} expanded={expanded} storageKey="production">
                 <ul className="space-y-0.5">
@@ -532,22 +418,6 @@ export function Sidebar({
               </CollapsibleNavSection>
             )}
 
-            {canSeeQuality && (
-              <CollapsibleNavSection label={t('nav.quality')} expanded={expanded} storageKey="quality" defaultOpen={true}>
-                <ul className="space-y-0.5 mt-1">
-                  {qualityNav.map((item) => renderNavItem(item))}
-                </ul>
-              </CollapsibleNavSection>
-            )}
-
-            {canSeePallets && (
-              <CollapsibleNavSection label={t('nav.palletRecordsSection')} expanded={expanded} storageKey="pallet-records" defaultOpen={true}>
-                <ul className="space-y-0.5 mt-1">
-                  {palletNav.map((item) => renderNavItem(item))}
-                </ul>
-              </CollapsibleNavSection>
-            )}
-
             {/* Reports */}
             <CollapsibleNavSection label="REPORTS" expanded={expanded} storageKey="reports" defaultOpen={true}>
             <ul className="space-y-0.5 mt-1">
@@ -570,12 +440,6 @@ export function Sidebar({
                 </ul>
               </CollapsibleNavSection>
             )}
-
-            </NavAccordionProvider>
-            <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
-              {renderNavItem(catalogItem)}
-              {renderNavItem(erpItem)}
-            </ul>
             </LayoutGroup>
             </nav>
             {expanded && canScrollDown && (
@@ -795,52 +659,6 @@ export function Sidebar({
             </>
           )}
 
-          {canSeeQuality && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.quality')}</p>
-              <ul className="space-y-0.5">
-                {qualityNav.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <li key={item.href}>
-                      <Link href={item.href} onClick={onClose} className={cn(
-                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                        item.sub && "ml-4 text-xs",
-                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
-                      )}>
-                        {item.icon}
-                        <span>{t(item.tKey)}</span>
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
-
-          {canSeePallets && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.palletRecordsSection')}</p>
-              <ul className="space-y-0.5">
-                {palletNav.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <li key={item.href}>
-                      <Link href={item.href} onClick={onClose} className={cn(
-                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                        item.sub && "ml-4 text-xs",
-                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
-                      )}>
-                        {item.icon}
-                        <span>{t(item.tKey)}</span>
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
-
           <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">REPORTS</p>
           <ul className="space-y-0.5">
             <li>
@@ -892,21 +710,6 @@ export function Sidebar({
               </ul>
             </>
           )}
-
-          <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
-            <li>
-              <a href={catalogItem.href} target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent">
-                {catalogItem.icon}
-                <span className="flex items-center gap-1.5">{t(catalogItem.tKey)}<ExternalLink className="size-3 opacity-50" /></span>
-              </a>
-            </li>
-            <li>
-              <a href={erpItem.href} target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150 text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent">
-                {erpItem.icon}
-                <span className="flex items-center gap-1.5">{t(erpItem.tKey)}<ExternalLink className="size-3 opacity-50" /></span>
-              </a>
-            </li>
-          </ul>
         </nav>
 
         {canAccess('/phil-assistant') && (

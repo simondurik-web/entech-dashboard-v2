@@ -58,8 +58,125 @@ function escapeLike(s: string): string {
 // Cloudflare/ERPNext URL limits on a broad search.
 const MAX_CODES = 100
 
+/** Warehouses/bins for the Add form (non-group, enabled). Optional name filter. */
+export async function listWarehouses(query?: string): Promise<string[]> {
+  const filters: unknown[] = [
+    ['is_group', '=', 0],
+    ['disabled', '=', 0],
+  ]
+  const q = query?.trim()
+  if (q) filters.push(['name', 'like', `%${escapeLike(q)}%`])
+  const qs = [
+    listParam('filters', filters),
+    listParam('fields', ['name']),
+    'order_by=name asc',
+    'limit_page_length=0',
+  ].join('&')
+  const r = await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Warehouse?${qs}`)
+  return (r.data ?? []).map((w) => w.name)
+}
+
+/** Item search for the Add form picker (code or name). */
+export async function searchItems(
+  query: string
+): Promise<{ itemCode: string; itemName: string }[]> {
+  const q = query.trim()
+  if (q.length < 2) return []
+  const like = `%${escapeLike(q)}%`
+  const qs = [
+    listParam('or_filters', [
+      ['item_code', 'like', like],
+      ['item_name', 'like', like],
+    ]),
+    listParam('fields', ['item_code', 'item_name']),
+    'order_by=item_code asc',
+    'limit_page_length=25',
+  ].join('&')
+  const r = await erpnextGet<{ data: { item_code: string; item_name: string }[] }>(
+    `/api/resource/Item?${qs}`
+  )
+  return (r.data ?? []).map((i) => ({ itemCode: i.item_code, itemName: i.item_name }))
+}
+
 function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
+}
+
+/** Low-level write (POST/PUT) against the ERPNext REST API. */
+async function erpnextSend<T = unknown>(
+  method: 'POST' | 'PUT',
+  path: string,
+  body: unknown
+): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`ERPNext ${method} ${path} -> ${res.status} ${t.slice(0, 300)}`)
+  }
+  return res.json() as Promise<T>
+}
+
+/** Create a doc: POST /api/resource/<Doctype>. Returns the saved doc. */
+export async function erpnextCreate<T = Record<string, unknown>>(
+  doctype: string,
+  doc: Record<string, unknown>
+): Promise<T> {
+  const r = await erpnextSend<{ data: T }>('POST', `/api/resource/${encodeURIComponent(doctype)}`, doc)
+  return r.data
+}
+
+/** Fetch a single doc fresh (needed before submit — see the recipe). */
+export async function erpnextGetDoc<T = Record<string, unknown>>(
+  doctype: string,
+  name: string
+): Promise<T> {
+  const r = await erpnextGet<{ data: T }>(
+    `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`
+  )
+  return r.data
+}
+
+/** Submit a (freshly fetched) doc. Submitting the original POST payload throws
+ *  TimestampMismatchError — always pass a re-fetched doc. */
+export async function erpnextSubmit<T = Record<string, unknown>>(doc: unknown): Promise<T> {
+  const r = await erpnextSend<{ message: T }>('POST', `/api/method/frappe.client.submit`, {
+    doc: JSON.stringify(doc),
+  })
+  return r.message
+}
+
+/** Cancel a submitted doc. */
+export async function erpnextCancel(doctype: string, name: string): Promise<void> {
+  await erpnextSend('POST', `/api/method/frappe.client.cancel`, { doctype, name })
+}
+
+/** Patch fields on an existing doc: PUT /api/resource/<Doctype>/<name>. */
+export async function erpnextUpdate<T = Record<string, unknown>>(
+  doctype: string,
+  name: string,
+  patch: Record<string, unknown>
+): Promise<T> {
+  const r = await erpnextSend<{ data: T }>(
+    'PUT',
+    `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+    patch
+  )
+  return r.data
+}
+
+/** Call a whitelisted GET method, e.g. get_batch_qty. */
+export async function erpnextCallGet<T = unknown>(
+  method: string,
+  params: Record<string, string>
+): Promise<T> {
+  const qs = new URLSearchParams(params).toString()
+  return erpnextGet<T>(`/api/method/${method}?${qs}`)
 }
 
 // ─── Search by location ───
