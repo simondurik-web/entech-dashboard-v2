@@ -82,5 +82,40 @@ any change here.
 Done: search/locate, add, adjust, remove, list pallets, history (traceability),
 **bin Move**, **Reprint**, generated date/time on label, scanner zoom + reticle.
 
+## 4-agent review findings (2026-06-21: Codex/GPT-5.5, Grok/Composer-2.5, Gemini-Ultra, Opus) — hardening backlog
+
+Shipped-code fixes (do with the serialization work):
+- Stable idempotency keys for adjust/move/remove/reprint (currently a fresh uuid per
+  click → a timeout can double-apply). Mirror `addKeyRef`.
+- `reprint`: add a `reconcile` (no-op op can stick on `pending`); validate the batch is
+  active + has qty>0 + `batch.item === itemCode` before printing.
+- Assert `batch.item === itemCode` + batch active before adjust/move/remove (don't trust
+  the client itemCode).
+- `move`: preflight the destination warehouse (group/disabled/company), like add.
+- `page.tsx` pallet cache merge must let FRESH search data win (`{...p, ...seeded}`).
+- `print_jobs` upsert must not reset an already-printed/claimed job back to `pending`.
+- Per-batch concurrency guard: reject a new op while one is in-flight for that batch.
+- `generatePalletId`: reserve the code (or owner-check a reused batch) to avoid a
+  concurrent-collision merging two pallets.
+- Bind the idempotency key to action/payload (reject same key + different body).
+- `listPallets` 25-cap can hide older on-hand pallets; query by stock instead.
+- Surface `labelPending` on adjust/reprint UI; treat adjust-to-0 as a soft remove.
+- (Security, pre-existing, decide separately) `x-user-id` header is forgeable — derive
+  identity from the verified session if we harden it.
+
+Serialization build requirements (all 4 agents agree):
+- Repack CANNOT increase qty. Split paths: same-qty + qty-down = Repack (consume full,
+  produce target); qty-up = Repack 1:1 + Material Receipt for the delta.
+- Order of operations (v15 validates batch at submission): create new batch → submit
+  Repack → THEN disable old batch.
+- Suffix allocation must be atomic + race-free (Supabase row lock / unique
+  `(base, suffix)`); the new serial must be deterministic + reused on op retry.
+- Step-indexed ops-log state (BATCH_CREATED → REPACK_SUBMITTED → OLD_DISABLED) storing
+  the ERPNext Batch + Stock Entry ids; reconcile checks those ids before re-doing steps.
+- Store a `superseded_by` pointer on the Batch (custom field) for old→current resolution;
+  guard against cycles + cap recursion. Scanner/search must parse the `-NN` suffix.
+- Partial-failure note: a repack empties the old batch to 0, so ERPNext already rejects
+  the old label even if the disable step fails (disable is belt-and-suspenders).
+
 > Rule of thumb for every change here: update this doc, keep EN+ES strings in sync,
 > and remember staging must stay a superset of main so a promotion never reverts work.
