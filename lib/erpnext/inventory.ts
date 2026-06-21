@@ -1,4 +1,4 @@
-import { createHash } from 'crypto'
+import { randomBytes } from 'crypto'
 import {
   erpnextCreate,
   erpnextGet,
@@ -19,12 +19,54 @@ function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
 }
 
-/** Deterministic pallet/batch id derived from the idempotency key, so a retry
- *  of the same add reuses the same batch instead of orphaning a new one. */
-export function batchIdFor(itemCode: string, opKey: string): string {
-  const clean = itemCode.replace(/[^A-Za-z0-9.\-]/g, '').slice(0, 20)
-  const suffix = createHash('sha1').update(opKey).digest('hex').slice(0, 8).toUpperCase()
-  return `PLT-${clean}-${suffix}`
+// ─── Pallet id ───────────────────────────────────────────────────────────────
+// Pallet ids are short, human-typeable codes that double as the QR payload. We
+// use Crockford base32 (digits + letters, MINUS I/L/O/U which get confused with
+// 1/0) so a code read off a label is unambiguous. The id is the ERPNext Batch
+// name, which is globally unique by definition, so two pallets can never share
+// one. We start at 4 characters (~1M codes) and AUTO-GROW: once a length is so
+// saturated that random picks keep colliding, the generator silently moves to
+// the next length (5 -> ~33M, 6 -> ~1B). A 4-char and a 5-char code are just
+// different strings, so growth needs no migration and never breaks old labels.
+const PALLET_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ' // Crockford base32 (no I/L/O/U)
+const PALLET_MIN_LEN = 4
+const PALLET_MAX_LEN = 10
+// Consecutive collisions at one length before we grow. 8 misses means the space
+// is ~99.6%+ full, so in practice this only fires near true exhaustion.
+const PALLET_GROW_AFTER = 8
+
+/** One random base32 code of the given length. `byte % 32` is unbiased because
+ *  256 is an exact multiple of 32. */
+function randomPalletCode(len: number): string {
+  const bytes = randomBytes(len)
+  let code = ''
+  for (let i = 0; i < len; i++) code += PALLET_ALPHABET[bytes[i] % 32]
+  return code
+}
+
+/** True if a Batch with this id already exists in ERPNext. */
+async function batchExists(id: string): Promise<boolean> {
+  return erpnextGet(`/api/resource/Batch/${encodeURIComponent(id)}`)
+    .then(() => true)
+    .catch(() => false)
+}
+
+/** Mint a fresh, unique pallet id. Uniqueness is enforced against the live
+ *  ERPNext Batch table (the Batch name is the primary key), so the returned code
+ *  is guaranteed not to collide with any existing pallet. Grows the length
+ *  automatically when the current length is saturated. */
+export async function generatePalletId(): Promise<string> {
+  let len = PALLET_MIN_LEN
+  let missesAtLen = 0
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const code = randomPalletCode(len)
+    if (!(await batchExists(code))) return code
+    if (++missesAtLen >= PALLET_GROW_AFTER && len < PALLET_MAX_LEN) {
+      len++
+      missesAtLen = 0
+    }
+  }
+  throw new Error('Could not allocate a unique pallet id')
 }
 
 /** Validate the destination warehouse + that the item is batch-tracked. Throws
@@ -77,6 +119,7 @@ export interface AddInventoryInput {
   qty: number
   warehouse: string
   opKey: string
+  batch: string // pre-minted unique pallet id (see generatePalletId); reused on retry
 }
 
 export interface AddInventoryResult extends Committed {
@@ -88,11 +131,11 @@ export interface AddInventoryResult extends Committed {
  *  Receipt binding it (use_serial_batch_fields + batch_no both required), submit.
  *  The Stock Entry is stamped [op:<key>] for reconcile. */
 export async function addInventory(input: AddInventoryInput): Promise<AddInventoryResult> {
-  const { itemCode, qty, warehouse, opKey } = input
+  const { itemCode, qty, warehouse, opKey, batch } = input
   const { itemName, uom } = await preflight(itemCode, warehouse)
-  const batch = batchIdFor(itemCode, opKey)
 
-  // Batch create is skip-if-exists (deterministic id), so a retry reuses it.
+  // Batch create is skip-if-exists (the id is reserved per op + reused on retry),
+  // so a retry of the same add reuses the batch instead of orphaning a new one.
   if (!(await erpnextGet(`/api/resource/Batch/${encodeURIComponent(batch)}`).then(() => true).catch(() => false))) {
     await erpnextCreate('Batch', { batch_id: batch, item: itemCode, custom_pallet_qty: qty })
   }

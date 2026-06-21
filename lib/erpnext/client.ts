@@ -246,10 +246,27 @@ export async function locateItems(query: string): Promise<LocateResult[]> {
   const stockedByCode =
     (await erpnextGet<{ data: BinRow[] }>(`/api/resource/Bin?${binByCodeQs}`)).data ?? []
 
-  // Full code set = name/code matches + any stocked code found directly.
-  // Cap it so the `in` filters below can't produce an over-long GET URL.
+  // 2b) Pallet-id match. A scanned/typed pallet code IS a Batch name; resolve it
+  // to its item so the part's card surfaces. Pallet ids are pure base32 (no dots
+  // or spaces), so we only run this extra lookup when q could be one — part-number
+  // and location searches (which contain '.', ' ', etc.) skip it.
+  let palletItemCodes: string[] = []
+  if (/^[0-9A-Za-z]{3,12}$/.test(q)) {
+    const batchQs = [
+      listParam('or_filters', [['name', 'like', like]]),
+      listParam('fields', ['item']),
+      'limit_page_length=10',
+    ].join('&')
+    const batches = (await erpnextGet<{ data: { item: string }[] }>(`/api/resource/Batch?${batchQs}`)).data ?? []
+    palletItemCodes = batches.map((b) => b.item).filter(Boolean)
+  }
+
+  // Full code set = name/code matches + any stocked code found directly + items
+  // behind a matching pallet id. Cap it so the `in` filters below can't produce
+  // an over-long GET URL.
   const codeSet = new Set<string>(items.map((i) => i.item_code))
   for (const b of stockedByCode) codeSet.add(b.item_code)
+  for (const c of palletItemCodes) codeSet.add(c)
   if (codeSet.size === 0) return []
   const codes = [...codeSet].slice(0, MAX_CODES)
   const codeAllow = new Set(codes)

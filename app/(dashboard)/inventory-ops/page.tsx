@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Search,
   MapPin,
@@ -14,11 +15,16 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
+  ScanLine,
 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
+
+// Camera scanner is browser-only (getUserMedia) and heavy — load it on demand.
+const PalletScanner = dynamic(() => import('@/components/inventory/PalletScanner'), { ssr: false })
 
 interface BinLocation {
   warehouse: string
@@ -98,6 +104,7 @@ export default function InventoryOpsPage() {
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+  const [scanOpen, setScanOpen] = useState(false)
 
   const runSearch = useCallback(
     async (q: string, signal: AbortSignal) => {
@@ -182,6 +189,8 @@ export default function InventoryOpsPage() {
   const [addItem, setAddItem] = useState<ItemOption | null>(null)
   const [itemQuery, setItemQuery] = useState('')
   const [itemOptions, setItemOptions] = useState<ItemOption[]>([])
+  const itemListRef = useRef<HTMLDivElement>(null)
+  const scrollItems = (dir: 1 | -1) => itemListRef.current?.scrollBy({ top: dir * 140, behavior: 'smooth' })
   const [addQty, setAddQty] = useState('')
   const [addWarehouse, setAddWarehouse] = useState('')
   const [whFilter, setWhFilter] = useState('')
@@ -375,19 +384,45 @@ export default function InventoryOpsPage() {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
                   />
                   {itemOptions.length > 0 && (
-                    <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover shadow-lg">
-                      {itemOptions.map((o) => (
+                    <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+                      {itemOptions.length > 5 && (
                         <button
-                          key={o.itemCode}
-                          onClick={() => {
-                            setAddItem(o)
-                            setItemOptions([])
-                          }}
-                          className="block w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                          type="button"
+                          onClick={() => scrollItems(-1)}
+                          aria-label={t('inventoryOps.scrollUp')}
+                          className="flex w-full items-center justify-center border-b border-border bg-popover py-1.5 text-muted-foreground hover:bg-accent"
                         >
-                          <span className="font-mono">{o.itemCode}</span> — {o.itemName}
+                          <ChevronUp className="h-4 w-4" />
                         </button>
-                      ))}
+                      )}
+                      <div
+                        ref={itemListRef}
+                        className="inv-scroll max-h-60 overflow-y-auto overscroll-contain"
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                      >
+                        {itemOptions.map((o) => (
+                          <button
+                            key={o.itemCode}
+                            onClick={() => {
+                              setAddItem(o)
+                              setItemOptions([])
+                            }}
+                            className="block w-full px-3 py-3 text-left text-sm hover:bg-accent"
+                          >
+                            <span className="font-mono">{o.itemCode}</span> — {o.itemName}
+                          </button>
+                        ))}
+                      </div>
+                      {itemOptions.length > 5 && (
+                        <button
+                          type="button"
+                          onClick={() => scrollItems(1)}
+                          aria-label={t('inventoryOps.scrollDown')}
+                          className="flex w-full items-center justify-center border-t border-border bg-popover py-1.5 text-muted-foreground hover:bg-accent"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
@@ -464,12 +499,31 @@ export default function InventoryOpsPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('inventoryOps.searchPlaceholder')}
-          className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-12 text-sm outline-none focus:ring-2 focus:ring-primary/40"
         />
-        {searching && (
-          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-        )}
+        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+          {searching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          <button
+            type="button"
+            onClick={() => setScanOpen(true)}
+            aria-label={t('inventoryOps.scan')}
+            title={t('inventoryOps.scan')}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ScanLine className="h-5 w-5" />
+          </button>
+        </div>
       </div>
+
+      {scanOpen && (
+        <PalletScanner
+          onClose={() => setScanOpen(false)}
+          onResult={(code) => {
+            setQuery(code)
+            setScanOpen(false)
+          }}
+        />
+      )}
 
       {searchError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">

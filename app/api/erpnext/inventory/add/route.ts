@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { addInventory, batchIdFor, reconcileStockEntry } from '@/lib/erpnext/inventory'
+import { addInventory, generatePalletId, reconcileStockEntry } from '@/lib/erpnext/inventory'
 import { buildPalletZpl } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp } from '@/lib/erpnext/operation'
@@ -58,14 +58,24 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = req.headers.get('x-user-id')
-  const batch = batchIdFor(itemCode, idempotencyKey)
+
+  // Pallet id: reuse the one already reserved for this op (a retry), else mint a
+  // fresh unique code. Reusing it keeps retries idempotent — addInventory's Batch
+  // create is skip-if-exists, and reconcile reports the same id — so a
+  // timeout-then-retry can never orphan a second pallet.
+  const { data: priorOp } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('batch')
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle()
+  const batch: string = priorOp?.batch ?? (await generatePalletId())
 
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'add',
     createdBy: userId,
     meta: { item_code: itemCode, qty, warehouse, station_id: station, batch },
-    erp: () => addInventory({ itemCode, qty, warehouse, opKey: idempotencyKey }),
+    erp: () => addInventory({ itemCode, qty, warehouse, opKey: idempotencyKey, batch }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
       return se ? { batch, stockEntry: se } : null
