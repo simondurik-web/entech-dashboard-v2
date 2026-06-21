@@ -120,7 +120,14 @@ export async function POST(req: NextRequest) {
         .select('id')
         .maybeSingle()
       if (error) throw new Error(error.message)
-      return job?.id ?? null
+      if (job?.id) return job.id
+      // Conflict (job already queued): recover its id so the op log keeps the link.
+      const { data: existing } = await supabaseAdmin
+        .from('print_jobs')
+        .select('id')
+        .eq('idempotency_key', `print-${idempotencyKey}`)
+        .maybeSingle()
+      return existing?.id ?? null
     },
   })
 

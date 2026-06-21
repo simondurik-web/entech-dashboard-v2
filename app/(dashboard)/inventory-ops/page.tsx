@@ -106,6 +106,13 @@ const uuid = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
+// On an exact pallet scan, show only the bin that holds the matched pallet (so other
+// bins don't look stocked with no pallet under them).
+function visibleBins(r: LocateResult, matched: string | null): BinLocation[] {
+  if (!matched) return r.bins
+  return r.bins.filter((b) => (r.pallets ?? []).some((p) => p.batch === matched && p.warehouse === b.warehouse))
+}
+
 export default function InventoryOpsPage() {
   const { t } = useI18n()
   const { canAccess } = usePermissions()
@@ -122,13 +129,17 @@ export default function InventoryOpsPage() {
   // on the SAME pallet reuses the key so the server dedupes it (no double adjust/move/
   // remove/reprint). Cleared only on success, so the next deliberate action is fresh.
   const opKeysRef = useRef<Record<string, string>>({})
-  const opKey = (action: string, batch: string) => {
-    const k = `${action}:${batch}`
+  // Key is bound to action + pallet + the PAYLOAD, so retrying the SAME action with
+  // the SAME values reuses the key (server dedupes), but changing a value (e.g. a
+  // different qty/destination) mints a fresh key — never silently dedupes a different
+  // request against the first one.
+  const opKey = (action: string, batch: string, payload: unknown = '') => {
+    const k = `${action}:${batch}:${JSON.stringify(payload)}`
     if (!opKeysRef.current[k]) opKeysRef.current[k] = uuid()
     return opKeysRef.current[k]
   }
-  const clearOpKey = (action: string, batch: string) => {
-    delete opKeysRef.current[`${action}:${batch}`]
+  const clearOpKey = (action: string, batch: string, payload: unknown = '') => {
+    delete opKeysRef.current[`${action}:${batch}:${JSON.stringify(payload)}`]
   }
 
   const authedFetch = useCallback(
@@ -407,11 +418,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/adjust', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, newQty: qty, station: addStation || stations[0]?.id, idempotencyKey: opKey('adjust', batch) }),
+        body: JSON.stringify({ batch, itemCode, newQty: qty, station: addStation || stations[0]?.id, idempotencyKey: opKey('adjust', batch, qty) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'adjust failed')
-      clearOpKey('adjust', batch)
+      clearOpKey('adjust', batch, qty)
       showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}`)
       setEditBatch(null)
       loadPallets(itemCode)
@@ -432,11 +443,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/remove', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, reason: reason.trim(), idempotencyKey: opKey('remove', batch) }),
+        body: JSON.stringify({ batch, itemCode, reason: reason.trim(), idempotencyKey: opKey('remove', batch, reason.trim()) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'remove failed')
-      clearOpKey('remove', batch)
+      clearOpKey('remove', batch, reason.trim())
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
       loadPallets(itemCode)
     } catch (e) {
@@ -455,11 +466,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/move', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, toWarehouse: moveWarehouse, idempotencyKey: opKey('move', batch) }),
+        body: JSON.stringify({ batch, itemCode, toWarehouse: moveWarehouse, idempotencyKey: opKey('move', batch, moveWarehouse) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'move failed')
-      clearOpKey('move', batch)
+      clearOpKey('move', batch, moveWarehouse)
       showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
       setMovingBatch(null)
       setMoveWarehouse('')
@@ -491,11 +502,11 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/reprint', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, station, idempotencyKey: opKey('reprint', batch) }),
+        body: JSON.stringify({ batch, itemCode, station, idempotencyKey: opKey('reprint', batch, station) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'reprint failed')
-      clearOpKey('reprint', batch)
+      clearOpKey('reprint', batch, station)
       showFlash('ok', `${t('inventoryOps.reprinted')} ${batch}`)
       if (historyOpen === batch) {
         setHistory((h) => {
@@ -748,11 +759,13 @@ export default function InventoryOpsPage() {
               </div>
             </div>
             <div className="mt-3 border-t border-border pt-3">
-              {r.bins.length === 0 ? (
-                <div className="text-xs text-muted-foreground">{t('inventoryOps.noStock')}</div>
+              {visibleBins(r, matchedPallet).length === 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  {matchedPallet ? t('inventoryOps.palletSuperseded') : t('inventoryOps.noStock')}
+                </div>
               ) : (
                 <ul className="space-y-1.5">
-                  {r.bins.map((b, i) => {
+                  {visibleBins(r, matchedPallet).map((b, i) => {
                     const binPallets = (r.pallets ?? [])
                       .filter((p) => p.warehouse === b.warehouse)
                       // On an exact pallet scan, show ONLY that pallet (never its siblings).
@@ -920,7 +933,10 @@ export default function InventoryOpsPage() {
                                     .map((w) => (
                                       <button
                                         key={w}
-                                        onClick={() => setMoveWarehouse(w)}
+                                        onClick={() => {
+                                          setMoveWarehouse(w)
+                                          setMoveWhFilter(w)
+                                        }}
                                         className={`block w-full px-2 py-2 text-left text-sm hover:bg-accent ${
                                           moveWarehouse === w ? 'bg-primary/15 font-medium text-primary' : ''
                                         }`}

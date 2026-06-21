@@ -1217,6 +1217,7 @@
   "inventoryOps.moveTo": "Move this pallet to:",
   "inventoryOps.moveConfirm": "Move",
   "inventoryOps.noBins": "No matching bins",
+  "inventoryOps.palletSuperseded": "This pallet has no active stock - it may have been removed or superseded by a reprint.",
   "inventoryOps.moved": "Moved pallet",
   "inventoryOps.reprint": "Reprint label",
   "inventoryOps.reprinted": "Reprinting label for",

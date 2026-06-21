@@ -89,6 +89,12 @@ remove/reprint; `assertBatchItem` guard (batch belongs to item + active) on adju
 remove/move/reprint; Move preflights the destination warehouse; reprint validates
 batch active + qty>0 and has a reconcile (no stuck pending); fresh search data wins the
 pallet-cache merge; label upserts are insert-or-ignore (no reprint of a printed job).
+2nd review round (incremental, all 4 agents) caught + FIXED regressions: idempotency
+key now binds the payload (changed qty/dest/station mints a fresh key); label upserts
+recover the existing print_job_id on conflict (no nulled link); removeInventory skips
+the active-check (its own retry); transfer returns success if already at destination;
+Move type-ahead fills the input on select; matched scan shows only the matched bin
+(+ "superseded" note if the pallet isn't active).
 STAGE 2 (next): auth hardening (verified session identity). STAGE 3: serialization.
 Still open from the list below: per-batch in-flight lock, idempotency-key payload
 binding, listPallets 25-cap, labelPending surfaced on adjust/reprint, adjust-to-0 soft

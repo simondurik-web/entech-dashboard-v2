@@ -1217,6 +1217,7 @@
   "inventoryOps.moveTo": "Mover esta tarima a:",
   "inventoryOps.moveConfirm": "Mover",
   "inventoryOps.noBins": "No hay ubicaciones que coincidan",
+  "inventoryOps.palletSuperseded": "Esta tarima no tiene existencias activas - pudo haber sido eliminada o reemplazada por una reimpresión.",
   "inventoryOps.moved": "Tarima movida",
   "inventoryOps.reprint": "Reimprimir etiqueta",
   "inventoryOps.reprinted": "Reimprimiendo etiqueta de",

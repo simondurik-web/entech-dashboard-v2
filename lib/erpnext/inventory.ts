@@ -284,7 +284,9 @@ export async function removeInventory(input: {
   opKey: string
 }): Promise<RemoveResult> {
   const { batch, itemCode, reason, opKey } = input
-  await assertBatchItem(batch, itemCode)
+  // Don't require active: remove disables the batch, so a timeout+retry must still
+  // succeed (it'll find the batch disabled + empty and finish idempotently).
+  await assertBatchItem(batch, itemCode, false)
   const item = await erpnextGetDoc<{ stock_uom?: string }>('Item', itemCode)
   const uom = item.stock_uom ?? 'Nos'
 
@@ -342,7 +344,11 @@ export async function transferInventory(input: {
   const loc = await getBatchLocation(batch, itemCode)
   if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
   if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
-  if (loc.warehouse === toWarehouse) throw new Error(`Pallet ${batch} is already in ${toWarehouse}`)
+  // Already at the destination: treat as a no-op success so a timeout+retry of a
+  // move that already committed resolves cleanly instead of erroring.
+  if (loc.warehouse === toWarehouse) {
+    return { batch, stockEntry: null, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+  }
 
   const stockEntry = await submitStockEntry({
     stock_entry_type: 'Material Transfer',
