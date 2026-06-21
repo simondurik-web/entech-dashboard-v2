@@ -194,6 +194,12 @@ export interface LocateResult {
   uom: string
   total: number
   bins: BinLocation[]
+  pallets?: { batch: string; warehouse: string; qty: number }[] // attached by the locate route
+}
+
+export interface LocateResponse {
+  results: LocateResult[]
+  matchedPallet: string | null // set when the query exactly matched a pallet id (scan)
 }
 
 interface ItemRow {
@@ -218,60 +224,64 @@ async function fetchItems(filterParam: string): Promise<ItemRow[]> {
   return resp.data ?? []
 }
 
-export async function locateItems(query: string): Promise<LocateResult[]> {
+export async function locateItems(query: string): Promise<LocateResponse> {
   const q = query.trim()
-  if (q.length < 2) return []
+  if (q.length < 2) return { results: [], matchedPallet: null }
 
   const like = `%${escapeLike(q)}%`
 
-  // 1) Items matching by code OR name (case-insensitive LIKE) — display info.
-  const items = await fetchItems(
-    listParam('or_filters', [
-      ['item_code', 'like', like],
-      ['item_name', 'like', like],
-    ])
-  )
+  // 0) EXACT pallet-id match wins. A scanned/typed pallet code is a Batch name; if
+  // it matches exactly, show ONLY that pallet's item (never a broad list) so the
+  // operator can't accidentally edit the wrong part. No fuzzy batch matching — that
+  // surfaced several unrelated parts and was a safety hazard (Simon 2026-06-21).
+  let matchedPallet: string | null = null
+  const items: ItemRow[] = []
+  const codeSet = new Set<string>()
 
-  // 2) Stocked bins whose item_code matches q directly. This guarantees parts
-  // that actually hold stock surface even when the item match above is capped
-  // (a broad term like "EB" can match dozens of zero-stock variants first).
-  const binByCodeQs = [
-    listParam('filters', [
-      ['item_code', 'like', like],
-      ['actual_qty', '>', 0],
-    ]),
-    listParam('fields', ['item_code', 'warehouse', 'actual_qty']),
-    'limit_page_length=0',
-  ].join('&')
-  const stockedByCode =
-    (await erpnextGet<{ data: BinRow[] }>(`/api/resource/Bin?${binByCodeQs}`)).data ?? []
-
-  // 2b) Pallet-id match. A scanned/typed pallet code IS a Batch name; resolve it
-  // to its item so the part's card surfaces. Pallet ids are pure base32 (no dots
-  // or spaces), so we only run this extra lookup when q could be one — part-number
-  // and location searches (which contain '.', ' ', etc.) skip it.
-  let palletItemCodes: string[] = []
-  if (/^[0-9A-Za-z]{3,12}$/.test(q)) {
-    const batchQs = [
-      listParam('or_filters', [['name', 'like', like]]),
-      listParam('fields', ['item']),
-      'limit_page_length=10',
+  if (/^[0-9A-Za-z-]{3,20}$/.test(q)) {
+    const exactQs = [
+      listParam('filters', [['name', '=', q]]),
+      listParam('fields', ['name', 'item']),
+      'limit_page_length=1',
     ].join('&')
-    const batches = (await erpnextGet<{ data: { item: string }[] }>(`/api/resource/Batch?${batchQs}`)).data ?? []
-    palletItemCodes = batches.map((b) => b.item).filter(Boolean)
+    const eb = (await erpnextGet<{ data: { name: string; item: string }[] }>(`/api/resource/Batch?${exactQs}`)).data?.[0]
+    if (eb?.item) {
+      matchedPallet = eb.name
+      codeSet.add(eb.item)
+    }
   }
 
-  // Full code set = name/code matches + any stocked code found directly + items
-  // behind a matching pallet id. Cap it so the `in` filters below can't produce
-  // an over-long GET URL.
-  const codeSet = new Set<string>(items.map((i) => i.item_code))
-  for (const b of stockedByCode) codeSet.add(b.item_code)
-  for (const c of palletItemCodes) codeSet.add(c)
-  if (codeSet.size === 0) return []
+  if (!matchedPallet) {
+    // Part search: items matching by code OR name.
+    items.push(
+      ...(await fetchItems(
+        listParam('or_filters', [
+          ['item_code', 'like', like],
+          ['item_name', 'like', like],
+        ])
+      ))
+    )
+    // Stocked bins whose item_code matches q directly (so stocked parts surface even
+    // when a broad term matches dozens of zero-stock variants first).
+    const binByCodeQs = [
+      listParam('filters', [
+        ['item_code', 'like', like],
+        ['actual_qty', '>', 0],
+      ]),
+      listParam('fields', ['item_code', 'warehouse', 'actual_qty']),
+      'limit_page_length=0',
+    ].join('&')
+    const stockedByCode =
+      (await erpnextGet<{ data: BinRow[] }>(`/api/resource/Bin?${binByCodeQs}`)).data ?? []
+    for (const i of items) codeSet.add(i.item_code)
+    for (const b of stockedByCode) codeSet.add(b.item_code)
+  }
+
+  if (codeSet.size === 0) return { results: [], matchedPallet }
   const codes = [...codeSet].slice(0, MAX_CODES)
   const codeAllow = new Set(codes)
 
-  // 3) Display info for stocked codes not already described.
+  // Display info for codes not already described.
   const described = new Set(items.map((i) => i.item_code))
   const missing = codes.filter((c) => !described.has(c))
   if (missing.length > 0) {
@@ -313,7 +323,8 @@ export async function locateItems(query: string): Promise<LocateResult[]> {
   }
 
   // Items with stock first (by total desc), then the rest alphabetically.
-  return Array.from(byItem.values()).sort(
+  const results = Array.from(byItem.values()).sort(
     (a, b) => b.total - a.total || a.itemName.localeCompare(b.itemName)
   )
+  return { results, matchedPallet }
 }

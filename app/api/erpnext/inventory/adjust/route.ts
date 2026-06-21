@@ -3,7 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { adjustInventory, reconcileStockEntry } from '@/lib/erpnext/inventory'
 import { buildPalletZpl } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
-import { runInventoryOp } from '@/lib/erpnext/operation'
+import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/adjust — correct a pallet's qty, then reprint.
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = req.headers.get('x-user-id')
+  const printedBy = await resolveUserName(userId)
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
           minute: '2-digit',
           hour12: true,
         }),
+        printedBy,
       })
       const { data: job, error } = await supabaseAdmin
         .from('print_jobs')

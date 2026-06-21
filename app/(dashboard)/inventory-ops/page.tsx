@@ -32,17 +32,18 @@ interface BinLocation {
   warehouse: string
   qty: number
 }
+interface Pallet {
+  batch: string
+  warehouse: string
+  qty: number
+}
 interface LocateResult {
   itemCode: string
   itemName: string
   uom: string
   total: number
   bins: BinLocation[]
-}
-interface Pallet {
-  batch: string
-  warehouse: string
-  qty: number
+  pallets?: Pallet[] // pallet ids for stocked items, attached by the locate route
 }
 interface ItemOption {
   itemCode: string
@@ -153,12 +154,14 @@ export default function InventoryOpsPage() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
+  const [matchedPallet, setMatchedPallet] = useState<string | null>(null)
 
   const runSearch = useCallback(
     async (q: string, signal: AbortSignal) => {
       if (q.trim().length < 2) {
         setResults([])
         setSearched(false)
+        setMatchedPallet(null)
         return
       }
       setSearching(true)
@@ -167,12 +170,21 @@ export default function InventoryOpsPage() {
         const res = await authedFetch(`/api/erpnext/locate?q=${encodeURIComponent(q.trim())}`, { signal })
         if (!res.ok) throw new Error('lookup failed')
         const data = await res.json()
-        setResults(data.results ?? [])
+        const rows: LocateResult[] = data.results ?? []
+        setResults(rows)
+        setMatchedPallet(data.matchedPallet ?? null)
+        // Seed the pallet lists from the inline pallet ids (no refetch needed).
+        const seeded: Record<string, Pallet[]> = {}
+        for (const r of rows) if (r.pallets) seeded[r.itemCode] = r.pallets
+        if (Object.keys(seeded).length) setPallets((p) => ({ ...seeded, ...p }))
+        // On an exact pallet-id scan, open that one item's pallets automatically.
+        if (data.matchedPallet && rows.length === 1) setOpenItem(rows[0].itemCode)
         setSearched(true)
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return
         setSearchError(t('inventoryOps.error'))
         setResults([])
+        setMatchedPallet(null)
       } finally {
         if (!signal.aborted) setSearching(false)
       }
@@ -723,15 +735,37 @@ export default function InventoryOpsPage() {
                 <div className="text-xs text-muted-foreground">{t('inventoryOps.noStock')}</div>
               ) : (
                 <ul className="space-y-1.5">
-                  {r.bins.map((b, i) => (
-                    <li key={i} className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2">
-                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                        {b.warehouse}
-                      </span>
-                      <span className="font-medium tabular-nums">{b.qty.toLocaleString()}</span>
-                    </li>
-                  ))}
+                  {r.bins.map((b, i) => {
+                    const binPallets = (r.pallets ?? []).filter((p) => p.warehouse === b.warehouse)
+                    return (
+                      <li key={i} className="text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                            {b.warehouse}
+                          </span>
+                          <span className="font-medium tabular-nums">{b.qty.toLocaleString()}</span>
+                        </div>
+                        {binPallets.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1 pl-5">
+                            {binPallets.map((p) => (
+                              <span
+                                key={p.batch}
+                                className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
+                                  matchedPallet === p.batch
+                                    ? 'bg-primary/15 font-semibold text-primary'
+                                    : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {p.batch}
+                                {p.qty ? ` · ${p.qty.toLocaleString()}` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
               <button

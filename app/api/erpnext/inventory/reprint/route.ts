@@ -3,7 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { getBatchLocation } from '@/lib/erpnext/inventory'
 import { buildPalletZpl } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
-import { runInventoryOp } from '@/lib/erpnext/operation'
+import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/reprint — re-send a pallet's label to a printer.
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = req.headers.get('x-user-id')
+  const printedBy = await resolveUserName(userId)
   const loc = await getBatchLocation(batch, itemCode)
   const qty = loc?.qty ?? 0
 
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
           minute: '2-digit',
           hour12: true,
         }),
+        printedBy,
       })
       const { data: job, error } = await supabaseAdmin
         .from('print_jobs')

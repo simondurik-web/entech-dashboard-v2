@@ -26,6 +26,7 @@ export interface PalletLabel {
   weight?: string // optional, captured at print time
   dimensions?: string // optional, captured at print time
   generatedAt?: string // date+time the label was generated (printed in the scan zone)
+  printedBy?: string // name of the person who printed it (printed under the timestamp)
   ref?: string // optional PO/IF reference
 }
 
@@ -98,6 +99,7 @@ export function buildPalletZpl(label: PalletLabel): string {
   const dimensions = z(label.dimensions, 30)
   const batch = z(label.batch, 24)
   const generatedAt = z(label.generatedAt, 28)
+  const printedBy = z(label.printedBy, 26)
   const uom = z(label.uom || 'pcs', 8)
   const qty = Number.isFinite(label.qty) ? Math.max(0, Math.round(label.qty)) : 0
 
@@ -147,8 +149,9 @@ export function buildPalletZpl(label: PalletLabel): string {
   const qrX = Math.max(20, Math.min(150, 812 - qr.px - 20))
   const qrY = Math.min(610, 1218 - qr.px - 10)
   lines.push(`^FO${qrX},${qrY}${qr.field}^FS`)
-  // Generated date/time, in the scan zone where "SCAN PALLET" used to be.
+  // Generated date/time + who printed it, in the scan zone (where "SCAN PALLET" was).
   if (generatedAt) lines.push(T(qrX - 44, qrY, 26, generatedAt))
+  if (printedBy) lines.push(T(qrX - 78, qrY, 24, `By: ${printedBy}`))
 
   lines.push('^XZ')
   return lines.join('\n')

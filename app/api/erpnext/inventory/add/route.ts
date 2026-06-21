@@ -3,7 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { addInventory, generatePalletId, reconcileStockEntry } from '@/lib/erpnext/inventory'
 import { buildPalletZpl } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
-import { runInventoryOp } from '@/lib/erpnext/operation'
+import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/add
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = req.headers.get('x-user-id')
+  const printedBy = await resolveUserName(userId)
 
   // Pallet id: reuse the one already reserved for this op (a retry), else mint a
   // fresh unique code. Reusing it keeps retries idempotent — addInventory's Batch
@@ -98,6 +99,7 @@ export async function POST(req: NextRequest) {
           minute: '2-digit',
           hour12: true,
         }),
+        printedBy,
       })
       const { data: job, error } = await supabaseAdmin
         .from('print_jobs')

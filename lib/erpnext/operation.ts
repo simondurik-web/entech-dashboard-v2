@@ -1,5 +1,16 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+/** Resolve a user id to a display name (full name, else email) for labels/logs. */
+export async function resolveUserName(userId: string | null): Promise<string> {
+  if (!userId) return ''
+  const { data } = await supabaseAdmin
+    .from('user_profiles')
+    .select('full_name, email')
+    .eq('id', userId)
+    .single()
+  return data?.full_name || data?.email || ''
+}
+
 // Idempotent inventory operation runner.
 //
 // The hard requirement: a network timeout / crash must NEVER produce a duplicate

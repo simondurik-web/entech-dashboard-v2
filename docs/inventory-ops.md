@@ -27,9 +27,11 @@ any change here.
 - **QR**: rendered as a scalable `^GFA` bitmap from the `qrcode` lib (no native ^BQ
   size cap). Pattern sized to ~2.5in; **error-correction H** (a short code is a 21×21
   v1 symbol, so H adds robustness at no size cost). Payload = the bare pallet code.
-- **Generated date/time** prints in the scan zone (replaced the old "SCAN PALLET"
-  caption). Stamped server-side at print time by the route.
-- TODO (later, agreed): Weight + Dimensions under the pallet id.
+- **Generated date/time** + **printed-by name** print in the scan zone (replaced the
+  old "SCAN PALLET" caption). Stamped server-side at print time by the route (the
+  user name is resolved from `user_profiles`).
+- TODO (later, agreed): Weight + Dimensions under the pallet id; reprint
+  serialization (see Open/pending).
 
 ## Print pipeline
 - Dashboard (Vercel) builds ZPL and enqueues a `print_jobs` row (Supabase) for a
@@ -47,7 +49,10 @@ any change here.
 - Cosmetic sniper-scope **reticle** overlay (purely visual).
 
 ## Actions / endpoints (`app/api/erpnext/inventory/*`)
-- `locate` — search by part number/name OR pallet code → item card + bins.
+- `locate` — search by part number/name → item cards + bins, with the pallet ids
+  shown inline under each bin (for stocked items). An **exact** pallet-id query
+  (typed or scanned) returns ONLY that pallet's item (`matchedPallet`) and the UI
+  auto-opens + highlights it — never a fuzzy multi-part list (safety).
 - `add` — Material Receipt + Batch + mandatory label; idempotent (ops-log state
   machine, retry-safe).
 - `adjust` — correct a pallet qty (delta receipt/issue) + reprint label.
@@ -65,9 +70,14 @@ any change here.
   `action`, `qty`, `warehouse`, `batch`, `status`. This is the audit source.
 
 ## Open / pending (in build order)
-1. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
-2. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
-3. **Locations view** — toggle to search a bin and list its contents.
+1. **Reprint serialization** (safety) — to prevent two physical labels with the same
+   id, each reprint supersedes the previous: the printed/QR code carries a version
+   suffix (e.g. `D79C-02`), only the LATEST is valid, and scanning/searching an older
+   version warns/blocks. Tracked dashboard-side (the ERPNext Batch name stays the
+   same); mirrors the old Fusion behavior.
+2. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
+3. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
+4. **Locations view** — toggle to search a bin and list its contents.
 
 Done: search/locate, add, adjust, remove, list pallets, history (traceability),
 **bin Move**, **Reprint**, generated date/time on label, scanner zoom + reticle.
