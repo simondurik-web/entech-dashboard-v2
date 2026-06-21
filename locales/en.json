@@ -1216,6 +1216,7 @@
   "inventoryOps.move": "Move to another bin",
   "inventoryOps.moveTo": "Move this pallet to:",
   "inventoryOps.moveConfirm": "Move",
+  "inventoryOps.noBins": "No matching bins",
   "inventoryOps.moved": "Moved pallet",
   "inventoryOps.reprint": "Reprint label",
   "inventoryOps.reprinted": "Reprinting label for",

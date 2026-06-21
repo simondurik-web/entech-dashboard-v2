@@ -753,7 +753,10 @@ export default function InventoryOpsPage() {
               ) : (
                 <ul className="space-y-1.5">
                   {r.bins.map((b, i) => {
-                    const binPallets = (r.pallets ?? []).filter((p) => p.warehouse === b.warehouse)
+                    const binPallets = (r.pallets ?? [])
+                      .filter((p) => p.warehouse === b.warehouse)
+                      // On an exact pallet scan, show ONLY that pallet (never its siblings).
+                      .filter((p) => !matchedPallet || p.batch === matchedPallet)
                     return (
                       <li key={i} className="text-sm">
                         <div className="flex items-center justify-between">
@@ -808,11 +811,13 @@ export default function InventoryOpsPage() {
                       <AlertCircle className="h-3.5 w-3.5" />
                       {t('inventoryOps.palletsError')}
                     </button>
-                  ) : (pallets[r.itemCode] ?? []).length === 0 ? (
+                  ) : (pallets[r.itemCode] ?? []).filter((p) => !matchedPallet || p.batch === matchedPallet).length === 0 ? (
                     <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noPallets')}</div>
                   ) : (
                     <ul className="divide-y divide-border">
-                      {(pallets[r.itemCode] ?? []).map((p) => (
+                      {(pallets[r.itemCode] ?? [])
+                        .filter((p) => !matchedPallet || p.batch === matchedPallet)
+                        .map((p) => (
                         <li key={p.batch} className="py-2 text-sm">
                           <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
@@ -897,24 +902,34 @@ export default function InventoryOpsPage() {
                               <div className="mb-1 text-xs font-medium">{t('inventoryOps.moveTo')}</div>
                               <input
                                 value={moveWhFilter}
-                                onChange={(e) => setMoveWhFilter(e.target.value)}
+                                onChange={(e) => {
+                                  setMoveWhFilter(e.target.value)
+                                  setMoveWarehouse('')
+                                }}
                                 placeholder={t('inventoryOps.searchBin')}
-                                className="mb-1 w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-                              />
-                              <select
-                                value={moveWarehouse}
-                                onChange={(e) => setMoveWarehouse(e.target.value)}
+                                autoFocus
                                 className="w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-                              >
-                                <option value="">{t('inventoryOps.searchBin')}</option>
-                                {filteredMoveWarehouses
-                                  .filter((w) => w !== p.warehouse)
-                                  .map((w) => (
-                                    <option key={w} value={w}>
-                                      {w}
-                                    </option>
-                                  ))}
-                              </select>
+                              />
+                              {/* Type-ahead: matching bins appear as you type; tap to pick. */}
+                              <div className="inv-scroll mt-1 max-h-44 overflow-y-auto overscroll-contain rounded border border-border" style={{ WebkitOverflowScrolling: 'touch' }}>
+                                {filteredMoveWarehouses.filter((w) => w !== p.warehouse).length === 0 ? (
+                                  <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
+                                ) : (
+                                  filteredMoveWarehouses
+                                    .filter((w) => w !== p.warehouse)
+                                    .map((w) => (
+                                      <button
+                                        key={w}
+                                        onClick={() => setMoveWarehouse(w)}
+                                        className={`block w-full px-2 py-2 text-left text-sm hover:bg-accent ${
+                                          moveWarehouse === w ? 'bg-primary/15 font-medium text-primary' : ''
+                                        }`}
+                                      >
+                                        {w}
+                                      </button>
+                                    ))
+                                )}
+                              </div>
                               <div className="mt-2 flex items-center gap-2">
                                 <button
                                   onClick={() => submitMove(r.itemCode, p.batch)}
