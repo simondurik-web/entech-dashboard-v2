@@ -305,3 +305,50 @@ export async function removeInventory(input: {
 
   return { batch, stockEntry, removedQty }
 }
+
+export interface TransferResult extends Committed {
+  fromWarehouse: string
+  toWarehouse: string
+  qty: number
+}
+
+/** Move a pallet between bins: a Material Transfer of the batch's full on-hand qty
+ *  from its current warehouse to `toWarehouse`. Refuses split pallets (can't guess
+ *  which bin to move) and no-op moves. */
+export async function transferInventory(input: {
+  batch: string
+  itemCode: string
+  toWarehouse: string
+  opKey: string
+}): Promise<TransferResult> {
+  const { batch, itemCode, toWarehouse, opKey } = input
+  const item = await erpnextGetDoc<{ stock_uom?: string }>('Item', itemCode)
+  const uom = item.stock_uom ?? 'Nos'
+
+  const loc = await getBatchLocation(batch, itemCode)
+  if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
+  if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
+  if (loc.warehouse === toWarehouse) throw new Error(`Pallet ${batch} is already in ${toWarehouse}`)
+
+  const stockEntry = await submitStockEntry({
+    stock_entry_type: 'Material Transfer',
+    company: COMPANY,
+    remarks: `Dashboard move [op:${opKey}]`,
+    items: [
+      {
+        item_code: itemCode,
+        qty: loc.qty,
+        s_warehouse: loc.warehouse,
+        t_warehouse: toWarehouse,
+        use_serial_batch_fields: 1,
+        batch_no: batch,
+        allow_zero_valuation_rate: 1,
+        uom,
+        stock_uom: uom,
+        conversion_factor: 1,
+      },
+    ],
+  })
+
+  return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+}

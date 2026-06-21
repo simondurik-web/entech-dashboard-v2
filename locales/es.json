@@ -1213,5 +1213,9 @@
   "inventoryOps.histReprinted": "Etiqueta reimpresa",
   "inventoryOps.editQty": "Editar cantidad",
   "inventoryOps.remove": "Eliminar tarima",
+  "inventoryOps.move": "Mover a otra ubicación",
+  "inventoryOps.moveTo": "Mover esta tarima a:",
+  "inventoryOps.moveConfirm": "Mover",
+  "inventoryOps.moved": "Tarima movida",
   "nav.inventoryOps": "Operaciones de Inventario"
 }

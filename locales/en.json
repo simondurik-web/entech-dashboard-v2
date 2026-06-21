@@ -1213,5 +1213,9 @@
   "inventoryOps.histReprinted": "Label reprinted",
   "inventoryOps.editQty": "Edit quantity",
   "inventoryOps.remove": "Remove pallet",
+  "inventoryOps.move": "Move to another bin",
+  "inventoryOps.moveTo": "Move this pallet to:",
+  "inventoryOps.moveConfirm": "Move",
+  "inventoryOps.moved": "Moved pallet",
   "nav.inventoryOps": "Inventory Ops"
 }

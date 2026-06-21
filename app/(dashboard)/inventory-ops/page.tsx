@@ -19,6 +19,7 @@ import {
   ChevronRight,
   ScanLine,
   Clock,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -367,6 +368,11 @@ export default function InventoryOpsPage() {
   const [editQty, setEditQty] = useState('')
   const [busyBatch, setBusyBatch] = useState<string | null>(null)
 
+  // ─── move (bin transfer) ───
+  const [movingBatch, setMovingBatch] = useState<string | null>(null)
+  const [moveWarehouse, setMoveWarehouse] = useState('')
+  const [moveWhFilter, setMoveWhFilter] = useState('')
+
   const submitAdjust = async (itemCode: string, batch: string) => {
     const qty = Number(editQty)
     if (!(qty >= 0)) return
@@ -414,9 +420,44 @@ export default function InventoryOpsPage() {
     }
   }
 
+  const submitMove = async (itemCode: string, batch: string) => {
+    if (!moveWarehouse) return
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusyBatch(batch)
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/move', {
+        method: 'POST',
+        body: JSON.stringify({ batch, itemCode, toWarehouse: moveWarehouse, idempotencyKey: uuid() }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'move failed')
+      showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
+      setMovingBatch(null)
+      setMoveWarehouse('')
+      setMoveWhFilter('')
+      loadPallets(itemCode)
+      // drop cached history so it reloads with the new move event
+      setHistory((h) => {
+        const n = { ...h }
+        delete n[batch]
+        return n
+      })
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setBusyBatch(null)
+      busyRef.current = false
+    }
+  }
+
   if (!canAccess('/inventory-ops')) {
     return <div className="p-8 text-sm text-muted-foreground">{t('inventoryOps.noAccess')}</div>
   }
+
+  const filteredMoveWarehouses = moveWhFilter
+    ? warehouses.filter((w) => w.toLowerCase().includes(moveWhFilter.toLowerCase())).slice(0, 50)
+    : warehouses.slice(0, 50)
 
   const filteredWarehouses = whFilter
     ? warehouses.filter((w) => w.toLowerCase().includes(whFilter.toLowerCase())).slice(0, 50)
@@ -727,6 +768,17 @@ export default function InventoryOpsPage() {
                               </button>
                               <button
                                 onClick={() => {
+                                  setMovingBatch(movingBatch === p.batch ? null : p.batch)
+                                  setMoveWarehouse('')
+                                  setMoveWhFilter('')
+                                }}
+                                title={t('inventoryOps.move')}
+                                className={`hover:text-foreground ${movingBatch === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
+                              >
+                                <ArrowLeftRight className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
                                   setEditBatch(p.batch)
                                   setEditQty(String(p.qty))
                                 }}
@@ -748,6 +800,52 @@ export default function InventoryOpsPage() {
                             </div>
                           )}
                           </div>
+
+                          {movingBatch === p.batch && (
+                            <div className="mt-2 rounded-md border border-border bg-background p-2">
+                              <div className="mb-1 text-xs font-medium">{t('inventoryOps.moveTo')}</div>
+                              <input
+                                value={moveWhFilter}
+                                onChange={(e) => setMoveWhFilter(e.target.value)}
+                                placeholder={t('inventoryOps.searchBin')}
+                                className="mb-1 w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                              />
+                              <select
+                                value={moveWarehouse}
+                                onChange={(e) => setMoveWarehouse(e.target.value)}
+                                className="w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                              >
+                                <option value="">{t('inventoryOps.searchBin')}</option>
+                                {filteredMoveWarehouses
+                                  .filter((w) => w !== p.warehouse)
+                                  .map((w) => (
+                                    <option key={w} value={w}>
+                                      {w}
+                                    </option>
+                                  ))}
+                              </select>
+                              <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  onClick={() => submitMove(r.itemCode, p.batch)}
+                                  disabled={!moveWarehouse || busyBatch === p.batch}
+                                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                >
+                                  {busyBatch === p.batch ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                                  )}
+                                  {t('inventoryOps.moveConfirm')}
+                                </button>
+                                <button
+                                  onClick={() => setMovingBatch(null)}
+                                  className="rounded-lg px-2 py-2 text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  {t('inventoryOps.cancel')}
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {historyOpen === p.batch && (
                             <div className="mt-2 rounded-md border border-border bg-muted/30 p-2">

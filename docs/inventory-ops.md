@@ -52,6 +52,8 @@ any change here.
   machine, retry-safe).
 - `adjust` — correct a pallet qty (delta receipt/issue) + reprint label.
 - `remove` — issue-out + disable batch (office roles); cancel-not-delete.
+- `move` — Material Transfer of a pallet to another bin; logged as `move` (shows in
+  history). No label reprint (location isn't on the label).
 - `pallets` — list on-hand pallets for an item.
 - `history` — **traceability**: per-pallet timeline from `inventory_ops_log` (every
   op stamps `created_by` + `created_at`); UI derives qty/bin transitions from order.
@@ -61,12 +63,13 @@ any change here.
   `action`, `qty`, `warehouse`, `batch`, `status`. This is the audit source.
 
 ## Open / pending (in build order)
-1. **Bin Move** (transfer a pallet between bins) — Material Transfer + logged as
-   `move` (so it appears in history).
-2. **Reprint** label (search/scan a pallet → reprint) — logged as `reprint`.
-3. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
-4. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
-5. **Locations view** — toggle to search a bin and list its contents.
+1. **Reprint** label (search/scan a pallet → reprint) — logged as `reprint`.
+2. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
+3. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
+4. **Locations view** — toggle to search a bin and list its contents.
+
+Done: search/locate, add, adjust, remove, list pallets, history (traceability),
+**bin Move**, generated date/time on label, scanner zoom + reticle.
 
 > Rule of thumb for every change here: update this doc, keep EN+ES strings in sync,
 > and remember staging must stay a superset of main so a promotion never reverts work.
