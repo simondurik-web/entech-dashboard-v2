@@ -270,7 +270,6 @@ export default function InventoryOpsPage() {
   const [allItems, setAllItems] = useState<ItemOption[]>([])
   const [allItemsLoaded, setAllItemsLoaded] = useState(false)
   const [allItemsLoading, setAllItemsLoading] = useState(false)
-  const partListRef = useRef<HTMLDivElement>(null)
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const openItemPicker = useCallback(() => {
@@ -290,19 +289,6 @@ export default function InventoryOpsPage() {
       })
       .finally(() => setAllItemsLoading(false))
   }, [allItemsLoaded, allItemsLoading, authedFetch])
-
-  // Keep the wheel inside the part list (same fix the Add picker + bin list use):
-  // scroll the list, never the page behind it.
-  useEffect(() => {
-    const el = partListRef.current
-    if (!el || !itemPickerOpen) return
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      el.scrollTop += e.deltaY
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [itemPickerOpen, allItems.length])
 
   // ─── pallets (per item) ───
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
@@ -399,18 +385,6 @@ export default function InventoryOpsPage() {
   const [binContents, setBinContents] = useState<{ items: BinContentItem[]; total: number; palletsTruncated: boolean } | null>(null)
   const [binLoading, setBinLoading] = useState(false)
   const [binError, setBinError] = useState(false)
-  const binListRef = useRef<HTMLDivElement>(null)
-  // Same wheel fix as the part/Add pickers: scroll the bin list on hover, not the page.
-  useEffect(() => {
-    const el = binListRef.current
-    if (!el || !binOpen) return
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      el.scrollTop += e.deltaY
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [binOpen, warehouses.length])
 
   // Latest requested bin — guards against a slow earlier fetch resolving last and
   // overwriting the current bin's contents (no AbortController on this endpoint).
@@ -1003,7 +977,7 @@ export default function InventoryOpsPage() {
             className="w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
           />
           {/* Type-ahead: matching bins appear as you type; tap to pick. */}
-          <div className="inv-scroll mt-1 max-h-44 overflow-y-auto overscroll-contain rounded border border-border" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div data-lenis-prevent className="inv-scroll mt-1 max-h-44 overflow-y-auto overscroll-contain rounded border border-border" style={{ WebkitOverflowScrolling: 'touch' }}>
             {filteredMoveWarehouses.filter((w) => w !== p.warehouse).length === 0 ? (
               <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
             ) : (
@@ -1144,6 +1118,7 @@ export default function InventoryOpsPage() {
                       )}
                       <div
                         ref={itemListRef}
+                        data-lenis-prevent
                         className="inv-scroll max-h-60 overflow-y-auto overscroll-contain"
                         style={{ WebkitOverflowScrolling: 'touch' }}
                       >
@@ -1314,7 +1289,7 @@ export default function InventoryOpsPage() {
         {itemPickerOpen && (
           <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
             <div
-              ref={partListRef}
+              data-lenis-prevent
               className="inv-scroll max-h-80 overflow-y-auto overscroll-contain"
               style={{ WebkitOverflowScrolling: 'touch' }}
             >
@@ -1502,7 +1477,7 @@ export default function InventoryOpsPage() {
               />
               {binOpen && (
                 <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-                  <div ref={binListRef} className="inv-scroll max-h-96 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <div data-lenis-prevent className="inv-scroll max-h-96 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
                     {(binQuery.trim()
                       ? warehouses.filter((w) => w.toLowerCase().includes(binQuery.trim().toLowerCase()))
                       : warehouses
