@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { bulkTransfer, reconcileStockEntry } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/bulk-transfer
 // Move many pallets to one destination bin in a single atomic ERPNext Material Transfer.
@@ -56,7 +55,8 @@ export async function POST(req: NextRequest) {
   // retry guard compares meta.item_code, so reusing the same idempotency key with a
   // different pallet set is rejected rather than run against the wrong batches. (The
   // client already derives the key from dest+sorted-batches, so this is defense-in-depth.)
-  const fingerprint = [...new Set(lines.map((l) => l.batch))].sort().join(',')
+  // JSON-encode the sorted set (not a comma-join) so the binding is delimiter-safe.
+  const fingerprint = JSON.stringify([...new Set(lines.map((l) => l.batch))].sort())
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -75,15 +75,12 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // Persist the ACTUAL moved count (meta.qty was the queued count) so the "last transfer"
-  // line and any later lookup reflect what really moved, not what was queued.
-  if (result.status === 200 && typeof result.body.moved === 'number') {
-    await supabaseAdmin
-      .from('inventory_ops_log')
-      .update({ qty: result.body.moved })
-      .eq('idempotency_key', idempotencyKey)
-      .then(undefined, () => undefined)
-  }
+  // NOTE: we deliberately do NOT overwrite inventory_ops_log.qty with the actual moved
+  // count — qty is part of runInventoryOp's idempotency identity, so changing it would make
+  // a legitimate retry of a partial transfer look like a "different operation" (false 409).
+  // qty stays = the queued count; the "last transfer" line reflects that. In practice the
+  // queue is pre-validated at scan time, so skips are near-zero and queued == moved. The
+  // fresh-post response still returns the exact moved/skipped counts to the UI.
 
   return NextResponse.json(result.body, { status: result.status })
 }
