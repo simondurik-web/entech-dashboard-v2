@@ -1,0 +1,158 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { requireInventoryAccess } from '@/lib/erpnext/auth'
+import {
+  restorePallet,
+  reconcileStockEntry,
+  reserveNextSerial,
+  assertBatchItem,
+  palletBase,
+} from '@/lib/erpnext/inventory'
+import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
+import { erpnextGetDoc } from '@/lib/erpnext/client'
+import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+
+// POST /api/erpnext/inventory/restore — return a removed pallet's stock to inventory.
+// Same qty as the label  -> re-enable the SAME serial + re-receipt it (no new label;
+//                           the printed label on the box is still valid).
+// Different qty           -> reissue as a NEW serial at the new qty + print a new label;
+//                           the old serial stays disabled. The client warns the user first.
+// Idempotent + resumable via the client idempotencyKey (reserved serial + target qty are
+// persisted on first attempt and reused on retry).
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+const MAX_QTY = 10_000_000
+
+interface RestoreBody {
+  batch?: string
+  itemCode?: string
+  qty?: number
+  warehouse?: string
+  station?: string // required only when the qty differs (a new label is printed)
+  idempotencyKey?: string
+}
+
+export async function POST(req: NextRequest) {
+  const guard = await requireInventoryAccess(req)
+  if (!guard.ok) return guard.res
+
+  let body: RestoreBody
+  try {
+    body = (await req.json()) as RestoreBody
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  const { batch, itemCode, warehouse, station, idempotencyKey } = body
+  const qty = Number(body.qty)
+  if (!batch || !itemCode || !warehouse || !idempotencyKey || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY) {
+    return NextResponse.json(
+      { error: 'batch, itemCode, qty (1..10M), warehouse, and idempotencyKey are required' },
+      { status: 400 }
+    )
+  }
+
+  // Retry detection: reuse the reserved new serial (if a different-qty reissue) + decision.
+  const { data: priorOp } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('result_batch')
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle()
+
+  let newBatch: string | null = priorOp?.result_batch ?? null
+  let willReissue = !!newBatch
+
+  if (!priorOp) {
+    // First attempt: validate, decide same-vs-new from the AUTHORITATIVE label qty on the
+    // batch, and reserve a serial if the qty differs.
+    try {
+      await assertBatchItem(batch, itemCode, false) // may be disabled (it was removed)
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 })
+    }
+    const doc = await erpnextGetDoc<{ custom_pallet_qty?: number }>('Batch', batch).catch(() => null)
+    const labelQty = Number(doc?.custom_pallet_qty) || 0
+    willReissue = qty !== labelQty
+
+    // Same-pallet concurrency guard (the partial unique index on `family` is the atomic one).
+    const { data: inflight } = await supabaseAdmin
+      .from('inventory_ops_log')
+      .select('idempotency_key')
+      .eq('family', palletBase(batch))
+      .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
+      .neq('idempotency_key', idempotencyKey)
+      .limit(1)
+    if (inflight && inflight.length) {
+      return NextResponse.json({ error: 'Another operation is in progress for this pallet; try again shortly.' }, { status: 409 })
+    }
+
+    if (willReissue) newBatch = await reserveNextSerial(batch)
+  }
+
+  // A different qty prints a new label, which needs a printer station.
+  if (willReissue && !station) {
+    return NextResponse.json({ error: 'A printer station is required to restore at a different quantity (a new label is printed).' }, { status: 400 })
+  }
+  if (willReissue && station) {
+    const { data: stationRow } = await supabaseAdmin.from('print_stations').select('id').eq('id', station).eq('enabled', true).single()
+    if (!stationRow) {
+      return NextResponse.json({ error: `Unknown or disabled printer station: ${station}` }, { status: 400 })
+    }
+  }
+
+  const userId = guard.userId
+  const target = willReissue ? (newBatch as string) : batch
+
+  const result = await runInventoryOp({
+    key: idempotencyKey,
+    action: 'restore',
+    createdBy: userId,
+    meta: {
+      item_code: itemCode,
+      qty,
+      warehouse,
+      station_id: willReissue ? station : null,
+      batch,
+      family: palletBase(batch),
+      result_batch: willReissue ? newBatch : null,
+    },
+    erp: () => restorePallet({ batch, itemCode, requestedQty: qty, warehouse, newBatch, opKey: idempotencyKey }),
+    reconcile: async () => {
+      const se = await reconcileStockEntry(idempotencyKey)
+      return se ? { batch: target, stockEntry: se } : null
+    },
+    // Only a different-qty restore prints a label (a new serial). Same-qty keeps the
+    // existing physical label, so no label step runs.
+    label: willReissue
+      ? async (committed) => {
+          const printBatch = committed.batch ?? target
+          const printedBy = await resolveUserName(userId)
+          const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
+          const zpl = buildPalletZpl({
+            itemCode,
+            itemName: item.item_name ?? itemCode,
+            qty,
+            uom: item.stock_uom ?? 'pcs',
+            batch: printBatch,
+            generatedAt: labelTimestamp(),
+            printedBy,
+          })
+          const { data: job, error } = await supabaseAdmin
+            .from('print_jobs')
+            .upsert(
+              { station_id: station, zpl, item_code: itemCode, batch: printBatch, created_by: userId, idempotency_key: `print-${idempotencyKey}`, status: 'pending' },
+              { onConflict: 'idempotency_key', ignoreDuplicates: true }
+            )
+            .select('id')
+            .maybeSingle()
+          if (error) throw new Error(error.message)
+          if (job?.id) return job.id
+          const { data: existing } = await supabaseAdmin.from('print_jobs').select('id').eq('idempotency_key', `print-${idempotencyKey}`).maybeSingle()
+          return existing?.id ?? null
+        }
+      : undefined,
+  })
+
+  return NextResponse.json({ ...result.body, newLabel: willReissue }, { status: result.status })
+}

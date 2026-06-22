@@ -211,6 +211,7 @@ export interface LocateResult {
   total: number
   bins: BinLocation[]
   pallets?: { batch: string; warehouse: string; qty: number }[] // attached by the locate route
+  hasBatch: boolean // serialized (pallet) vs non-serialized (quantity) item
 }
 
 export interface LocateResponse {
@@ -222,6 +223,7 @@ interface ItemRow {
   item_code: string
   item_name: string
   stock_uom: string
+  has_batch_no?: number
 }
 
 interface BinRow {
@@ -233,7 +235,7 @@ interface BinRow {
 async function fetchItems(filterParam: string): Promise<ItemRow[]> {
   const qs = [
     filterParam,
-    listParam('fields', ['item_code', 'item_name', 'stock_uom']),
+    listParam('fields', ['item_code', 'item_name', 'stock_uom', 'has_batch_no']),
     'limit_page_length=60',
   ].join('&')
   const resp = await erpnextGet<{ data: ItemRow[] }>(`/api/resource/Item?${qs}`)
@@ -326,6 +328,7 @@ export async function locateItems(query: string): Promise<LocateResponse> {
       uom: it.stock_uom,
       total: 0,
       bins: [],
+      hasBatch: !!it.has_batch_no,
     })
   }
   for (const b of bins) {

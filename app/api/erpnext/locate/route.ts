@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { locateItems } from '@/lib/erpnext/client'
-import { listPallets, getBatchLocation, resolveCurrentSerial } from '@/lib/erpnext/inventory'
+import { listPallets, getBatchLocation, resolveCurrentSerial, lookupRemovedPallet } from '@/lib/erpnext/inventory'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 
 // Search-by-location: GET /api/erpnext/locate?q=Trio%20A
@@ -26,14 +26,23 @@ export async function GET(req: NextRequest) {
     const located = await locateItems(q)
     const results = located.results
     let matchedPallet = located.matchedPallet
+    const scannedPallet = located.matchedPallet // original scanned code, before resolve
     // If a pallet id was scanned, resolve it to the CURRENT serial in its family. A
     // superseded (reprinted/qty-changed) label points the UI at the live pallet and
     // flags that the scanned label is stale.
     let superseded: { scanned: string; current: string | null } | null = null
+    let removedPallet = null
     if (matchedPallet) {
       const res = await resolveCurrentSerial(matchedPallet)
       if (res.superseded) superseded = { scanned: matchedPallet, current: res.current }
-      if (res.current) matchedPallet = res.current
+      if (res.current) {
+        matchedPallet = res.current
+      } else {
+        // No active serial holds stock -> the pallet was removed/zeroed. Surface its data
+        // (part, last label qty, last bin) so the operator can still see it at zero and
+        // restore it. Doesn't fail the search if the lookup hiccups.
+        removedPallet = await lookupRemovedPallet(scannedPallet as string).catch(() => null)
+      }
     }
     // Attach pallet ids to stocked items so they show next to the part + location.
     const stocked = results.filter((r) => r.total > 0).slice(0, MAX_PALLET_ENRICH)
@@ -54,7 +63,7 @@ export async function GET(req: NextRequest) {
       }
     }
     // Live stock — never cache at the edge.
-    return NextResponse.json({ results, matchedPallet, superseded }, { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json({ results, matchedPallet, superseded, removedPallet }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('ERPNext locate failed:', error)
     return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })

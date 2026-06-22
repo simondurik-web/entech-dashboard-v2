@@ -69,16 +69,9 @@ export async function generatePalletId(): Promise<string> {
   throw new Error('Could not allocate a unique pallet id')
 }
 
-/** Validate the destination warehouse + that the item is batch-tracked. Throws
- *  with a clear message so the caller marks the op failed_pre_erp (no ERP write). */
-async function preflight(itemCode: string, warehouse: string): Promise<{ itemName: string; uom: string }> {
-  const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string; has_batch_no?: number }>(
-    'Item',
-    itemCode
-  )
-  if (!item.has_batch_no) {
-    throw new Error(`Item ${itemCode} is not batch-tracked; cannot create a pallet`)
-  }
+/** Validate a destination warehouse is a real, enabled storage bin for this company.
+ *  Throws with a clear message so the caller marks the op failed_pre_erp (no ERP write). */
+async function preflightWarehouse(warehouse: string): Promise<void> {
   const wh = await erpnextGetDoc<{ disabled?: number; is_group?: number; company?: string }>(
     'Warehouse',
     warehouse
@@ -89,6 +82,19 @@ async function preflight(itemCode: string, warehouse: string): Promise<{ itemNam
   if (wh.company && wh.company !== COMPANY) {
     throw new Error(`Warehouse "${warehouse}" belongs to ${wh.company}, not ${COMPANY}`)
   }
+}
+
+/** Validate the destination warehouse + that the item is batch-tracked. Throws
+ *  with a clear message so the caller marks the op failed_pre_erp (no ERP write). */
+async function preflight(itemCode: string, warehouse: string): Promise<{ itemName: string; uom: string }> {
+  const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string; has_batch_no?: number }>(
+    'Item',
+    itemCode
+  )
+  if (!item.has_batch_no) {
+    throw new Error(`Item ${itemCode} is not batch-tracked; cannot create a pallet`)
+  }
+  await preflightWarehouse(warehouse)
   return { itemName: item.item_name ?? itemCode, uom: item.stock_uom ?? 'Nos' }
 }
 
@@ -658,6 +664,124 @@ export async function bulkTransfer(input: {
   return { stockEntry, extra: { moved: rows.length, skipped, destination } }
 }
 
+// ─── Non-serialized (quantity-only) items ─────────────────────────────────────────
+// Some product lines are fixed, interchangeable packs (e.g. CURB-36PK, EB-48PK): every
+// box is identical, so we DON'T serialize them. In ERPNext these items have
+// has_batch_no = 0 and stock is tracked as a plain quantity per bin. The dashboard works
+// in BOXES (one stock unit = one box/pack); a generic label (no unique pallet code) is
+// printed one-per-box. Transfers/removals move a quantity between bins with no batch.
+
+/** Read an item's display + tracking info. `hasBatch` decides serialized (pallet) vs
+ *  quantity (non-serialized) handling everywhere. */
+export async function getItemInfo(itemCode: string): Promise<{ itemName: string; uom: string; hasBatch: boolean }> {
+  const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string; has_batch_no?: number; is_stock_item?: number }>(
+    'Item',
+    itemCode
+  )
+  if (!item.is_stock_item) throw new Error(`Item ${itemCode} is not a stock item`)
+  return { itemName: item.item_name ?? itemCode, uom: item.stock_uom ?? 'pcs', hasBatch: !!item.has_batch_no }
+}
+
+/** Guard: the item must be NON-batch (quantity-tracked). Throws -> failed_pre_erp / 400, so
+ *  a quantity op can never run against a serialized (pallet) item by mistake. */
+async function assertNonBatch(itemCode: string): Promise<{ itemName: string; uom: string }> {
+  const info = await getItemInfo(itemCode)
+  if (info.hasBatch) throw new Error(`Item ${itemCode} is serialized (batch-tracked); use the pallet flow, not quantity mode`)
+  return { itemName: info.itemName, uom: info.uom }
+}
+
+/** Bins (with stock) for a single item: warehouse + qty, highest first. Read-only. */
+export async function getItemBins(itemCode: string): Promise<{ warehouse: string; qty: number }[]> {
+  const qs = [
+    listParam('filters', [
+      ['item_code', '=', itemCode],
+      ['actual_qty', '>', 0],
+    ]),
+    listParam('fields', ['warehouse', 'actual_qty']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows = (await erpnextGet<{ data: { warehouse: string; actual_qty: number }[] }>(`/api/resource/Bin?${qs}`)).data ?? []
+  return rows.map((r) => ({ warehouse: r.warehouse, qty: r.actual_qty })).sort((a, b) => b.qty - a.qty)
+}
+
+export interface QtyResult extends Committed {
+  itemName: string
+  uom: string
+  qty: number
+  warehouse: string
+}
+
+/** Receive a quantity of a non-serialized item into a bin (Material Receipt, no batch). */
+export async function qtyReceive(input: { itemCode: string; qty: number; warehouse: string; opKey: string }): Promise<QtyResult> {
+  const { itemCode, qty, warehouse, opKey } = input
+  if (!(qty > 0)) throw new Error('Receive qty must be greater than 0')
+  const { itemName, uom } = await assertNonBatch(itemCode)
+  await preflightWarehouse(warehouse)
+  const existing = await reconcileStockEntry(opKey)
+  const stockEntry =
+    existing ??
+    (await submitStockEntry({
+      stock_entry_type: 'Material Receipt',
+      company: COMPANY,
+      remarks: `Dashboard qty-receive [op:${opKey}]`,
+      items: [{ item_code: itemCode, qty, t_warehouse: warehouse, allow_zero_valuation_rate: 1, uom, stock_uom: uom, conversion_factor: 1 }],
+    }))
+  return { stockEntry, itemName, uom, qty, warehouse }
+}
+
+/** Move a quantity of a non-serialized item from one bin to another (Material Transfer). */
+export async function qtyTransfer(input: {
+  itemCode: string
+  qty: number
+  fromWarehouse: string
+  toWarehouse: string
+  opKey: string
+}): Promise<QtyResult> {
+  const { itemCode, qty, fromWarehouse, toWarehouse, opKey } = input
+  if (!(qty > 0)) throw new Error('Transfer qty must be greater than 0')
+  if (fromWarehouse === toWarehouse) throw new Error('Source and destination bins are the same')
+  const { itemName, uom } = await assertNonBatch(itemCode)
+  await preflightWarehouse(toWarehouse)
+  const existing = await reconcileStockEntry(opKey)
+  const stockEntry =
+    existing ??
+    (await submitStockEntry({
+      stock_entry_type: 'Material Transfer',
+      company: COMPANY,
+      remarks: `Dashboard qty-transfer [op:${opKey}] ${fromWarehouse} -> ${toWarehouse}`,
+      items: [
+        { item_code: itemCode, qty, s_warehouse: fromWarehouse, t_warehouse: toWarehouse, allow_zero_valuation_rate: 1, uom, stock_uom: uom, conversion_factor: 1 },
+      ],
+    }))
+  return { stockEntry, itemName, uom, qty, warehouse: toWarehouse }
+}
+
+/** Issue a quantity of a non-serialized item out of a bin (Material Issue) — for damage /
+ *  internal use. Order-based shipping stays in ERPNext (Sales Order fulfillment). */
+export async function qtyRemove(input: { itemCode: string; qty: number; warehouse: string; reason: string; opKey: string }): Promise<QtyResult> {
+  const { itemCode, qty, warehouse, reason, opKey } = input
+  if (!(qty > 0)) throw new Error('Remove qty must be greater than 0')
+  const { itemName, uom } = await assertNonBatch(itemCode)
+  const existing = await reconcileStockEntry(opKey)
+  const stockEntry =
+    existing ??
+    (await submitStockEntry({
+      stock_entry_type: 'Material Issue',
+      company: COMPANY,
+      remarks: `Dashboard qty-remove [op:${opKey}]${reason ? ` reason: ${reason.slice(0, 120)}` : ''}`,
+      items: [{ item_code: itemCode, qty, s_warehouse: warehouse, allow_zero_valuation_rate: 1, uom, stock_uom: uom, conversion_factor: 1 }],
+    }))
+  return { stockEntry, itemName, uom, qty, warehouse }
+}
+
+/** Pieces-per-box for a fixed-pack SKU, parsed from the code's "<n>PK" token (e.g.
+ *  CURB-36PK-BLK -> 36, EB-48PK-RED -> 48). null when the code has no pack token, so the
+ *  generic label simply omits the piece count rather than guessing. */
+export function packSize(itemCode: string): number | null {
+  const m = itemCode.toUpperCase().match(/(?:^|[^0-9])(\d+)PK(?:[^0-9]|$)/)
+  return m ? parseInt(m[1], 10) : null
+}
+
 // ─── Serialization (reprint / qty-change reissue) ────────────────────────────────
 // To stop two physical labels with the same code being usable, a reprint or a qty
 // change REISSUES the pallet as a new serial (base -> base-02 -> base-03): produce
@@ -877,4 +1001,136 @@ export async function resolveCurrentSerial(scanned: string): Promise<{ current: 
   }
   const current = ranked[0].name
   return { current, superseded: current !== scanned }
+}
+
+// ─── Deleted-pallet lookup + restore ──────────────────────────────────────────────
+// A removed pallet is issued out + its batch disabled (removeInventory), so it drops off
+// the normal stocked views. Simon wants to still SCAN a removed pallet, see its data at
+// zero, and RESTORE it (return its stock) — same qty keeps the same label, a different qty
+// reissues a new serial + new label.
+
+const suffixNum = (name: string): number => parseInt(name.match(/-(\d+)$/)?.[1] ?? '1', 10)
+
+export interface RemovedPalletInfo {
+  batch: string // canonical (latest) serial in the family
+  itemCode: string
+  itemName: string
+  labelQty: number // custom_pallet_qty — the qty that was printed on the label
+  lastWarehouse: string | null // last bin it was in (from the stock ledger) — restore target
+  uom: string
+}
+
+/** Most recent warehouse a batch was in, from the Stock Ledger Entry (the bin it was issued
+ *  out of on removal). Used to restore a removed pallet back to where it physically still is. */
+async function lastWarehouseForBatch(batch: string): Promise<string | null> {
+  const qs = [
+    listParam('filters', [['batch_no', '=', batch]]),
+    listParam('fields', ['warehouse']),
+    'order_by=creation desc',
+    'limit_page_length=1',
+  ].join('&')
+  const rows = (await erpnextGet<{ data: { warehouse: string }[] }>(`/api/resource/Stock Ledger Entry?${qs}`)).data ?? []
+  return rows[0]?.warehouse ?? null
+}
+
+/** If a scanned code's pallet family has NO active serial holding stock (it was removed /
+ *  zeroed), return the removed pallet's display data so the UI can show it at zero and offer
+ *  a restore. Returns null if the family still has live stock (the normal locate / superseded
+ *  path handles that) or the code isn't a known batch. */
+export async function lookupRemovedPallet(code: string): Promise<RemovedPalletInfo | null> {
+  const trimmed = code.trim()
+  if (!trimmed) return null
+  const base = palletBase(trimmed)
+  const qs = [
+    listParam('or_filters', [['name', '=', base], ['name', 'like', `${base}-%`]]),
+    listParam('fields', ['name', 'item', 'disabled', 'custom_pallet_qty']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows =
+    (await erpnextGet<{ data: { name: string; item: string; disabled: number; custom_pallet_qty: number }[] }>(`/api/resource/Batch?${qs}`)).data ?? []
+  const fam = rows.filter((r) => r.name === base || r.name.startsWith(`${base}-`))
+  if (fam.length === 0) return null
+  // If any serial still holds stock, the pallet isn't removed — let the normal path handle it.
+  for (const r of fam) {
+    const loc = await getBatchLocation(r.name, r.item)
+    if (loc && loc.qty > 0) return null
+  }
+  // Removed: the latest serial (highest suffix) is the canonical identity to restore.
+  const latest = [...fam].sort((a, b) => suffixNum(a.name) - suffixNum(b.name)).at(-1)!
+  const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', latest.item).catch(() => null)
+  return {
+    batch: latest.name,
+    itemCode: latest.item,
+    itemName: item?.item_name ?? latest.item,
+    labelQty: Number(latest.custom_pallet_qty) || 0,
+    lastWarehouse: await lastWarehouseForBatch(latest.name),
+    uom: item?.stock_uom ?? 'pcs',
+  }
+}
+
+export interface RestoreResult extends Committed {
+  newLabel: boolean // true when a different qty forced a new serial + new label
+  qty: number
+  warehouse: string
+}
+
+/** Return a removed pallet's stock to inventory. Re-receipts `requestedQty` into `warehouse`.
+ *  If requestedQty equals the label qty, the SAME serial is re-enabled and re-stocked (its
+ *  printed label is still valid — no new label). If it differs, the pallet is reissued as a
+ *  new serial (`newBatch`) at the new qty and a new label is printed; the old serial stays
+ *  disabled. Idempotent via runInventoryOp + the [op:key] stamp (reconcileStockEntry). */
+export async function restorePallet(input: {
+  batch: string
+  itemCode: string
+  requestedQty: number
+  warehouse: string
+  newBatch?: string | null
+  opKey: string
+}): Promise<RestoreResult> {
+  const { batch, itemCode, requestedQty, warehouse, newBatch, opKey } = input
+  if (!(requestedQty > 0)) throw new Error('Restore qty must be greater than 0')
+  // Old batch must exist + belong to the item; it may be disabled (it was removed).
+  await assertBatchItem(batch, itemCode, false)
+  const { uom } = await preflight(itemCode, warehouse) // validates the destination bin too
+
+  // Authoritative label qty from the batch itself (don't trust the client to decide same vs new).
+  const oldDoc = await erpnextGetDoc<{ custom_pallet_qty?: number }>('Batch', batch)
+  const labelQty = Number(oldDoc.custom_pallet_qty) || 0
+  const sameQty = requestedQty === labelQty
+  const target = sameQty ? batch : (newBatch as string)
+  if (!target) throw new Error('A new serial must be reserved to restore at a different quantity')
+
+  if (sameQty) {
+    // Re-enable BEFORE receipting (ERPNext rejects stock into a disabled batch).
+    await erpnextUpdate('Batch', batch, { disabled: 0 })
+  } else if (!(await erpnextGet(`/api/resource/Batch/${encodeURIComponent(target)}`).then(() => true).catch(() => false))) {
+    await erpnextCreate('Batch', { batch_id: target, item: itemCode, custom_pallet_qty: requestedQty })
+  }
+
+  // If the receipt already posted (retry), don't post again.
+  const existing = await reconcileStockEntry(opKey)
+  const stockEntry =
+    existing ??
+    (await submitStockEntry({
+      stock_entry_type: 'Material Receipt',
+      company: COMPANY,
+      remarks: `Dashboard restore [op:${opKey}]`,
+      items: [
+        {
+          item_code: itemCode,
+          qty: requestedQty,
+          t_warehouse: warehouse,
+          use_serial_batch_fields: 1,
+          batch_no: target,
+          allow_zero_valuation_rate: 1,
+          uom,
+          stock_uom: uom,
+          conversion_factor: 1,
+        },
+      ],
+    }))
+
+  await erpnextUpdate('Batch', target, { custom_pallet_qty: requestedQty })
+
+  return { batch: target, stockEntry, newLabel: !sameQty, qty: requestedQty, warehouse }
 }

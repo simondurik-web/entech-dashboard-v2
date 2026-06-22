@@ -48,6 +48,7 @@ interface LocateResult {
   total: number
   bins: BinLocation[]
   pallets?: Pallet[] // pallet ids for stocked items, attached by the locate route
+  hasBatch?: boolean // false = non-serialized (quantity) item -> quantity-mode controls
 }
 interface ItemOption {
   itemCode: string
@@ -77,6 +78,14 @@ interface PalletLookup {
   split: boolean
   superseded: boolean
   scanned: string
+}
+interface RemovedPallet {
+  batch: string
+  itemCode: string
+  itemName: string
+  labelQty: number // the quantity that was printed on the label
+  lastWarehouse: string | null
+  uom: string
 }
 interface RecentLabel {
   batch: string
@@ -137,6 +146,9 @@ function describeEvents(events: HistEvent[], t: (k: string) => string) {
         break
       case 'reprint':
         text = t('inventoryOps.histReprinted')
+        break
+      case 'restore':
+        text = `${t('inventoryOps.histRestored')}${e.qty != null ? ` · ${e.qty} ${t('inventoryOps.units')}` : ''}${e.warehouse ? ` · ${e.warehouse}` : ''}`
         break
       default:
         text = e.action
@@ -242,6 +254,16 @@ export default function InventoryOpsPage() {
   const [scanOpen, setScanOpen] = useState(false)
   const [matchedPallet, setMatchedPallet] = useState<string | null>(null)
   const [superseded, setSuperseded] = useState<{ scanned: string; current: string | null } | null>(null)
+  // A scanned pallet whose stock was removed/zeroed: shown at 0 with its data + a restore form.
+  const [removedPallet, setRemovedPallet] = useState<RemovedPallet | null>(null)
+  const [restoreQty, setRestoreQty] = useState('')
+  const [restoreBin, setRestoreBin] = useState('') // committed destination bin for restore
+  const [restoring, setRestoring] = useState(false)
+  // Quantity-mode (non-serialized items): the open per-bin transfer/remove panel + inputs.
+  const [qtyOp, setQtyOp] = useState<{ itemCode: string; fromWarehouse: string; mode: 'transfer' | 'remove' } | null>(null)
+  const [qtyAmount, setQtyAmount] = useState('')
+  const [qtyDestBin, setQtyDestBin] = useState('') // committed destination bin (transfer)
+  const [qtyBusy, setQtyBusy] = useState(false)
 
   const runSearch = useCallback(
     async (q: string, signal: AbortSignal) => {
@@ -250,6 +272,7 @@ export default function InventoryOpsPage() {
         setSearched(false)
         setMatchedPallet(null)
         setSuperseded(null)
+        setRemovedPallet(null)
         return
       }
       setSearching(true)
@@ -262,6 +285,13 @@ export default function InventoryOpsPage() {
         setResults(rows)
         setMatchedPallet(data.matchedPallet ?? null)
         setSuperseded(data.superseded ?? null)
+        const rp: RemovedPallet | null = data.removedPallet ?? null
+        setRemovedPallet(rp)
+        if (rp) {
+          // Prefill the restore form: full label qty, back to its last known bin.
+          setRestoreQty(String(rp.labelQty))
+          setRestoreBin(rp.lastWarehouse ?? '')
+        }
         // Seed the pallet lists from the inline pallet ids (no refetch needed); the rows
         // render inline under each bin (no expander).
         const seeded: Record<string, Pallet[]> = {}
@@ -274,6 +304,7 @@ export default function InventoryOpsPage() {
         setResults([])
         setMatchedPallet(null)
         setSuperseded(null)
+        setRemovedPallet(null)
       } finally {
         if (!signal.aborted) setSearching(false)
       }
@@ -356,6 +387,8 @@ export default function InventoryOpsPage() {
   // /pallets calls at once — beyond that the user narrows the search to act on a pallet.
   useEffect(() => {
     for (const r of results.slice(0, LAZY_PALLET_LIMIT)) {
+      // Non-serialized items have no pallets — quantity mode renders bins directly.
+      if (r.hasBatch === false) continue
       if (r.total > 0 && pallets[r.itemCode] === undefined && !palletReqRef.current.has(r.itemCode) && !palletsError[r.itemCode]) {
         loadPallets(r.itemCode)
       }
@@ -1010,6 +1043,253 @@ export default function InventoryOpsPage() {
     }
   }
 
+  // Return a removed/zeroed pallet's stock to inventory. Same qty as the label keeps the
+  // same serial (no new label); a different qty reissues a new serial + prints a new label
+  // (we confirm with the user first).
+  const submitRestore = async () => {
+    if (!removedPallet) return
+    const qty = Number(restoreQty)
+    if (!(qty > 0)) {
+      showFlash('err', t('inventoryOps.restoreQtyInvalid'))
+      return
+    }
+    const bin = restoreBin.trim()
+    if (!bin) {
+      showFlash('err', t('inventoryOps.restoreBinRequired'))
+      return
+    }
+    const willReissue = qty !== removedPallet.labelQty
+    if (willReissue && !window.confirm(t('inventoryOps.restoreNewLabelConfirm'))) return
+    const station = addStation || stations[0]?.id
+    if (willReissue && !station) {
+      showFlash('err', t('inventoryOps.addMissing'))
+      return
+    }
+    if (busyRef.current) return
+    busyRef.current = true
+    setRestoring(true)
+    const payload = `${qty}:${bin}`
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/restore', {
+        method: 'POST',
+        body: JSON.stringify({
+          batch: removedPallet.batch,
+          itemCode: removedPallet.itemCode,
+          qty,
+          warehouse: bin,
+          station,
+          idempotencyKey: opKey('restore', removedPallet.batch, payload),
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'restore failed')
+      clearOpKey('restore', removedPallet.batch, payload)
+      const serial = (d.batch as string) ?? removedPallet.batch
+      showFlash('ok', d.newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      if (d.newLabel) loadRecentLabels(recentExpanded)
+      // Re-run the search on the (possibly new) serial so it now shows as stocked.
+      setRemovedPallet(null)
+      setQuery(serial)
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setRestoring(false)
+      busyRef.current = false
+    }
+  }
+
+  // ─── Quantity mode (non-serialized items): move/remove a quantity (boxes) per bin ───
+  const submitQtyTransfer = async (itemCode: string, fromWarehouse: string) => {
+    const qty = Number(qtyAmount)
+    const dest = qtyDestBin.trim()
+    if (!(qty > 0)) {
+      showFlash('err', t('inventoryOps.restoreQtyInvalid'))
+      return
+    }
+    if (!dest) {
+      showFlash('err', t('inventoryOps.qtyDestRequired'))
+      return
+    }
+    if (dest === fromWarehouse) {
+      showFlash('err', t('inventoryOps.qtySameBin'))
+      return
+    }
+    if (busyRef.current) return
+    busyRef.current = true
+    setQtyBusy(true)
+    const payload = `${qty}:${fromWarehouse}:${dest}`
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/qty-transfer', {
+        method: 'POST',
+        body: JSON.stringify({ itemCode, qty, fromWarehouse, toWarehouse: dest, idempotencyKey: opKey('qty-transfer', itemCode, payload) }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'transfer failed')
+      clearOpKey('qty-transfer', itemCode, payload)
+      showFlash('ok', `${t('inventoryOps.moved')} ${qty} · ${fromWarehouse} → ${dest}`)
+      setQtyOp(null)
+      setQtyAmount('')
+      setQtyDestBin('')
+      refreshAfterMutation(itemCode)
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setQtyBusy(false)
+      busyRef.current = false
+    }
+  }
+
+  const submitQtyRemove = async (itemCode: string, fromWarehouse: string) => {
+    const qty = Number(qtyAmount)
+    if (!(qty > 0)) {
+      showFlash('err', t('inventoryOps.restoreQtyInvalid'))
+      return
+    }
+    // Reason is optional (OK with a blank box still removes); only Cancel aborts.
+    const reason = window.prompt(t('inventoryOps.removeReason'))
+    if (reason === null) return
+    const cleanReason = reason.trim()
+    if (busyRef.current) return
+    busyRef.current = true
+    setQtyBusy(true)
+    const payload = `${qty}:${fromWarehouse}:${cleanReason}`
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/qty-remove', {
+        method: 'POST',
+        body: JSON.stringify({ itemCode, qty, warehouse: fromWarehouse, reason: cleanReason, idempotencyKey: opKey('qty-remove', itemCode, payload) }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'remove failed')
+      clearOpKey('qty-remove', itemCode, payload)
+      showFlash('ok', `${t('inventoryOps.removed')} ${qty} · ${fromWarehouse}`)
+      setQtyOp(null)
+      setQtyAmount('')
+      refreshAfterMutation(itemCode)
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setQtyBusy(false)
+      busyRef.current = false
+    }
+  }
+
+  // Non-serialized item body: each bin with its box count + per-bin Transfer / Remove (qty).
+  const renderQtyMode = (r: LocateResult) => (
+    <div className="space-y-2">
+      <div className="text-xs text-muted-foreground">{t('inventoryOps.qtyModeHint')}</div>
+      {r.bins.length === 0 ? (
+        <div className="text-xs text-muted-foreground">{t('inventoryOps.noStock')}</div>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border bg-background">
+          {r.bins.map((b) => {
+            const open = qtyOp && qtyOp.itemCode === r.itemCode && qtyOp.fromWarehouse === b.warehouse
+            const toggle = (mode: 'transfer' | 'remove') => {
+              const same = open && qtyOp.mode === mode
+              setQtyOp(same ? null : { itemCode: r.itemCode, fromWarehouse: b.warehouse, mode })
+              setQtyAmount('')
+              setQtyDestBin('')
+            }
+            return (
+              <li key={b.warehouse} className="px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                    {b.warehouse}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold tabular-nums">{b.qty.toLocaleString()}</span>
+                    <button
+                      onClick={() => toggle('transfer')}
+                      title={t('inventoryOps.move')}
+                      className={`hover:text-foreground ${open && qtyOp.mode === 'transfer' ? 'text-primary' : 'text-muted-foreground'}`}
+                    >
+                      <ArrowLeftRight className="h-3.5 w-3.5" />
+                    </button>
+                    {isOffice && (
+                      <button
+                        onClick={() => toggle('remove')}
+                        title={t('inventoryOps.remove')}
+                        className={`hover:text-red-600 ${open && qtyOp.mode === 'remove' ? 'text-red-600' : 'text-muted-foreground'}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {open && qtyOp.mode === 'transfer' && (
+                  <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/20 p-2">
+                    <div className="text-xs font-medium">{t('inventoryOps.qtyTransferTitle')}</div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <div className="sm:w-28">
+                        <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.qtyBoxes')}</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={b.qty}
+                          value={qtyAmount}
+                          onChange={(e) => setQtyAmount(e.target.value)}
+                          className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.moveTo')}</label>
+                        <BinCombobox
+                          value={qtyDestBin}
+                          onChange={setQtyDestBin}
+                          warehouses={warehouses.filter((w) => w !== b.warehouse)}
+                          placeholder={t('inventoryOps.searchBin')}
+                          noBinsLabel={t('inventoryOps.noBins')}
+                        />
+                      </div>
+                      <button
+                        onClick={() => submitQtyTransfer(r.itemCode, b.warehouse)}
+                        disabled={qtyBusy || !(Number(qtyAmount) > 0) || !qtyDestBin}
+                        className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        {qtyBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                        {t('inventoryOps.moveConfirm')}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{t('inventoryOps.qtyAvail')}: {b.qty.toLocaleString()}</div>
+                  </div>
+                )}
+
+                {open && qtyOp.mode === 'remove' && (
+                  <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/20 p-2">
+                    <div className="text-xs font-medium">{t('inventoryOps.qtyRemoveTitle')}</div>
+                    <div className="flex items-end gap-2">
+                      <div className="w-28">
+                        <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.qtyBoxes')}</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={b.qty}
+                          value={qtyAmount}
+                          onChange={(e) => setQtyAmount(e.target.value)}
+                          className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
+                        />
+                      </div>
+                      <button
+                        onClick={() => submitQtyRemove(r.itemCode, b.warehouse)}
+                        disabled={qtyBusy || !(Number(qtyAmount) > 0)}
+                        className="flex items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        {qtyBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        {t('inventoryOps.remove')}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{t('inventoryOps.qtyAvail')}: {b.qty.toLocaleString()}</div>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+
   if (!canAccess('/inventory-ops')) {
     return <div className="p-8 text-sm text-muted-foreground">{t('inventoryOps.noAccess')}</div>
   }
@@ -1031,7 +1311,7 @@ export default function InventoryOpsPage() {
 
   // Recent-labels helpers: map the op action to a friendly purpose, and the print-job
   // status to a label + color (so a jam/failure stands out).
-  const PURPOSE_KEY: Record<string, string> = { add: 'added', adjust: 'adjusted', reprint: 'reprinted', remove: 'removed', move: 'moved' }
+  const PURPOSE_KEY: Record<string, string> = { add: 'added', adjust: 'adjusted', reprint: 'reprinted', remove: 'removed', move: 'moved', restore: 'restored' }
   const purposeText = (a: string) => (PURPOSE_KEY[a] ? t(`inventoryOps.${PURPOSE_KEY[a]}`) : a)
   // Normalize the print-agent's status (vocabularies vary) and flag a job that hasn't
   // printed within a few minutes as STUCK — the agent normally prints within seconds, so a
@@ -1473,8 +1753,10 @@ export default function InventoryOpsPage() {
                       }}
                       className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
                     >
+                      {/* Part number only — the description is often a copy of the part
+                          number (or boilerplate like "Molding finished part"), so showing
+                          it just adds noise. We still match on name in the filter above. */}
                       <span className="font-mono">{o.itemCode}</span>
-                      <span className="text-muted-foreground"> — {o.itemName}</span>
                     </button>
                   ))}
                   {partsTruncated && (
@@ -1509,7 +1791,9 @@ export default function InventoryOpsPage() {
         <p className="text-sm text-muted-foreground">{t('inventoryOps.noResults')}</p>
       )}
 
-      {superseded && (
+      {/* Suppress the generic "scanned label is gone" banner when we have the richer
+          removed-pallet card below (it explains the same thing and offers a restore). */}
+      {superseded && !removedPallet && (
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
@@ -1518,6 +1802,100 @@ export default function InventoryOpsPage() {
               ? <>{t('inventoryOps.supersededCurrent')} <span className="font-mono font-semibold">{superseded.current}</span>.</>
               : t('inventoryOps.supersededGone')}
           </span>
+        </div>
+      )}
+
+      {/* Removed/zeroed pallet: scanning a deleted pallet still shows its data at 0 and (for
+          office roles) offers a one-click restore back to its last bin and label quantity. */}
+      {removedPallet && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-start gap-2">
+            <Trash2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="font-mono text-sm font-semibold">{removedPallet.batch}</span>
+                <span className="rounded bg-amber-200 px-1.5 py-0.5 text-xs font-medium text-amber-900">
+                  {t('inventoryOps.removedZero')}
+                </span>
+              </div>
+              <div className="mt-1 font-mono text-xs text-muted-foreground">{removedPallet.itemCode}</div>
+              <div className="mt-1 text-sm text-amber-900">
+                {t('inventoryOps.removedLabelQty')}: <span className="font-semibold">{removedPallet.labelQty.toLocaleString()} {removedPallet.uom}</span>
+                {removedPallet.lastWarehouse && (
+                  <> · {t('inventoryOps.removedLastBin')}: <span className="font-medium">{removedPallet.lastWarehouse}</span></>
+                )}
+              </div>
+              <button
+                onClick={() => toggleHistory(removedPallet.batch)}
+                className={`mt-1 inline-flex items-center gap-1 text-xs hover:text-foreground ${historyOpen === removedPallet.batch ? 'text-primary' : 'text-muted-foreground'}`}
+              >
+                <Clock className="h-3.5 w-3.5" /> {t('inventoryOps.history')}
+              </button>
+
+              {isOffice && (
+                <div className="mt-3 rounded-lg border border-amber-300 bg-background p-3">
+                  <div className="mb-2 text-sm font-medium">{t('inventoryOps.restoreTitle')}</div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="sm:w-32">
+                      <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.restoreQty')}</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={restoreQty}
+                        onChange={(e) => setRestoreQty(e.target.value)}
+                        className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.restoreBin')}</label>
+                      <BinCombobox
+                        value={restoreBin}
+                        onChange={setRestoreBin}
+                        warehouses={warehouses}
+                        placeholder={t('inventoryOps.searchBin')}
+                        noBinsLabel={t('inventoryOps.noBins')}
+                      />
+                    </div>
+                    <button
+                      onClick={submitRestore}
+                      disabled={restoring || !(Number(restoreQty) > 0) || !restoreBin}
+                      className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      {t('inventoryOps.restoreConfirm')}
+                    </button>
+                  </div>
+                  {Number(restoreQty) > 0 && Number(restoreQty) !== removedPallet.labelQty && (
+                    <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-800">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {t('inventoryOps.restoreNewLabelNote')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {historyOpen === removedPallet.batch && (
+            <div className="mt-3 rounded-md border border-border bg-muted/30 p-2">
+              {historyLoading === removedPallet.batch ? (
+                <div className="flex items-center gap-2 p-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('inventoryOps.loading')}
+                </div>
+              ) : (history[removedPallet.batch] ?? []).length === 0 ? (
+                <div className="p-1 text-xs text-muted-foreground">{t('inventoryOps.noHistory')}</div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {describeEvents(history[removedPallet.batch] ?? [], t).map((ev, i) => (
+                    <li key={i} className="text-xs">
+                      <span className="text-foreground">{ev.text}</span>
+                      <span className="text-muted-foreground"> · {ev.by}{ev.at ? ` · ${ev.at}` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1564,7 +1942,9 @@ export default function InventoryOpsPage() {
               </div>
             </div>
             <div className="mt-3 border-t border-border pt-3">
-              {palletsError[r.itemCode] ? (
+              {r.hasBatch === false ? (
+                renderQtyMode(r)
+              ) : palletsError[r.itemCode] ? (
                 <button
                   onClick={() => loadPallets(r.itemCode)}
                   className="flex items-center gap-2 p-1 text-xs text-red-600 hover:underline"

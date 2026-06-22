@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { addInventory, generatePalletId, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
+import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive, packSize } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -59,6 +59,61 @@ export async function POST(req: NextRequest) {
 
   const userId = guard.userId // verified from the session, not a client header
   const printedBy = await resolveUserName(userId)
+
+  // Serialized (pallet) vs non-serialized (quantity) item — decided by ERPNext's batch flag.
+  let itemInfo: { itemName: string; uom: string; hasBatch: boolean }
+  try {
+    itemInfo = await getItemInfo(itemCode)
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 })
+  }
+
+  // ─── Non-serialized: receive a quantity (boxes) + print one generic label per box ───
+  if (!itemInfo.hasBatch) {
+    const result = await runInventoryOp({
+      key: idempotencyKey,
+      action: 'add',
+      createdBy: userId,
+      // No batch/family for a quantity item; family null keeps it outside the pallet lock.
+      meta: { item_code: itemCode, qty, warehouse, station_id: station, batch: null, family: null },
+      erp: () => qtyReceive({ itemCode, qty, warehouse, opKey: idempotencyKey }),
+      reconcile: async () => {
+        const se = await reconcileStockEntry(idempotencyKey)
+        return se ? { stockEntry: se } : null
+      },
+      label: async () => {
+        // Generic label: part # + pack size (pieces per box) + QR of the PART NUMBER (no
+        // unique pallet code). One copy per box (^PQ via `copies`).
+        const ps = packSize(itemCode)
+        const zpl = buildPalletZpl({
+          itemCode,
+          itemName: itemInfo.itemName,
+          qty: ps ?? 0, // pack size on the label; 0 omits the QTY line when unknown
+          uom: itemInfo.uom,
+          batch: '', // no pallet code on a generic label
+          qrPayload: itemCode, // scan identifies the product
+          copies: qty, // one label per box
+          customer,
+          ref,
+          generatedAt: labelTimestamp(),
+          printedBy,
+        })
+        const { data: job, error } = await supabaseAdmin
+          .from('print_jobs')
+          .upsert(
+            { station_id: station, zpl, item_code: itemCode, batch: null, created_by: userId, idempotency_key: `print-${idempotencyKey}`, status: 'pending' },
+            { onConflict: 'idempotency_key', ignoreDuplicates: true }
+          )
+          .select('id')
+          .maybeSingle()
+        if (error) throw new Error(error.message)
+        if (job?.id) return job.id
+        const { data: existing } = await supabaseAdmin.from('print_jobs').select('id').eq('idempotency_key', `print-${idempotencyKey}`).maybeSingle()
+        return existing?.id ?? null
+      },
+    })
+    return NextResponse.json(result.body, { status: result.status })
+  }
 
   // Pallet id: reuse the one already reserved for this op (a retry), else mint a
   // fresh unique code. Reusing it keeps retries idempotent — addInventory's Batch

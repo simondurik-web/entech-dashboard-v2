@@ -43,6 +43,8 @@ export interface PalletLabel {
   generatedAt?: string // date+time the label was generated (printed in the scan zone)
   printedBy?: string // name of the person who printed it (printed under the timestamp)
   ref?: string // optional PO/IF reference
+  qrPayload?: string // QR contents; defaults to `batch`. Non-serialized labels encode the part number.
+  copies?: number // print this many identical copies (^PQ) — non-serialized: one per box.
 }
 
 // Sanitize a value for a ZPL ^FD field: strip ZPL control prefixes (^ ~), the
@@ -119,8 +121,9 @@ export function buildPalletZpl(label: PalletLabel): string {
   const qty = Number.isFinite(label.qty) ? Math.max(0, Math.round(label.qty)) : 0
 
   // QR ~2.5in (508 dots @ 203dpi). Bitmap is axis-aligned; a QR scans at any
-  // rotation, so it needs no rotation to match the rotated text.
-  const qr = qrGfaField(batch, 508)
+  // rotation, so it needs no rotation to match the rotated text. A non-serialized
+  // (generic) label has no pallet code, so its QR encodes the part number instead.
+  const qr = qrGfaField(z(label.qrPayload, 60) || batch || itemCode, 508)
 
   // Rotated text line: x = distance from the reading top (we step DOWN by reducing x),
   // y = distance from the reading left. h = font height.
@@ -136,9 +139,14 @@ export function buildPalletZpl(label: PalletLabel): string {
   lines.push(T(788, Y, 26, 'PART No.'))
   lines.push(T(694, Y, 88, itemCode))
   lines.push(T(648, Y, 32, itemName))
-  lines.push(T(548, Y, 84, `QTY: ${qty} ${uom}`))
-  lines.push(T(506, Y, 26, 'PALLET'))
-  lines.push(T(420, Y, 84, batch))
+  // QTY: pallets always have a qty; a generic label passes the pack size (pieces per box),
+  // or 0 to omit the line entirely when the pack size is unknown.
+  if (qty > 0) lines.push(T(548, Y, 84, `QTY: ${qty} ${uom}`))
+  // PALLET id only on serialized labels; a generic (non-serialized) label has none.
+  if (batch) {
+    lines.push(T(506, Y, 26, 'PALLET'))
+    lines.push(T(420, Y, 84, batch))
+  }
 
   // Optional rows (only what's provided), stepping further down (lower x).
   let x = 360
@@ -167,6 +175,11 @@ export function buildPalletZpl(label: PalletLabel): string {
   // Generated date/time + who printed it, in the scan zone (where "SCAN PALLET" was).
   if (generatedAt) lines.push(T(qrX - 44, qrY, 26, generatedAt))
   if (printedBy) lines.push(T(qrX - 78, qrY, 24, `By: ${printedBy}`))
+
+  // Print N identical copies (one label per box for non-serialized packs). ^PQ must
+  // precede ^XZ. Clamp to a sane range so a bad qty can't spool thousands of labels.
+  const copies = Math.max(1, Math.min(999, Math.round(label.copies ?? 1)))
+  if (copies > 1) lines.push(`^PQ${copies},0,0,N`)
 
   lines.push('^XZ')
   return lines.join('\n')
