@@ -681,13 +681,18 @@ export default function InventoryOpsPage() {
     return () => el.removeEventListener('wheel', onWheel)
   }, [itemOptions.length])
   const [addQty, setAddQty] = useState('')
-  const [addWarehouse, setAddWarehouse] = useState('')
-  const [whFilter, setWhFilter] = useState('')
+  const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection
+  const [whFilter, setWhFilter] = useState('') // combobox text (shows the selection or what's typed)
+  const [whOpen, setWhOpen] = useState(false)
   const [addStation, setAddStation] = useState('')
   const [adding, setAdding] = useState(false)
 
   useEffect(() => {
-    if (defaultWarehouse) setAddWarehouse(defaultWarehouse)
+    // Pre-select the default bin AND show it in the combobox.
+    if (defaultWarehouse) {
+      setAddWarehouse(defaultWarehouse)
+      setWhFilter((f) => f || defaultWarehouse)
+    }
   }, [defaultWarehouse])
   useEffect(() => {
     if (stations[0] && !addStation) setAddStation(stations[0].id)
@@ -906,9 +911,19 @@ export default function InventoryOpsPage() {
     ? warehouses.filter((w) => w.toLowerCase().includes(moveWhFilter.toLowerCase())).slice(0, 50)
     : warehouses.slice(0, 50)
 
-  const filteredWarehouses = whFilter
-    ? warehouses.filter((w) => w.toLowerCase().includes(whFilter.toLowerCase())).slice(0, 50)
-    : warehouses.slice(0, 50)
+  // Add-panel bin combobox options: show ALL bins when the box still shows the committed
+  // selection (so a click reveals the full list), and filter only once the user types
+  // something different.
+  const addFilterActive = whFilter.trim() !== '' && whFilter !== addWarehouse
+  let addBinOptions = (addFilterActive
+    ? warehouses.filter((w) => w.toLowerCase().includes(whFilter.toLowerCase()))
+    : warehouses
+  ).slice(0, 50)
+  // Always keep the committed bin visible in the full list (it could otherwise fall past
+  // the 50-row cap when there are many bins).
+  if (!addFilterActive && addWarehouse && warehouses.includes(addWarehouse) && !addBinOptions.includes(addWarehouse)) {
+    addBinOptions = [addWarehouse, ...addBinOptions].slice(0, 50)
+  }
 
   // Parts shown in the By-item picker: all parts, filtered by whatever's typed in the
   // search box (matches code or name). Rendered list is capped for DOM sanity; if more
@@ -1234,34 +1249,63 @@ export default function InventoryOpsPage() {
                 ))}
               </select>
             </div>
-            <div className="sm:col-span-2">
+            <div className="relative sm:col-span-2">
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.bin')}</label>
+              {/* Single combobox: shows the pre-selected default; click to see all bins or
+                  type to filter. Unconfirmed text reverts to the committed bin on blur, so
+                  submitAdd always has a valid selection (addWarehouse). */}
               <input
                 value={whFilter}
-                onChange={(e) => setWhFilter(e.target.value)}
-                placeholder={t('inventoryOps.searchBin')}
-                className="mb-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <select
-                value={addWarehouse}
-                onChange={(e) => setAddWarehouse(e.target.value)}
+                onChange={(e) => {
+                  setWhFilter(e.target.value)
+                  setWhOpen(true)
+                }}
+                onFocus={(e) => {
+                  setWhOpen(true)
+                  e.currentTarget.select() // highlight all so typing replaces (no manual delete)
+                }}
+                onBlur={() =>
+                  setTimeout(() => {
+                    setWhOpen(false)
+                    setWhFilter(addWarehouse) // revert any unconfirmed typing to the selection
+                  }, 150)
+                }
+                placeholder={t('inventoryOps.selectBin')}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-              >
-                {!filteredWarehouses.includes(addWarehouse) && addWarehouse && (
-                  <option value={addWarehouse}>{addWarehouse}</option>
-                )}
-                {filteredWarehouses.map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-              </select>
+              />
+              {whOpen && (
+                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+                  <div data-lenis-prevent className="inv-scroll max-h-60 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    {addBinOptions.length === 0 ? (
+                      <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
+                    ) : (
+                      addBinOptions.map((w) => (
+                        <button
+                          type="button"
+                          key={w}
+                          // Prevent the input's blur (and its revert timer) from firing on the
+                          // pick, so the committed bin and the displayed text never diverge.
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setAddWarehouse(w)
+                            setWhFilter(w)
+                            setWhOpen(false)
+                          }}
+                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-accent ${addWarehouse === w ? 'bg-primary/15 font-medium text-primary' : ''}`}
+                        >
+                          {w}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2">
             <button
               onClick={submitAdd}
-              disabled={adding}
+              disabled={adding || !addItem || !addWarehouse || !addStation || !(Number(addQty) > 0)}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
