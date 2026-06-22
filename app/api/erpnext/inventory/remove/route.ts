@@ -6,8 +6,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/remove
 // Remove a pallet from stock (issue out remaining qty + disable the batch).
-// Office-only, requires a reason. Cancel-not-hard-delete: the stock ledger keeps
-// the record.
+// Office-only. Reason is optional (recorded when given). Cancel-not-hard-delete: the
+// stock ledger keeps the record.
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -34,10 +34,12 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  const { batch, itemCode, reason, idempotencyKey } = body
-  if (!batch || !itemCode || !reason?.trim() || !idempotencyKey) {
+  const { batch, itemCode, idempotencyKey } = body
+  // Reason is OPTIONAL — a blank reason still removes (faster); a typed one is recorded.
+  const reason = (body.reason ?? '').trim()
+  if (!batch || !itemCode || !idempotencyKey) {
     return NextResponse.json(
-      { error: 'batch, itemCode, reason, and idempotencyKey are required' },
+      { error: 'batch, itemCode, and idempotencyKey are required' },
       { status: 400 }
     )
   }
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
     createdBy: userId,
     meta: { item_code: itemCode, batch, family: palletBase(batch) },
     erp: async () => {
-      const r = await removeInventory({ batch, itemCode, reason: reason.trim(), opKey: idempotencyKey })
+      const r = await removeInventory({ batch, itemCode, reason, opKey: idempotencyKey })
       return { batch: r.batch, stockEntry: r.stockEntry }
     },
     reconcile: async () => {

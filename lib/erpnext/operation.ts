@@ -31,6 +31,9 @@ export async function resolveUserName(userId: string | null): Promise<string> {
 export interface Committed {
   batch?: string
   stockEntry?: string | null
+  // Optional extra fields an erp() wants surfaced in the success response body (e.g. a bulk
+  // transfer's moved-count + skipped list). Merged into the `done` body.
+  extra?: Record<string, unknown>
 }
 
 export interface RunOpArgs {
@@ -229,6 +232,6 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
     .eq('idempotency_key', key)
   return {
     status: 200,
-    body: { ok: true, batch: committed.batch, stockEntry: committed.stockEntry, printJobId },
+    body: { ok: true, batch: committed.batch, stockEntry: committed.stockEntry, printJobId, ...(committed.extra ?? {}) },
   }
 }

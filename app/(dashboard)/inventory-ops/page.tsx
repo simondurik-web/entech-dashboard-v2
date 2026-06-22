@@ -27,6 +27,7 @@ import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
+import { BinCombobox } from '@/components/inventory/BinCombobox'
 
 // Camera scanner is browser-only (getUserMedia) and heavy — load it on demand.
 const PalletScanner = dynamic(() => import('@/components/inventory/PalletScanner'), { ssr: false })
@@ -66,6 +67,16 @@ interface InventoryRow {
   warehouse: string
   qty: number
   pallets: { batch: string; qty: number }[]
+}
+interface PalletLookup {
+  batch: string
+  itemCode: string
+  itemName: string
+  warehouse: string
+  qty: number
+  split: boolean
+  superseded: boolean
+  scanned: string
 }
 interface RecentLabel {
   batch: string
@@ -392,7 +403,7 @@ export default function InventoryOpsPage() {
   }, [query, runSearch])
 
   // ─── Locations view (browse by bin) ───
-  const [viewMode, setViewMode] = useState<'item' | 'bin'>('item')
+  const [viewMode, setViewMode] = useState<'item' | 'bin' | 'transfer'>('item')
   const [binQuery, setBinQuery] = useState('')
   const [binOpen, setBinOpen] = useState(false)
   const [selectedBin, setSelectedBin] = useState<string | null>(null)
@@ -465,16 +476,115 @@ export default function InventoryOpsPage() {
     loadRecentLabels(false)
   }, [loadRecentLabels])
 
-  // Toggle By item / By bin. RELOADS the view we switch INTO so it never shows data that
-  // went stale from a mutation made in the other view, and closes any open edit/move/
-  // history panel (those are single-value states shared by both views).
-  const switchView = (mode: 'item' | 'bin') => {
+  // ─── Bulk transfer (scan-to-queue → one atomic Material Transfer) ───
+  const [destBin, setDestBin] = useState('')
+  const [transferQueue, setTransferQueue] = useState<PalletLookup[]>([])
+  const [scanInput, setScanInput] = useState('')
+  const [queueBusy, setQueueBusy] = useState(false)
+  const [transferScanOpen, setTransferScanOpen] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [lastTransfer, setLastTransfer] = useState<{ destination: string; count: number; by: string; at: string | null } | null>(null)
+  // Suppress the scanner re-firing the same code while a label lingers in frame (it decodes
+  // ~every 150ms), so continuous scanning adds each distinct pallet once.
+  const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
+
+  const loadLastTransfer = useCallback(async () => {
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/last-transfer')
+      if (!r.ok) return
+      const d = await r.json()
+      setLastTransfer(d.last ?? null)
+    } catch {
+      /* non-critical */
+    }
+  }, [authedFetch])
+
+  // Resolve a scanned/typed pallet code and add it to the queue (deduped; skips a pallet
+  // already in the destination, a split pallet, or an unknown code, with a flash).
+  const addToQueue = async (rawCode: string) => {
+    const code = rawCode.trim()
+    if (!code || queueBusy) return
+    setQueueBusy(true)
+    try {
+      const r = await authedFetch(`/api/erpnext/inventory/pallet-lookup?code=${encodeURIComponent(code)}`)
+      const d = await r.json()
+      const p: PalletLookup | null = d.pallet ?? null
+      if (!p) {
+        showFlash('err', `${code}: ${t('inventoryOps.transferNotFound')}`)
+        return
+      }
+      if (p.split) {
+        showFlash('err', `${p.batch}: ${t('inventoryOps.transferSplit')}`)
+        return
+      }
+      if (destBin && p.warehouse === destBin) {
+        showFlash('err', `${p.batch} ${t('inventoryOps.transferAlreadyHere')}`)
+        return
+      }
+      if (transferQueue.some((x) => x.batch === p.batch)) {
+        showFlash('ok', `${p.batch} ${t('inventoryOps.transferAlreadyQueued')}`)
+        return
+      }
+      // Functional update with its OWN dedup guard too, in case rapid scans raced past the
+      // closure check above.
+      setTransferQueue((q) => (q.some((x) => x.batch === p.batch) ? q : [...q, p]))
+      setScanInput('')
+    } catch {
+      showFlash('err', t('inventoryOps.error'))
+    } finally {
+      setQueueBusy(false)
+    }
+  }
+
+  const postTransfer = async () => {
+    if (!destBin || transferQueue.length === 0 || posting || busyRef.current) return
+    busyRef.current = true
+    setPosting(true)
+    const batches = transferQueue.map((p) => p.batch).sort()
+    const key = opKey('bulk-transfer', destBin, batches)
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/bulk-transfer', {
+        method: 'POST',
+        body: JSON.stringify({
+          destination: destBin,
+          lines: transferQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode })),
+          idempotencyKey: key,
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'transfer failed')
+      clearOpKey('bulk-transfer', destBin, batches)
+      // `moved` is only present on the fresh post; on a duplicate/resume show a generic
+      // confirmation rather than overstating the count.
+      const skipped = Array.isArray(d.skipped) ? d.skipped.length : 0
+      showFlash(
+        'ok',
+        typeof d.moved === 'number'
+          ? `${t('inventoryOps.transferPosted')} ${d.moved} → ${destBin}${skipped ? ` · ${skipped} ${t('inventoryOps.transferSkipped')}` : ''}`
+          : `${t('inventoryOps.transferPosted')} → ${destBin}`
+      )
+      setTransferQueue([])
+      loadLastTransfer()
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setPosting(false)
+      busyRef.current = false
+    }
+  }
+
+  // Toggle By item / By bin / Transfer. RELOADS the view we switch INTO so it never shows
+  // data that went stale from a mutation in another view, and closes any open edit/move/
+  // history panel (those are single-value states shared across views).
+  const switchView = (mode: 'item' | 'bin' | 'transfer') => {
     setViewMode(mode)
     setEditBatch(null)
     setMovingBatch(null)
     setHistoryOpen(null)
     if (mode === 'bin') {
       if (selectedBin) loadBin(selectedBin)
+    } else if (mode === 'transfer') {
+      loadLastTransfer()
     } else if (query) {
       refreshSearch()
     }
@@ -681,18 +791,12 @@ export default function InventoryOpsPage() {
     return () => el.removeEventListener('wheel', onWheel)
   }, [itemOptions.length])
   const [addQty, setAddQty] = useState('')
-  const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection
-  const [whFilter, setWhFilter] = useState('') // combobox text (shows the selection or what's typed)
-  const [whOpen, setWhOpen] = useState(false)
+  const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection (BinCombobox)
   const [addStation, setAddStation] = useState('')
   const [adding, setAdding] = useState(false)
 
   useEffect(() => {
-    // Pre-select the default bin AND show it in the combobox.
-    if (defaultWarehouse) {
-      setAddWarehouse(defaultWarehouse)
-      setWhFilter((f) => f || defaultWarehouse)
-    }
+    if (defaultWarehouse) setAddWarehouse((w) => w || defaultWarehouse)
   }, [defaultWarehouse])
   useEffect(() => {
     if (stations[0] && !addStation) setAddStation(stations[0].id)
@@ -807,19 +911,22 @@ export default function InventoryOpsPage() {
   }
 
   const submitRemove = async (itemCode: string, batch: string) => {
+    // The reason is OPTIONAL: clicking OK with a blank box still removes (faster); only
+    // Cancel (window.prompt returns null) aborts. A typed reason is still recorded.
     const reason = window.prompt(t('inventoryOps.removeReason'))
-    if (!reason?.trim()) return
+    if (reason === null) return
+    const cleanReason = reason.trim()
     if (busyRef.current) return
     busyRef.current = true
     setBusyBatch(batch)
     try {
       const r = await authedFetch('/api/erpnext/inventory/remove', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, reason: reason.trim(), idempotencyKey: opKey('remove', batch, reason.trim()) }),
+        body: JSON.stringify({ batch, itemCode, reason: cleanReason, idempotencyKey: opKey('remove', batch, cleanReason) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'remove failed')
-      clearOpKey('remove', batch, reason.trim())
+      clearOpKey('remove', batch, cleanReason)
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
       setHistoryOpen((h) => (h === batch ? null : h)) // removed pallet's row unmounts
       refreshAfterMutation(itemCode)
@@ -910,20 +1017,6 @@ export default function InventoryOpsPage() {
   const filteredMoveWarehouses = moveWhFilter
     ? warehouses.filter((w) => w.toLowerCase().includes(moveWhFilter.toLowerCase())).slice(0, 50)
     : warehouses.slice(0, 50)
-
-  // Add-panel bin combobox options: show ALL bins when the box still shows the committed
-  // selection (so a click reveals the full list), and filter only once the user types
-  // something different.
-  const addFilterActive = whFilter.trim() !== '' && whFilter !== addWarehouse
-  let addBinOptions = (addFilterActive
-    ? warehouses.filter((w) => w.toLowerCase().includes(whFilter.toLowerCase()))
-    : warehouses
-  ).slice(0, 50)
-  // Always keep the committed bin visible in the full list (it could otherwise fall past
-  // the 50-row cap when there are many bins).
-  if (!addFilterActive && addWarehouse && warehouses.includes(addWarehouse) && !addBinOptions.includes(addWarehouse)) {
-    addBinOptions = [addWarehouse, ...addBinOptions].slice(0, 50)
-  }
 
   // Parts shown in the By-item picker: all parts, filtered by whatever's typed in the
   // search box (matches code or name). Rendered list is capped for DOM sanity; if more
@@ -1249,57 +1342,15 @@ export default function InventoryOpsPage() {
                 ))}
               </select>
             </div>
-            <div className="relative sm:col-span-2">
+            <div className="sm:col-span-2">
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.bin')}</label>
-              {/* Single combobox: shows the pre-selected default; click to see all bins or
-                  type to filter. Unconfirmed text reverts to the committed bin on blur, so
-                  submitAdd always has a valid selection (addWarehouse). */}
-              <input
-                value={whFilter}
-                onChange={(e) => {
-                  setWhFilter(e.target.value)
-                  setWhOpen(true)
-                }}
-                onFocus={(e) => {
-                  setWhOpen(true)
-                  e.currentTarget.select() // highlight all so typing replaces (no manual delete)
-                }}
-                onBlur={() =>
-                  setTimeout(() => {
-                    setWhOpen(false)
-                    setWhFilter(addWarehouse) // revert any unconfirmed typing to the selection
-                  }, 150)
-                }
+              <BinCombobox
+                value={addWarehouse}
+                onChange={setAddWarehouse}
+                warehouses={warehouses}
                 placeholder={t('inventoryOps.selectBin')}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                noBinsLabel={t('inventoryOps.noBins')}
               />
-              {whOpen && (
-                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-                  <div data-lenis-prevent className="inv-scroll max-h-60 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-                    {addBinOptions.length === 0 ? (
-                      <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
-                    ) : (
-                      addBinOptions.map((w) => (
-                        <button
-                          type="button"
-                          key={w}
-                          // Prevent the input's blur (and its revert timer) from firing on the
-                          // pick, so the committed bin and the displayed text never diverge.
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setAddWarehouse(w)
-                            setWhFilter(w)
-                            setWhOpen(false)
-                          }}
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-accent ${addWarehouse === w ? 'bg-primary/15 font-medium text-primary' : ''}`}
-                        >
-                          {w}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2">
@@ -1332,6 +1383,12 @@ export default function InventoryOpsPage() {
             className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'bin' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {t('inventoryOps.byBin')}
+          </button>
+          <button
+            onClick={() => switchView('transfer')}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'transfer' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('inventoryOps.transferTab')}
           </button>
         </div>
         <button
@@ -1672,6 +1729,127 @@ export default function InventoryOpsPage() {
               </ul>
             )}
           </div>
+        )}
+      </>
+      )}
+
+      {viewMode === 'transfer' && (
+      <>
+        {/* Pick the destination once, then scan/type pallet ids to build a queue and post
+            them all at once (one atomic Material Transfer). */}
+        <div className="mb-4">
+          <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.transferDestination')}</label>
+          <BinCombobox
+            value={destBin}
+            onChange={setDestBin}
+            warehouses={warehouses}
+            placeholder={t('inventoryOps.selectBin')}
+            noBinsLabel={t('inventoryOps.noBins')}
+          />
+        </div>
+
+        <div className="relative mb-2">
+          <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={scanInput}
+            onChange={(e) => setScanInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addToQueue(scanInput)
+              }
+            }}
+            disabled={!destBin}
+            placeholder={destBin ? t('inventoryOps.transferScanPlaceholder') : t('inventoryOps.transferPickDest')}
+            className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-24 text-sm outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+          />
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+            {queueBusy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            <button
+              type="button"
+              onClick={() => addToQueue(scanInput)}
+              disabled={!destBin || !scanInput.trim() || queueBusy}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+              aria-label={t('inventoryOps.transferAdd')}
+              title={t('inventoryOps.transferAdd')}
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => destBin && setTransferScanOpen(true)}
+              disabled={!destBin}
+              aria-label={t('inventoryOps.scan')}
+              title={t('inventoryOps.scan')}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <ScanLine className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-border bg-card p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-sm font-medium">
+              {t('inventoryOps.transferQueue')} {transferQueue.length > 0 && <span className="text-muted-foreground">({transferQueue.length})</span>}
+            </div>
+            {transferQueue.length > 0 && (
+              <button onClick={() => setTransferQueue([])} className="text-xs text-muted-foreground hover:text-foreground">
+                {t('inventoryOps.transferClear')}
+              </button>
+            )}
+          </div>
+          {transferQueue.length === 0 ? (
+            <div className="border-t border-border pt-3 text-xs text-muted-foreground">{t('inventoryOps.transferQueueEmpty')}</div>
+          ) : (
+            <ul className="divide-y divide-border border-t border-border">
+              {transferQueue.map((p) => (
+                <li key={p.batch} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-mono text-xs font-medium">{p.batch}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {p.itemCode} · {p.qty.toLocaleString()} · {p.warehouse} → {destBin}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setTransferQueue((q) => q.filter((x) => x.batch !== p.batch))}
+                    className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-red-600"
+                    aria-label={t('inventoryOps.transferRemove')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={postTransfer}
+            disabled={!destBin || transferQueue.length === 0 || posting}
+            className="mt-3 flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowLeftRight className="h-4 w-4" />}
+            {t('inventoryOps.transferPost')}
+          </button>
+        </div>
+
+        {lastTransfer && (
+          <div className="mb-4 text-xs text-muted-foreground">
+            {t('inventoryOps.transferLast')}: {(lastTransfer.count ?? 0).toLocaleString()} → <span className="font-mono">{lastTransfer.destination}</span>
+            {lastTransfer.by ? ` · ${lastTransfer.by}` : ''}
+            {lastTransfer.at ? ` · ${new Date(lastTransfer.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })}` : ''}
+          </div>
+        )}
+
+        {transferScanOpen && (
+          <PalletScanner
+            onClose={() => setTransferScanOpen(false)}
+            onResult={(code) => {
+              const now = Date.now()
+              if (lastScanRef.current.code === code && now - lastScanRef.current.at < 2500) return
+              lastScanRef.current = { code, at: now }
+              addToQueue(code) // keep the scanner open for the next label
+            }}
+          />
         )}
       </>
       )}

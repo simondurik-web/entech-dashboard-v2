@@ -561,6 +561,103 @@ export async function transferInventory(input: {
   return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
 }
 
+// ─── Bulk bin transfer (scan-to-queue) ───────────────────────────────────────────
+export interface PalletLookup {
+  batch: string // the CURRENT serial (a scanned old label maps forward)
+  itemCode: string
+  itemName: string
+  warehouse: string // current/source bin
+  qty: number
+  split: boolean
+  superseded: boolean // the scanned code was an older serial
+  scanned: string
+}
+
+/** Resolve a scanned/typed pallet code to a transfer-queue line: current serial, item,
+ *  source bin, and on-hand qty. Returns null if the code isn't a stocked pallet. */
+export async function lookupPallet(code: string): Promise<PalletLookup | null> {
+  const trimmed = code.trim()
+  if (!trimmed) return null
+  const { current, superseded } = await resolveCurrentSerial(trimmed)
+  const batch = current ?? trimmed
+  const b = await erpnextGetDoc<{ item?: string }>('Batch', batch).catch(() => null)
+  if (!b?.item) return null
+  const itemCode = b.item
+  const loc = await getBatchLocation(batch, itemCode)
+  if (!loc || loc.qty <= 0) return null
+  const item = await erpnextGetDoc<{ item_name?: string }>('Item', itemCode).catch(() => null)
+  return {
+    batch,
+    itemCode,
+    itemName: item?.item_name ?? itemCode,
+    warehouse: loc.warehouse,
+    qty: loc.qty,
+    split: loc.split,
+    superseded,
+    scanned: trimmed,
+  }
+}
+
+/** Move many pallets to one destination bin in a SINGLE ERPNext Material Transfer (one
+ *  document, one submit, atomic). Each pallet moves its full on-hand qty from its own
+ *  current bin. Pallets with no stock, split across bins, or already at the destination
+ *  are skipped (reported back), not failed. Moves don't change qty, so no reissue/relabel.
+ *  Idempotent via runInventoryOp + the [op:key] stamp (reconcileStockEntry). */
+export async function bulkTransfer(input: {
+  destination: string
+  lines: { batch: string; itemCode: string }[]
+  opKey: string
+}): Promise<Committed> {
+  const { destination, lines, opKey } = input
+  const seen = new Set<string>()
+  const uniq = lines.filter((l) => l.batch && l.itemCode && !seen.has(l.batch) && (seen.add(l.batch), true))
+  if (uniq.length === 0) return { stockEntry: null, extra: { moved: 0, skipped: [], destination } }
+
+  // Validate the destination bin once (exists, not a group, enabled, right company).
+  await preflight(uniq[0].itemCode, destination)
+  const meta = await itemNameMap([...new Set(uniq.map((l) => l.itemCode))])
+
+  const rows: Record<string, unknown>[] = []
+  const skipped: { batch: string; reason: string }[] = []
+  for (const l of uniq) {
+    const loc = await getBatchLocation(l.batch, l.itemCode)
+    if (!loc || loc.qty <= 0) {
+      skipped.push({ batch: l.batch, reason: 'no-stock' })
+      continue
+    }
+    if (loc.split) {
+      skipped.push({ batch: l.batch, reason: 'split' })
+      continue
+    }
+    if (loc.warehouse === destination) {
+      skipped.push({ batch: l.batch, reason: 'already-here' })
+      continue
+    }
+    const uom = meta.get(l.itemCode)?.uom ?? 'Nos'
+    rows.push({
+      item_code: l.itemCode,
+      qty: loc.qty,
+      s_warehouse: loc.warehouse,
+      t_warehouse: destination,
+      use_serial_batch_fields: 1,
+      batch_no: l.batch,
+      allow_zero_valuation_rate: 1,
+      uom,
+      stock_uom: uom,
+      conversion_factor: 1,
+    })
+  }
+  if (rows.length === 0) return { stockEntry: null, extra: { moved: 0, skipped, destination } }
+
+  const stockEntry = await submitStockEntry({
+    stock_entry_type: 'Material Transfer',
+    company: COMPANY,
+    remarks: `Dashboard bulk transfer [op:${opKey}] -> ${destination} (${rows.length})`,
+    items: rows,
+  })
+  return { stockEntry, extra: { moved: rows.length, skipped, destination } }
+}
+
 // ─── Serialization (reprint / qty-change reissue) ────────────────────────────────
 // To stop two physical labels with the same code being usable, a reprint or a qty
 // change REISSUES the pallet as a new serial (base -> base-02 -> base-03): produce
