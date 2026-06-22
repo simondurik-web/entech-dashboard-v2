@@ -361,8 +361,12 @@ export default function InventoryOpsPage() {
   const [binLoading, setBinLoading] = useState(false)
   const [binError, setBinError] = useState(false)
 
+  // Latest requested bin — guards against a slow earlier fetch resolving last and
+  // overwriting the current bin's contents (no AbortController on this endpoint).
+  const binReqRef = useRef<string>('')
   const loadBin = useCallback(
     async (wh: string) => {
+      binReqRef.current = wh
       setSelectedBin(wh)
       setBinQuery(wh)
       setBinOpen(false)
@@ -373,15 +377,45 @@ export default function InventoryOpsPage() {
         const r = await authedFetch(`/api/erpnext/inventory/bin-contents?warehouse=${encodeURIComponent(wh)}`)
         if (!r.ok) throw new Error('bin lookup failed')
         const d = await r.json()
+        if (binReqRef.current !== wh) return // a newer bin selection superseded this one
         setBinContents({ items: d.items ?? [], total: d.total ?? 0, palletsTruncated: !!d.palletsTruncated })
       } catch {
-        setBinError(true)
+        if (binReqRef.current === wh) setBinError(true)
       } finally {
-        setBinLoading(false)
+        if (binReqRef.current === wh) setBinLoading(false)
       }
     },
     [authedFetch]
   )
+
+  // After a write action, refresh whichever view is showing: the Locations bin (so a
+  // transferred/removed pallet leaves it) or the search results + that item's pallet rows.
+  const refreshAfterMutation = useCallback(
+    (itemCode: string) => {
+      if (viewMode === 'bin') {
+        if (selectedBin) loadBin(selectedBin)
+      } else {
+        refreshSearch()
+        loadPallets(itemCode)
+      }
+    },
+    [viewMode, selectedBin, loadBin, refreshSearch, loadPallets]
+  )
+
+  // Toggle By item / By bin. RELOADS the view we switch INTO so it never shows data that
+  // went stale from a mutation made in the other view, and closes any open edit/move/
+  // history panel (those are single-value states shared by both views).
+  const switchView = (mode: 'item' | 'bin') => {
+    setViewMode(mode)
+    setEditBatch(null)
+    setMovingBatch(null)
+    setHistoryOpen(null)
+    if (mode === 'bin') {
+      if (selectedBin) loadBin(selectedBin)
+    } else if (query) {
+      refreshSearch()
+    }
+  }
 
   // ─── bin report export (PDF + CSV) ───
   const triggerDownload = (filename: string, mime: string, content: string | Blob) => {
@@ -692,8 +726,8 @@ export default function InventoryOpsPage() {
       showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
       setEditBatch(null)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
-      refreshSearch() // bins + totals
-      loadPallets(itemCode) // pallet rows (incl. items beyond locate's inline enrich cap)
+      setHistoryOpen((h) => (h === batch ? null : h)) // old serial gone after reissue
+      refreshAfterMutation(itemCode)
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -717,8 +751,8 @@ export default function InventoryOpsPage() {
       if (!r.ok) throw new Error(d.error || 'remove failed')
       clearOpKey('remove', batch, reason.trim())
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
-      refreshSearch() // bins + totals
-      loadPallets(itemCode) // pallet rows
+      setHistoryOpen((h) => (h === batch ? null : h)) // removed pallet's row unmounts
+      refreshAfterMutation(itemCode)
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -744,8 +778,7 @@ export default function InventoryOpsPage() {
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')
-      refreshSearch() // bins + totals
-      loadPallets(itemCode) // pallet rows (moved pallet's new bin)
+      refreshAfterMutation(itemCode)
       // drop cached history so it reloads with the new move event
       setHistory((h) => {
         const n = { ...h }
@@ -781,9 +814,10 @@ export default function InventoryOpsPage() {
       // A reprint reissues the pallet as a new serial (old label is voided); follow it.
       showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
-      refreshSearch() // bins + totals
-      loadPallets(itemCode) // pallet rows
+      refreshAfterMutation(itemCode)
+      // The old serial is gone after a reissue — drop its cached/open history.
       if (historyOpen === batch) {
+        setHistoryOpen(null)
         setHistory((h) => {
           const n = { ...h }
           delete n[batch]
@@ -809,6 +843,174 @@ export default function InventoryOpsPage() {
   const filteredWarehouses = whFilter
     ? warehouses.filter((w) => w.toLowerCase().includes(whFilter.toLowerCase())).slice(0, 50)
     : warehouses.slice(0, 50)
+
+  // One actionable pallet row (id + qty + history/move/reprint/edit/remove + inline
+  // edit/move/history panels). Shared by the By-item search results AND the By-bin
+  // Locations view so both have identical capabilities. `warehouse` is the pallet's
+  // current bin (used to exclude it from the Move target list).
+  const renderPalletRow = (p: { batch: string; warehouse: string; qty: number }, itemCode: string) => (
+    <li key={p.batch} className="px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 font-mono text-xs">
+          <span className={matchedPallet === p.batch ? 'font-semibold text-primary' : ''}>{p.batch}</span>
+        </div>
+        {editBatch === p.batch ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="0"
+              value={editQty}
+              onChange={(e) => setEditQty(e.target.value)}
+              className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
+            />
+            <button
+              onClick={() => submitAdjust(itemCode, p.batch)}
+              disabled={busyBatch === p.batch}
+              className="rounded bg-primary p-1.5 text-primary-foreground disabled:opacity-50"
+            >
+              {busyBatch === p.batch ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            </button>
+            <button onClick={() => setEditBatch(null)} className="rounded p-1.5 text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="font-semibold tabular-nums">{p.qty.toLocaleString()}</span>
+            <button
+              onClick={() => toggleHistory(p.batch)}
+              title={t('inventoryOps.history')}
+              className={`hover:text-foreground ${historyOpen === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              <Clock className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => {
+                setMovingBatch(movingBatch === p.batch ? null : p.batch)
+                setMoveWarehouse('')
+                setMoveWhFilter('')
+              }}
+              title={t('inventoryOps.move')}
+              className={`hover:text-foreground ${movingBatch === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => submitReprint(itemCode, p.batch)}
+              disabled={busyBatch === p.batch}
+              title={t('inventoryOps.reprint')}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              <Printer className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => {
+                setEditBatch(p.batch)
+                setEditQty(String(p.qty))
+              }}
+              title={t('inventoryOps.editQty')}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            {isOffice && (
+              <button
+                onClick={() => submitRemove(itemCode, p.batch)}
+                disabled={busyBatch === p.batch}
+                title={t('inventoryOps.remove')}
+                className="text-muted-foreground hover:text-red-600 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {movingBatch === p.batch && (
+        <div className="mt-2 rounded-md border border-border bg-background p-2">
+          <div className="mb-1 text-xs font-medium">{t('inventoryOps.moveTo')}</div>
+          <input
+            value={moveWhFilter}
+            onChange={(e) => {
+              setMoveWhFilter(e.target.value)
+              setMoveWarehouse('')
+            }}
+            placeholder={t('inventoryOps.searchBin')}
+            autoFocus
+            className="w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {/* Type-ahead: matching bins appear as you type; tap to pick. */}
+          <div className="inv-scroll mt-1 max-h-44 overflow-y-auto overscroll-contain rounded border border-border" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {filteredMoveWarehouses.filter((w) => w !== p.warehouse).length === 0 ? (
+              <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
+            ) : (
+              filteredMoveWarehouses
+                .filter((w) => w !== p.warehouse)
+                .map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => {
+                      setMoveWarehouse(w)
+                      setMoveWhFilter(w)
+                    }}
+                    className={`block w-full px-2 py-2 text-left text-sm hover:bg-accent ${
+                      moveWarehouse === w ? 'bg-primary/15 font-medium text-primary' : ''
+                    }`}
+                  >
+                    {w}
+                  </button>
+                ))
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => submitMove(itemCode, p.batch)}
+              disabled={!moveWarehouse || busyBatch === p.batch}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {busyBatch === p.batch ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+              {t('inventoryOps.moveConfirm')}
+            </button>
+            <button
+              onClick={() => setMovingBatch(null)}
+              className="rounded-lg px-2 py-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t('inventoryOps.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {historyOpen === p.batch && (
+        <div className="mt-2 rounded-md border border-border bg-muted/30 p-2">
+          {historyLoading === p.batch ? (
+            <div className="flex items-center gap-2 p-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {t('inventoryOps.loading')}
+            </div>
+          ) : (history[p.batch] ?? []).length === 0 ? (
+            <div className="p-1 text-xs text-muted-foreground">{t('inventoryOps.noHistory')}</div>
+          ) : (
+            <ol className="space-y-1.5">
+              {describeEvents(history[p.batch] ?? [], t).map((ev, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <Clock className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                  <span>
+                    <span className="font-medium">{ev.text}</span>
+                    <span className="text-muted-foreground">
+                      {ev.by ? ` · ${ev.by}` : ''}
+                      {ev.at ? ` · ${ev.at}` : ''}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </li>
+  )
 
   return (
     <div className="mx-auto max-w-4xl p-6">
@@ -979,13 +1181,13 @@ export default function InventoryOpsPage() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="inline-flex rounded-lg border border-border bg-card p-0.5 text-sm">
           <button
-            onClick={() => setViewMode('item')}
+            onClick={() => switchView('item')}
             className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'item' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {t('inventoryOps.byItem')}
           </button>
           <button
-            onClick={() => setViewMode('bin')}
+            onClick={() => switchView('bin')}
             className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'bin' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {t('inventoryOps.byBin')}
@@ -1141,174 +1343,8 @@ export default function InventoryOpsPage() {
                           ) : null
                         ) : (
                           <ul className="mt-1.5 divide-y divide-border rounded-lg border border-border bg-background">
-                            {binPallets.map((p) => (
-                              <li key={p.batch} className="px-2.5 py-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0 font-mono text-xs">
-                                    <span className={matchedPallet === p.batch ? 'font-semibold text-primary' : ''}>{p.batch}</span>
-                                  </div>
-                                  {editBatch === p.batch ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="0"
-                                value={editQty}
-                                onChange={(e) => setEditQty(e.target.value)}
-                                className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
-                              />
-                              <button
-                                onClick={() => submitAdjust(r.itemCode, p.batch)}
-                                disabled={busyBatch === p.batch}
-                                className="rounded bg-primary p-1.5 text-primary-foreground disabled:opacity-50"
-                              >
-                                {busyBatch === p.batch ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                              </button>
-                              <button onClick={() => setEditBatch(null)} className="rounded p-1.5 text-muted-foreground hover:text-foreground">
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-3">
-                              <span className="font-semibold tabular-nums">{p.qty.toLocaleString()}</span>
-                              <button
-                                onClick={() => toggleHistory(p.batch)}
-                                title={t('inventoryOps.history')}
-                                className={`hover:text-foreground ${historyOpen === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
-                              >
-                                <Clock className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setMovingBatch(movingBatch === p.batch ? null : p.batch)
-                                  setMoveWarehouse('')
-                                  setMoveWhFilter('')
-                                }}
-                                title={t('inventoryOps.move')}
-                                className={`hover:text-foreground ${movingBatch === p.batch ? 'text-primary' : 'text-muted-foreground'}`}
-                              >
-                                <ArrowLeftRight className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => submitReprint(r.itemCode, p.batch)}
-                                disabled={busyBatch === p.batch}
-                                title={t('inventoryOps.reprint')}
-                                className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-                              >
-                                <Printer className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setEditBatch(p.batch)
-                                  setEditQty(String(p.qty))
-                                }}
-                                title={t('inventoryOps.editQty')}
-                                className="text-muted-foreground hover:text-foreground"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              {isOffice && (
-                                <button
-                                  onClick={() => submitRemove(r.itemCode, p.batch)}
-                                  disabled={busyBatch === p.batch}
-                                  title={t('inventoryOps.remove')}
-                                  className="text-muted-foreground hover:text-red-600 disabled:opacity-50"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          </div>
-
-                          {movingBatch === p.batch && (
-                            <div className="mt-2 rounded-md border border-border bg-background p-2">
-                              <div className="mb-1 text-xs font-medium">{t('inventoryOps.moveTo')}</div>
-                              <input
-                                value={moveWhFilter}
-                                onChange={(e) => {
-                                  setMoveWhFilter(e.target.value)
-                                  setMoveWarehouse('')
-                                }}
-                                placeholder={t('inventoryOps.searchBin')}
-                                autoFocus
-                                className="w-full rounded border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-                              />
-                              {/* Type-ahead: matching bins appear as you type; tap to pick. */}
-                              <div className="inv-scroll mt-1 max-h-44 overflow-y-auto overscroll-contain rounded border border-border" style={{ WebkitOverflowScrolling: 'touch' }}>
-                                {filteredMoveWarehouses.filter((w) => w !== p.warehouse).length === 0 ? (
-                                  <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
-                                ) : (
-                                  filteredMoveWarehouses
-                                    .filter((w) => w !== p.warehouse)
-                                    .map((w) => (
-                                      <button
-                                        key={w}
-                                        onClick={() => {
-                                          setMoveWarehouse(w)
-                                          setMoveWhFilter(w)
-                                        }}
-                                        className={`block w-full px-2 py-2 text-left text-sm hover:bg-accent ${
-                                          moveWarehouse === w ? 'bg-primary/15 font-medium text-primary' : ''
-                                        }`}
-                                      >
-                                        {w}
-                                      </button>
-                                    ))
-                                )}
-                              </div>
-                              <div className="mt-2 flex items-center gap-2">
-                                <button
-                                  onClick={() => submitMove(r.itemCode, p.batch)}
-                                  disabled={!moveWarehouse || busyBatch === p.batch}
-                                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                                >
-                                  {busyBatch === p.batch ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <ArrowLeftRight className="h-3.5 w-3.5" />
-                                  )}
-                                  {t('inventoryOps.moveConfirm')}
-                                </button>
-                                <button
-                                  onClick={() => setMovingBatch(null)}
-                                  className="rounded-lg px-2 py-2 text-xs text-muted-foreground hover:text-foreground"
-                                >
-                                  {t('inventoryOps.cancel')}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {historyOpen === p.batch && (
-                            <div className="mt-2 rounded-md border border-border bg-muted/30 p-2">
-                              {historyLoading === p.batch ? (
-                                <div className="flex items-center gap-2 p-1 text-xs text-muted-foreground">
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  {t('inventoryOps.loading')}
-                                </div>
-                              ) : (history[p.batch] ?? []).length === 0 ? (
-                                <div className="p-1 text-xs text-muted-foreground">{t('inventoryOps.noHistory')}</div>
-                              ) : (
-                                <ol className="space-y-1.5">
-                                  {describeEvents(history[p.batch] ?? [], t).map((ev, i) => (
-                                    <li key={i} className="flex items-start gap-2 text-xs">
-                                      <Clock className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                      <span>
-                                        <span className="font-medium">{ev.text}</span>
-                                        <span className="text-muted-foreground">
-                                          {ev.by ? ` · ${ev.by}` : ''}
-                                          {ev.at ? ` · ${ev.at}` : ''}
-                                        </span>
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ol>
-                              )}
-                            </div>
-                          )}
-                                </li>
-                              ))}
-                            </ul>
+                            {binPallets.map((p) => renderPalletRow(p, r.itemCode))}
+                          </ul>
                           )}
                         </li>
                         )
@@ -1422,14 +1458,11 @@ export default function InventoryOpsPage() {
                       </div>
                     </div>
                     {it.pallets.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {it.pallets.map((p) => (
-                          <span key={p.batch} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                            {p.batch}
-                            {p.qty ? ` · ${p.qty.toLocaleString()}` : ''}
-                          </span>
-                        ))}
-                      </div>
+                      <ul className="mt-1.5 divide-y divide-border rounded-lg border border-border bg-background">
+                        {it.pallets.map((p) =>
+                          renderPalletRow({ batch: p.batch, warehouse: selectedBin as string, qty: p.qty }, it.itemCode)
+                        )}
+                      </ul>
                     )}
                   </li>
                 ))}
