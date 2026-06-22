@@ -265,6 +265,45 @@ export default function InventoryOpsPage() {
     }
   }, [query, runSearch])
 
+  // ─── By-item part-number picker (focus the search to browse/select all parts) ───
+  const [itemPickerOpen, setItemPickerOpen] = useState(false)
+  const [allItems, setAllItems] = useState<ItemOption[]>([])
+  const [allItemsLoaded, setAllItemsLoaded] = useState(false)
+  const [allItemsLoading, setAllItemsLoading] = useState(false)
+  const partListRef = useRef<HTMLDivElement>(null)
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const openItemPicker = useCallback(() => {
+    if (blurTimerRef.current) clearTimeout(blurTimerRef.current) // cancel a pending close
+    setItemPickerOpen(true)
+    if (allItemsLoaded || allItemsLoading) return // load once; the loading flag dedupes rapid focus
+    setAllItemsLoading(true)
+    authedFetch('/api/erpnext/inventory/items?all=1')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        setAllItems(d.items ?? [])
+        setAllItemsLoaded(true)
+      })
+      .catch(() => {
+        // Leave allItemsLoaded false so a later focus retries; the empty list just shows
+        // "no results" (the user can still free-type to run the live search below).
+      })
+      .finally(() => setAllItemsLoading(false))
+  }, [allItemsLoaded, allItemsLoading, authedFetch])
+
+  // Keep the wheel inside the part list (same fix the Add picker + bin list use):
+  // scroll the list, never the page behind it.
+  useEffect(() => {
+    const el = partListRef.current
+    if (!el || !itemPickerOpen) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      el.scrollTop += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [itemPickerOpen, allItems.length])
+
   // ─── pallets (per item) ───
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
   const [palletsLoading, setPalletsLoading] = useState<string | null>(null)
@@ -360,6 +399,18 @@ export default function InventoryOpsPage() {
   const [binContents, setBinContents] = useState<{ items: BinContentItem[]; total: number; palletsTruncated: boolean } | null>(null)
   const [binLoading, setBinLoading] = useState(false)
   const [binError, setBinError] = useState(false)
+  const binListRef = useRef<HTMLDivElement>(null)
+  // Same wheel fix as the part/Add pickers: scroll the bin list on hover, not the page.
+  useEffect(() => {
+    const el = binListRef.current
+    if (!el || !binOpen) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      el.scrollTop += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [binOpen, warehouses.length])
 
   // Latest requested bin — guards against a slow earlier fetch resolving last and
   // overwriting the current bin's contents (no AbortController on this endpoint).
@@ -844,6 +895,17 @@ export default function InventoryOpsPage() {
     ? warehouses.filter((w) => w.toLowerCase().includes(whFilter.toLowerCase())).slice(0, 50)
     : warehouses.slice(0, 50)
 
+  // Parts shown in the By-item picker: all parts, filtered by whatever's typed in the
+  // search box (matches code or name). Rendered list is capped for DOM sanity; if more
+  // match, a hint tells the user to keep typing (we never silently hide matches).
+  const PART_PICKER_CAP = 500
+  const partFilter = query.trim().toLowerCase()
+  const matchedParts = partFilter
+    ? allItems.filter((i) => i.itemCode.toLowerCase().includes(partFilter) || i.itemName.toLowerCase().includes(partFilter))
+    : allItems
+  const filteredParts = matchedParts.slice(0, PART_PICKER_CAP)
+  const partsTruncated = matchedParts.length > filteredParts.length
+
   // One actionable pallet row (id + qty + history/move/reprint/edit/remove + inline
   // edit/move/history panels). Shared by the By-item search results AND the By-bin
   // Locations view so both have identical capabilities. `warehouse` is the pallet's
@@ -1211,12 +1273,31 @@ export default function InventoryOpsPage() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            if (!itemPickerOpen) openItemPicker()
+          }}
+          onFocus={openItemPicker}
+          // Close shortly after losing focus so a click on an option still registers; the
+          // timer is held in a ref and cancelled by openItemPicker on refocus.
+          onBlur={() => {
+            blurTimerRef.current = setTimeout(() => setItemPickerOpen(false), 150)
+          }}
           placeholder={t('inventoryOps.searchPlaceholder')}
-          className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-12 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-20 text-sm outline-none focus:ring-2 focus:ring-primary/40"
         />
         <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
           {searching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {itemPickerOpen && (
+            <button
+              type="button"
+              onClick={() => setItemPickerOpen(false)}
+              aria-label={t('inventoryOps.cancel')}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setScanOpen(true)}
@@ -1227,6 +1308,49 @@ export default function InventoryOpsPage() {
             <ScanLine className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Part-number picker: focus the search to browse/select all parts (not pallet
+            labels). Typing in the box filters this list AND runs the live search. */}
+        {itemPickerOpen && (
+          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+            <div
+              ref={partListRef}
+              className="inv-scroll max-h-80 overflow-y-auto overscroll-contain"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
+              {allItemsLoading ? (
+                <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t('inventoryOps.loading')}
+                </div>
+              ) : filteredParts.length === 0 ? (
+                <div className="p-3 text-xs text-muted-foreground">{t('inventoryOps.noResults')}</div>
+              ) : (
+                <>
+                  {filteredParts.map((o) => (
+                    <button
+                      type="button"
+                      key={o.itemCode}
+                      onClick={() => {
+                        setQuery(o.itemCode)
+                        setItemPickerOpen(false)
+                      }}
+                      className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
+                    >
+                      <span className="font-mono">{o.itemCode}</span>
+                      <span className="text-muted-foreground"> — {o.itemName}</span>
+                    </button>
+                  ))}
+                  {partsTruncated && (
+                    <div className="border-t border-border p-2 text-center text-[11px] text-muted-foreground">
+                      {t('inventoryOps.partsTruncated')}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {scanOpen && (
@@ -1378,7 +1502,7 @@ export default function InventoryOpsPage() {
               />
               {binOpen && (
                 <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-                  <div className="inv-scroll max-h-72 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <div ref={binListRef} className="inv-scroll max-h-96 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
                     {(binQuery.trim()
                       ? warehouses.filter((w) => w.toLowerCase().includes(binQuery.trim().toLowerCase()))
                       : warehouses

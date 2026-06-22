@@ -1181,6 +1181,7 @@
   "inventoryOps.palletsTruncated": "Pallet ids shown for the top items only (large bin).",
   "inventoryOps.fullReport": "Full inventory (.xlsx)",
   "inventoryOps.fullReportHint": "Download the entire inventory as a spreadsheet, with tabs grouped by bin and by product.",
+  "inventoryOps.partsTruncated": "Showing the first 500 — keep typing to narrow.",
   "inventoryOps.repItemCode": "Item Code",
   "inventoryOps.repItemName": "Item Name",
   "inventoryOps.repBin": "Bin",

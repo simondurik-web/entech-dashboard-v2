@@ -76,6 +76,22 @@ export async function listWarehouses(query?: string): Promise<string[]> {
   return (r.data ?? []).map((w) => w.name)
 }
 
+/** All stockable, enabled items (part numbers) for the inventory part-number picker.
+ *  Ordered by code; the client filters as the user types. */
+export async function listAllItems(): Promise<{ itemCode: string; itemName: string }[]> {
+  const qs = [
+    listParam('filters', [
+      ['disabled', '=', 0],
+      ['is_stock_item', '=', 1],
+    ]),
+    listParam('fields', ['item_code', 'item_name']),
+    'order_by=item_code asc',
+    'limit_page_length=0',
+  ].join('&')
+  const r = await erpnextGet<{ data: { item_code: string; item_name: string }[] }>(`/api/resource/Item?${qs}`)
+  return (r.data ?? []).map((i) => ({ itemCode: i.item_code, itemName: i.item_name }))
+}
+
 /** Item search for the Add form picker (code or name). */
 export async function searchItems(
   query: string

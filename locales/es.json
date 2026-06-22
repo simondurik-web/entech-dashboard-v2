@@ -1181,6 +1181,7 @@
   "inventoryOps.palletsTruncated": "Los IDs de tarima se muestran solo para las piezas principales (ubicación grande).",
   "inventoryOps.fullReport": "Inventario completo (.xlsx)",
   "inventoryOps.fullReportHint": "Descarga todo el inventario como hoja de cálculo, con pestañas agrupadas por ubicación y por pieza.",
+  "inventoryOps.partsTruncated": "Mostrando las primeras 500 — sigue escribiendo para filtrar.",
   "inventoryOps.repItemCode": "Código de pieza",
   "inventoryOps.repItemName": "Nombre de pieza",
   "inventoryOps.repBin": "Ubicación",
