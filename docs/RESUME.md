@@ -75,6 +75,11 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
 13. **Optional delete reason** — removing a label/pallet still prompts for a reason, but you
     can now click OK with it blank (faster); only Cancel aborts. `submitRemove` proceeds on
     empty, aborts only on `prompt() === null`; `/remove` route treats `reason` as optional.
+14. **Inventory Operations role permission** — `/inventory-ops` is now a toggleable row in
+    `admin/permissions` ("Inventory Operations"), so access can be granted per role. The whole
+    enforcement stack already keyed off this path (nav filter, AccessGuard, the page gate, AND
+    the server-side `requireInventoryAccess` guard at `lib/erpnext/auth.ts:67` on every API
+    route) — only the admin toggle row was missing. Admin/super_admin always have access.
 
 ## Live infra changes already applied (entech-production Supabase, project ref mqfjmzqeccufqhisqpij)
 - `inventory_ops_log` gained `result_batch` + `family` columns and the partial unique index
