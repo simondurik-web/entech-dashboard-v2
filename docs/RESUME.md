@@ -31,8 +31,11 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
    `refreshAfterMutation` + `switchView` keep both views fresh and guard the loadBin race.
 7. **By-item part-number dropdown** — focusing the search opens a dropdown of all stockable
    parts (`/items?all=1` → `listAllItems`, fetched once, filtered as you type, select to
-   search). Larger + scrollable By-bin dropdown (added the wheel-scroll handler the Add/part
-   pickers use — fixes the hover-can't-scroll bug; reused on the part dropdown too).
+   search). Larger By-bin dropdown.
+8. **Dropdown scroll fix** — the page uses Lenis smooth-scroll, which hijacks the wheel
+   globally; inner scroll lists need the **`data-lenis-prevent`** attribute (NOT a wheel
+   handler — that doesn't work). Applied to all four inventory dropdown lists (part, bin,
+   add-item, move-bin). Remember this for any future scrollable dropdown on a Lenis page.
 
 ## Live infra changes already applied (entech-production Supabase, project ref mqfjmzqeccufqhisqpij)
 - `inventory_ops_log` gained `result_batch` + `family` columns and the partial unique index
