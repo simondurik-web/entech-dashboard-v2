@@ -36,6 +36,15 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
    globally; inner scroll lists need the **`data-lenis-prevent`** attribute (NOT a wheel
    handler — that doesn't work). Applied to all four inventory dropdown lists (part, bin,
    add-item, move-bin). Remember this for any future scrollable dropdown on a Lenis page.
+9. **Label timestamp fix** — labels stamped UTC because routes used new Date().toLocaleString()
+   with no timeZone (Vercel runs UTC). Fixed via shared `labelTimestamp()` in lib/erpnext/label.ts
+   forcing `America/Detroit`; used by add/adjust/reprint. (Heads-up for any other server-side
+   user-facing time.)
+10. **Recently-printed-labels panel** — `/api/erpnext/inventory/recent-labels?limit=N` (default
+    10, clamp 1..50): last N print_jobs + printer (print_stations name/location) + purpose
+    (action from inventory_ops_log via the `print-<opKey>` link) + who + status. Panel at the
+    bottom of inventory-ops (both views), expand 10→50, refetched after add/adjust/reprint.
+    Flags a not-printed-within-3-min job as "Stuck — check printer" (jam/offline detection).
 
 ## Live infra changes already applied (entech-production Supabase, project ref mqfjmzqeccufqhisqpij)
 - `inventory_ops_log` gained `result_batch` + `family` columns and the partial unique index
