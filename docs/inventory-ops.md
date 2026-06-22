@@ -104,24 +104,45 @@ scan-to-ship), so a stale label can't be used.
 - **History** chains the whole family (base + `base-NN`); batch codes are whitelisted to
   `[0-9A-Z]` before the PostgREST `.or()` filter.
 
+## Locations view + Reports (SHIPPED 2026-06-22) — `lib/erpnext/inventory.ts`, page.tsx
+- **Locations view:** the inventory-ops page has a **By item / By bin** toggle. "By bin" is a
+  bin COMBO BOX (type to filter or open the full dropdown) -> select -> live bin contents
+  (each item + qty + the pallet ids in that bin) via `GET /bin-contents?warehouse=`.
+- **`enumeratePallets(itemCodes)`** is the shared pallet engine: lists active batches for the
+  codes (no page cap) then `get_batch_qty` per batch at BOUNDED concurrency (`mapLimit`, 10),
+  emitting one row per (batch, warehouse) with the correct PER-WAREHOUSE qty (fixes split-
+  batch mis-attribution). `listPallets`, `getBinContents`, `getFullInventory` all use it. A
+  per-batch failure RETRIES once then THROWS (route → 502) — a report never silently omits
+  pallets (audit integrity).
+- **Reports (3 scopes):** one **bin** (CSV+PDF, from Locations), one **product** (CSV+PDF,
+  buttons on each search card; gated until pallets load with no error), and the **full
+  inventory** as an `.xlsx` workbook (exceljs) — two AutoFilter tabs **By Bin** + **By
+  Product**, each with a Pallets column; from `GET /report` (`maxDuration=300`, includes
+  pallet ids facility-wide, bounded concurrency = thorough but slow on big sites). CSV cells
+  pass through a formula-injection guard. All report labels/headers/tab names are EN+ES via `t()`.
+- **Lazy pallet load:** the page seeds pallet ids for locate's top items; beyond that it
+  auto-loads only the top `LAZY_PALLET_LIMIT` (24) results (ref-deduped) to bound fan-out.
+  After any write the handlers call BOTH `refreshSearch()` (bins/totals) and
+  `loadPallets(itemCode)` (rows) so cached items don't go stale.
+- Known tradeoff: a very large full-inventory export is slow + holds all rows in browser
+  memory (exceljs) — acceptable for now; optimize (server-stream) if it bites.
+
+## Mobile nav (SHIPPED 2026-06-22) — `components/layout/Sidebar.tsx`
+The iPhone drawer was a flat everything-list. Now all sections are wrapped in the same
+`CollapsibleNavSection` + `NavAccordionProvider` as desktop (one section open at a time,
+the current page's section auto-opens). storageKeys match `navSections`/`activeSectionKey`.
+
 ## Open / pending (in build order)
 1. **Attach to Sales Order** at add time (searchable SO field; prints on the label).
 2. **Weight + Dimensions** capture at print (optional; under the pallet id on label).
-3. **Locations view** (Simon 2026-06-21) — a bin COMBO BOX (one box: type to filter, or
-   open the dropdown to see all bins) -> select a bin -> list everything stored in it
-   (parts, qty, pallet IDs). Use this same combo-box pattern for ALL bin pickers
-   (incl. Move) for consistency.
-4. **Bin contents report** — export a bin's contents as **PDF and CSV** (for auditing:
-   verify "Bin 51 = 10" against a physical count). Foundation for the audit feature.
-5. **Audit feature** (FUTURE) — structured inventory audit/verification flow built on
-   the bin report; tracked as a pending item to design later.
-6. **Inline pallet actions** (Simon 2026-06-21) — drop the "Manage pallets" expander; put
-   the Clock/Move/Reprint/Edit/Remove buttons directly next to each pallet (one fewer
-   click, no mirrored info). Do this with the Locations frontend pass.
+3. **Audit feature** (FUTURE) — structured inventory audit/verification flow built on
+   the bin/full reports; tracked as a pending item to design later.
 
 Done: search/locate, add, adjust, remove, list pallets, history (traceability),
 **bin Move**, **Reprint**, generated date/time on label, scanner zoom + reticle,
-**Stage 3 serialization** (reissue-on-reprint/qty-change, see above).
+**Stage 3 serialization** (reissue-on-reprint/qty-change), **inline pallet actions**
+(no expander), **Locations view** (browse by bin), **bin/product/full reports**
+(CSV/PDF + full .xlsx), **mobile collapsible nav**.
 
 ## 4-agent review findings (2026-06-21: Codex/GPT-5.5, Grok/Composer-2.5, Gemini-Ultra, Opus) — hardening backlog
 
