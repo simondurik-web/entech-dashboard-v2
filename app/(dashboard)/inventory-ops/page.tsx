@@ -643,14 +643,17 @@ export default function InventoryOpsPage() {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'add failed')
       addKeyRef.current = null // success -> next add gets a fresh key
+      const addedItemCode = addItem.itemCode
       showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
       setAddItem(null)
       setItemQuery('')
       setAddQty('')
       setAddOpen(false)
-      // Refresh the active search so the new pallet's row appears inline (the lazy-load
-      // effect + re-seed cover its pallet list).
+      // Refresh the active search so the new pallet appears: bins/totals via the search,
+      // and the item's pallet rows directly (covers an already-cached item outside
+      // locate's inline enrich cap, which the lazy-load effect would otherwise skip).
       if (query) refreshSearch()
+      loadPallets(addedItemCode)
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {

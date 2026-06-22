@@ -704,9 +704,11 @@ export function Sidebar({
         <ZoomControls />
 
         <nav className="flex-1 px-3 py-4">
+          {/* Mobile sections collapse like desktop: one open at a time (accordion), the
+              section containing the current page auto-opens, the rest stay tidy. */}
+          <NavAccordionProvider activeKey={activeSectionKey}>
           {filteredProduction.length > 0 && (
-            <>
-              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.production')}</p>
+            <CollapsibleNavSection label={t('nav.production')} expanded storageKey="production">
               <ul className="space-y-0.5">
                 {filteredProduction.map((item) => {
                   const isActive = pathname === item.href
@@ -724,12 +726,11 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
 
           {filteredShipping.length > 0 && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.shipping')}</p>
+            <CollapsibleNavSection label={t('nav.shipping')} expanded storageKey="shipping">
               <ul className="space-y-0.5">
                 {filteredShipping.map((item) => {
                   const isActive = pathname === item.href
@@ -747,12 +748,11 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
 
           {filteredSales.length > 0 && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.salesFinance')}</p>
+            <CollapsibleNavSection label={t('nav.salesFinance')} expanded storageKey="sales">
               <ul className="space-y-0.5">
                 {filteredSales.map((item) => {
                   const isActive = pathname === item.href
@@ -770,12 +770,11 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
 
           {filteredTools.length > 0 && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.toolsReference')}</p>
+            <CollapsibleNavSection label={t('nav.toolsReference')} expanded storageKey="tools">
               <ul className="space-y-0.5">
                 {filteredTools.map((item) => {
                   const isActive = pathname === item.href
@@ -793,12 +792,11 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
 
           {canSeeQuality && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.quality')}</p>
+            <CollapsibleNavSection label={t('nav.quality')} expanded storageKey="quality">
               <ul className="space-y-0.5">
                 {qualityNav.map((item) => {
                   const isActive = pathname === item.href
@@ -816,12 +814,11 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
 
           {canSeePallets && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.palletRecordsSection')}</p>
+            <CollapsibleNavSection label={t('nav.palletRecordsSection')} expanded storageKey="pallet-records">
               <ul className="space-y-0.5">
                 {palletNav.map((item) => {
                   const isActive = pathname === item.href
@@ -839,25 +836,24 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
-
-          <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">REPORTS</p>
-          <ul className="space-y-0.5">
-            <li>
-              <Link href="/reports" onClick={onClose} className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                pathname === "/reports" ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
-              )}>
-                <FileBarChart className="size-4" />
-                <span>Custom Reports</span>
-              </Link>
-            </li>
-          </ul>
+          <CollapsibleNavSection label="REPORTS" expanded storageKey="reports">
+            <ul className="space-y-0.5">
+              <li>
+                <Link href="/reports" onClick={onClose} className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                  pathname === "/reports" ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+                )}>
+                  <FileBarChart className="size-4" />
+                  <span>Custom Reports</span>
+                </Link>
+              </li>
+            </ul>
+          </CollapsibleNavSection>
 
           {showAllData && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">{t('nav.rawData')}</p>
+            <CollapsibleNavSection label={t('nav.rawData')} expanded storageKey="raw-data">
               <ul className="space-y-0.5">
                 <li>
                   <Link href="/all-data" onClick={onClose} className={cn(
@@ -869,12 +865,11 @@ export function Sidebar({
                   </Link>
                 </li>
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
 
           {isAdmin && (
-            <>
-              <p className="mb-2 mt-6 px-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">ADMIN</p>
+            <CollapsibleNavSection label="ADMIN" expanded storageKey="admin">
               <ul className="space-y-0.5">
                 {adminItems.map((item) => {
                   const isActive = pathname === item.href
@@ -891,8 +886,9 @@ export function Sidebar({
                   )
                 })}
               </ul>
-            </>
+            </CollapsibleNavSection>
           )}
+          </NavAccordionProvider>
 
           <ul className="mt-6 space-y-0.5 border-t border-white/10 pt-4">
             <li>
