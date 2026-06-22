@@ -26,6 +26,9 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
 4. **Reports** — single bin (CSV+PDF), single product (CSV+PDF), full inventory
    (.xlsx, By Bin + By Product AutoFilter tabs, incl. pallet IDs). Bilingual.
 5. **Mobile nav** — collapsible accordion sections in the iPhone drawer (matches desktop).
+6. **Bin-view pallet actions** — the Locations (By bin) view now has the same per-pallet
+   actions as By item (edit/reprint/remove/transfer/history) via a shared `renderPalletRow`;
+   `refreshAfterMutation` + `switchView` keep both views fresh and guard the loadBin race.
 
 ## Live infra changes already applied (entech-production Supabase, project ref mqfjmzqeccufqhisqpij)
 - `inventory_ops_log` gained `result_batch` + `family` columns and the partial unique index
