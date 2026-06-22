@@ -45,6 +45,11 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
     (action from inventory_ops_log via the `print-<opKey>` link) + who + status. Panel at the
     bottom of inventory-ops (both views), expand 10→50, refetched after add/adjust/reprint.
     Flags a not-printed-within-3-min job as "Stuck — check printer" (jam/offline detection).
+11. **Add-panel bin combobox** — replaced the filter-input + native select with one combobox
+    (addWarehouse = committed value submitAdd uses; whFilter = box text; whOpen). Click→all
+    bins, type→filter, focus selects-all, blur reverts unconfirmed text to the committed bin.
+    Option buttons use `onMouseDown preventDefault` so a pick doesn't blur the input (avoids a
+    stale-revert timer desync — the bug the agents caught). Add button gated on item+bin+qty+station.
 
 ## Live infra changes already applied (entech-production Supabase, project ref mqfjmzqeccufqhisqpij)
 - `inventory_ops_log` gained `result_batch` + `family` columns and the partial unique index
