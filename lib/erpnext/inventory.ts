@@ -198,26 +198,202 @@ export interface Pallet {
   qty: number
 }
 
-/** List the on-hand pallets (batches) for an item, for the manage/edit view. */
+/** On-hand pallets (batches) for an item, one row per (batch, warehouse). Backed by
+ *  enumeratePallets, so it is COMPLETE (no page cap), bounded-concurrency, and attributes
+ *  a split batch's qty to each warehouse correctly (getBatchLocation collapses splits to
+ *  the primary warehouse with the TOTAL qty, which mis-binned split pallets). */
 export async function listPallets(itemCode: string): Promise<Pallet[]> {
-  const qs = [
+  const locs = await enumeratePallets([itemCode])
+  return locs
+    .map((l) => ({ batch: l.batch, warehouse: l.warehouse, qty: l.qty }))
+    .sort((a, b) => a.batch.localeCompare(b.batch))
+}
+
+// ─── Bin contents + full inventory (Locations view + reports) ──────────────────
+export interface BinContentItem {
+  itemCode: string
+  itemName: string
+  uom: string
+  qty: number
+  pallets: { batch: string; qty: number }[]
+}
+
+/** Run an async fn over items with BOUNDED concurrency (so a big inventory doesn't fire
+ *  thousands of simultaneous ERPNext calls and exhaust connections / trip rate limits).
+ *  Slower than Promise.all on huge sets, but stable — the report just takes longer. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let cursor = 0
+  const worker = async () => {
+    while (true) {
+      const idx = cursor++
+      if (idx >= items.length) return
+      results[idx] = await fn(items[idx])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
+interface PalletLoc {
+  item: string
+  batch: string
+  warehouse: string
+  qty: number
+}
+
+// Bounded concurrency for the per-batch get_batch_qty fan-out.
+const BATCH_QTY_CONCURRENCY = 10
+
+/** Every active pallet (batch) for the given item codes, with its warehouse + qty.
+ *  One Batch list query per 100 codes, then a get_batch_qty per batch at bounded
+ *  concurrency. get_batch_qty returns all warehouses for a batch in one call, so the
+ *  total call count is ~(#batches), not (#items × #batches). */
+async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
+  if (itemCodes.length === 0) return []
+  const batches: { name: string; item: string }[] = []
+  for (let i = 0; i < itemCodes.length; i += 100) {
+    const chunk = itemCodes.slice(i, i + 100)
+    const qs = [
+      listParam('filters', [
+        ['item', 'in', chunk],
+        ['disabled', '=', 0],
+      ]),
+      listParam('fields', ['name', 'item']),
+      'limit_page_length=0',
+    ].join('&')
+    batches.push(...((await erpnextGet<{ data: { name: string; item: string }[] }>(`/api/resource/Batch?${qs}`)).data ?? []))
+  }
+  const perBatch = await mapLimit(batches, BATCH_QTY_CONCURRENCY, async (b) => {
+    // Retry once on a transient blip, then PROPAGATE: a report that silently omits pallets
+    // is worse than one that fails (the operator would trust an incomplete audit). The
+    // throw bubbles up so the route returns 502 and the UI shows a retryable error.
+    let lastErr: unknown
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await erpnextCallGet<{ message?: { warehouse: string; qty: number }[] }>(
+          'erpnext.stock.doctype.batch.batch.get_batch_qty',
+          { batch_no: b.name, item_code: b.item }
+        )
+        return (r.message ?? [])
+          .filter((x) => x.qty > 0)
+          .map((x) => ({ item: b.item, batch: b.name, warehouse: x.warehouse, qty: x.qty }))
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    throw lastErr
+  })
+  return perBatch.flat()
+}
+
+/** name + uom for a set of item codes (chunked 'in' queries). */
+async function itemNameMap(codes: string[]): Promise<Map<string, { itemName: string; uom: string }>> {
+  const nameMap = new Map<string, { itemName: string; uom: string }>()
+  for (let i = 0; i < codes.length; i += 100) {
+    const chunk = codes.slice(i, i + 100)
+    const qs = [
+      listParam('filters', [['item_code', 'in', chunk]]),
+      listParam('fields', ['item_code', 'item_name', 'stock_uom']),
+      'limit_page_length=0',
+    ].join('&')
+    const rows = (await erpnextGet<{ data: { item_code: string; item_name: string; stock_uom: string }[] }>(`/api/resource/Item?${qs}`)).data ?? []
+    for (const r of rows) nameMap.set(r.item_code, { itemName: r.item_name, uom: r.stock_uom })
+  }
+  return nameMap
+}
+
+/** Everything stored in one bin: each item with its on-hand qty and the pallet ids
+ *  (+ qty) of that item IN THIS BIN. Read-only; for the Locations view + bin report. */
+export async function getBinContents(warehouse: string): Promise<{ items: BinContentItem[]; palletsTruncated: boolean }> {
+  const binQs = [
     listParam('filters', [
-      ['item', '=', itemCode],
-      ['disabled', '=', 0],
+      ['warehouse', '=', warehouse],
+      ['actual_qty', '>', 0],
     ]),
-    listParam('fields', ['name']),
-    'order_by=creation desc',
-    'limit_page_length=25',
+    listParam('fields', ['item_code', 'actual_qty']),
+    'limit_page_length=0',
   ].join('&')
-  const r = await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Batch?${qs}`)
-  const names = (r.data ?? []).map((b) => b.name)
-  const located = await Promise.all(
-    names.map(async (b) => {
-      const loc = await getBatchLocation(b, itemCode)
-      return loc && loc.qty > 0 ? { batch: b, warehouse: loc.warehouse, qty: loc.qty } : null
+  const binRows = (await erpnextGet<{ data: { item_code: string; actual_qty: number }[] }>(`/api/resource/Bin?${binQs}`)).data ?? []
+  if (binRows.length === 0) return { items: [], palletsTruncated: false }
+
+  const codes = [...new Set(binRows.map((b) => b.item_code))]
+  const nameMap = await itemNameMap(codes)
+
+  const byItem = new Map<string, BinContentItem>()
+  for (const b of binRows) {
+    const existing = byItem.get(b.item_code)
+    if (existing) {
+      existing.qty += b.actual_qty
+      continue
+    }
+    const meta = nameMap.get(b.item_code)
+    byItem.set(b.item_code, {
+      itemCode: b.item_code,
+      itemName: meta?.itemName ?? b.item_code,
+      uom: meta?.uom ?? '',
+      qty: b.actual_qty,
+      pallets: [],
     })
-  )
-  return located.filter((p): p is Pallet => p !== null)
+  }
+
+  // Pallet ids for THIS bin (bounded concurrency; no item cap — Simon wants the full
+  // picture even if it's slower for a large bin).
+  const pallets = (await enumeratePallets(codes)).filter((p) => p.warehouse === warehouse)
+  for (const p of pallets) {
+    byItem.get(p.item)?.pallets.push({ batch: p.batch, qty: p.qty })
+  }
+  for (const it of byItem.values()) it.pallets.sort((a, b) => a.batch.localeCompare(b.batch))
+
+  const itemsArr = [...byItem.values()].sort((a, b) => b.qty - a.qty || a.itemName.localeCompare(b.itemName))
+  return { items: itemsArr, palletsTruncated: false }
+}
+
+export interface InventoryRow {
+  itemCode: string
+  itemName: string
+  uom: string
+  warehouse: string
+  qty: number
+  pallets: { batch: string; qty: number }[]
+}
+
+/** The full item × bin × qty matrix for the whole facility, each cell enriched with its
+ *  pallet ids. Drives the full-inventory spreadsheet export (grouped by bin / product).
+ *  Bounded concurrency keeps it stable on a large facility — slower, never a storm. */
+export async function getFullInventory(): Promise<InventoryRow[]> {
+  const binQs = [
+    listParam('filters', [['actual_qty', '>', 0]]),
+    listParam('fields', ['item_code', 'warehouse', 'actual_qty']),
+    'limit_page_length=0',
+  ].join('&')
+  const binRows = (await erpnextGet<{ data: { item_code: string; warehouse: string; actual_qty: number }[] }>(`/api/resource/Bin?${binQs}`)).data ?? []
+  if (binRows.length === 0) return []
+
+  const codes = [...new Set(binRows.map((b) => b.item_code))]
+  const nameMap = await itemNameMap(codes)
+
+  // Pallet ids keyed by item+warehouse so each (item, bin) cell gets its own list.
+  const pallets = await enumeratePallets(codes)
+  const palletsByCell = new Map<string, { batch: string; qty: number }[]>()
+  for (const p of pallets) {
+    const key = `${p.item} ${p.warehouse}`
+    const arr = palletsByCell.get(key)
+    if (arr) arr.push({ batch: p.batch, qty: p.qty })
+    else palletsByCell.set(key, [{ batch: p.batch, qty: p.qty }])
+  }
+
+  return binRows.map((b) => {
+    const meta = nameMap.get(b.item_code)
+    return {
+      itemCode: b.item_code,
+      itemName: meta?.itemName ?? b.item_code,
+      uom: meta?.uom ?? '',
+      warehouse: b.warehouse,
+      qty: b.actual_qty,
+      pallets: (palletsByCell.get(`${b.item_code} ${b.warehouse}`) ?? []).sort((a, c) => a.batch.localeCompare(c.batch)),
+    }
+  })
 }
 
 export interface AdjustResult extends Committed {

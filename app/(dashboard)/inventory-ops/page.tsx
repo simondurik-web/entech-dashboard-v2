@@ -19,6 +19,8 @@ import {
   ScanLine,
   Clock,
   ArrowLeftRight,
+  FileText,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
@@ -49,10 +51,29 @@ interface ItemOption {
   itemCode: string
   itemName: string
 }
+interface BinContentItem {
+  itemCode: string
+  itemName: string
+  uom: string
+  qty: number
+  pallets: { batch: string; qty: number }[]
+}
+interface InventoryRow {
+  itemCode: string
+  itemName: string
+  uom: string
+  warehouse: string
+  qty: number
+  pallets: { batch: string; qty: number }[]
+}
 interface Station {
   id: string
   name: string
 }
+
+// Max search results we auto-load pallet rows for (sorted by stock). Bounds the lazy
+// pallet fan-out on broad searches; the server already seeds the top items inline.
+const LAZY_PALLET_LIMIT = 24
 interface HistEvent {
   action: string
   at: string | null
@@ -248,9 +269,14 @@ export default function InventoryOpsPage() {
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
   const [palletsLoading, setPalletsLoading] = useState<string | null>(null)
   const [palletsError, setPalletsError] = useState<Record<string, boolean>>({})
+  // Tracks item codes whose pallet load is in flight. `palletsLoading` is a single
+  // scalar (only good for the spinner); this ref dedupes CONCURRENT loads so the
+  // lazy-load effect can't re-trigger an in-flight fetch for the same item.
+  const palletReqRef = useRef<Set<string>>(new Set())
 
   const loadPallets = useCallback(
     async (itemCode: string) => {
+      palletReqRef.current.add(itemCode)
       setPalletsLoading(itemCode)
       setPalletsError((e) => ({ ...e, [itemCode]: false }))
       try {
@@ -264,6 +290,7 @@ export default function InventoryOpsPage() {
         setPalletsError((e) => ({ ...e, [itemCode]: true }))
         setPallets((p) => ({ ...p, [itemCode]: [] }))
       } finally {
+        palletReqRef.current.delete(itemCode)
         setPalletsLoading(null)
       }
     },
@@ -272,14 +299,18 @@ export default function InventoryOpsPage() {
 
   // Pallets render inline under each bin. The search seeds pallet ids for the first N
   // stocked items (locate's enrich cap); for any stocked item beyond that, lazy-load its
-  // pallets once so its rows + actions still appear without an expander/click.
+  // pallets once so its rows + actions still appear without an expander/click. The ref
+  // guard prevents duplicate concurrent fetches; pallets[code] becoming defined (incl.
+  // [] on error) prevents re-fetching after completion. We only auto-load the TOP
+  // LAZY_PALLET_LIMIT results (sorted by stock) so a broad search can't fan out dozens of
+  // /pallets calls at once — beyond that the user narrows the search to act on a pallet.
   useEffect(() => {
-    for (const r of results) {
-      if (r.total > 0 && pallets[r.itemCode] === undefined && palletsLoading !== r.itemCode && !palletsError[r.itemCode]) {
+    for (const r of results.slice(0, LAZY_PALLET_LIMIT)) {
+      if (r.total > 0 && pallets[r.itemCode] === undefined && !palletReqRef.current.has(r.itemCode) && !palletsError[r.itemCode]) {
         loadPallets(r.itemCode)
       }
     }
-  }, [results, pallets, palletsLoading, palletsError, loadPallets])
+  }, [results, pallets, palletsError, loadPallets])
 
   // ─── pallet history (traceability) ───
   const [historyOpen, setHistoryOpen] = useState<string | null>(null)
@@ -320,6 +351,215 @@ export default function InventoryOpsPage() {
     const c = new AbortController()
     runSearch(query, c.signal)
   }, [query, runSearch])
+
+  // ─── Locations view (browse by bin) ───
+  const [viewMode, setViewMode] = useState<'item' | 'bin'>('item')
+  const [binQuery, setBinQuery] = useState('')
+  const [binOpen, setBinOpen] = useState(false)
+  const [selectedBin, setSelectedBin] = useState<string | null>(null)
+  const [binContents, setBinContents] = useState<{ items: BinContentItem[]; total: number; palletsTruncated: boolean } | null>(null)
+  const [binLoading, setBinLoading] = useState(false)
+  const [binError, setBinError] = useState(false)
+
+  const loadBin = useCallback(
+    async (wh: string) => {
+      setSelectedBin(wh)
+      setBinQuery(wh)
+      setBinOpen(false)
+      setBinLoading(true)
+      setBinError(false)
+      setBinContents(null)
+      try {
+        const r = await authedFetch(`/api/erpnext/inventory/bin-contents?warehouse=${encodeURIComponent(wh)}`)
+        if (!r.ok) throw new Error('bin lookup failed')
+        const d = await r.json()
+        setBinContents({ items: d.items ?? [], total: d.total ?? 0, palletsTruncated: !!d.palletsTruncated })
+      } catch {
+        setBinError(true)
+      } finally {
+        setBinLoading(false)
+      }
+    },
+    [authedFetch]
+  )
+
+  // ─── bin report export (PDF + CSV) ───
+  const triggerDownload = (filename: string, mime: string, content: string | Blob) => {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+  const safeName = (s: string) => s.replace(/[^a-z0-9._-]+/gi, '_')
+  // CSV cell: guard against spreadsheet formula injection (a value starting with = + - @
+  // or a control char is prefixed with a quote), then RFC-4180 quote if needed.
+  const csvCell = (v: string) => {
+    const guarded = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v
+    return /[",\r\n]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded
+  }
+  const stampNow = () =>
+    new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true })
+
+  const downloadBinCsv = () => {
+    if (!binContents || !selectedBin) return
+    const rows: string[][] = [[t('inventoryOps.repBin'), t('inventoryOps.repItemCode'), t('inventoryOps.repItemName'), t('inventoryOps.repUom'), t('inventoryOps.repQty'), t('inventoryOps.repPallets')]]
+    for (const it of binContents.items) {
+      rows.push([
+        selectedBin,
+        it.itemCode,
+        it.itemName,
+        it.uom,
+        String(it.qty),
+        it.pallets.map((p) => `${p.batch} (${p.qty})`).join(' | '),
+      ])
+    }
+    const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
+    triggerDownload(`bin-${safeName(selectedBin)}-${Date.now()}.csv`, 'text/csv;charset=utf-8', '﻿' + csv)
+  }
+
+  const downloadBinPdf = async () => {
+    if (!binContents || !selectedBin) return
+    const { default: JsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new JsPDF()
+    doc.setFontSize(14)
+    doc.text(`${t('inventoryOps.repBinTitle')} — ${selectedBin}`, 14, 16)
+    doc.setFontSize(9)
+    doc.setTextColor(110)
+    doc.text(`${t('inventoryOps.repTotalOnHand')}: ${binContents.total.toLocaleString()}   ·   ${t('inventoryOps.repGenerated')} ${stampNow()}`, 14, 22)
+    doc.setTextColor(0)
+    autoTable(doc, {
+      startY: 27,
+      head: [[t('inventoryOps.repItemCode'), t('inventoryOps.repItemName'), t('inventoryOps.repQty'), t('inventoryOps.repPallets')]],
+      body: binContents.items.map((it) => [
+        it.itemCode,
+        it.itemName,
+        `${it.qty.toLocaleString()} ${it.uom}`.trim(),
+        it.pallets.map((p) => `${p.batch} (${p.qty})`).join('\n'),
+      ]),
+      styles: { fontSize: 8, cellPadding: 2, valign: 'top' },
+      headStyles: { fillColor: [43, 108, 176] },
+      columnStyles: { 0: { cellWidth: 32, font: 'courier' }, 2: { cellWidth: 24 }, 3: { font: 'courier', fontSize: 7 } },
+    })
+    doc.save(`bin-${safeName(selectedBin)}-${Date.now()}.pdf`)
+  }
+
+  // ─── full inventory export (.xlsx, By Bin + By Product tabs) ───
+  const [fullReportLoading, setFullReportLoading] = useState(false)
+  const downloadFullInventory = async () => {
+    if (fullReportLoading) return
+    setFullReportLoading(true)
+    try {
+      const r = await authedFetch('/api/erpnext/inventory/report')
+      if (!r.ok) throw new Error('report failed')
+      const d = await r.json()
+      const rows: InventoryRow[] = d.rows ?? []
+      const { default: ExcelJS } = await import('exceljs')
+      const wb = new ExcelJS.Workbook()
+      wb.creator = 'Entech Dashboard'
+      wb.created = new Date()
+
+      const styleHeader = (ws: import('exceljs').Worksheet) => {
+        const h = ws.getRow(1)
+        h.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2B6CB0' } }
+        ws.views = [{ state: 'frozen', ySplit: 1 }]
+        ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, ws.rowCount), column: ws.columnCount } }
+      }
+
+      const palletStr = (x: InventoryRow) => x.pallets.map((p) => `${p.batch} (${p.qty})`).join(', ')
+
+      // Tab 1 — By Bin: pick a bin from the Bin column's filter dropdown.
+      const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
+      byBin.columns = [
+        { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
+        { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+        { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+        { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
+        { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+        { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
+      ]
+      ;[...rows]
+        .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
+        .forEach((x) => byBin.addRow({ ...x, pallets: palletStr(x) }))
+      styleHeader(byBin)
+
+      // Tab 2 — By Product: pick a product from the Item filter dropdown.
+      const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
+      byProd.columns = [
+        { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+        { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+        { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
+        { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
+        { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+        { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
+      ]
+      ;[...rows]
+        .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.warehouse.localeCompare(b.warehouse))
+        .forEach((x) => byProd.addRow({ ...x, pallets: palletStr(x) }))
+      styleHeader(byProd)
+
+      const buf = await wb.xlsx.writeBuffer()
+      triggerDownload(
+        `inventory-${Date.now()}.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        new Blob([buf])
+      )
+    } catch {
+      showFlash('err', t('inventoryOps.error'))
+    } finally {
+      setFullReportLoading(false)
+    }
+  }
+
+  // ─── single-product report (from a search result card) ───
+  const productBreakdown = (r: LocateResult) => {
+    const pals = pallets[r.itemCode] ?? []
+    return r.bins.map((b) => ({
+      bin: b.warehouse,
+      qty: b.qty,
+      pallets: pals.filter((p) => p.warehouse === b.warehouse).map((p) => ({ batch: p.batch, qty: p.qty })),
+    }))
+  }
+  const downloadProductCsv = (r: LocateResult) => {
+    const rows: string[][] = [[t('inventoryOps.repItemCode'), t('inventoryOps.repItemName'), t('inventoryOps.repUom'), t('inventoryOps.repBin'), t('inventoryOps.repQty'), t('inventoryOps.repPallets')]]
+    for (const b of productBreakdown(r)) {
+      rows.push([r.itemCode, r.itemName, r.uom, b.bin, String(b.qty), b.pallets.map((p) => `${p.batch} (${p.qty})`).join(' | ')])
+    }
+    const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n')
+    triggerDownload(`product-${safeName(r.itemCode)}-${Date.now()}.csv`, 'text/csv;charset=utf-8', '﻿' + csv)
+  }
+  const downloadProductPdf = async (r: LocateResult) => {
+    const { default: JsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new JsPDF()
+    doc.setFontSize(14)
+    doc.text(`${t('inventoryOps.repProductTitle')} — ${r.itemCode}`, 14, 16)
+    doc.setFontSize(10)
+    doc.text(r.itemName, 14, 22)
+    doc.setFontSize(9)
+    doc.setTextColor(110)
+    doc.text(`${t('inventoryOps.repTotalOnHand')}: ${r.total.toLocaleString()} ${r.uom}   ·   ${t('inventoryOps.repGenerated')} ${stampNow()}`, 14, 28)
+    doc.setTextColor(0)
+    autoTable(doc, {
+      startY: 33,
+      head: [[t('inventoryOps.repBin'), t('inventoryOps.repQty'), t('inventoryOps.repPallets')]],
+      body: productBreakdown(r).map((b) => [
+        b.bin,
+        `${b.qty.toLocaleString()} ${r.uom}`.trim(),
+        b.pallets.map((p) => `${p.batch} (${p.qty})`).join('\n'),
+      ]),
+      styles: { fontSize: 8, cellPadding: 2, valign: 'top' },
+      headStyles: { fillColor: [43, 108, 176] },
+      columnStyles: { 1: { cellWidth: 26 }, 2: { font: 'courier', fontSize: 7 } },
+    })
+    doc.save(`product-${safeName(r.itemCode)}-${Date.now()}.pdf`)
+  }
 
   // ─── add ───
   const [addOpen, setAddOpen] = useState(false)
@@ -449,7 +689,8 @@ export default function InventoryOpsPage() {
       showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
       setEditBatch(null)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
-      refreshSearch()
+      refreshSearch() // bins + totals
+      loadPallets(itemCode) // pallet rows (incl. items beyond locate's inline enrich cap)
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -473,7 +714,8 @@ export default function InventoryOpsPage() {
       if (!r.ok) throw new Error(d.error || 'remove failed')
       clearOpKey('remove', batch, reason.trim())
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
-      refreshSearch()
+      refreshSearch() // bins + totals
+      loadPallets(itemCode) // pallet rows
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -499,7 +741,8 @@ export default function InventoryOpsPage() {
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')
-      refreshSearch()
+      refreshSearch() // bins + totals
+      loadPallets(itemCode) // pallet rows (moved pallet's new bin)
       // drop cached history so it reloads with the new move event
       setHistory((h) => {
         const n = { ...h }
@@ -535,7 +778,8 @@ export default function InventoryOpsPage() {
       // A reprint reissues the pallet as a new serial (old label is voided); follow it.
       showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
-      refreshSearch()
+      refreshSearch() // bins + totals
+      loadPallets(itemCode) // pallet rows
       if (historyOpen === batch) {
         setHistory((h) => {
           const n = { ...h }
@@ -728,6 +972,35 @@ export default function InventoryOpsPage() {
         </div>
       )}
 
+      {/* View toggle: search by item, or browse by bin (Locations) */}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg border border-border bg-card p-0.5 text-sm">
+          <button
+            onClick={() => setViewMode('item')}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'item' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('inventoryOps.byItem')}
+          </button>
+          <button
+            onClick={() => setViewMode('bin')}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'bin' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('inventoryOps.byBin')}
+          </button>
+        </div>
+        <button
+          onClick={downloadFullInventory}
+          disabled={fullReportLoading}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          title={t('inventoryOps.fullReportHint')}
+        >
+          {fullReportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+          {t('inventoryOps.fullReport')}
+        </button>
+      </div>
+
+      {viewMode === 'item' && (
+      <>
       {/* Search */}
       <div className="relative mb-5">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -787,7 +1060,10 @@ export default function InventoryOpsPage() {
         {results.map((r) => {
           // On an exact pallet scan, focus on THAT pallet: its own qty (not the part
           // family's total) and its bin.
-          const mp = matchedPallet ? (r.pallets ?? []).find((p) => p.batch === matchedPallet) ?? null : null
+          // Sum the matched pallet's qty across bins (a split batch has one row per bin),
+          // so the header shows the pallet's true total, not just its first bin.
+          const mpRows = matchedPallet ? (r.pallets ?? []).filter((p) => p.batch === matchedPallet) : []
+          const mp = mpRows.length ? { qty: mpRows.reduce((s, p) => s + p.qty, 0) } : null
           return (
           <div key={r.itemCode} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-baseline justify-between gap-3">
@@ -795,11 +1071,31 @@ export default function InventoryOpsPage() {
                 <div className="font-medium">{r.itemName}</div>
                 <div className="font-mono text-xs text-muted-foreground">{r.itemCode}</div>
               </div>
-              <div className="text-right">
-                <div className="text-lg font-semibold tabular-nums">{(mp ? mp.qty : r.total).toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">
-                  {r.uom} {mp ? t('inventoryOps.inPallet') : t('inventoryOps.onHand')}
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="text-right">
+                  <div className="text-lg font-semibold tabular-nums">{(mp ? mp.qty : r.total).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {r.uom} {mp ? t('inventoryOps.inPallet') : t('inventoryOps.onHand')}
+                  </div>
                 </div>
+                {!matchedPallet && r.total > 0 && pallets[r.itemCode] !== undefined && !palletsError[r.itemCode] && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => downloadProductCsv(r)}
+                      title={`CSV — ${r.itemCode}`}
+                      className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <FileSpreadsheet className="h-3 w-3" /> CSV
+                    </button>
+                    <button
+                      onClick={() => downloadProductPdf(r)}
+                      title={`PDF — ${r.itemCode}`}
+                      className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <FileText className="h-3 w-3" /> PDF
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="mt-3 border-t border-border pt-3">
@@ -1021,6 +1317,125 @@ export default function InventoryOpsPage() {
           )
         })}
       </div>
+      </>
+      )}
+
+      {viewMode === 'bin' && (
+      <>
+        {/* Bin combo-box: type to filter or open the full list of bins */}
+        <div className="relative mb-4">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={binQuery}
+                onChange={(e) => {
+                  setBinQuery(e.target.value)
+                  setBinOpen(true)
+                }}
+                onFocus={() => setBinOpen(true)}
+                placeholder={t('inventoryOps.selectBin')}
+                className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {binOpen && (
+                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+                  <div className="inv-scroll max-h-72 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    {(binQuery.trim()
+                      ? warehouses.filter((w) => w.toLowerCase().includes(binQuery.trim().toLowerCase()))
+                      : warehouses
+                    ).slice(0, 200).map((w) => (
+                      <button
+                        key={w}
+                        onClick={() => loadBin(w)}
+                        className={`block w-full px-3 py-2.5 text-left text-sm hover:bg-accent ${selectedBin === w ? 'bg-primary/15 font-medium text-primary' : ''}`}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                    {warehouses.filter((w) => !binQuery.trim() || w.toLowerCase().includes(binQuery.trim().toLowerCase())).length === 0 && (
+                      <div className="p-3 text-xs text-muted-foreground">{t('inventoryOps.noBins')}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {binOpen && (
+              <button onClick={() => setBinOpen(false)} className="rounded-md p-2 text-muted-foreground hover:text-foreground" aria-label={t('inventoryOps.cancel')}>
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {binLoading && (
+          <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('inventoryOps.loading')}
+          </div>
+        )}
+        {binError && (
+          <button onClick={() => selectedBin && loadBin(selectedBin)} className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4" />
+            {t('inventoryOps.error')}
+          </button>
+        )}
+
+        {!binLoading && !binError && binContents && selectedBin && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 font-medium">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  {selectedBin}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {binContents.items.length} {t('inventoryOps.itemsLabel')} · {binContents.total.toLocaleString()} {t('inventoryOps.onHand')}
+                </div>
+              </div>
+              {binContents.items.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <button onClick={downloadBinCsv} className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> CSV
+                  </button>
+                  <button onClick={downloadBinPdf} className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <FileText className="h-3.5 w-3.5" /> PDF
+                  </button>
+                </div>
+              )}
+            </div>
+            {binContents.items.length === 0 ? (
+              <div className="border-t border-border pt-3 text-xs text-muted-foreground">{t('inventoryOps.binEmpty')}</div>
+            ) : (
+              <ul className="divide-y divide-border border-t border-border">
+                {binContents.items.map((it) => (
+                  <li key={it.itemCode} className="py-2.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{it.itemName}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{it.itemCode}</div>
+                      </div>
+                      <div className="shrink-0 text-sm font-semibold tabular-nums">
+                        {it.qty.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{it.uom}</span>
+                      </div>
+                    </div>
+                    {it.pallets.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {it.pallets.map((p) => (
+                          <span key={p.batch} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                            {p.batch}
+                            {p.qty ? ` · ${p.qty.toLocaleString()}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </>
+      )}
     </div>
   )
 }
