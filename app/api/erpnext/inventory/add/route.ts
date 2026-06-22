@@ -70,6 +70,15 @@ export async function POST(req: NextRequest) {
 
   // ─── Non-serialized: receive a quantity (boxes) + print one generic label per box ───
   if (!itemInfo.hasBatch) {
+    // Boxes are whole units, and we print one label per box — cap at the printable copy
+    // limit so the stock received can never exceed the labels produced (no silent mismatch).
+    const MAX_BOXES_PER_RECEIVE = 9999
+    if (!Number.isInteger(qty) || qty > MAX_BOXES_PER_RECEIVE) {
+      return NextResponse.json(
+        { error: `For non-serialized items, qty must be a whole number of boxes (1..${MAX_BOXES_PER_RECEIVE}); split larger receipts.` },
+        { status: 400 }
+      )
+    }
     const result = await runInventoryOp({
       key: idempotencyKey,
       action: 'add',

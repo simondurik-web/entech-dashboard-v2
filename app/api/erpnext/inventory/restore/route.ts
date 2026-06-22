@@ -24,6 +24,8 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const MAX_QTY = 10_000_000
+// Restoring stock (re-receipting a removed pallet) is office-only, like removal.
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager'])
 
 interface RestoreBody {
   batch?: string
@@ -37,6 +39,9 @@ interface RestoreBody {
 export async function POST(req: NextRequest) {
   const guard = await requireInventoryAccess(req)
   if (!guard.ok) return guard.res
+  if (!OFFICE_ROLES.has(guard.role)) {
+    return NextResponse.json({ error: 'Returning a pallet to inventory is office-only' }, { status: 403 })
+  }
 
   let body: RestoreBody
   try {
@@ -46,9 +51,10 @@ export async function POST(req: NextRequest) {
   }
   const { batch, itemCode, warehouse, station, idempotencyKey } = body
   const qty = Number(body.qty)
-  if (!batch || !itemCode || !warehouse || !idempotencyKey || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY) {
+  // Quantities are whole units — require a positive integer.
+  if (!batch || !itemCode || !warehouse || !idempotencyKey || !Number.isInteger(qty) || qty <= 0 || qty > MAX_QTY) {
     return NextResponse.json(
-      { error: 'batch, itemCode, qty (1..10M), warehouse, and idempotencyKey are required' },
+      { error: 'batch, itemCode, a whole-number qty (1..10M), warehouse, and idempotencyKey are required' },
       { status: 400 }
     )
   }

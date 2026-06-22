@@ -32,9 +32,10 @@ export async function POST(req: NextRequest) {
   }
   const { itemCode, fromWarehouse, toWarehouse, idempotencyKey } = body
   const qty = Number(body.qty)
-  if (!itemCode || !fromWarehouse || !toWarehouse || !idempotencyKey || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY) {
+  // Boxes are whole units — require a positive integer.
+  if (!itemCode || !fromWarehouse || !toWarehouse || !idempotencyKey || !Number.isInteger(qty) || qty <= 0 || qty > MAX_QTY) {
     return NextResponse.json(
-      { error: 'itemCode, qty (1..10M), fromWarehouse, toWarehouse, and idempotencyKey are required' },
+      { error: 'itemCode, a whole-number qty (1..10M), fromWarehouse, toWarehouse, and idempotencyKey are required' },
       { status: 400 }
     )
   }
@@ -47,7 +48,10 @@ export async function POST(req: NextRequest) {
     action: 'qty-transfer',
     createdBy: guard.userId,
     // No batch/family (non-serialized). family null keeps it outside the per-pallet lock.
-    meta: { item_code: itemCode, qty, warehouse: toWarehouse, batch: null, family: null },
+    // Bind BOTH bins into the identity (warehouse = "from>to") so reusing a key with a
+    // different source can't be mistaken for a duplicate of a prior move. qty-transfer rows
+    // carry no label/history, so the composite value is never surfaced anywhere.
+    meta: { item_code: itemCode, qty, warehouse: `${fromWarehouse}>${toWarehouse}`, batch: null, family: null },
     erp: () => qtyTransfer({ itemCode, qty, fromWarehouse, toWarehouse, opKey: idempotencyKey }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)

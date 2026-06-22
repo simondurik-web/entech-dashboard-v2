@@ -11,6 +11,8 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const MAX_QTY = 10_000_000
+// Removing stock is office-only, like serialized pallet removal.
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager'])
 
 interface Body {
   itemCode?: string
@@ -23,6 +25,9 @@ interface Body {
 export async function POST(req: NextRequest) {
   const guard = await requireInventoryAccess(req)
   if (!guard.ok) return guard.res
+  if (!OFFICE_ROLES.has(guard.role)) {
+    return NextResponse.json({ error: 'Removing stock is office-only' }, { status: 403 })
+  }
 
   let body: Body
   try {
@@ -33,9 +38,10 @@ export async function POST(req: NextRequest) {
   const { itemCode, warehouse, idempotencyKey } = body
   const reason = (body.reason ?? '').trim()
   const qty = Number(body.qty)
-  if (!itemCode || !warehouse || !idempotencyKey || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY) {
+  // Boxes are whole units — require a positive integer.
+  if (!itemCode || !warehouse || !idempotencyKey || !Number.isInteger(qty) || qty <= 0 || qty > MAX_QTY) {
     return NextResponse.json(
-      { error: 'itemCode, qty (1..10M), warehouse, and idempotencyKey are required' },
+      { error: 'itemCode, a whole-number qty (1..10M), warehouse, and idempotencyKey are required' },
       { status: 400 }
     )
   }

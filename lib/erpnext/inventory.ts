@@ -19,6 +19,14 @@ function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
 }
 
+/** Sanitize user text before it goes into a Stock Entry `remarks`. Strips square brackets so
+ *  a crafted reason can't smuggle an `[op:<key>]` token into remarks — reconcileStockEntry
+ *  matches that token with a LIKE, so an injected one could otherwise be reconciled against
+ *  the wrong document. Also caps the length. */
+function safeRemark(text: string, max = 120): string {
+  return (text ?? '').replace(/[[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+}
+
 // ─── Pallet id ───────────────────────────────────────────────────────────────
 // Pallet ids are short, human-typeable codes that double as the QR payload. We
 // use Crockford base32 (digits + letters, MINUS I/L/O/U which get confused with
@@ -481,7 +489,7 @@ export async function removeInventory(input: {
     stockEntry = await submitStockEntry({
       stock_entry_type: 'Material Issue',
       company: COMPANY,
-      remarks: `Dashboard remove [op:${opKey}] reason: ${reason.slice(0, 120)}`,
+      remarks: `Dashboard remove [op:${opKey}] reason: ${safeRemark(reason)}`,
       items: [
         {
           item_code: itemCode,
@@ -741,6 +749,7 @@ export async function qtyTransfer(input: {
   if (!(qty > 0)) throw new Error('Transfer qty must be greater than 0')
   if (fromWarehouse === toWarehouse) throw new Error('Source and destination bins are the same')
   const { itemName, uom } = await assertNonBatch(itemCode)
+  await preflightWarehouse(fromWarehouse)
   await preflightWarehouse(toWarehouse)
   const existing = await reconcileStockEntry(opKey)
   const stockEntry =
@@ -768,7 +777,7 @@ export async function qtyRemove(input: { itemCode: string; qty: number; warehous
     (await submitStockEntry({
       stock_entry_type: 'Material Issue',
       company: COMPANY,
-      remarks: `Dashboard qty-remove [op:${opKey}]${reason ? ` reason: ${reason.slice(0, 120)}` : ''}`,
+      remarks: `Dashboard qty-remove [op:${opKey}]${reason ? ` reason: ${safeRemark(reason)}` : ''}`,
       items: [{ item_code: itemCode, qty, s_warehouse: warehouse, allow_zero_valuation_rate: 1, uom, stock_uom: uom, conversion_factor: 1 }],
     }))
   return { stockEntry, itemName, uom, qty, warehouse }
@@ -1100,6 +1109,19 @@ export async function restorePallet(input: {
   const target = sameQty ? batch : (newBatch as string)
   if (!target) throw new Error('A new serial must be reserved to restore at a different quantity')
 
+  // Resume check first: if this op's receipt already posted, reuse it (don't re-receipt).
+  const existing = await reconcileStockEntry(opKey)
+  if (!existing) {
+    // Precondition: restore applies ONLY to a removed/zeroed pallet. Assert the pallet holds
+    // 0 on-hand at the lib layer so a crafted or replayed request can't re-stock an ACTIVE
+    // pallet (which would double-count). Only checked on a fresh post — on a resume the
+    // receipt has already moved stock, so a >0 reading there is expected.
+    const loc = await getBatchLocation(batch, itemCode)
+    if (loc && loc.qty > 0) {
+      throw new Error(`Pallet ${batch} still holds ${loc.qty} in stock; it is not a removed pallet`)
+    }
+  }
+
   if (sameQty) {
     // Re-enable BEFORE receipting (ERPNext rejects stock into a disabled batch).
     await erpnextUpdate('Batch', batch, { disabled: 0 })
@@ -1107,8 +1129,6 @@ export async function restorePallet(input: {
     await erpnextCreate('Batch', { batch_id: target, item: itemCode, custom_pallet_qty: requestedQty })
   }
 
-  // If the receipt already posted (retry), don't post again.
-  const existing = await reconcileStockEntry(opKey)
   const stockEntry =
     existing ??
     (await submitStockEntry({

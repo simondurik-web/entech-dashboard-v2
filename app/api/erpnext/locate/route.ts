@@ -44,8 +44,9 @@ export async function GET(req: NextRequest) {
         removedPallet = await lookupRemovedPallet(scannedPallet as string).catch(() => null)
       }
     }
-    // Attach pallet ids to stocked items so they show next to the part + location.
-    const stocked = results.filter((r) => r.total > 0).slice(0, MAX_PALLET_ENRICH)
+    // Attach pallet ids to stocked items so they show next to the part + location. Skip
+    // non-serialized items — they have no pallets (the UI renders quantity mode instead).
+    const stocked = results.filter((r) => r.total > 0 && r.hasBatch).slice(0, MAX_PALLET_ENRICH)
     await Promise.all(
       stocked.map(async (r) => {
         try {

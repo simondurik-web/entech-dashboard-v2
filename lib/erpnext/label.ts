@@ -177,8 +177,9 @@ export function buildPalletZpl(label: PalletLabel): string {
   if (printedBy) lines.push(T(qrX - 78, qrY, 24, `By: ${printedBy}`))
 
   // Print N identical copies (one label per box for non-serialized packs). ^PQ must
-  // precede ^XZ. Clamp to a sane range so a bad qty can't spool thousands of labels.
-  const copies = Math.max(1, Math.min(999, Math.round(label.copies ?? 1)))
+  // precede ^XZ. Clamp to a sane ceiling (covers any realistic single receive) so a bad
+  // qty can't spool an unbounded run; 9999 is far above any real box count per receipt.
+  const copies = Math.max(1, Math.min(9999, Math.round(label.copies ?? 1)))
   if (copies > 1) lines.push(`^PQ${copies},0,0,N`)
 
   lines.push('^XZ')
