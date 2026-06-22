@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { addInventory, generatePalletId, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
-import { buildPalletZpl } from '@/lib/erpnext/label'
+import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -91,14 +91,7 @@ export async function POST(req: NextRequest) {
         batch: committed.batch ?? batch,
         customer,
         ref,
-        generatedAt: new Date().toLocaleString('en-US', {
-          month: '2-digit',
-          day: '2-digit',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        }),
+        generatedAt: labelTimestamp(),
         printedBy,
       })
       const { data: job, error } = await supabaseAdmin

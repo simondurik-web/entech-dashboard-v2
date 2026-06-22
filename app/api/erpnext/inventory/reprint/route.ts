@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { getBatchLocation, assertBatchItem, reserveNextSerial, reissuePallet, verifyReissue, palletBase } from '@/lib/erpnext/inventory'
-import { buildPalletZpl } from '@/lib/erpnext/label'
+import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -14,9 +14,6 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-
-const fmtNow = () =>
-  new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 
 interface ReprintBody {
   batch?: string
@@ -113,7 +110,7 @@ export async function POST(req: NextRequest) {
         qty: target,
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
-        generatedAt: fmtNow(),
+        generatedAt: labelTimestamp(),
         printedBy,
       })
       const { data: job, error } = await supabaseAdmin

@@ -15,6 +15,21 @@
 
 import QRCode from 'qrcode'
 
+// The operation runs server-side on Vercel (UTC), so a bare new Date().toLocaleString()
+// stamps the label in UTC. The shop is on US Eastern (Middlebury, IN), so force the zone.
+export const LABEL_TIME_ZONE = 'America/Detroit'
+export function labelTimestamp(): string {
+  return new Date().toLocaleString('en-US', {
+    timeZone: LABEL_TIME_ZONE,
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
 export interface PalletLabel {
   itemCode: string // internal P/N — the prominent field
   itemName: string

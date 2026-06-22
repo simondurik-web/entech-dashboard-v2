@@ -21,6 +21,7 @@ import {
   ArrowLeftRight,
   FileText,
   FileSpreadsheet,
+  RefreshCw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
@@ -65,6 +66,19 @@ interface InventoryRow {
   warehouse: string
   qty: number
   pallets: { batch: string; qty: number }[]
+}
+interface RecentLabel {
+  batch: string
+  itemCode: string
+  printer: string | null
+  printerLocation: string | null
+  purpose: string | null
+  by: string
+  at: string | null
+  status: string | null
+  claimedAt: string | null
+  printedAt: string | null
+  error: string | null
 }
 interface Station {
   id: string
@@ -427,6 +441,30 @@ export default function InventoryOpsPage() {
     [viewMode, selectedBin, loadBin, refreshSearch, loadPallets]
   )
 
+  // ─── Recently printed labels (so a jammed/failed print can be found + reprinted) ───
+  const [recentLabels, setRecentLabels] = useState<RecentLabel[]>([])
+  const [recentLoading, setRecentLoading] = useState(false)
+  const [recentExpanded, setRecentExpanded] = useState(false)
+  const loadRecentLabels = useCallback(
+    async (expanded: boolean) => {
+      setRecentLoading(true)
+      try {
+        const r = await authedFetch(`/api/erpnext/inventory/recent-labels?limit=${expanded ? 50 : 10}`)
+        if (!r.ok) throw new Error('recent labels failed')
+        const d = await r.json()
+        setRecentLabels(d.labels ?? [])
+      } catch {
+        /* leave prior list; non-critical panel */
+      } finally {
+        setRecentLoading(false)
+      }
+    },
+    [authedFetch]
+  )
+  useEffect(() => {
+    loadRecentLabels(false)
+  }, [loadRecentLabels])
+
   // Toggle By item / By bin. RELOADS the view we switch INTO so it never shows data that
   // went stale from a mutation made in the other view, and closes any open edit/move/
   // history panel (those are single-value states shared by both views).
@@ -713,6 +751,7 @@ export default function InventoryOpsPage() {
       // locate's inline enrich cap, which the lazy-load effect would otherwise skip).
       if (query) refreshSearch()
       loadPallets(addedItemCode)
+      loadRecentLabels(recentExpanded) // a new label was printed
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -753,6 +792,7 @@ export default function InventoryOpsPage() {
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       setHistoryOpen((h) => (h === batch ? null : h)) // old serial gone after reissue
       refreshAfterMutation(itemCode)
+      loadRecentLabels(recentExpanded) // a new label was printed
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -840,6 +880,7 @@ export default function InventoryOpsPage() {
       showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       refreshAfterMutation(itemCode)
+      loadRecentLabels(recentExpanded) // a new label was printed
       // The old serial is gone after a reissue — drop its cached/open history.
       if (historyOpen === batch) {
         setHistoryOpen(null)
@@ -879,6 +920,25 @@ export default function InventoryOpsPage() {
     : allItems
   const filteredParts = matchedParts.slice(0, PART_PICKER_CAP)
   const partsTruncated = matchedParts.length > filteredParts.length
+
+  // Recent-labels helpers: map the op action to a friendly purpose, and the print-job
+  // status to a label + color (so a jam/failure stands out).
+  const PURPOSE_KEY: Record<string, string> = { add: 'added', adjust: 'adjusted', reprint: 'reprinted', remove: 'removed', move: 'moved' }
+  const purposeText = (a: string) => (PURPOSE_KEY[a] ? t(`inventoryOps.${PURPOSE_KEY[a]}`) : a)
+  // Normalize the print-agent's status (vocabularies vary) and flag a job that hasn't
+  // printed within a few minutes as STUCK — the agent normally prints within seconds, so a
+  // lingering pending/claimed job means a jam / offline printer (Simon's case).
+  const STUCK_MS = 3 * 60 * 1000
+  const labelStatus = (l: RecentLabel) => {
+    const s = (l.status ?? '').toLowerCase()
+    if (s === 'printed' || s === 'done') return { text: t('inventoryOps.statusPrinted'), cls: 'text-green-600' }
+    if (s === 'error' || s === 'failed') return { text: t('inventoryOps.statusFailed'), cls: 'font-medium text-red-600' }
+    // Not yet printed (pending/queued/claimed/printing): flag if it's been too long.
+    const ageMs = l.at ? Date.now() - new Date(l.at).getTime() : 0
+    if (ageMs > STUCK_MS) return { text: t('inventoryOps.statusStuck'), cls: 'font-medium text-red-600' }
+    if (s === 'claimed' || s === 'printing') return { text: t('inventoryOps.statusPrinting'), cls: 'text-blue-600' }
+    return { text: t('inventoryOps.statusQueued'), cls: 'text-amber-600' }
+  }
 
   // One actionable pallet row (id + qty + history/move/reprint/edit/remove + inline
   // edit/move/history panels). Shared by the By-item search results AND the By-bin
@@ -1571,6 +1631,69 @@ export default function InventoryOpsPage() {
         )}
       </>
       )}
+
+      {/* Recently printed labels — find a label whose print jammed and reprint it from its
+          id, instead of guessing. Shows last 10; expand to 50. Visible in both views. */}
+      <div className="mt-8 rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Printer className="h-4 w-4 text-muted-foreground" />
+            {t('inventoryOps.recentLabels')}
+          </div>
+          <button
+            onClick={() => loadRecentLabels(recentExpanded)}
+            disabled={recentLoading}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            title={t('inventoryOps.refresh')}
+            aria-label={t('inventoryOps.refresh')}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${recentLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        {recentLabels.length === 0 ? (
+          <div className="border-t border-border pt-3 text-xs text-muted-foreground">
+            {recentLoading ? t('inventoryOps.loading') : t('inventoryOps.noRecentLabels')}
+          </div>
+        ) : (
+          <>
+            <ul className="divide-y divide-border border-t border-border">
+              {recentLabels.map((l, i) => {
+                const s = labelStatus(l)
+                return (
+                  <li key={`${l.batch}-${l.at}-${i}`} className="flex items-start justify-between gap-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs font-medium">{l.batch}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {l.itemCode}
+                        {l.purpose ? ` · ${purposeText(l.purpose)}` : ''}
+                        {l.by ? ` · ${l.by}` : ''}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right text-xs">
+                      <div className={s.cls}>{s.text}</div>
+                      <div className="text-muted-foreground">
+                        {l.at ? new Date(l.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                      </div>
+                      {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+            <button
+              onClick={() => {
+                const next = !recentExpanded
+                setRecentExpanded(next)
+                loadRecentLabels(next)
+              }}
+              className="mt-2 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              {recentExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {recentExpanded ? t('inventoryOps.showLess') : t('inventoryOps.showMore')}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
