@@ -166,6 +166,46 @@ Transfer** moves the whole queue at once. Shows the last transfer (dest + count 
 - Endpoints: `POST /bulk-transfer` (MAX_LINES=200, `maxDuration=120`), `GET /pallet-lookup`,
   `GET /last-transfer`. All UI strings bilingual (EN+ES).
 
+## Non-serialized (quantity) items (SHIPPED 2026-06-22) — `lib/erpnext/inventory.ts`, page.tsx
+Some product lines are fixed, interchangeable packs (CURB-36PK / EB-48PK families — 20 SKUs)
+that we do NOT serialize: every box is identical, so a unique pallet code carries no useful
+information. In ERPNext these items have `has_batch_no=0`; stock is a plain quantity per bin.
+- **Unit = box.** 1 ERPNext stock unit = 1 box/pack. You receive / move / remove BOXES. The
+  pack size (pieces per box, e.g. 36/48) is parsed from the SKU's `NNPK` token (`packSize()`)
+  and printed on the label as info only.
+- **Branch point:** an item's `has_batch_no` flag (read live via `getItemInfo`, surfaced as
+  `hasBatch` on locate results) decides serialized-pallet vs quantity handling everywhere.
+- **Receive:** the Add panel works for both; the `add` route branches on `has_batch_no`. A
+  non-batch receive posts a Material Receipt (no batch) and prints a GENERIC label — part # +
+  pack size + a QR encoding the PART NUMBER (no unique pallet code) — one copy per box via ZPL
+  `^PQ` (capped 9999, which also caps the receive qty so stock can never exceed labels). qty
+  must be a whole number.
+- **Transfer / remove:** the By-item card renders quantity-mode controls (per-bin "Move N
+  boxes" → another bin, "Remove N boxes" for damage/internal use) instead of pallet rows.
+  Routes `qty-transfer`, `qty-remove` (Material Transfer / Material Issue, no batch). Both go
+  through `runInventoryOp` with `family=null` (no per-pallet lock needed; quantity moves are
+  additive and dedup via the client key + `[op:key]` reconcile). `qty-remove` is office-only.
+  Order-based shipping/fulfillment stays in ERPNext, per the dashboard-vs-ERPNext boundary.
+- **Converting an item to non-batch:** set `has_batch_no=0` on the Item. Clean ONLY when the
+  item has 0 stock and 0 Stock Ledger Entries (ERPNext blocks the toggle otherwise). The 20
+  SKUs were converted via bench (`~/frappe-bench/env/bin/python`, run from
+  `~/frappe-bench/sites`, site `erp.local`) — pattern in `/tmp/convert_nonbatch.py`. The
+  dashboard service token CANNOT edit Item masters (403), so this needs admin/bench.
+
+## Deleted-pallet scan + restore (SHIPPED 2026-06-22) — `lib/erpnext/inventory.ts`, page.tsx
+- **Scan a removed pallet:** when a scanned pallet's family has no active serial holding stock
+  (it was removed/zeroed), `lookupRemovedPallet` returns its data (part, last label qty = the
+  batch's `custom_pallet_qty`, last bin from the Stock Ledger Entry) and the locate route
+  surfaces it as `removedPallet`. The UI shows a card at 0 with its history instead of the
+  pallet vanishing.
+- **Restore:** scan → "Return to inventory" (office-only). Returning the SAME qty as the label
+  re-enables the SAME serial and re-receipts it — the printed label is still valid, no new
+  label. A DIFFERENT qty reissues a NEW serial + new label (the UI confirms first; the old
+  serial stays disabled). `restorePallet` asserts the pallet currently holds 0 on-hand before
+  re-receipting (gated on a fresh op via `reconcileStockEntry`, so retries stay idempotent).
+  Route `/restore`; same-vs-different decided from the authoritative `custom_pallet_qty`, the
+  reissue serial reserved + pinned in `result_batch` like reprint.
+
 ## Mobile nav (SHIPPED 2026-06-22) — `components/layout/Sidebar.tsx`
 The iPhone drawer was a flat everything-list. Now all sections are wrapped in the same
 `CollapsibleNavSection` + `NavAccordionProvider` as desktop (one section open at a time,

@@ -75,6 +75,30 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
 13. **Optional delete reason** — removing a label/pallet still prompts for a reason, but you
     can now click OK with it blank (faster); only Cancel aborts. `submitRemove` proceeds on
     empty, aborts only on `prompt() === null`; `/remove` route treats `reason` as optional.
+15. **Non-serialized (quantity) items** — items with `has_batch_no=0` (the fixed packs:
+    CURB-36PK / EB-48PK families, 20 SKUs, converted in ERPNext while at 0 stock) are tracked
+    as a plain quantity per bin, in BOXES (1 stock unit = 1 box). The Add panel branches on the
+    batch flag server-side: a non-batch receive posts a Material Receipt (no batch) and prints a
+    GENERIC label (part # + pack size + QR of the PART NUMBER, one copy per box via ZPL `^PQ`,
+    capped 9999 = the receive cap). The By-item card shows per-bin Move/Remove quantity controls
+    instead of pallet rows. Lib: `qtyReceive`/`qtyTransfer`/`qtyRemove`/`getItemInfo`/`getItemBins`/
+    `packSize`; routes `qty-transfer`, `qty-remove`; `qty-remove` + `restore` are office-only.
+    Order-based shipping stays in ERPNext. To convert more SKUs: set `has_batch_no=0` on the Item
+    (clean only at 0 stock / 0 ledger entries) — script pattern in `/tmp/convert_nonbatch.py`
+    (bench: `~/frappe-bench/env/bin/python`, run from `~/frappe-bench/sites`, site `erp.local`).
+16. **Scan a deleted/zeroed pallet** — `lookupRemovedPallet` + the locate route return a removed
+    pallet's data (part, last label qty, last bin, history) when its family has no active stocked
+    serial, so a scan shows it at 0 instead of vanishing.
+17. **Restore a deleted pallet** — scan → "Return to inventory". Same qty as the label re-enables
+    the SAME serial (no new label); a different qty reissues a NEW serial + new label (confirm
+    first). Lib `restorePallet` (asserts 0 on-hand before re-receipting, gated on a fresh op so
+    retries stay idempotent), route `/restore`. The "label qty" = the batch's `custom_pallet_qty`;
+    the restore bin defaults to the last warehouse from the Stock Ledger Entry.
+18. **Part dropdown** shows only the part number (description was often a duplicate / boilerplate).
+    Reviewer note: the remove/qty-remove `reason` is sanitized (`safeRemark`, strips `[]`) before
+    it enters Stock Entry remarks, so it can't smuggle an `[op:<key>]` token that would poison
+    `reconcileStockEntry`'s LIKE match.
+
 14. **Inventory Operations role permission** — `/inventory-ops` is now a toggleable row in
     `admin/permissions` ("Inventory Operations"), so access can be granted per role. The whole
     enforcement stack already keyed off this path (nav filter, AccessGuard, the page gate, AND
