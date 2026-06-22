@@ -16,7 +16,6 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  ChevronRight,
   ScanLine,
   Clock,
   ArrowLeftRight,
@@ -217,12 +216,11 @@ export default function InventoryOpsPage() {
         setResults(rows)
         setMatchedPallet(data.matchedPallet ?? null)
         setSuperseded(data.superseded ?? null)
-        // Seed the pallet lists from the inline pallet ids (no refetch needed).
+        // Seed the pallet lists from the inline pallet ids (no refetch needed); the rows
+        // render inline under each bin (no expander).
         const seeded: Record<string, Pallet[]> = {}
         for (const r of rows) if (r.pallets) seeded[r.itemCode] = r.pallets
         if (Object.keys(seeded).length) setPallets((p) => ({ ...p, ...seeded }))
-        // On an exact pallet-id scan, open that one item's pallets automatically.
-        if (data.matchedPallet && rows.length === 1) setOpenItem(rows[0].itemCode)
         setSearched(true)
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return
@@ -246,8 +244,7 @@ export default function InventoryOpsPage() {
     }
   }, [query, runSearch])
 
-  // ─── pallets (per item, lazy) ───
-  const [openItem, setOpenItem] = useState<string | null>(null)
+  // ─── pallets (per item) ───
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
   const [palletsLoading, setPalletsLoading] = useState<string | null>(null)
   const [palletsError, setPalletsError] = useState<Record<string, boolean>>({})
@@ -273,14 +270,16 @@ export default function InventoryOpsPage() {
     [authedFetch]
   )
 
-  const toggleItem = (itemCode: string) => {
-    if (openItem === itemCode) {
-      setOpenItem(null)
-    } else {
-      setOpenItem(itemCode)
-      if (!pallets[itemCode]) loadPallets(itemCode)
+  // Pallets render inline under each bin. The search seeds pallet ids for the first N
+  // stocked items (locate's enrich cap); for any stocked item beyond that, lazy-load its
+  // pallets once so its rows + actions still appear without an expander/click.
+  useEffect(() => {
+    for (const r of results) {
+      if (r.total > 0 && pallets[r.itemCode] === undefined && palletsLoading !== r.itemCode && !palletsError[r.itemCode]) {
+        loadPallets(r.itemCode)
+      }
     }
-  }
+  }, [results, pallets, palletsLoading, palletsError, loadPallets])
 
   // ─── pallet history (traceability) ───
   const [historyOpen, setHistoryOpen] = useState<string | null>(null)
@@ -405,13 +404,13 @@ export default function InventoryOpsPage() {
       if (!r.ok) throw new Error(d.error || 'add failed')
       addKeyRef.current = null // success -> next add gets a fresh key
       showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
-      const addedItem = addItem.itemCode
       setAddItem(null)
       setItemQuery('')
       setAddQty('')
       setAddOpen(false)
+      // Refresh the active search so the new pallet's row appears inline (the lazy-load
+      // effect + re-seed cover its pallet list).
       if (query) refreshSearch()
-      if (openItem === addedItem) loadPallets(addedItem)
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -450,7 +449,7 @@ export default function InventoryOpsPage() {
       showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
       setEditBatch(null)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
-      loadPallets(itemCode)
+      refreshSearch()
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -474,7 +473,7 @@ export default function InventoryOpsPage() {
       if (!r.ok) throw new Error(d.error || 'remove failed')
       clearOpKey('remove', batch, reason.trim())
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
-      loadPallets(itemCode)
+      refreshSearch()
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -500,7 +499,7 @@ export default function InventoryOpsPage() {
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')
-      loadPallets(itemCode)
+      refreshSearch()
       // drop cached history so it reloads with the new move event
       setHistory((h) => {
         const n = { ...h }
@@ -536,7 +535,7 @@ export default function InventoryOpsPage() {
       // A reprint reissues the pallet as a new serial (old label is voided); follow it.
       showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
-      loadPallets(itemCode)
+      refreshSearch()
       if (historyOpen === batch) {
         setHistory((h) => {
           const n = { ...h }
@@ -804,14 +803,24 @@ export default function InventoryOpsPage() {
               </div>
             </div>
             <div className="mt-3 border-t border-border pt-3">
-              {visibleBins(r, matchedPallet).length === 0 ? (
+              {palletsError[r.itemCode] ? (
+                <button
+                  onClick={() => loadPallets(r.itemCode)}
+                  className="flex items-center gap-2 p-1 text-xs text-red-600 hover:underline"
+                >
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  {t('inventoryOps.palletsError')}
+                </button>
+              ) : visibleBins(r, matchedPallet).length === 0 ? (
                 <div className="text-xs text-muted-foreground">
                   {matchedPallet ? t('inventoryOps.palletSuperseded') : t('inventoryOps.noStock')}
                 </div>
               ) : (
-                <ul className="space-y-1.5">
+                <ul className="space-y-3">
                   {visibleBins(r, matchedPallet).map((b, i) => {
-                    const binPallets = (r.pallets ?? [])
+                    // One row per pallet, with its actions inline — no separate "Manage
+                    // pallets" expander (the pallet id is shown once, here).
+                    const binPallets = (pallets[r.itemCode] ?? [])
                       .filter((p) => p.warehouse === b.warehouse)
                       // On an exact pallet scan, show ONLY that pallet (never its siblings).
                       .filter((p) => !matchedPallet || p.batch === matchedPallet)
@@ -824,65 +833,22 @@ export default function InventoryOpsPage() {
                           </span>
                           <span className="font-medium tabular-nums">{b.qty.toLocaleString()}</span>
                         </div>
-                        {binPallets.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1 pl-5">
+                        {binPallets.length === 0 ? (
+                          palletsLoading === r.itemCode ? (
+                            <div className="mt-1 flex items-center gap-1 pl-5 text-xs text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              {t('inventoryOps.loading')}
+                            </div>
+                          ) : null
+                        ) : (
+                          <ul className="mt-1.5 divide-y divide-border rounded-lg border border-border bg-background">
                             {binPallets.map((p) => (
-                              <span
-                                key={p.batch}
-                                className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
-                                  matchedPallet === p.batch
-                                    ? 'bg-primary/15 font-semibold text-primary'
-                                    : 'bg-muted text-muted-foreground'
-                                }`}
-                              >
-                                {p.batch}
-                                {p.qty ? ` · ${p.qty.toLocaleString()}` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              <button
-                onClick={() => toggleItem(r.itemCode)}
-                className="mt-3 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                {openItem === r.itemCode ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                {t('inventoryOps.managePallets')}
-              </button>
-
-              {openItem === r.itemCode && (
-                <div className="mt-2 rounded-lg border border-border bg-background p-2">
-                  {palletsLoading === r.itemCode ? (
-                    <div className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      {t('inventoryOps.loading')}
-                    </div>
-                  ) : palletsError[r.itemCode] ? (
-                    <button
-                      onClick={() => loadPallets(r.itemCode)}
-                      className="flex items-center gap-2 p-2 text-xs text-red-600 hover:underline"
-                    >
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      {t('inventoryOps.palletsError')}
-                    </button>
-                  ) : (pallets[r.itemCode] ?? []).filter((p) => !matchedPallet || p.batch === matchedPallet).length === 0 ? (
-                    <div className="p-2 text-xs text-muted-foreground">{t('inventoryOps.noPallets')}</div>
-                  ) : (
-                    <ul className="divide-y divide-border">
-                      {(pallets[r.itemCode] ?? [])
-                        .filter((p) => !matchedPallet || p.batch === matchedPallet)
-                        .map((p) => (
-                        <li key={p.batch} className="py-2 text-sm">
-                          <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate font-mono text-xs">{p.batch}</div>
-                            <div className="text-xs text-muted-foreground">{p.warehouse}</div>
-                          </div>
-                          {editBatch === p.batch ? (
+                              <li key={p.batch} className="px-2.5 py-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0 font-mono text-xs">
+                                    <span className={matchedPallet === p.batch ? 'font-semibold text-primary' : ''}>{p.batch}</span>
+                                  </div>
+                                  {editBatch === p.batch ? (
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
@@ -1041,12 +1007,15 @@ export default function InventoryOpsPage() {
                               )}
                             </div>
                           )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </li>
-                      ))}
+                        )
+                      })}
                     </ul>
                   )}
-                </div>
-              )}
             </div>
           </div>
           )
