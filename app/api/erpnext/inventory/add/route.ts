@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive, packSize } from '@/lib/erpnext/inventory'
+import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   const printedBy = await resolveUserName(userId)
 
   // Serialized (pallet) vs non-serialized (quantity) item — decided by ERPNext's batch flag.
-  let itemInfo: { itemName: string; uom: string; hasBatch: boolean }
+  let itemInfo: { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number | null }
   try {
     itemInfo = await getItemInfo(itemCode)
   } catch (e) {
@@ -92,12 +92,12 @@ export async function POST(req: NextRequest) {
       },
       label: async () => {
         // Generic label: part # + pack size (pieces per box) + QR of the PART NUMBER (no
-        // unique pallet code). One copy per box (^PQ via `copies`).
-        const ps = packSize(itemCode)
+        // unique pallet code). One copy per box (^PQ via `copies`). Pieces-per-box comes from
+        // the item's custom_pieces_per_pack field (else the SKU's NNPK token).
         const zpl = buildPalletZpl({
           itemCode,
           itemName: itemInfo.itemName,
-          qty: ps ?? 0, // pack size on the label; 0 omits the QTY line when unknown
+          qty: itemInfo.piecesPerPack ?? 0, // pieces per box on the label; 0 omits the QTY line when unknown
           uom: itemInfo.uom,
           batch: '', // no pallet code on a generic label
           qrPayload: itemCode, // scan identifies the product

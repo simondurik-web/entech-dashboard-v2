@@ -680,14 +680,28 @@ export async function bulkTransfer(input: {
 // printed one-per-box. Transfers/removals move a quantity between bins with no batch.
 
 /** Read an item's display + tracking info. `hasBatch` decides serialized (pallet) vs
- *  quantity (non-serialized) handling everywhere. */
-export async function getItemInfo(itemCode: string): Promise<{ itemName: string; uom: string; hasBatch: boolean }> {
-  const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string; has_batch_no?: number; is_stock_item?: number }>(
-    'Item',
-    itemCode
-  )
+ *  quantity (non-serialized) handling everywhere. `piecesPerPack` is the pieces-in-one-box
+ *  for a non-serialized pack item, printed on the generic label: the ERPNext custom field
+ *  `custom_pieces_per_pack` when set, else parsed from the SKU's NNPK token, else null. */
+export async function getItemInfo(
+  itemCode: string
+): Promise<{ itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number | null }> {
+  const item = await erpnextGetDoc<{
+    item_name?: string
+    stock_uom?: string
+    has_batch_no?: number
+    is_stock_item?: number
+    custom_pieces_per_pack?: number
+  }>('Item', itemCode)
   if (!item.is_stock_item) throw new Error(`Item ${itemCode} is not a stock item`)
-  return { itemName: item.item_name ?? itemCode, uom: item.stock_uom ?? 'pcs', hasBatch: !!item.has_batch_no }
+  const fieldPack = Number(item.custom_pieces_per_pack)
+  const piecesPerPack = fieldPack > 0 ? fieldPack : packSize(itemCode)
+  return {
+    itemName: item.item_name ?? itemCode,
+    uom: item.stock_uom ?? 'pcs',
+    hasBatch: !!item.has_batch_no,
+    piecesPerPack,
+  }
 }
 
 /** Guard: the item must be NON-batch (quantity-tracked). Throws -> failed_pre_erp / 400, so

@@ -1537,9 +1537,8 @@ export default function InventoryOpsPage() {
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.part')}</label>
               {addItem ? (
                 <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                  <span>
-                    <span className="font-mono">{addItem.itemCode}</span> — {addItem.itemName}
-                  </span>
+                  {/* Part number only — the description is often a duplicate / boilerplate. */}
+                  <span className="font-mono">{addItem.itemCode}</span>
                   <button onClick={() => setAddItem(null)} className="text-muted-foreground hover:text-foreground">
                     <X className="h-4 w-4" />
                   </button>
@@ -1579,7 +1578,8 @@ export default function InventoryOpsPage() {
                             }}
                             className="block w-full px-3 py-3 text-left text-sm hover:bg-accent"
                           >
-                            <span className="font-mono">{o.itemCode}</span> — {o.itemName}
+                            {/* Part number only (description is often a duplicate). */}
+                            <span className="font-mono">{o.itemCode}</span>
                           </button>
                         ))}
                       </div>
