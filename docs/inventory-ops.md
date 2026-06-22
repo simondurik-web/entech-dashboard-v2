@@ -61,6 +61,14 @@ any change here.
 - `remove` — issue-out + disable batch (office roles); cancel-not-delete.
 - `move` — Material Transfer of a pallet to another bin; logged as `move` (shows in
   history). No label reprint (location isn't on the label).
+- `bulk-transfer` — move MANY pallets to one destination bin in a single atomic ERPNext
+  Material Transfer (multi-row Stock Entry). Logged as `bulk-transfer`. Companion GETs:
+  `pallet-lookup` (resolve a scanned/typed id → current serial, item, current bin, qty;
+  used to validate before queueing) and `last-transfer` (most recent bulk-transfer row →
+  dest + count + who + when). See "Bulk bin transfer" below.
+- `remove` reason is **optional** — the delete prompt still appears, but OK with a blank
+  reason proceeds (faster); only Cancel aborts. (`submitRemove` aborts only when
+  `prompt()` returns `null`; the `/remove` route treats `reason` as optional.)
 - `reprint` — REISSUES the pallet as the next serial (old label voided) and prints it;
   logged as `reprint` (shows in history); idempotent per key. See Serialization.
 - `pallets` — list on-hand pallets for an item.
@@ -126,6 +134,37 @@ scan-to-ship), so a stale label can't be used.
   `loadPallets(itemCode)` (rows) so cached items don't go stale.
 - Known tradeoff: a very large full-inventory export is slow + holds all rows in browser
   memory (exceljs) — acceptable for now; optimize (server-stream) if it bites.
+
+## Bulk bin transfer (SHIPPED 2026-06-22) — `lib/erpnext/inventory.ts:bulkTransfer`, page.tsx
+A third **Transfer** view toggle (next to By item / By bin). Workflow: pick the destination
+bin ONCE (shared `BinCombobox`), then scan or type pallet IDs into a queue, then **Post
+Transfer** moves the whole queue at once. Shows the last transfer (dest + count + who + when).
+- **Queue building:** each scan/type does `GET /pallet-lookup?code=` → resolves the current
+  serial (a superseded id maps to its live one), item, current bin, qty. The queue only holds
+  valid, in-stock, not-already-at-destination pallets (dedup by batch). The Transfer view
+  mounts a continuous `PalletScanner` (2.5s same-code cooldown via `lastScanRef`); the text
+  input adds on Enter. Rows show a remove-X.
+- **Post = ONE atomic Stock Entry:** `bulkTransfer({destination, lines, opKey})` dedupes by
+  batch, preflights the item/dest, resolves each pallet's source bin/qty (`getBatchLocation`,
+  skipping no-stock / split / already-at-dest → returned as `skipped`), and builds a single
+  `Material Transfer` Stock Entry with one row per pallet (`use_serial_batch_fields:1` +
+  `batch_no`, per-row source warehouse, t_warehouse = destination). All-or-nothing: ERPNext
+  submits it atomically. Returns `{ moved, skipped, destination }`.
+- **Idempotency:** `runInventoryOp` with `action:'bulk-transfer'`, `family:null` (a bulk move
+  spans many pallets so it can't take the per-pallet family lock; a move never reissues
+  serials so that lock isn't needed — worst case a concurrent reissue/remove on a queued
+  pallet makes this Stock Entry fail at submit, a clean re-postable failure, never a silent
+  double-move). Retry reconciles by finding the `[op:key]`-stamped Stock Entry, not re-posting.
+- **Identity binding:** `meta.item_code` = JSON-encoded sorted unique batch set (delimiter-safe
+  fingerprint), so reusing a key with a different pallet set is rejected, not run on the wrong
+  batches.
+- **GOTCHA (4-agent review):** do NOT overwrite `inventory_ops_log.qty` with the actual moved
+  count — `qty` is part of `runInventoryOp`'s identity check, so a lost-response retry of a
+  *partial* transfer (moved < queued) would falsely 409 as a "different operation". `qty` stays
+  = the queued count; skips are near-zero anyway since the queue is pre-validated at scan time.
+  The fresh-post response still returns exact `moved`/`skipped` to the UI.
+- Endpoints: `POST /bulk-transfer` (MAX_LINES=200, `maxDuration=120`), `GET /pallet-lookup`,
+  `GET /last-transfer`. All UI strings bilingual (EN+ES).
 
 ## Mobile nav (SHIPPED 2026-06-22) — `components/layout/Sidebar.tsx`
 The iPhone drawer was a flat everything-list. Now all sections are wrapped in the same
