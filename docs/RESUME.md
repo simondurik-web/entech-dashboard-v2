@@ -10,11 +10,11 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
   Simon reviews staging first, then we promote (working agreement: never push `main`
   without staging validation + his OK).
 - Latest staging commits (newest first):
+  - `fix(inventory-ops): keep ops-log qty stable for retry idempotency`
+  - `feat(inventory-ops): bulk bin transfer (scan-to-queue) + optional delete reason`
+  - `feat(inventory-ops): Add-panel bin selector is now a single combobox`
   - `docs: document Locations view, reports, mobile nav`
-  - `fix(nav): collapsible sections in the iPhone/mobile drawer`
   - `feat: Locations view + bin/product/full reports`
-  - `feat: inline pallet actions (drop Manage-pallets expander)`
-  - `feat: Stage 3 serialization (reissue on reprint + qty change)`
 
 ## What shipped (all on staging, awaiting Simon's review)
 1. **Stage 3 serialization** — reprint/qty-change reissues a pallet as the next serial
@@ -50,6 +50,31 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
     bins, type→filter, focus selects-all, blur reverts unconfirmed text to the committed bin.
     Option buttons use `onMouseDown preventDefault` so a pick doesn't blur the input (avoids a
     stale-revert timer desync — the bug the agents caught). Add button gated on item+bin+qty+station.
+12. **Bulk bin transfer (new Transfer tab)** — third view toggle. Pick the destination bin
+    once (shared `BinCombobox`), then scan or type pallet IDs into a queue (continuous
+    `PalletScanner` with a 2.5s same-code cooldown; Enter on the text input adds too). Each
+    add does a `/pallet-lookup` (current serial, item, current bin, qty) so the queue only
+    holds valid, not-already-at-dest pallets; dedup by batch. **Post Transfer** moves the
+    whole queue in ONE atomic ERPNext Material Transfer (multi-row Stock Entry,
+    `lib/erpnext/inventory.ts:bulkTransfer`). Shows the last transfer (dest + count + who +
+    when) via `/last-transfer`. Endpoints: `/bulk-transfer` (POST), `/pallet-lookup` (GET),
+    `/last-transfer` (GET). Bilingual.
+    - **Idempotency:** `runInventoryOp` with `action:'bulk-transfer'`, `family:null`
+      (a bulk move spans many pallets so it can't take the per-pallet family lock; a move
+      doesn't reissue serials so that lock isn't needed — worst case a concurrent
+      reissue/remove makes this transfer's atomic Stock Entry fail at submit, a clean
+      re-postable failure, never a silent double-move). Retry reconciles by finding the
+      `[op:key]`-stamped Stock Entry.
+    - **Identity binding:** `meta.item_code` = JSON-encoded sorted unique batch set
+      (delimiter-safe fingerprint), so reusing a key with a different pallet set is rejected.
+    - **GOTCHA (4-agent review caught this):** do NOT overwrite `inventory_ops_log.qty` with
+      the actual moved count — `qty` is part of `runInventoryOp`'s identity check, so a
+      lost-response retry of a *partial* transfer (moved < queued) would falsely 409. `qty`
+      stays = queued count; skips are near-zero anyway (queue is pre-validated at scan time).
+      Fresh-post response still returns exact `moved`/`skipped` to the UI.
+13. **Optional delete reason** — removing a label/pallet still prompts for a reason, but you
+    can now click OK with it blank (faster); only Cancel aborts. `submitRemove` proceeds on
+    empty, aborts only on `prompt() === null`; `/remove` route treats `reason` as optional.
 
 ## Live infra changes already applied (entech-production Supabase, project ref mqfjmzqeccufqhisqpij)
 - `inventory_ops_log` gained `result_batch` + `family` columns and the partial unique index
