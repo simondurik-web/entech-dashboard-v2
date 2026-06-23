@@ -714,7 +714,7 @@ export default function PalletLoadCalculator({
                             />
                             <span className="flex flex-col">
                               <span>
-                                {o.ifNumber} — {o.customer} — {o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : (Array.isArray((o as any).pallets) && (o as any).pallets.length > 0 ? `${(o as any).pallets.length} pallets` : `${o.orderQty} pcs`)}
+                                {o.ifNumber} — {o.customer} — {Array.isArray((o as any).pallets) && (o as any).pallets.length > 0 ? `${(o as any).pallets.length} pallets` : (o.numPackages > 0 ? `${Math.ceil(o.numPackages)} pallets` : `${o.orderQty} pcs`)}
                                 {o.palletWidth && o.palletLength ? ` · ${o.palletWidth}×${o.palletLength}"` : ''}
                                 {o.palletWeightEach ? ` · ${o.palletWeightEach} lbs` : ''}
                                 {!o.palletWidth && !o.palletWeightEach && !Array.isArray((o as any).pallets) && pt.linkSource !== 'package' ? ' · no dims' : ''}
