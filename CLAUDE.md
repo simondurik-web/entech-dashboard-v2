@@ -62,6 +62,28 @@ Supabase tables: `dashboard_orders` (2698), `inventory` (999), `production_total
 - **Google Sheets service account:** `marco-workspace@gen-lang-client-0968965845.iam.gserviceaccount.com`
 - **Sheets sync script:** `~/clawd/projects/molding/db-migration/sync_sheets_to_db.py`
 - **OpenClaw** — cron every 5 min for push notifications (urgent/staged order changes)
+- **Self-hosted ERPNext (Frappe v15)** — backs the **Inventory Ops** section (`/inventory-ops`).
+  ERPNext is the SYSTEM OF RECORD for physical stock: a pallet = an ERPNext **Batch** (serialized
+  items), and non-serialized items (fixed packs, `has_batch_no=0`) are a plain quantity per bin.
+  Reached at `erp.4molding.com` (locally `localhost:8000` Host `erp.local`), creds in `.env.local`
+  (`ERPNEXT_*`). ERP backend project: `~/clawd/projects/erp-4molding`. This integration was built
+  via the **#erp channel (claude-2)**, but it LIVES in this dashboard repo — so any instance
+  touching this repo (incl. claude-3 / #molding-dashboard) shares it. **Source of truth:
+  [`docs/inventory-ops.md`](docs/inventory-ops.md)** (read it before changing anything inventory-ops).
+
+  How the piping is isolated (so a normal dashboard/menu change can't break it):
+  - ALL ERPNext access is funneled through **`lib/erpnext/*`** (client + operations) and the
+    **`app/api/erpnext/*`** routes. Nothing else in the dashboard talks to ERPNext. Edit elsewhere
+    freely; the integration is only at risk if you touch those folders or the shared glue below.
+  - Shared glue the section depends on — **run GitNexus `impact` before editing any of these**:
+    the `/inventory-ops` nav entry + its `canAccess('/inventory-ops')` gate in
+    `components/layout/Sidebar.tsx`; the `/inventory-ops` row in `app/(dashboard)/admin/permissions`
+    + the `role_permissions` table; session-token auth (`authedFetch` → server `requireInventoryAccess`
+    in `lib/erpnext/auth.ts`); the Supabase `inventory_ops_log` + `print_jobs` tables (idempotency
+    state machine in `lib/erpnext/operation.ts`) + the print agent that drains `print_jobs`.
+  - Safe to change without touching inventory-ops: other menu sections, other pages, styling,
+    other tables. Renaming/removing the `/inventory-ops` route, its permission, or the auth flow
+    WILL break it — if you must, update both sides and re-run the fleet review.
 
 ## People involved
 - **Simon Durik** — owner, approves all production deploys
