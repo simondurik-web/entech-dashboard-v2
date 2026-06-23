@@ -1911,8 +1911,12 @@ export default function InventoryOpsPage() {
           <div key={r.itemCode} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-baseline justify-between gap-3">
               <div>
-                <div className="font-medium">{r.itemName}</div>
-                <div className="font-mono text-xs text-muted-foreground">{r.itemCode}</div>
+                {/* Lead with the part number; show the name only when it adds info (often
+                    the name duplicates the code or is boilerplate — that's just noise). */}
+                <div className="font-mono font-medium">{r.itemCode}</div>
+                {r.itemName && r.itemName !== r.itemCode && (
+                  <div className="text-xs text-muted-foreground">{r.itemName}</div>
+                )}
               </div>
               <div className="flex flex-col items-end gap-1.5">
                 <div className="text-right">
@@ -2090,8 +2094,11 @@ export default function InventoryOpsPage() {
                   <li key={it.itemCode} className="py-2.5">
                     <div className="flex items-baseline justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{it.itemName}</div>
-                        <div className="font-mono text-xs text-muted-foreground">{it.itemCode}</div>
+                        {/* Part number first; name only when it differs (avoids the duplicate). */}
+                        <div className="truncate font-mono text-sm font-medium">{it.itemCode}</div>
+                        {it.itemName && it.itemName !== it.itemCode && (
+                          <div className="truncate text-xs text-muted-foreground">{it.itemName}</div>
+                        )}
                       </div>
                       <div className="shrink-0 text-sm font-semibold tabular-nums">
                         {it.qty.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{it.uom}</span>

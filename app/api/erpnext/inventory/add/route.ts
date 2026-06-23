@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   const printedBy = await resolveUserName(userId)
 
   // Serialized (pallet) vs non-serialized (quantity) item — decided by ERPNext's batch flag.
-  let itemInfo: { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number | null }
+  let itemInfo: { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }
   try {
     itemInfo = await getItemInfo(itemCode)
   } catch (e) {
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
         const zpl = buildPalletZpl({
           itemCode,
           itemName: itemInfo.itemName,
-          qty: itemInfo.piecesPerPack ?? 0, // pieces per box on the label; 0 omits the QTY line when unknown
+          qty: itemInfo.piecesPerPack, // quantity printed on the label (default 1 = one assembly/pack)
           uom: itemInfo.uom,
           batch: '', // no pallet code on a generic label
           qrPayload: itemCode, // scan identifies the product

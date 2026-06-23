@@ -680,12 +680,14 @@ export async function bulkTransfer(input: {
 // printed one-per-box. Transfers/removals move a quantity between bins with no batch.
 
 /** Read an item's display + tracking info. `hasBatch` decides serialized (pallet) vs
- *  quantity (non-serialized) handling everywhere. `piecesPerPack` is the pieces-in-one-box
- *  for a non-serialized pack item, printed on the generic label: the ERPNext custom field
- *  `custom_pieces_per_pack` when set, else parsed from the SKU's NNPK token, else null. */
+ *  quantity (non-serialized) handling everywhere. `piecesPerPack` is the quantity PRINTED on
+ *  one generic label = the ERPNext custom field `custom_pieces_per_pack` when set, else 1.
+ *  Default 1 because a pack is itself one assembly (e.g. a "48 pack" is 1 unit of inventory —
+ *  the SKU name already conveys the 48; printing 48 would mislead the floor about the count).
+ *  Products where one box really holds N loose pieces (e.g. the 500s) set the field to N. */
 export async function getItemInfo(
   itemCode: string
-): Promise<{ itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number | null }> {
+): Promise<{ itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }> {
   const item = await erpnextGetDoc<{
     item_name?: string
     stock_uom?: string
@@ -695,12 +697,11 @@ export async function getItemInfo(
   }>('Item', itemCode)
   if (!item.is_stock_item) throw new Error(`Item ${itemCode} is not a stock item`)
   const fieldPack = Number(item.custom_pieces_per_pack)
-  const piecesPerPack = fieldPack > 0 ? fieldPack : packSize(itemCode)
   return {
     itemName: item.item_name ?? itemCode,
     uom: item.stock_uom ?? 'pcs',
     hasBatch: !!item.has_batch_no,
-    piecesPerPack,
+    piecesPerPack: fieldPack > 0 ? fieldPack : 1,
   }
 }
 
@@ -795,14 +796,6 @@ export async function qtyRemove(input: { itemCode: string; qty: number; warehous
       items: [{ item_code: itemCode, qty, s_warehouse: warehouse, allow_zero_valuation_rate: 1, uom, stock_uom: uom, conversion_factor: 1 }],
     }))
   return { stockEntry, itemName, uom, qty, warehouse }
-}
-
-/** Pieces-per-box for a fixed-pack SKU, parsed from the code's "<n>PK" token (e.g.
- *  CURB-36PK-BLK -> 36, EB-48PK-RED -> 48). null when the code has no pack token, so the
- *  generic label simply omits the piece count rather than guessing. */
-export function packSize(itemCode: string): number | null {
-  const m = itemCode.toUpperCase().match(/(?:^|[^0-9])(\d+)PK(?:[^0-9]|$)/)
-  return m ? parseInt(m[1], 10) : null
 }
 
 // ─── Serialization (reprint / qty-change reissue) ────────────────────────────────
