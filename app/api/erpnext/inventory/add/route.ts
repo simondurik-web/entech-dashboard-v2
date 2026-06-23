@@ -91,9 +91,9 @@ export async function POST(req: NextRequest) {
         return se ? { stockEntry: se } : null
       },
       label: async () => {
-        // Generic label: part # + pack size (pieces per box) + QR of the PART NUMBER (no
-        // unique pallet code). One copy per box (^PQ via `copies`). Pieces-per-box comes from
-        // the item's custom_pieces_per_pack field (else the SKU's NNPK token).
+        // Generic label: part # + label quantity + QR of the PART NUMBER (no unique pallet
+        // code). One copy per box (^PQ via `copies`). The label quantity is the item's
+        // custom_pieces_per_pack when set, else 1 (a pack is itself one assembly).
         const zpl = buildPalletZpl({
           itemCode,
           itemName: itemInfo.itemName,

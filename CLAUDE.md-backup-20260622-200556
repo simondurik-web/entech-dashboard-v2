@@ -1,0 +1,199 @@
+## Agent Performance Tips
+
+### Hidden/Deferred Tools — Use Explicitly
+Claude Code has 18+ tools that are hidden by default and require discovery. Reference them directly to skip the lookup step:
+- **EnterWorktreeTool / ExitWorktreeTool** — Git worktree isolation for safe parallel work
+- **LSPTool** — Use for goToDefinition, findReferences, hover, documentSymbol, workspaceSymbol, goToImplementation, prepareCallHierarchy, incomingCalls, outgoingCalls
+- **WebFetchTool** — URL fetching with AI content extraction (15-min cache)
+- **NotebookEditTool** — Jupyter notebook manipulation if needed
+
+### Tool Execution Order
+- **Read-only tools run concurrently** (max 10): Grep, FileRead, Glob — batch these first
+- **Write tools run serially**: FileEdit, FileWrite — do all reads before writes for speed
+
+### Thinking Escalation
+Use these keywords to control reasoning depth:
+- `think` — standard reasoning
+- `think hard` — deeper analysis
+- `think harder` — significant reasoning budget
+- `ultrathink` — maximum reasoning, allocates up to 30 min deep thinking
+
+### Tool Output Limits
+- BashTool caps at 30K chars, GrepTool at 20K chars
+- If you need full output from large commands, pipe to a file first, then read specific sections
+
+# CLAUDE.md — entech-dashboard-v2
+> Auto-enriched: 2026-04-09
+
+## What this project is
+The primary Entech Molding Operations Dashboard — a Next.js app replacing the legacy HTML/Google Sheets dashboard used daily by Entech factory employees. Covers orders, inventory, production, shipping, sales analytics, BOM, scheduling, and a new RollTech Customer Action Center.
+
+## Tech stack
+- **Framework:** Next.js 16 (App Router), React 19, TypeScript
+- **UI:** Tailwind CSS v4, shadcn/ui, Radix UI, Framer Motion, Lenis
+- **Data:** Google Sheets API v4 (read) + Supabase PostgreSQL (primary, write)
+- **Hosting:** Vercel — `main` = production, `staging` = preview
+- **Auth:** Google OAuth via Supabase
+- **Other:** ExcelJS, @react-pdf/renderer, Chart.js, Recharts, web-push, QRCode
+
+## Key files in this folder
+- `CONTEXT.md` — full project context, deployment rules, DataTable standard, all recent activity
+- `HANDOFF.md` — resume prompt for new sessions
+- `PROGRESS.md` — detailed progress log
+- `PARITY-PLAN.md` — feature parity checklist
+- `SUPABASE-MIGRATION-PLAN.md` — read before touching data layer
+- `CODING-POLICY.md` — mandatory agent coding policy
+- `AGENTS.md` — agent coordination notes
+- `app/` — Next.js app directory (16+ pages, API routes)
+- `lib/supabase.ts` + `lib/supabase-data.ts` — Supabase client + typed data layer
+- `lib/export-utils.ts` — global Excel/CSV export formatting
+- `components/` — shared UI components including DataTable
+
+## Active tasks / current status
+Most recent (2026-04-09): RollTech Action Center implementation — fixing part-number extraction, deriving customer/contact fields, wiring live `/api/rolltech-actions` route. Simon approved Opus-driven implementation plan with 15-min milestone checks.
+
+Supabase tables: `dashboard_orders` (2698), `inventory` (999), `production_totals` (1077), `inventory_reference` (709), `inventory_history` (107K), `saved_views`, `audit_trail`, plus scheduling tables. Sync every 5 min from Google Sheets.
+
+## Connections to other systems
+- **Production:** https://entech-dashboard-v2.vercel.app
+- **Staging:** entech-dashboard-v2-git-staging-*.vercel.app
+- **Dev:** `cd ~/clawd/projects/entech-dashboard-v2 && npm run dev` (port 3000)
+- **Supabase:** mqfjmzqeccufqhisqpij.supabase.co
+- **Google Sheets service account:** `marco-workspace@gen-lang-client-0968965845.iam.gserviceaccount.com`
+- **Sheets sync script:** `~/clawd/projects/molding/db-migration/sync_sheets_to_db.py`
+- **OpenClaw** — cron every 5 min for push notifications (urgent/staged order changes)
+
+## People involved
+- **Simon Durik** — owner, approves all production deploys
+- **Marco** — developer / agent coordinator (must follow CODING-POLICY.md — no direct coding, delegate to agents)
+- **Phil** — dashboard end user (employee)
+- **Joseles** — worker (Amazon Fulfillment Center, Origen RV, Technoflex orders auto-assigned)
+
+## Rules for this project
+- **HARD RULE — Phil Assistant scope (2026-06-10):** every NEW dashboard section/page MUST ship
+  Phil Assistant coverage in the same effort: add a domain entry to
+  `~/clawd/projects/molding/scripts/phil_domains.py` (tables, EN/ES keywords, schema hint,
+  permission mirroring the page's access rules) — or add the route to `DRIFT_IGNORE_PATHS` if
+  genuinely out of scope — then restart `com.simon.phil-ai-server`. A daily drift check
+  (`com.simon.phil-scope-drift`, 03:50) alerts #molding-dashboard when a sidebar section lacks
+  coverage. Same enforcement spirit as the bilingual rule.
+- **NEVER push directly to `main`** — always ask Simon; must get explicit "yes" before pushing to production
+- **All new features go to `staging` first**, verified before merging to main
+- **All code changes must go through agent fleet review** (codex + gemini + claude-code) before pushing — no exceptions, even small fixes
+- **Git workflow:** `feat/branch` → PR → `gh pr create --base staging` → review → Simon approval → `git merge staging && git push origin main`
+- **Pre-push hook gotcha:** `.git/hooks/pre-push` blocks local `git push` **when the current branch is `staging`** (even when pushing a different ref like `<sha>:refs/heads/main`). To promote staging → main, detach HEAD first: `git checkout --detach && git push origin "$(git rev-parse origin/staging)":refs/heads/main`. Full recipe in CONTEXT.md § "Pre-push hook — quirk + promotion workaround". `gh pr merge` is server-side and is not gated by the hook.
+- **EVERY table must use the full DataTable toolbar** (search, reset, views, columns, export, sort, filter, drag reorder) — no exceptions, including sub-tables and sub-sub-tables
+- **Never write directly to Supabase when Google Sheet is source of truth** — sync overwrites Supabase every 5 min; write to Sheet directly for source-of-truth data
+- **Never put raw API keys in code** — Google auto-revokes them
+- **If something breaks, revert immediately** — never chain speculative fixes
+- Excel export: currency → `$#,##0.00`, numbers → `#,##0`, right-aligned (`lib/export-utils.ts`)
+- Supabase anon-key schema/OpenAPI deprecated 2026-04-08 — do not rely on client-side `/rest/v1/` schema introspection
+
+## Notes
+- Simon uses voice-to-text — transcription may have artifacts, understand intent
+- Lead with results, not process narration
+- After significant work, write to Open Brain: `curl -s -X POST http://127.0.0.1:8889/memory/write -H "Content-Type: application/json" -d '{"content":"...","category":"action","channel":"claude-code","importance":7}'`
+- BOM auto-quantity formulas: PALLET=1/PPP, CLEARFILMCOVER=3/PPP, BAG=1/PPP, FILM-STRETCH=500/PPP
+- Custom Report Builder is tabled — Simon chose Option 3 (templates) for future build
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **entech-dashboard-v2** (3424 symbols, 7944 relationships, 273 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## When Debugging
+
+1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
+2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
+3. `READ gitnexus://repo/entech-dashboard-v2/process/{processName}` — trace the full execution flow step by step
+4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
+
+## When Refactoring
+
+- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first. Review the preview — graph edits are safe, text_search edits need manual review. Then run with `dry_run: false`.
+- **Extracting/Splitting**: MUST run `gitnexus_context({name: "target"})` to see all incoming/outgoing refs, then `gitnexus_impact({target: "target", direction: "upstream"})` to find all external callers before moving code.
+- After any refactor: run `gitnexus_detect_changes({scope: "all"})` to verify only expected files changed.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Tools Quick Reference
+
+| Tool | When to use | Command |
+|------|-------------|---------|
+| `query` | Find code by concept | `gitnexus_query({query: "auth validation"})` |
+| `context` | 360-degree view of one symbol | `gitnexus_context({name: "validateUser"})` |
+| `impact` | Blast radius before editing | `gitnexus_impact({target: "X", direction: "upstream"})` |
+| `detect_changes` | Pre-commit scope check | `gitnexus_detect_changes({scope: "staged"})` |
+| `rename` | Safe multi-file rename | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
+| `cypher` | Custom graph queries | `gitnexus_cypher({query: "MATCH ..."})` |
+
+## Impact Risk Levels
+
+| Depth | Meaning | Action |
+|-------|---------|--------|
+| d=1 | WILL BREAK — direct callers/importers | MUST update these |
+| d=2 | LIKELY AFFECTED — indirect deps | Should test |
+| d=3 | MAY NEED TESTING — transitive | Test if critical path |
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/entech-dashboard-v2/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/entech-dashboard-v2/clusters` | All functional areas |
+| `gitnexus://repo/entech-dashboard-v2/processes` | All execution flows |
+| `gitnexus://repo/entech-dashboard-v2/process/{name}` | Step-by-step execution trace |
+
+## Self-Check Before Finishing
+
+Before completing any code modification task, verify:
+1. `gitnexus_impact` was run for all modified symbols
+2. No HIGH/CRITICAL risk warnings were ignored
+3. `gitnexus_detect_changes()` confirms changes match expected scope
+4. All d=1 (WILL BREAK) dependents were updated
+
+## Keeping the Index Fresh
+
+After committing code changes, the GitNexus index becomes stale. Re-run analyze to update it:
+
+```bash
+npx gitnexus analyze
+```
+
+If the index previously included embeddings, preserve them by adding `--embeddings`:
+
+```bash
+npx gitnexus analyze --embeddings
+```
+
+To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.embeddings` field shows the count (0 means no embeddings). **Running analyze without `--embeddings` will delete any previously generated embeddings.**
+
+> Claude Code users: A PostToolUse hook handles this automatically after `git commit` and `git merge`.
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->
