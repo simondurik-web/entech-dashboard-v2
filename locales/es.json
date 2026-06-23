@@ -1294,5 +1294,9 @@
   "inventoryOps.qtyAvail": "Disponible",
   "inventoryOps.qtyDestRequired": "Elige una ubicación destino.",
   "inventoryOps.qtySameBin": "La ubicación de origen y destino son la misma.",
+  "inventoryOps.salesOrder": "Orden de Venta",
+  "inventoryOps.optional": "opcional",
+  "inventoryOps.searchSalesOrder": "Buscar órdenes de venta para esta parte...",
+  "inventoryOps.noSalesOrders": "No hay órdenes de venta abiertas para esta parte",
   "nav.inventoryOps": "Operaciones de Inventario"
 }
