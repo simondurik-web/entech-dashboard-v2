@@ -727,6 +727,39 @@ export async function getItemBins(itemCode: string): Promise<{ warehouse: string
   return rows.map((r) => ({ warehouse: r.warehouse, qty: r.actual_qty })).sort((a, b) => b.qty - a.qty)
 }
 
+export interface SalesOrderOption {
+  name: string
+  customer: string
+  status: string
+  deliveryDate: string | null
+}
+
+/** Open Sales Orders that include `itemCode` as a line — so a label can be attached to the
+ *  RIGHT order without scrolling past every SO. ONE query on Sales Order with a child-table
+ *  filter (`["Sales Order Item","item_code","=",code]`); querying the child doctype directly
+ *  trips Frappe's parent-permission check. Submitted + still-open only (excludes Completed /
+ *  Closed / Cancelled; Draft is excluded by docstatus=1). Read-only. */
+export async function listSalesOrdersForItem(itemCode: string): Promise<SalesOrderOption[]> {
+  const qs = [
+    listParam('filters', [
+      ['Sales Order Item', 'item_code', '=', itemCode],
+      ['docstatus', '=', 1],
+      ['status', 'not in', ['Completed', 'Closed', 'Cancelled']],
+    ]),
+    listParam('fields', ['name', 'customer', 'status', 'delivery_date']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows =
+    (await erpnextGet<{ data: { name: string; customer: string; status: string; delivery_date: string | null }[] }>(`/api/resource/Sales Order?${qs}`)).data ?? []
+  // A child-table filter can return the parent once per matching child row — de-dupe by name.
+  const byName = new Map<string, SalesOrderOption>()
+  for (const r of rows) {
+    if (!byName.has(r.name)) byName.set(r.name, { name: r.name, customer: r.customer, status: r.status, deliveryDate: r.delivery_date ?? null })
+  }
+  // Soonest delivery first; undated last.
+  return [...byName.values()].sort((a, b) => (a.deliveryDate ?? '9999').localeCompare(b.deliveryDate ?? '9999') || a.name.localeCompare(b.name))
+}
+
 export interface QtyResult extends Committed {
   itemName: string
   uom: string

@@ -54,6 +54,12 @@ interface ItemOption {
   itemCode: string
   itemName: string
 }
+interface SalesOrderOption {
+  name: string
+  customer: string
+  status: string
+  deliveryDate: string | null
+}
 interface BinContentItem {
   itemCode: string
   itemName: string
@@ -827,6 +833,38 @@ export default function InventoryOpsPage() {
   const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection (BinCombobox)
   const [addStation, setAddStation] = useState('')
   const [adding, setAdding] = useState(false)
+  // Sales Order to attach to the label (optional). The list is filtered server-side to the
+  // open SOs that actually include the selected part, so the dropdown stays short.
+  const [salesOrder, setSalesOrder] = useState('') // committed SO name ('' = none)
+  const [soOptions, setSoOptions] = useState<SalesOrderOption[]>([])
+  const [soLoading, setSoLoading] = useState(false)
+  const [soQuery, setSoQuery] = useState('') // typed filter text
+  const [soOpen, setSoOpen] = useState(false)
+
+  // When the part changes, reset + reload the matching open Sales Orders.
+  useEffect(() => {
+    setSalesOrder('')
+    setSoQuery('')
+    setSoOpen(false)
+    setSoOptions([])
+    if (!addItem) return
+    let cancelled = false
+    setSoLoading(true)
+    authedFetch(`/api/erpnext/inventory/sales-orders?itemCode=${encodeURIComponent(addItem.itemCode)}`)
+      .then((r) => (r.ok ? r.json() : { salesOrders: [] }))
+      .then((d) => {
+        if (!cancelled) setSoOptions(d.salesOrders ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setSoOptions([])
+      })
+      .finally(() => {
+        if (!cancelled) setSoLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [addItem, authedFetch])
 
   useEffect(() => {
     if (defaultWarehouse) setAddWarehouse((w) => w || defaultWarehouse)
@@ -876,6 +914,7 @@ export default function InventoryOpsPage() {
           qty,
           warehouse: addWarehouse,
           station: addStation,
+          salesOrder: salesOrder || undefined,
           idempotencyKey: addKeyRef.current,
         }),
       })
@@ -1598,6 +1637,76 @@ export default function InventoryOpsPage() {
                 </>
               )}
             </div>
+
+            {/* Sales Order (optional) — only the OPEN SOs that include the selected part, so
+                the dropdown stays short. Shown once a part is picked (the list is item-filtered). */}
+            {addItem && (
+              <div className="relative sm:col-span-2">
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  {t('inventoryOps.salesOrder')} <span className="font-normal text-muted-foreground/70">({t('inventoryOps.optional')})</span>
+                </label>
+                {salesOrder ? (
+                  <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                    <span className="font-mono">{salesOrder}</span>
+                    <button onClick={() => setSalesOrder('')} className="text-muted-foreground hover:text-foreground">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      value={soQuery}
+                      onChange={(e) => {
+                        setSoQuery(e.target.value)
+                        setSoOpen(true)
+                      }}
+                      onFocus={() => setSoOpen(true)}
+                      onBlur={() => setTimeout(() => setSoOpen(false), 150)}
+                      disabled={soLoading || soOptions.length === 0}
+                      placeholder={
+                        soLoading
+                          ? t('inventoryOps.loading')
+                          : soOptions.length === 0
+                            ? t('inventoryOps.noSalesOrders')
+                            : t('inventoryOps.searchSalesOrder')
+                      }
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
+                    />
+                    {soOpen && soOptions.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+                        <div data-lenis-prevent className="inv-scroll max-h-60 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                          {soOptions
+                            .filter(
+                              (s) =>
+                                !soQuery.trim() ||
+                                s.name.toLowerCase().includes(soQuery.toLowerCase()) ||
+                                s.customer.toLowerCase().includes(soQuery.toLowerCase())
+                            )
+                            .map((s) => (
+                              <button
+                                key={s.name}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setSalesOrder(s.name)
+                                  setSoOpen(false)
+                                  setSoQuery('')
+                                }}
+                                className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
+                              >
+                                <span className="font-mono">{s.name}</span>
+                                <span className="text-muted-foreground"> · {s.customer}</span>
+                                {s.deliveryDate && <span className="text-xs text-muted-foreground"> · {s.deliveryDate}</span>}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.quantity')}</label>
               <input

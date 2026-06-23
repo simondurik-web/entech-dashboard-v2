@@ -1294,5 +1294,9 @@
   "inventoryOps.qtyAvail": "Available",
   "inventoryOps.qtyDestRequired": "Choose a destination bin.",
   "inventoryOps.qtySameBin": "Source and destination bins are the same.",
+  "inventoryOps.salesOrder": "Sales Order",
+  "inventoryOps.optional": "optional",
+  "inventoryOps.searchSalesOrder": "Search sales orders for this part...",
+  "inventoryOps.noSalesOrders": "No open sales orders for this part",
   "nav.inventoryOps": "Inventory Ops"
 }

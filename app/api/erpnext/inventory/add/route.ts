@@ -23,6 +23,7 @@ interface AddBody {
   station?: string
   customer?: string
   ref?: string
+  salesOrder?: string // optional ERPNext Sales Order to attach (printed on the label)
   idempotencyKey?: string
 }
 
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
+  const salesOrder = body.salesOrder?.trim() || undefined
   const qty = Number(body.qty)
   if (!itemCode || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY || !warehouse || !station || !idempotencyKey) {
     return NextResponse.json(
@@ -104,6 +106,7 @@ export async function POST(req: NextRequest) {
           copies: qty, // one label per box
           customer,
           ref,
+          salesOrder,
           generatedAt: labelTimestamp(),
           printedBy,
         })
@@ -155,6 +158,7 @@ export async function POST(req: NextRequest) {
         batch: committed.batch ?? batch,
         customer,
         ref,
+        salesOrder,
         generatedAt: labelTimestamp(),
         printedBy,
       })
