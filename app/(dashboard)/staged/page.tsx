@@ -183,7 +183,7 @@ function StagedPageContent() {
       // Build pallet dimension/weight lookup by line number
       interface PalletRec { lineNumber: string; orderNumber?: string; weight: string; dimensions: string }
       const palletRecs: PalletRec[] = palletRes.ok ? await palletRes.json() : []
-      const palletByLine = new Map<string, { avgWeight: number; w: number; l: number }>()
+      const palletByLine = new Map<string, { avgWeight: number; w: number; l: number; count: number; pallets: { dimensions: string; weight: number }[] }>()
       const grouped = new Map<string, PalletRec[]>()
       for (const pr of palletRecs) {
         const key = (pr.lineNumber || '').trim() || (pr.orderNumber || '').trim()
@@ -201,14 +201,22 @@ function StagedPageContent() {
           const parts = firstDims.split(/x/i).map(s => parseFloat(s.trim()))
           if (parts.length >= 2) { w = parts[0] || 0; l = parts[1] || 0 }
         }
-        palletByLine.set(line, { avgWeight, w, l })
+        palletByLine.set(line, {
+          avgWeight, w, l,
+          count: recs.length,
+          pallets: recs.map((p) => ({ dimensions: p.dimensions || '', weight: parseFloat(p.weight) || 0 })),
+        })
       }
 
       // Enrich orders with pallet data
       const enrich = (o: Order): Order => {
         const pd = palletByLine.get((o.line || '').trim()) || palletByLine.get((o.ifNumber || '').trim())
         if (pd) {
-          return { ...o, palletWidth: pd.w, palletLength: pd.l, palletWeightEach: pd.avgWeight }
+          // Use the real built-pallet count (and the records themselves) so the
+          // Pallet Load Calculator reflects the actual pallets, not the order's
+          // estimated numPackages (order_qty / parts_per_package). Mirrors the
+          // shipping-overview page's enrichment.
+          return { ...o, palletWidth: pd.w, palletLength: pd.l, palletWeightEach: pd.avgWeight, numPackages: pd.count, pallets: pd.pallets } as Order
         }
         return o
       }
