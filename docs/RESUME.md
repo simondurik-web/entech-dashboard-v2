@@ -97,7 +97,21 @@ inventory module is [`docs/inventory-ops.md`](./inventory-ops.md)** — read it 
 18. **Part dropdown** shows only the part number (description was often a duplicate / boilerplate).
     Reviewer note: the remove/qty-remove `reason` is sanitized (`safeRemark`, strips `[]`) before
     it enters Stock Entry remarks, so it can't smuggle an `[op:<key>]` token that would poison
-    `reconcileStockEntry`'s LIKE match.
+    `reconcileStockEntry`'s LIKE match. Also: the search result card + By-bin contents list now
+    lead with the part number and show the item name only when it differs from the code.
+19. **Pack label quantity = 1** — a pack is one assembly (a "48 pack" is 1 unit; the SKU name
+    conveys the 48), so the generic label prints **1**, not 36/48. Driven by the ERPNext Item
+    field `custom_pieces_per_pack` (default 1 when blank); products that hold N loose pieces per
+    box set it to N. (The earlier SKU `NNPK` auto-parse was removed.)
+20. **Attach a label to a Sales Order** — the Add panel has an optional Sales Order picker that
+    lists ONLY the open ERPNext SOs containing the selected part (so 2 relevant SOs, not 100).
+    `lib/erpnext/inventory.ts:listSalesOrdersForItem` queries `Sales Order` with a child-table
+    filter `["Sales Order Item","item_code","=",code]` (docstatus=1, status not in Completed/
+    Closed/Cancelled; querying the child doctype directly trips Frappe's parent-permission check),
+    soonest-delivery first. Route `GET /sales-orders?itemCode=`. The chosen SO flows to the
+    label's `salesOrder` field on both the serialized + non-serialized paths; label-only (not in
+    the idempotency identity). Optional. Bilingual. **See [`HANDOFF-2026-06-23.md`](./HANDOFF-2026-06-23.md)
+    for the resume snapshot + tomorrow's open items (500-piece parts; label wording "1 pcs" vs "1").**
 
 14. **Inventory Operations role permission** — `/inventory-ops` is now a toggleable row in
     `admin/permissions` ("Inventory Operations"), so access can be granted per role. The whole

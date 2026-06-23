@@ -1680,7 +1680,7 @@ export default function InventoryOpsPage() {
                               (s) =>
                                 !soQuery.trim() ||
                                 s.name.toLowerCase().includes(soQuery.toLowerCase()) ||
-                                s.customer.toLowerCase().includes(soQuery.toLowerCase())
+                                (s.customer || '').toLowerCase().includes(soQuery.toLowerCase())
                             )
                             .map((s) => (
                               <button

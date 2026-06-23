@@ -747,7 +747,9 @@ export async function listSalesOrdersForItem(itemCode: string): Promise<SalesOrd
       ['status', 'not in', ['Completed', 'Closed', 'Cancelled']],
     ]),
     listParam('fields', ['name', 'customer', 'status', 'delivery_date']),
-    'limit_page_length=0',
+    // Bound the result like every other ERPNext query here — open SOs for one part is a
+    // small set, but never let it run unbounded.
+    'limit_page_length=200',
   ].join('&')
   const rows =
     (await erpnextGet<{ data: { name: string; customer: string; status: string; delivery_date: string | null }[] }>(`/api/resource/Sales Order?${qs}`)).data ?? []
