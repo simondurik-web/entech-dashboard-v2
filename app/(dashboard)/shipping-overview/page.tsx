@@ -11,6 +11,7 @@ import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/componen
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
 import type { ShippingOverviewOrder, ShippingOverviewResponse } from '@/components/shipping-overview/types'
 import type { Order } from '@/lib/google-sheets-shared'
+import { buildPalletEnrichmentByLine, applyPalletEnrichment, type NormalizedPalletRecord } from '@/lib/pallet-enrichment'
 import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
 
 const DAY_OPTIONS = [1, 7, 10, 14, 30, 60, 90]
@@ -147,73 +148,61 @@ function ShippingOverviewPageContent() {
   )
 
   // PalletLoadCalculator enrichment — derived directly from the overview
-  // payload (each staged order already carries its grouped pallets with
-  // weight + dimensions). This avoids a second full /api/pallet-records round
-  // trip on every load; photos still only render when a card is expanded.
+  // payload (each staged order already carries its grouped pallets with weight
+  // + dimensions). This avoids a second full /api/pallet-records round trip on
+  // every load; photos still only render when a card is expanded. Uses the same
+  // shared helper as the staged page so the two calculators can't drift apart.
   const palletEnrichment = useMemo(() => {
-    const byLine = new Map<string, { avgWeight: number; w: number; l: number; count: number }>()
+    const records: NormalizedPalletRecord[] = []
     for (const order of data?.staged ?? []) {
-      const pallets = order.pallets ?? []
-      if (pallets.length === 0) continue
       const key = (order.line || '').toString().trim()
       if (!key) continue
-      const totalW = pallets.reduce((s, p) => s + (p.weight || 0), 0)
-      const avgWeight = pallets.length > 0 ? Math.round(totalW / pallets.length) : 0
-      let w = 0, l = 0
-      const firstDims = pallets.find((p) => p.dimensions)?.dimensions || ''
-      if (firstDims) {
-        const parts = firstDims.split(/x/i).map((s) => parseFloat(s.trim()))
-        if (parts.length >= 2) { w = parts[0] || 0; l = parts[1] || 0 }
+      for (const p of order.pallets ?? []) {
+        records.push({ line: key, dimensions: p.dimensions || '', weight: p.weight || 0 })
       }
-      byLine.set(key, { avgWeight, w, l, count: pallets.length })
     }
-    return byLine
+    return buildPalletEnrichmentByLine(records)
   }, [data?.staged])
 
   const stagedOrdersForCalc = useMemo(() => {
     const staged = data?.staged ?? []
-    return staged.map(o => {
-      // Look up pallet enrichment by line number (same as staged page)
-      const pd = palletEnrichment.get((o.line || '').toString().trim())
-        || palletEnrichment.get((o.ifNumber || '').trim())
-      return {
-        line: o.line,
-        category: o.category,
-        dateOfRequest: '',
-        priorityLevel: 0,
-        urgentOverride: false,
-        ifNumber: o.ifNumber,
-        ifStatus: '',
-        internalStatus: 'staged',
-        poNumber: o.poNumber,
-        customer: o.customer,
-        partNumber: o.partNumber,
-        orderQty: o.orderQty,
-        packaging: '',
-        partsPerPackage: 0,
-        numPackages: pd ? pd.count : (o.palletCount > 0 ? o.palletCount : 0),
-        fusionInventory: 0,
-        hubMold: '',
-        tire: '',
-        hasTire: false,
-        hub: '',
-        hasHub: false,
-        bearings: '',
-        requestedDate: o.requestedDate,
-        daysUntilDue: o.daysUntilDue ?? 0,
-        assignedTo: '',
-        shippedDate: o.shippedDate,
-        dailyCapacity: 0,
-        priorityOverride: null,
-        priorityChangedBy: null,
-        priorityChangedAt: null,
-        palletWidth: pd ? pd.w : 0,
-        palletLength: pd ? pd.l : 0,
-        palletWeightEach: pd ? pd.avgWeight : 0,
-        // Pass raw pallet records so PalletLoadCalculator can group them into configs
-        ...(Array.isArray((o as any).pallets) ? { pallets: (o as any).pallets } : {}),
-      } as Order
-    })
+    return staged.map(o => applyPalletEnrichment({
+      line: o.line,
+      category: o.category,
+      dateOfRequest: '',
+      priorityLevel: 0,
+      urgentOverride: false,
+      ifNumber: o.ifNumber,
+      ifStatus: '',
+      internalStatus: 'staged',
+      poNumber: o.poNumber,
+      customer: o.customer,
+      partNumber: o.partNumber,
+      orderQty: o.orderQty,
+      packaging: '',
+      partsPerPackage: 0,
+      // Estimate fallback when the order has no pallet records; the shared
+      // helper overrides this with the real pallet count when records exist.
+      numPackages: o.palletCount > 0 ? o.palletCount : 0,
+      fusionInventory: 0,
+      hubMold: '',
+      tire: '',
+      hasTire: false,
+      hub: '',
+      hasHub: false,
+      bearings: '',
+      requestedDate: o.requestedDate,
+      daysUntilDue: o.daysUntilDue ?? 0,
+      assignedTo: '',
+      shippedDate: o.shippedDate,
+      dailyCapacity: 0,
+      priorityOverride: null,
+      priorityChangedBy: null,
+      priorityChangedAt: null,
+      palletWidth: 0,
+      palletLength: 0,
+      palletWeightEach: 0,
+    } as Order, palletEnrichment))
   }, [data?.staged, palletEnrichment])
 
   // ── Conditional classes ──────────────────────────────────
