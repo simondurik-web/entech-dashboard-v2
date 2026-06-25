@@ -2390,12 +2390,16 @@ export default function InventoryOpsPage() {
                 // Serialized labels (pallet id + bin + qty) get the SAME actionable row as
                 // the search results — history / move / reprint / edit / delete — by reusing
                 // renderPalletRow. A context header carries the recent-label info (who/when).
-                if (l.batch && l.warehouse && l.qty != null) {
+                // A pallet label (has a batch + a known qty) gets the full action row.
+                // Reprint ops record qty but not the bin, so we only require batch + qty
+                // (not warehouse) — otherwise reprinted labels would lose their actions.
+                if (l.batch && l.qty != null) {
                   return (
                     <li key={`${l.batch}-${l.at}-${i}`} className="py-2">
                       <div className="mb-1 flex items-start justify-between gap-3 px-2.5 text-xs text-muted-foreground">
                         <div className="min-w-0 truncate">
                           {l.itemCode}
+                          {l.warehouse ? ` · ${l.warehouse}` : ''}
                           {l.purpose ? ` · ${purposeText(l.purpose)}` : ''}
                           {l.by ? ` · ${l.by}` : ''}
                         </div>
@@ -2406,7 +2410,7 @@ export default function InventoryOpsPage() {
                         </div>
                       </div>
                       <ul className="rounded-md border border-border bg-background/40">
-                        {renderPalletRow({ batch: l.batch, warehouse: l.warehouse, qty: l.qty }, l.itemCode)}
+                        {renderPalletRow({ batch: l.batch, warehouse: l.warehouse ?? '', qty: l.qty }, l.itemCode)}
                       </ul>
                     </li>
                   )
