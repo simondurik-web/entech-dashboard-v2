@@ -2379,25 +2379,33 @@ export default function InventoryOpsPage() {
             <ul className="divide-y divide-border border-t border-border">
               {recentLabels.map((l, i) => {
                 const s = labelStatus(l)
+                // Serialized labels have a pallet id (batch); non-serialized "generic"
+                // labels don't (batch=null) — for those the part number is the identity,
+                // and Reprint / open-in-search (both pallet-only) don't apply.
+                const meta = [
+                  l.batch ? l.itemCode : null, // for generic labels the code is the title (line 1), not repeated here
+                  l.warehouse,
+                  l.qty != null ? `${l.qty.toLocaleString()} ${t('inventoryOps.parts')}` : null,
+                  l.purpose ? purposeText(l.purpose) : null,
+                  l.by || null,
+                ].filter(Boolean).join(' · ')
                 return (
                   <li key={`${l.batch}-${l.at}-${i}`} className="flex items-start justify-between gap-3 py-2 text-sm">
                     <div className="min-w-0">
-                      {/* Tap the id to pull the pallet up in the search — gives the full
-                          set of actions (history / move / edit / remove). */}
-                      <button
-                        type="button"
-                        onClick={() => { setViewMode('item'); setQuery(l.batch); setItemPickerOpen(false) }}
-                        className="font-mono text-xs font-medium text-primary hover:underline"
-                      >
-                        {l.batch}
-                      </button>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {l.itemCode}
-                        {l.warehouse ? ` · ${l.warehouse}` : ''}
-                        {l.qty != null ? ` · ${l.qty.toLocaleString()} ${t('inventoryOps.parts')}` : ''}
-                        {l.purpose ? ` · ${purposeText(l.purpose)}` : ''}
-                        {l.by ? ` · ${l.by}` : ''}
-                      </div>
+                      {l.batch ? (
+                        // Tap the id to pull the pallet up in the search — gives the full
+                        // set of actions (history / move / edit / remove).
+                        <button
+                          type="button"
+                          onClick={() => { setViewMode('item'); setQuery(l.batch as string); setItemPickerOpen(false) }}
+                          className="font-mono text-xs font-medium text-primary hover:underline"
+                        >
+                          {l.batch}
+                        </button>
+                      ) : (
+                        <div className="font-mono text-xs font-medium">{l.itemCode}</div>
+                      )}
+                      <div className="truncate text-xs text-muted-foreground">{meta}</div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <div className="text-right text-xs">
@@ -2407,17 +2415,20 @@ export default function InventoryOpsPage() {
                         </div>
                         {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
                       </div>
-                      {/* Quick reprint (e.g. the print jammed or there was a mistake). */}
-                      <button
-                        type="button"
-                        onClick={() => submitReprint(l.itemCode, l.batch)}
-                        disabled={busyBatch === l.batch}
-                        title={t('inventoryOps.reprint')}
-                        aria-label={t('inventoryOps.reprint')}
-                        className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                      >
-                        {busyBatch === l.batch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                      </button>
+                      {/* Quick reprint (e.g. the print jammed or there was a mistake).
+                          Pallet-only — the reprint endpoint reissues a serialized pallet. */}
+                      {l.batch && (
+                        <button
+                          type="button"
+                          onClick={() => submitReprint(l.itemCode, l.batch as string)}
+                          disabled={busyBatch === l.batch}
+                          title={t('inventoryOps.reprint')}
+                          aria-label={t('inventoryOps.reprint')}
+                          className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                        >
+                          {busyBatch === l.batch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                        </button>
+                      )}
                     </div>
                   </li>
                 )
