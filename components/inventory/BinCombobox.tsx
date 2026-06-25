@@ -29,15 +29,13 @@ export function BinCombobox({
     setText(value)
   }, [value])
 
+  // Show ALL bins (the dropdown is scrollable) — when browsing without typing, the
+  // operator needs to see every available bin, matching the By-bin search. Filtering
+  // narrows the same full list.
   const filterActive = text.trim() !== '' && text !== value
-  let options = (filterActive
+  const options = filterActive
     ? warehouses.filter((w) => w.toLowerCase().includes(text.toLowerCase()))
     : warehouses
-  ).slice(0, 50)
-  // Keep the committed bin visible even if it falls past the 50-row cap (show-all case).
-  if (!filterActive && value && warehouses.includes(value) && !options.includes(value)) {
-    options = [value, ...options].slice(0, 50)
-  }
 
   return (
     <div className="relative">

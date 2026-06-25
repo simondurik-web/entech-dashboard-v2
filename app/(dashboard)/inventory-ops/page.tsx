@@ -99,6 +99,8 @@ interface RecentLabel {
   printer: string | null
   printerLocation: string | null
   purpose: string | null
+  warehouse: string | null // bin/area the label was allocated to
+  qty: number | null // parts count printed on the label
   by: string
   at: string | null
   status: string | null
@@ -1816,7 +1818,7 @@ export default function InventoryOpsPage() {
           {itemPickerOpen && (
             <button
               type="button"
-              onClick={() => setItemPickerOpen(false)}
+              onClick={() => { setQuery(''); setItemPickerOpen(false) }}
               aria-label={t('inventoryOps.cancel')}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
             >
@@ -2380,19 +2382,42 @@ export default function InventoryOpsPage() {
                 return (
                   <li key={`${l.batch}-${l.at}-${i}`} className="flex items-start justify-between gap-3 py-2 text-sm">
                     <div className="min-w-0">
-                      <div className="font-mono text-xs font-medium">{l.batch}</div>
+                      {/* Tap the id to pull the pallet up in the search — gives the full
+                          set of actions (history / move / edit / remove). */}
+                      <button
+                        type="button"
+                        onClick={() => { setViewMode('item'); setQuery(l.batch); setItemPickerOpen(false) }}
+                        className="font-mono text-xs font-medium text-primary hover:underline"
+                      >
+                        {l.batch}
+                      </button>
                       <div className="truncate text-xs text-muted-foreground">
                         {l.itemCode}
+                        {l.warehouse ? ` · ${l.warehouse}` : ''}
+                        {l.qty != null ? ` · ${l.qty.toLocaleString()} ${t('inventoryOps.parts')}` : ''}
                         {l.purpose ? ` · ${purposeText(l.purpose)}` : ''}
                         {l.by ? ` · ${l.by}` : ''}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right text-xs">
-                      <div className={s.cls}>{s.text}</div>
-                      <div className="text-muted-foreground">
-                        {l.at ? new Date(l.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <div className="text-right text-xs">
+                        <div className={s.cls}>{s.text}</div>
+                        <div className="text-muted-foreground">
+                          {l.at ? new Date(l.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                        </div>
+                        {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
                       </div>
-                      {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
+                      {/* Quick reprint (e.g. the print jammed or there was a mistake). */}
+                      <button
+                        type="button"
+                        onClick={() => submitReprint(l.itemCode, l.batch)}
+                        disabled={busyBatch === l.batch}
+                        title={t('inventoryOps.reprint')}
+                        aria-label={t('inventoryOps.reprint')}
+                        className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                      >
+                        {busyBatch === l.batch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      </button>
                     </div>
                   </li>
                 )

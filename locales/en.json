@@ -1275,6 +1275,7 @@
   "inventoryOps.supersededGone": "which is no longer active (it was removed or fully superseded).",
   "inventoryOps.moved": "Moved pallet",
   "inventoryOps.reprint": "Reprint label",
+  "inventoryOps.parts": "parts",
   "inventoryOps.reprinted": "Reprinting label for",
   "inventoryOps.histRestored": "Returned to inventory",
   "inventoryOps.removedZero": "Removed - 0 in stock",
