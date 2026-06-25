@@ -31,3 +31,17 @@ WHERE up.role NOT IN ('visitor', 'blocked')
     WHERE uar.user_id = up.id AND uar.app_id = 'dashboard'
   )
 ON CONFLICT (user_id, app_id) DO NOTHING;
+
+-- Reconcile user_profiles.role to the dashboard app-role so the legacy paths and
+-- RLS policies that still read user_profiles.role can't be exploited via a STALE
+-- elevated profile.role (e.g. a user with profile.role='group_leader' but a
+-- lower/blocked dashboard app-role using direct Supabase access). After this,
+-- user_profiles.role == the dashboard role for every enrolled user; non-enrolled
+-- stay 'visitor'. The admin Users API now also mirrors role -> user_profiles.role
+-- on every change so it stays in sync. Idempotent (only touches mismatches).
+UPDATE public.user_profiles up
+SET role = uar.role, updated_at = now()
+FROM public.user_app_roles uar
+WHERE uar.user_id = up.id
+  AND uar.app_id = 'dashboard'
+  AND up.role <> uar.role;

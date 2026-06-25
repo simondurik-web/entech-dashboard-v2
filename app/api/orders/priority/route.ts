@@ -20,8 +20,8 @@ async function getUserProfile(userId: string) {
     .eq("user_id", userId)
     .eq("app_id", DASHBOARD_APP_ID)
     .single()
-  if (appRole) return { ...data, role: appRole.role }
-  return data
+  // Access requires an explicit dashboard app-role; no enrollment -> visitor.
+  return { ...data, role: appRole?.role ?? "visitor" }
 }
 
 async function hasManagePriority(profile: { role: string; custom_permissions?: Record<string, boolean> | null }): Promise<boolean> {

@@ -99,8 +99,12 @@ export async function PUT(req: NextRequest) {
       )
   }
 
-  // Write non-role fields to user_profiles (shared)
+  // Write non-role fields to user_profiles (shared). Also MIRROR the role into
+  // user_profiles.role so it never goes stale relative to the dashboard app-role
+  // — legacy paths + RLS policies still read user_profiles.role, so a demoted /
+  // 'blocked' user must not keep an elevated profile.role behind them.
   const profileUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (role !== undefined) profileUpdates.role = role
   if (custom_permissions !== undefined) profileUpdates.custom_permissions = custom_permissions
   if (is_active !== undefined) profileUpdates.is_active = is_active
 

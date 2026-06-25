@@ -8,11 +8,19 @@ async function isAdmin(req: NextRequest): Promise<boolean> {
   if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from('user_profiles')
-    .select('role, email')
+    .select('email')
     .eq('id', userId)
     .single()
   if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
-  return profile?.role === 'admin'
+  // Admin = explicit dashboard app-role, not the legacy user_profiles.role
+  // (which can be stale relative to enrollment / a 'blocked' user).
+  const { data: appRole } = await supabaseAdmin
+    .from('user_app_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('app_id', 'dashboard')
+    .maybeSingle()
+  return appRole?.role === 'admin'
 }
 
 export async function GET() {
