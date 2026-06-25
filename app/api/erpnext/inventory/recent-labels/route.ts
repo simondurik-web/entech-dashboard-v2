@@ -50,8 +50,8 @@ export async function GET(req: NextRequest) {
         ? supabaseAdmin.from('user_profiles').select('id, full_name, email').in('id', userIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] }),
       opKeys.length
-        ? supabaseAdmin.from('inventory_ops_log').select('idempotency_key, action').in('idempotency_key', opKeys)
-        : Promise.resolve({ data: [] as { idempotency_key: string; action: string }[] }),
+        ? supabaseAdmin.from('inventory_ops_log').select('idempotency_key, action, qty, warehouse').in('idempotency_key', opKeys)
+        : Promise.resolve({ data: [] as { idempotency_key: string; action: string; qty: number | null; warehouse: string | null }[] }),
     ])
 
     // These enrichments are non-critical (the label id is the point); if one errors, log it
@@ -65,17 +65,22 @@ export async function GET(req: NextRequest) {
     }
     const stationMap = new Map((stationsRes.data ?? []).map((s) => [s.id, s]))
     const nameMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p.full_name || p.email || '']))
-    const actionMap = new Map((opsRes.data ?? []).map((o) => [o.idempotency_key, o.action]))
+    const opMap = new Map((opsRes.data ?? []).map((o) => [o.idempotency_key, o]))
 
     const labels = rows.map((r) => {
       const st = r.station_id ? stationMap.get(r.station_id) : undefined
       const opKey = opKeyOf(r.idempotency_key)
+      const op = opKey ? opMap.get(opKey) : undefined
       return {
         batch: r.batch,
         itemCode: r.item_code,
         printer: st ? st.name || st.location || r.station_id : r.station_id,
         printerLocation: st?.location ?? null,
-        purpose: (opKey ? actionMap.get(opKey) : null) ?? null,
+        purpose: op?.action ?? null,
+        // Bin/area the label was allocated to + the parts count printed on it
+        // (from the op log row that produced this print).
+        warehouse: op?.warehouse ?? null,
+        qty: op?.qty ?? null,
         by: r.created_by ? nameMap.get(r.created_by) ?? '' : '',
         at: r.created_at,
         status: r.status,

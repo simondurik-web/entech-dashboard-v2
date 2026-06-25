@@ -1275,6 +1275,7 @@
   "inventoryOps.supersededGone": "que ya no está activa (fue eliminada o totalmente reemplazada).",
   "inventoryOps.moved": "Tarima movida",
   "inventoryOps.reprint": "Reimprimir etiqueta",
+  "inventoryOps.parts": "piezas",
   "inventoryOps.reprinted": "Reimprimiendo etiqueta de",
   "inventoryOps.histRestored": "Devuelta al inventario",
   "inventoryOps.removedZero": "Eliminada - 0 en existencia",
