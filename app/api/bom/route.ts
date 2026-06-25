@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchBOM, GIDS } from '@/lib/google-sheets'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireReadAccess } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const [sheetsBom, supabaseResult] = await Promise.all([
       fetchBOM(GIDS.bomFinal),

@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchInventoryCostsFromDB } from '@/lib/supabase-data'
 import { fetchSheetValues } from '@/lib/google-sheets-api'
 import { SPREADSHEET_IDS } from '@/lib/google-sheets-config'
+import { requireReadAccess } from '@/lib/require-user'
 
 // Google Sheets fallback config
 const TAB = 'Current inventory export'
@@ -65,7 +66,8 @@ async function fetchCostsFromSheets(): Promise<Record<string, {
   return costs
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     let costs
     try {
@@ -77,7 +79,7 @@ export async function GET() {
     }
     return NextResponse.json(
       { costs },
-      { headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' } }
+      { headers: { 'Cache-Control': 'private, no-store' } }
     )
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchSheetData, fetchOrders, fetchInventory, GIDS, type Order } from '@/lib/google-sheets'
+import { requireReadAccess } from '@/lib/require-user'
 
 export interface MaterialSource {
   component: string
@@ -55,7 +56,8 @@ function parseSheetFloat(val: string): number {
   return isPercent ? num / 100 : num
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     // Fetch BOM Sub-Assembly data (has component material breakdowns), orders, and inventory in parallel
     const [bomSubSheet, orders, inventory] = await Promise.all([

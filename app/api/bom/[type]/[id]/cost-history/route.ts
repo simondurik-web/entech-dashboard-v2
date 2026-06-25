@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-
-// Note: Auth is enforced client-side via AccessGuard (consistent with all BOM API routes).
-// Server-side auth for BOM routes is tracked as a future improvement.
+import { requireReadAccess } from '@/lib/require-user'
 
 const VALID_TYPES = ['individual', 'sub', 'final'] as const
 type ItemType = (typeof VALID_TYPES)[number]
@@ -39,6 +37,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ type: string; id: string }> }
 ) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { type, id } = await params
 
   // Validate type parameter

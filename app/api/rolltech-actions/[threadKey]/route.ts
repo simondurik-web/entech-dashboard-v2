@@ -1,14 +1,16 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireReadAccess } from "@/lib/require-user"
 import type { ActionRecord } from "@/lib/rolltech-action-center/types"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ threadKey: string }> }
 ) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const { threadKey: rawKey } = await params
   const threadKey = decodeURIComponent(rawKey)
 

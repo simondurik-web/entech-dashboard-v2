@@ -1,11 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireReadAccess } from '@/lib/require-user'
 
 // Catalog of every internal part we've ever quoted/mapped, independent of
 // customer — feeds the generic-quote part picker. The dedicated `parts`
 // table is empty; the real catalog lives in customer_part_mappings.
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data, error } = await supabaseAdmin
     .from('customer_part_mappings')
     .select('internal_part_number, category')
@@ -25,6 +27,6 @@ export async function GET() {
   const parts = Array.from(seen, ([partNumber, category]) => ({ partNumber, category }))
 
   return NextResponse.json(parts, {
-    headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' },
+    headers: { 'Cache-Control': 'private, no-store' },
   })
 }

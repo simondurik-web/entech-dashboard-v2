@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchOrdersFromDB } from '@/lib/supabase-data'
 import { fetchOrders } from '@/lib/google-sheets'
 import { fetchPriorityOverrides, mergePriorityOverrides } from '@/lib/priority-overrides'
 import { applyAutoAssignRules } from '@/lib/auto-assign'
+import { requireReadAccess } from '@/lib/require-user'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     // Fetch priority overrides (separate table, survives sync cycles)
     const overrides = await fetchPriorityOverrides()

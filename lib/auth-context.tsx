@@ -4,7 +4,13 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback, ty
 import { supabase } from "./supabase"
 import { setDataCacheOwner, clearDataCache, prefetchHeavyData } from "./data-cache"
 import { getDeviceToken, checkDeviceStatus } from "./device-auth"
+import { installApiFetchInterceptor } from "./api-fetch-interceptor"
 import type { User, Session } from "@supabase/supabase-js"
+
+// Patch window.fetch to attach the session/device token to same-origin /api/
+// calls. Runs at module load (client) — before AuthProvider mounts or any page
+// fetches data — so every data read authenticates without per-call-site changes.
+installApiFetchInterceptor()
 
 // 'blocked' is a hard-deny state (not a permission tier): a blocked user can't
 // access anything, not even the visitor view. Enforced in canAccess + AccessGuard

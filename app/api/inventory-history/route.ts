@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchInventoryHistoryFromDB } from '@/lib/supabase-data'
 import { fetchInventoryHistory } from '@/lib/google-sheets'
+import { requireReadAccess } from '@/lib/require-user'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     let history
     try {
@@ -13,7 +15,7 @@ export async function GET() {
       history = await fetchInventoryHistory()
     }
     return NextResponse.json(history, {
-      headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=86400' },
+      headers: { 'Cache-Control': 'private, no-store' },
     })
   } catch (error) {
     console.error('Failed to fetch inventory history:', error)

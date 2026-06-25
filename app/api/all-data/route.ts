@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchAllDataFromDB } from '@/lib/supabase-data'
 import { fetchSheetData, GIDS } from '@/lib/google-sheets'
+import { requireReadAccess } from '@/lib/require-user'
 
 function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): string {
   const cell = row.c?.[col]
@@ -19,7 +20,8 @@ function wrapResponse(data: Record<string, string>[]) {
   return { columns, data }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     // Primary: Supabase
     try {

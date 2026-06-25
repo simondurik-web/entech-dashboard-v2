@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchSheetData, GIDS } from '@/lib/google-sheets'
+import { requireReadAccess } from '@/lib/require-user'
 
 type GIDKey = keyof typeof GIDS
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  if (!(await requireReadAccess(request))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { searchParams } = new URL(request.url)
   const gidKey = searchParams.get('gid') as GIDKey
   

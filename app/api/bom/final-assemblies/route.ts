@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BomAuthoringError, createFinalAssembly } from '@/lib/bom-authoring'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireUser, requireReadAccess } from '@/lib/require-user'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data, error } = await supabaseAdmin
     .from('bom_final_assemblies')
     .select('*, bom_final_assembly_components(*)')
     .order('part_number')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, {
-    headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' },
+    headers: { 'Cache-Control': 'private, no-store' },
   })
 }
 

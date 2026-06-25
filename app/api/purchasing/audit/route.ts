@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireReadAccess } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,6 +9,7 @@ export const dynamic = 'force-dynamic'
  * GET /api/purchasing/audit?orderId=X  -> full history for one order
  */
 export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { searchParams } = new URL(req.url)
   const orderId = searchParams.get('orderId')
   const limit = Math.min(parseInt(searchParams.get('limit') || '200', 10) || 200, 1000)

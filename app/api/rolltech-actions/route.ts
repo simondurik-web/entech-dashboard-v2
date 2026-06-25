@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireReadAccess } from "@/lib/require-user"
 import type {
   ActionRecord,
   QueueBucket,
@@ -28,7 +29,8 @@ const EMPTY_BUCKET_COUNTS: Record<QueueBucket, number> = {
   noise: 0,
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   try {
     // Fetch all action records from the live view
     // The view uses effective_priority / effective_status columns;

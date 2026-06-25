@@ -116,6 +116,40 @@ export async function requireUserOrService(req: NextRequest): Promise<AuthedUser
 const DASHBOARD_APP_ID = "dashboard"
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 
+/**
+ * Verified ENROLLED dashboard user (any role except visitor/blocked) OR an
+ * approved floor device. Use for business-data READ routes: closes anonymous
+ * AND non-enrolled (visitor) access while keeping every enrolled user + floor
+ * device working. Returns the actor (with resolved role) or null.
+ */
+export async function requireDashboardAccess(req: NextRequest): Promise<AuthedActor | null> {
+  const actor = await requireUserOrDevice(req)
+  if (!actor) return null
+  if (actor.kind === "device") return actor
+  const p = await loadDashboardProfile(actor.id)
+  if (p.role === "visitor" || p.role === "blocked") return null
+  return { ...actor, role: p.role }
+}
+
+/**
+ * Gate for business-data READ routes: a trusted service caller (x-service-key,
+ * e.g. the PO-automation quote engine) OR {@link requireDashboardAccess}
+ * (enrolled user / approved device). Anonymous and non-enrolled callers get null.
+ */
+export async function requireReadAccess(req: NextRequest): Promise<AuthedActor | null> {
+  const expected = process.env.PO_AUTOMATION_API_KEY
+  const provided = req.headers.get("x-service-key")
+  if (expected && provided && safeEqual(provided, expected)) {
+    return {
+      id: req.headers.get("x-user-id") || "po-automation-service",
+      email: null,
+      kind: "user",
+      role: "service",
+    }
+  }
+  return requireDashboardAccess(req)
+}
+
 /** Resolve a user's effective dashboard role + custom_permissions (role from the
  *  dashboard app-role; no enrollment -> 'visitor'). */
 async function loadDashboardProfile(

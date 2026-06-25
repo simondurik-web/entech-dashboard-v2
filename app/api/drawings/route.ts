@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchDrawingsFromDB } from '@/lib/supabase-data'
 import { fetchDrawings } from '@/lib/google-sheets'
 import { resolveRecordPhotos } from '@/lib/photo-resolver'
+import { requireReadAccess } from '@/lib/require-user'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     let drawings
     try {

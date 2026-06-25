@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchShippingRecords, type ShippingRecord } from '@/lib/google-sheets'
 import { resolveRecordPhotos } from '@/lib/photo-resolver'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireReadAccess } from '@/lib/require-user'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     // Fetch from BOTH sources in parallel
     const [sheetRecords, dbResult] = await Promise.all([

@@ -1,14 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchSalesFromDB } from '@/lib/supabase-data'
 import { calculateSalesMath, getProfitPerPart, isNoOpSalesMathRow, summarizeSalesOrders } from '@/lib/sales-math'
+import { requireReadAccess } from '@/lib/require-user'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     // Primary: Supabase
     try {
       const salesData = await fetchSalesFromDB()
       return NextResponse.json(salesData, {
-        headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' },
+        headers: { 'Cache-Control': 'private, no-store' },
       })
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
@@ -143,7 +145,7 @@ async function fetchSalesFromSheets() {
       summary: summarizeSalesOrders(orders),
     },
     {
-      headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' },
+      headers: { 'Cache-Control': 'private, no-store' },
     }
   )
 }

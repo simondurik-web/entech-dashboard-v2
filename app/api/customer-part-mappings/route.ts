@@ -4,9 +4,10 @@ import {
   CustomerPartMappingValidationError,
 } from '@/lib/customer-part-mapping-costs'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireReadAccess, requireUser } from '@/lib/require-user'
 
 export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { searchParams } = new URL(req.url)
     const customerId = searchParams.get('customer_id')

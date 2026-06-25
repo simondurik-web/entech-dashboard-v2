@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
-import { requireUser } from '@/lib/require-user'
+import { requireReadAccess, requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
 const FIELDS = new Set(['department', 'sub_department', 'person'])
 
 /** GET -> { department: [...], sub_department: [...], person: [...] } */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data, error } = await supabaseAdmin
     .from('purchasing_options')
     .select('field, value, sort_order')

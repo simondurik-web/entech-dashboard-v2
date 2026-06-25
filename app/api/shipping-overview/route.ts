@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
 import { fetchOrders, normalizeStatus, type Order, type PalletRecord, type ShippingRecord } from '@/lib/google-sheets'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import type { ShippingOverviewOrder, ShippingOverviewPallet, ShippingOverviewResponse, ShippingOverviewShippingRecord } from '@/components/shipping-overview/types'
+import { requireReadAccess } from '@/lib/require-user'
 
 type OrderWithShippingFields = Order & {
   revenue?: number
@@ -416,7 +417,8 @@ const buildOverview = unstable_cache(
   { revalidate: 60, tags: ['shipping-overview'] },
 )
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  if (!(await requireReadAccess(request))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { staged, shipped: shippedWithinLookback, generatedAt } = await buildOverview()
 

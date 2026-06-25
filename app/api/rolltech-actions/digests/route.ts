@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireReadAccess } from "@/lib/require-user"
 import type { DailyDigest, WeeklyDigest } from "@/lib/rolltech-action-center/types"
 
 export const dynamic = "force-dynamic"
@@ -7,7 +8,8 @@ export const revalidate = 0
 
 // v_action_center_daily_digest and v_action_center_weekly_digest are Phase 5+ views.
 // This route attempts both queries and returns null gracefully when views don't exist yet.
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   try {
     const [dailyResult, weeklyResult] = await Promise.allSettled([
       supabaseAdmin

@@ -4,7 +4,7 @@ import { resolveActor, logPurchasing } from '@/lib/purchasing/audit'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
 import { deriveDepartment } from '@/lib/purchasing/compute'
 import { EDITABLE_FIELDS, type PurchasingInput } from '@/lib/purchasing/types'
-import { requireUser } from '@/lib/require-user'
+import { requireReadAccess, requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +38,8 @@ function sanitize(body: Record<string, unknown>): PurchasingInput {
 }
 
 /** Fetch every non-deleted row, paginating past Supabase's 1000-row cap. */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const pageSize = 1000
   const all: unknown[] = []
   for (let from = 0; ; from += pageSize) {

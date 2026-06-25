@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireReadAccess } from '@/lib/require-user'
 
 // Unified cost/lead-time change log across all BOM item types.
-// Auth is enforced client-side via AccessGuard (consistent with other BOM API routes).
 
 const VALID_ITEM_TYPES = ['individual', 'sub', 'final'] as const
 type ItemType = (typeof VALID_ITEM_TYPES)[number]
@@ -88,6 +88,7 @@ function mapRows(rows: unknown[]): CostChangeLogEntry[] {
 }
 
 export async function GET(req: NextRequest) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { searchParams } = new URL(req.url)
 

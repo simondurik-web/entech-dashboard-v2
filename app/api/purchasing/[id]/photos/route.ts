@@ -3,12 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
 import { resolveActor, logPurchasing } from '@/lib/purchasing/audit'
 import { PHOTO_BUCKET, MAX_PHOTO_BYTES, PHOTO_KINDS, photoPublicUrl, type PhotoKind } from '@/lib/purchasing/photos'
-import { requireUser } from '@/lib/require-user'
+import { requireReadAccess, requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
 /** GET photos for an order. ?kind=item|paperwork filters; ?includeDeleted=1 includes soft-deleted. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const sp = new URL(req.url).searchParams
   const includeDeleted = sp.get('includeDeleted') === '1'
