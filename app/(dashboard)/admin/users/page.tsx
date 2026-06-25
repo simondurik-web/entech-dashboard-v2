@@ -18,7 +18,7 @@ interface UserRecord {
   created_at: string
 }
 
-const ROLES: UserRole[] = ['visitor', 'regular_user', 'group_leader', 'shipping_manager', 'manager', 'admin']
+const ROLES: UserRole[] = ['visitor', 'regular_user', 'advanced_user', 'group_leader', 'shipping_manager', 'manager', 'admin']
 
 const ALL_MENU_PATHS = [
   '/orders', '/need-to-make', '/need-to-package', '/staged', '/shipped',

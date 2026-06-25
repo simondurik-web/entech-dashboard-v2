@@ -12,6 +12,7 @@ const DASHBOARD_APP_ID = "dashboard"
 const ALLOWED_DEVICE_ROLES = new Set([
   "visitor",
   "regular_user",
+  "advanced_user",
   "group_leader",
   "shipping_manager",
   "manager",

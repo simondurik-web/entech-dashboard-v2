@@ -6,7 +6,7 @@ import { setDataCacheOwner, clearDataCache, prefetchHeavyData } from "./data-cac
 import { getDeviceToken, checkDeviceStatus } from "./device-auth"
 import type { User, Session } from "@supabase/supabase-js"
 
-export type UserRole = 'visitor' | 'regular_user' | 'group_leader' | 'shipping_manager' | 'manager' | 'admin'
+export type UserRole = 'visitor' | 'regular_user' | 'advanced_user' | 'group_leader' | 'shipping_manager' | 'manager' | 'admin'
 
 // Hardcoded super admin — cannot be demoted by anyone
 export const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'

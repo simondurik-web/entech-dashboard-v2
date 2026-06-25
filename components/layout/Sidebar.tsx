@@ -151,6 +151,7 @@ const erpItem: NavItem = { tKey: "nav.erp", href: "https://erp.4molding.com/app/
 const ROLE_LABELS: Record<string, string> = {
   visitor: "Visitor",
   regular_user: "User",
+  advanced_user: "Advanced User",
   group_leader: "Group Leader",
   manager: "Manager",
   admin: "Admin",
@@ -159,6 +160,7 @@ const ROLE_LABELS: Record<string, string> = {
 const ROLE_COLORS: Record<string, string> = {
   visitor: "bg-gray-500/30 text-gray-300",
   regular_user: "bg-blue-500/30 text-blue-300",
+  advanced_user: "bg-cyan-500/30 text-cyan-300",
   group_leader: "bg-green-500/30 text-green-300",
   manager: "bg-purple-500/30 text-purple-300",
   admin: "bg-red-500/30 text-red-300",

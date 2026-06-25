@@ -31,7 +31,7 @@ interface NotifRule {
   enabled: boolean
 }
 
-const ROLES = ['admin', 'manager', 'group_leader', 'regular_user', 'visitor']
+const ROLES = ['admin', 'manager', 'group_leader', 'advanced_user', 'regular_user', 'visitor']
 
 const EVENT_TYPES = [
   { key: 'order_urgent', label: '🚨 Order Marked Urgent', description: 'Notify when any order is flagged as URGENT' },

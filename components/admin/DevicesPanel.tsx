@@ -20,7 +20,7 @@ interface DeviceRecord {
   last_seen_at: string | null
 }
 
-const DEVICE_ROLES = ['visitor', 'regular_user', 'group_leader', 'shipping_manager', 'manager']
+const DEVICE_ROLES = ['visitor', 'regular_user', 'advanced_user', 'group_leader', 'shipping_manager', 'manager']
 
 export function DevicesPanel({ adminUserId }: { adminUserId: string }) {
   const { t } = useI18n()
