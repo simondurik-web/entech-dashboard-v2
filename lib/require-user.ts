@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createHash, timingSafeEqual } from "crypto"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export type AuthedUser = { id: string; email: string | null }
 export type AuthedUserOrService = AuthedUser & { isService?: boolean }
+export type AuthedActor = { id: string; email: string | null; kind: "user" | "device"; role?: string }
 
 /**
  * Derive the caller's identity from the verified Supabase Bearer JWT.
@@ -64,6 +66,40 @@ function safeEqual(a: string, b: string): boolean {
  * If the service key is absent/invalid, this is exactly `requireUser` (Bearer
  * JWT), so normal users are unaffected.
  */
+const DEVICE_TOKEN_RE = /^[a-f0-9]{64}$/
+
+/**
+ * Like {@link requireUser}, but ALSO accepts an approved shared-floor device.
+ *
+ * Floor PCs have no Supabase login; they present the `x-device-token` they
+ * generated at pairing (the server only ever stores its sha256 hash). We
+ * validate the hash against `authorized_devices` and require status=approved —
+ * the same check /api/devices/me does. Returns the device's id + role so the
+ * caller can attribute the write and (if it wants) gate on the device role.
+ *
+ * Use on routes that floor devices legitimately write to (e.g. labels:
+ * mark-printed). Devices can never hold the admin role, so admin routes that
+ * check for role==='admin' stay device-proof even when using this helper.
+ */
+export async function requireUserOrDevice(req: NextRequest): Promise<AuthedActor | null> {
+  const user = await requireUser(req)
+  if (user) return { id: user.id, email: user.email, kind: "user" }
+
+  const token = req.headers.get("x-device-token") ?? ""
+  if (DEVICE_TOKEN_RE.test(token)) {
+    const tokenHash = createHash("sha256").update(token).digest("hex")
+    const { data: device } = await supabaseAdmin
+      .from("authorized_devices")
+      .select("id, role, status")
+      .eq("token_hash", tokenHash)
+      .maybeSingle()
+    if (device && device.status === "approved") {
+      return { id: device.id, email: null, kind: "device", role: device.role }
+    }
+  }
+  return null
+}
+
 export async function requireUserOrService(req: NextRequest): Promise<AuthedUserOrService | null> {
   const expected = process.env.PO_AUTOMATION_API_KEY
   const provided = req.headers.get("x-service-key")

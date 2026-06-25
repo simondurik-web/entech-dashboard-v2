@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireUserOrDevice } from '@/lib/require-user'
 
 export async function GET(
   _req: NextRequest,
@@ -24,7 +24,9 @@ export async function PATCH(
 ) {
   const { id } = await params
   const body = await req.json()
-  const userId = (await requireUser(req))?.id
+  const actor = await requireUserOrDevice(req)
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const userId = actor.id
 
   const updates: Record<string, unknown> = {}
 

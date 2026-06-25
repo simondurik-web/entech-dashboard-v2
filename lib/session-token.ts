@@ -1,6 +1,7 @@
 "use client"
 
 import { supabase } from "./supabase"
+import { getDeviceToken } from "./device-auth"
 
 // Module-level cache of the current Supabase access token.
 //
@@ -69,5 +70,10 @@ export function getAccessToken(): string | null {
 export function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { ...(extra ?? {}) }
   if (cachedToken) headers.Authorization = `Bearer ${cachedToken}`
+  // Shared floor devices have no Bearer token; send their device token so
+  // device-aware routes (requireUserOrDevice, e.g. label printing) authenticate.
+  // Harmless on user-only routes — they ignore it.
+  const deviceToken = getDeviceToken()
+  if (deviceToken) headers["x-device-token"] = deviceToken
   return headers
 }

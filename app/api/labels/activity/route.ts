@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireUserOrDevice } from '@/lib/require-user'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -20,7 +20,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const userId = (await requireUser(req))?.id
+  const actor = await requireUserOrDevice(req)
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const userId = actor.id
 
   const { data, error } = await supabaseAdmin
     .from('label_activity_log')
