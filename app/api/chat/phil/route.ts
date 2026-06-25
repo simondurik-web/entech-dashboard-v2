@@ -58,6 +58,8 @@ async function loadUserContext(userId: string): Promise<UserContext | null> {
 
 async function canAccessPhil(user: UserContext): Promise<boolean> {
   if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
+  // Blocked is a hard-deny — before custom_permissions can grant anything.
+  if (user.role === "blocked") return false
   if (user.role === "admin" || user.role === "super_admin") return true
   if (user.customPermissions && PHIL_PATH in user.customPermissions) {
     return user.customPermissions[PHIL_PATH] === true

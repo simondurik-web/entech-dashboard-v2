@@ -41,6 +41,9 @@ export async function canAccessPoAutomation(userId: string | null | undefined): 
     .maybeSingle()
   const role = appRole?.role ?? 'visitor'
 
+  // Blocked is a hard-deny — before custom_permissions can grant anything.
+  if (role === 'blocked') return false
+
   if (role === 'admin' || role === 'super_admin') return true
 
   // Per-user custom override (from user_profiles) takes precedence over role.

@@ -45,3 +45,11 @@ FROM public.user_app_roles uar
 WHERE uar.user_id = up.id
   AND uar.app_id = 'dashboard'
   AND up.role <> uar.role;
+
+-- The lockdown depends on the 'visitor' role having NO menu access (non-enrolled
+-- users resolve to visitor). The original 001_auth_rbac seed gave visitor a few
+-- paths; prod was emptied manually long ago. Enforce empty here so fresh/replayed
+-- environments are locked down too.
+UPDATE public.role_permissions
+SET menu_access = '{}'::jsonb, updated_at = now()
+WHERE role = 'visitor' AND menu_access <> '{}'::jsonb;
