@@ -63,7 +63,7 @@ export default function SchedulingPage() {
 
 function SchedulingPageContent() {
   const { t } = useI18n()
-  const { user, profile } = useAuth()
+  const { profile } = useAuth()
   const role = profile?.role ?? 'visitor'
 
   const isAdmin = role === 'admin' || role === 'super_admin' || role === 'manager'

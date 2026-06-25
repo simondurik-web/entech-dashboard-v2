@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { updateAssignedTo } from '@/lib/google-sheets-write'
-import { requireUser } from '@/lib/require-user'
+import { requirePermission } from '@/lib/require-user'
 
 export async function GET() {
   // Return unique assignee names from dashboard_orders
@@ -23,7 +23,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await requirePermission(req, 'assign_orders'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json()
   const { line, assigned_to } = body as { line: string; assigned_to: string }
 
@@ -56,7 +56,7 @@ export async function PATCH(req: NextRequest) {
 
 /** PUT — Rename an assignee across ALL orders (both Supabase & Google Sheets) */
 export async function PUT(req: NextRequest) {
-  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await requirePermission(req, 'assign_orders'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { old_name, new_name } = (await req.json()) as { old_name: string; new_name: string }
   if (!old_name || !new_name) {
     return NextResponse.json({ error: 'old_name and new_name are required' }, { status: 400 })
@@ -90,7 +90,7 @@ export async function PUT(req: NextRequest) {
 
 /** DELETE — Remove an assignee (unassign all their orders) */
 export async function DELETE(req: NextRequest) {
-  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await requirePermission(req, 'assign_orders'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { name } = (await req.json()) as { name: string }
   if (!name) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireAdmin } from '@/lib/require-user'
 
 // Lazy-load web-push to avoid build issues
 let webpush: typeof import('web-push') | null = null
@@ -17,9 +17,12 @@ async function getWebPush() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Admin-only: this blasts push notifications to all/role/user. Identity (sent_by)
+  // comes from the verified admin, NOT a spoofable body field.
+  const admin = await requireAdmin(req)
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
-    const { title, body, url, targetRole, targetUserId, sentBy } = await req.json()
+    const { title, body, url, targetRole, targetUserId } = await req.json()
     if (!title) return NextResponse.json({ error: 'Title required' }, { status: 400 })
 
     // Get target subscriptions
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from('notification_log').insert({
       title,
       body,
-      sent_by: sentBy || null,
+      sent_by: admin.id,
       target_role: targetRole || null,
       target_user_id: targetUserId || null,
       sent_count: sent,

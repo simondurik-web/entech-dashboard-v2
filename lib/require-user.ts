@@ -112,3 +112,61 @@ export async function requireUserOrService(req: NextRequest): Promise<AuthedUser
   }
   return requireUser(req)
 }
+
+const DASHBOARD_APP_ID = "dashboard"
+const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
+
+/** Resolve a user's effective dashboard role + custom_permissions (role from the
+ *  dashboard app-role; no enrollment -> 'visitor'). */
+async function loadDashboardProfile(
+  userId: string
+): Promise<{ email: string | null; role: string; custom_permissions: Record<string, boolean> | null }> {
+  const [{ data: profile }, { data: appRole }] = await Promise.all([
+    supabaseAdmin.from("user_profiles").select("email, custom_permissions").eq("id", userId).maybeSingle(),
+    supabaseAdmin
+      .from("user_app_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("app_id", DASHBOARD_APP_ID)
+      .maybeSingle(),
+  ])
+  return {
+    email: (profile?.email as string | null) ?? null,
+    role: (appRole?.role as string | undefined) ?? "visitor",
+    custom_permissions: (profile?.custom_permissions as Record<string, boolean> | null) ?? null,
+  }
+}
+
+/**
+ * Verified caller who is a dashboard admin (or the hardcoded super admin),
+ * else null. Use for admin-only routes: `if (!(await requireAdmin(req))) 403`.
+ * Returns the AuthedUser so the route can attribute the action to the real id.
+ */
+export async function requireAdmin(req: NextRequest): Promise<AuthedUser | null> {
+  const user = await requireUser(req)
+  if (!user) return null
+  if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
+  const p = await loadDashboardProfile(user.id)
+  return p.role === "admin" ? user : null
+}
+
+/**
+ * Verified caller who holds a given dashboard menu permission, else null —
+ * the server-side mirror of the client `canAccess(permKey)`: admin, an explicit
+ * custom_permissions[permKey], or role_permissions.menu_access[permKey] === true.
+ */
+export async function requirePermission(req: NextRequest, permKey: string): Promise<AuthedUser | null> {
+  const user = await requireUser(req)
+  if (!user) return null
+  if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
+  const p = await loadDashboardProfile(user.id)
+  if (p.role === "admin") return user
+  if (p.custom_permissions?.[permKey]) return user
+  const { data: rolePerm } = await supabaseAdmin
+    .from("role_permissions")
+    .select("menu_access")
+    .eq("role", p.role)
+    .maybeSingle()
+  const access = (rolePerm?.menu_access ?? {}) as Record<string, boolean>
+  return access?.[permKey] === true ? user : null
+}
