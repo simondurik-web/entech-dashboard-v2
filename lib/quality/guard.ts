@@ -51,7 +51,7 @@ export async function resolveQualityActor(
     .eq("user_id", userId)
     .in("app_id", [DASHBOARD_APP_ID, QUALITY_APP_ID])
 
-  const dashboardRole = appRoles?.find((r) => r.app_id === DASHBOARD_APP_ID)?.role ?? profile.role
+  const dashboardRole = appRoles?.find((r) => r.app_id === DASHBOARD_APP_ID)?.role ?? "visitor"
   const qualityRole = appRoles?.find((r) => r.app_id === QUALITY_APP_ID)?.role ?? null
   const email = profile.email ?? null
   const isSuper = email?.toLowerCase() === SUPER_ADMIN_EMAIL

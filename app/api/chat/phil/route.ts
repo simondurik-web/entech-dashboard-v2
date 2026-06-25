@@ -46,7 +46,7 @@ async function loadUserContext(userId: string): Promise<UserContext | null> {
     .eq("app_id", DASHBOARD_APP_ID)
     .single()
 
-  const effectiveRole = appRole?.role ?? profile.role ?? "visitor"
+  const effectiveRole = appRole?.role ?? "visitor"
 
   return {
     userId: profile.id,

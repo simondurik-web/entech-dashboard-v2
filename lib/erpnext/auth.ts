@@ -54,7 +54,8 @@ export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
     .eq('user_id', userId)
     .eq('app_id', 'dashboard')
     .single()
-  const role: string = appRole?.role ?? profile.role ?? 'visitor'
+  // Access requires an explicit dashboard app-role; no enrollment -> visitor.
+  const role: string = appRole?.role ?? 'visitor'
 
   if (role === 'admin' || role === 'super_admin') return { ok: true, role, userId, email }
 

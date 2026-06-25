@@ -156,6 +156,7 @@ const ROLE_LABELS: Record<string, string> = {
   shipping_manager: "Shipping Manager",
   manager: "Manager",
   admin: "Admin",
+  blocked: "Blocked",
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -166,6 +167,7 @@ const ROLE_COLORS: Record<string, string> = {
   shipping_manager: "bg-amber-500/30 text-amber-300",
   manager: "bg-purple-500/30 text-purple-300",
   admin: "bg-red-500/30 text-red-300",
+  blocked: "bg-red-950/60 text-red-400 line-through",
 }
 
 export function Sidebar({

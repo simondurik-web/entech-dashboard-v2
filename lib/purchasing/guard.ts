@@ -32,7 +32,7 @@ export async function canAccessPurchasing(userId: string | null | undefined): Pr
     .eq('user_id', userId)
     .eq('app_id', DASHBOARD_APP_ID)
     .maybeSingle()
-  const role = appRole?.role ?? profile.role
+  const role = appRole?.role ?? 'visitor'
 
   if (role === 'admin' || role === 'super_admin') return true
 

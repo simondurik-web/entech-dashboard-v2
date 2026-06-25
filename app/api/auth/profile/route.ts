@@ -35,7 +35,11 @@ async function overlayAppRole(profile: Record<string, unknown>) {
 
   return {
     ...profile,
-    ...(dashboardRole ? { role: dashboardRole } : {}),
+    // Molding access requires an explicit dashboard enrollment (user_app_roles).
+    // No dashboard role -> visitor, regardless of the base user_profiles.role —
+    // keeps non-enrolled / other-app (e.g. SnapPad) users out, and lets a
+    // "blocked" dashboard role hard-deny.
+    role: dashboardRole ?? "visitor",
     quality_role: qualityRole,
     production_access: prodUser ? { role: prodUser.role, status: prodUser.status } : null,
   }

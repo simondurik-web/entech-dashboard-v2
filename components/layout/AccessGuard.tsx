@@ -12,7 +12,7 @@ import type { ReactNode } from "react"
 
 export function AccessGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const { user, loading, signIn } = useAuth()
+  const { user, loading, signIn, signOut, profile } = useAuth()
   const { canAccess } = usePermissions()
   const { canSeeQuality, canManageQuality, canEditLimits } = useQualityAccess()
   const { canSeePallets, isPalletAdmin } = usePalletAccess()
@@ -48,6 +48,24 @@ export function AccessGuard({ children }: { children: ReactNode }) {
   )
 
   if (loading) return <>{children}</>
+
+  // Blocked users are hard-denied everywhere — not even the visitor view.
+  if (user && profile?.role === "blocked") {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-8 text-center">
+          <h2 className="mb-2 text-xl font-semibold">{t('auth.blocked')}</h2>
+          <p className="mb-4 text-muted-foreground">{t('auth.blockedMessage')}</p>
+          <button
+            onClick={signOut}
+            className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/20"
+          >
+            {t('auth.signOut')}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Quality (EQDR) section — gated by the user's Quality role (user_app_roles[quality]),
   // NOT the molding menu permissions, so the same QA users keep their existing access.

@@ -50,7 +50,7 @@ export async function resolvePalletActor(userId: string | null | undefined): Pro
 
   const email = (profile?.email ?? prodUser?.email ?? null) as string | null
   const isSuper = email?.toLowerCase() === SUPER_ADMIN_EMAIL
-  const dashboardRole = appRole?.role ?? profile?.role ?? null
+  const dashboardRole = appRole?.role ?? null
   const moldingAdmin = dashboardRole === "admin" || dashboardRole === "super_admin" || isSuper
 
   const productionRole = (prodUser?.role === "admin" || prodUser?.role === "user") ? prodUser.role : null

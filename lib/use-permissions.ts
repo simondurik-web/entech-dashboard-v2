@@ -100,6 +100,9 @@ export function usePermissions() {
     (path: string): boolean => {
       if (!profile) return false
 
+      // Blocked is a hard-deny — no access to anything, not even visitor pages.
+      if (profile.role === "blocked") return false
+
       // Admin / Super Admin always has access
       if (profile.role === "admin" || profile.role === "super_admin") return true
 
