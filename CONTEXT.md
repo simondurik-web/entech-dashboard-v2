@@ -6,6 +6,21 @@ Created: 2026-02-07
 
 ---
 
+## 🔐 ACTIVE HANDOFF → claude-3: API Auth Hardening (2026-06-25)
+
+claude-2 (#erp) handed claude-3 (#molding-dashboard) a security project: **most API
+routes trust a spoofable `x-user-id` header instead of the login token.** Full plan,
+the 22-route inventory, the `requireUser` pattern, the 3 phases, and the
+parallel-work guardrails are in **`docs/API-AUTH-HARDENING-PLAN.md`** — read that first.
+**Start with Phase 1** (token-auth the 22 `x-user-id` routes + send the Bearer token
+from the client) on branch `security/api-auth-hardening` → staging → 4-agent review →
+main. Division of labor: claude-2 stays ERPNext-side; claude-3 owns dashboard-repo work.
+Watch-zone: the label API routes (`app/api/labels/*`) overlap label-feature work —
+sequence + log here if both are touched. Context: this followed the app-scoped lockdown
++ `blocked` blacklist already shipped to prod (commit `10a6563`).
+
+---
+
 ## ⚠️ DEPLOYMENT WORKFLOW (MANDATORY - Simon's Requirement 2026-02-21)
 
 **TWO branches. TWO environments. ALWAYS ask before pushing.**
