@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 // Lazy-load web-push to avoid build issues
 let webpush: typeof import('web-push') | null = null
@@ -16,6 +17,7 @@ async function getWebPush() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { title, body, url, targetRole, targetUserId, sentBy } = await req.json()
     if (!title) return NextResponse.json({ error: 'Title required' }, { status: 400 })

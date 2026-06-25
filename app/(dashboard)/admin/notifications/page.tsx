@@ -110,7 +110,7 @@ export default function NotificationsAdminPage() {
       const userIds = Array.from(selectedUsers[eventType] || [])
       const res = await fetch('/api/notification-rules', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ eventType, userIds }),
       })
       if (res.ok) {
@@ -132,7 +132,7 @@ export default function NotificationsAdminPage() {
 
       const res = await fetch('/api/notifications/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       const data = await res.json()

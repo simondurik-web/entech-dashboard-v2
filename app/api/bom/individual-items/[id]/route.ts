@@ -1,11 +1,13 @@
-import { NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { recalculateCascade } from '@/lib/bom-recalculate'
 import { attributeCostHistory } from '@/lib/bom-cost-history-attribution'
+import { requireUser } from '@/lib/require-user'
 
 const AUDIT_FIELDS = ['part_number', 'description', 'cost_per_unit', 'unit', 'supplier', 'lead_time']
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json()
   const performedByName = body._performed_by_name || null
@@ -76,7 +78,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   return NextResponse.json(data)
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
 
   // Fetch for audit

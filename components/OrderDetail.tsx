@@ -548,7 +548,7 @@ export function OrderDetail({
                   onClick={async () => {
                     const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: authHeaders({ 'Content-Type': 'application/json' }),
                       body: JSON.stringify({
                         order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
                         pallet_number: 1,
@@ -589,7 +589,7 @@ export function OrderDetail({
                           const nextNum = pallets.length + 1
                           const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: authHeaders({ 'Content-Type': 'application/json' }),
                             body: JSON.stringify({
                               order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
                               pallet_number: nextNum,
@@ -685,7 +685,7 @@ export function OrderDetail({
                                     if (!confirm(`Delete pallet #${p.palletNumber || idx + 1}? You can recover it from the audit trail.`)) return
                                     const res = await fetch(`/api/pallet-records/${p.id}`, {
                                       method: 'DELETE',
-                                      headers: { 'Content-Type': 'application/json' },
+                                      headers: authHeaders({ 'Content-Type': 'application/json' }),
                                       body: JSON.stringify({ deleted_by_name: userName }),
                                     })
                                     if (res.ok) {

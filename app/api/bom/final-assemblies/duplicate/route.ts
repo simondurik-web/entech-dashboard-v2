@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BomAuthoringError, createFinalAssembly } from '@/lib/bom-authoring'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { id, new_part_number, _performed_by_name, _performed_by_email } = await req.json()
 

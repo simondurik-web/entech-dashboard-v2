@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 // GET: Fetch all notification rules
 export async function GET() {
@@ -20,6 +21,7 @@ export async function GET() {
 // POST: Set notification rules for an event type
 // Body: { eventType: string, userIds: string[] }
 export async function POST(req: NextRequest) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { eventType, userIds } = await req.json()
     if (!eventType || !Array.isArray(userIds)) {

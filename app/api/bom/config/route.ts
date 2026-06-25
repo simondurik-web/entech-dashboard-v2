@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { recalculateFinalAssembly } from '@/lib/bom-recalculate'
+import { requireUser } from '@/lib/require-user'
 
 export async function GET() {
   const { data, error } = await supabaseAdmin.from('bom_config').select('*').order('key')
@@ -10,7 +11,8 @@ export async function GET() {
   })
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
   const { configs, apply_to_all } = body as { configs: Array<{ key: string; value: number }>; apply_to_all?: boolean }
 

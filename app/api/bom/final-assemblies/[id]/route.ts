@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BomAuthoringError, updateFinalAssembly } from '@/lib/bom-authoring'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { attributeCostHistory } from '@/lib/bom-cost-history-attribution'
+import { requireUser } from '@/lib/require-user'
 
 const AUDIT_FIELDS = [
   'part_number', 'product_category', 'sub_product_category', 'description', 'notes',
@@ -9,7 +10,8 @@ const AUDIT_FIELDS = [
   'shipping_labor_cost', 'overhead_pct', 'admin_pct', 'depreciation_pct', 'repairs_pct', 'profit_target_pct',
 ]
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { id } = await params
     const body = await req.json()
@@ -66,7 +68,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
 
   const { data: existing } = await supabaseAdmin

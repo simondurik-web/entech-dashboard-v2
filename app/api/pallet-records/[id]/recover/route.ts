@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUserOrDevice } from '@/lib/require-user'
 
 /** POST — Recover a deleted pallet record from audit trail */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!(await requireUserOrDevice(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json().catch(() => ({}))
   const userName = body.recovered_by_name || 'Unknown'

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Pencil, Trash2, Plus, Loader2, History } from 'lucide-react'
+import { authHeaders } from '@/lib/session-token'
 
 interface AuditEntry {
   id: string
@@ -109,7 +110,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
 
       const res = await fetch(`/api/pallet-records/${pallet.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
@@ -136,6 +137,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
       formData.append('category', category)
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
         method: 'POST',
+        headers: authHeaders(),
         body: formData,
       })
       if (!res.ok) {
@@ -162,7 +164,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     try {
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ photo_url: photoUrl, deleted_by_name: userName, category }),
       })
       if (!res.ok) {
@@ -368,7 +370,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
                                   if (!pallet) return
                                   const res = await fetch(`/api/pallet-records/${pallet.id}/recover`, {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers: authHeaders({ 'Content-Type': 'application/json' }),
                                     body: JSON.stringify({ recovered_by_name: userName }),
                                   })
                                   if (res.ok) {

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { PageSkeleton } from '@/components/ui/skeleton-loader'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { CurrentTime } from '@/components/scheduling/CurrentTime'
 import { ScheduleSearch } from '@/components/scheduling/ScheduleSearch'
 import { ScheduleGrid, type ScheduleEntry, type ScheduleEmployee } from '@/components/scheduling/ScheduleGrid'
@@ -197,7 +198,7 @@ function SchedulingPageContent() {
       const prevMonday = addWeeks(monday, -1)
       const resp = await fetch('/api/scheduling/copy-week', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           sourceMonday: formatDateStr(prevMonday),
           targetMonday: formatDateStr(monday),
@@ -231,7 +232,7 @@ function SchedulingPageContent() {
     try {
       await fetch('/api/scheduling/revert-copy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ copiedIds: lastCopiedIds }),
       })
       setLastCopiedIds(null)
@@ -487,7 +488,7 @@ function SchedulingPageContent() {
                 onUpdate={async (id, data) => {
                   await fetch('/api/scheduling/employees', {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ id, ...data }),
                   })
                   window.location.reload()
@@ -495,7 +496,7 @@ function SchedulingPageContent() {
                 onCreate={async (data) => {
                   const res = await fetch('/api/scheduling/employees', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(data),
                   })
                   if (!res.ok) {

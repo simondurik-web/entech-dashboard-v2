@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, UserPlus, X, Pencil, Trash2 } from 'lucide-react'
+import { authHeaders } from '@/lib/session-token'
 
 interface AssigneeEditorProps {
   line: string
@@ -104,7 +105,7 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
     try {
       const res = await fetch('/api/orders/assign', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ line, assigned_to: name }),
       })
       if (res.ok) {
@@ -142,7 +143,7 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
     try {
       const res = await fetch('/api/orders/assign', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ old_name: oldName, new_name: trimmed }),
       })
       if (res.ok) {
@@ -161,7 +162,7 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
     try {
       const res = await fetch('/api/orders/assign', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ name }),
       })
       if (res.ok) {

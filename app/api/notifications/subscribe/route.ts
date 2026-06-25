@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUserOrDevice } from '@/lib/require-user'
 
 export async function POST(req: NextRequest) {
+  if (!(await requireUserOrDevice(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { userId, endpoint, p256dh, auth } = await req.json()
     if (!userId || !endpoint || !p256dh || !auth) {
@@ -23,6 +25,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!(await requireUserOrDevice(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { userId, endpoint } = await req.json()
     if (!userId || !endpoint) {

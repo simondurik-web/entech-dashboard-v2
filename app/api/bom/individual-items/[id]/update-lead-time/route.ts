@@ -1,13 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { attributeCostHistory } from '@/lib/bom-cost-history-attribution'
-
-// Note: Auth is enforced client-side via AccessGuard (consistent with all BOM API routes).
-// Server-side auth for BOM routes is tracked as a future improvement.
+import { requireUser } from '@/lib/require-user'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
 
   if (!UUID_RE.test(id)) {

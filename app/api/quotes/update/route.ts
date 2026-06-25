@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
-export async function PUT(request: Request) {
+export async function PUT(req: NextRequest) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
-    const { id, status, notes } = await request.json()
+    const { id, status, notes } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Quote id is required' }, { status: 400 })

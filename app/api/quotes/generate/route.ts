@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import React from 'react'
 import { renderToBuffer, Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer'
 import { ENTECH_LOGO_BASE64 } from '@/lib/entech-logo'
+import { requireUser } from '@/lib/require-user'
 
 const styles = StyleSheet.create({
   page: { padding: 36, fontFamily: 'Helvetica', fontSize: 9, color: '#333' },
@@ -227,9 +228,10 @@ async function generateQuoteNumber(): Promise<string> {
   return `${prefix}-${String(nextNum).padStart(4, '0')}`
 }
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
+  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
-    const body: QuoteRequest = await request.json()
+    const body: QuoteRequest = await req.json()
 
     if (!body.customerName || !body.items || body.items.length === 0) {
       return NextResponse.json({ error: 'Customer and items are required' }, { status: 400 })

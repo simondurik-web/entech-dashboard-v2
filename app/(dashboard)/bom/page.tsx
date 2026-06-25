@@ -20,6 +20,7 @@ import {
   ChevronRight, ChevronDown, Plus, Trash2, Copy, Save, RefreshCw, Settings, Search, AlertTriangle, Pencil, History,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { useI18n } from '@/lib/i18n'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { DataTable } from '@/components/data-table'
@@ -478,7 +479,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   const saveCost = async (id: string) => {
     await fetch(`/api/bom/individual-items/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ cost_per_unit: Number(editCost), ...performedBy }),
     })
     setEditingId(null)
@@ -495,7 +496,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     try {
       const res = await fetch(`/api/bom/individual-items/${id}/update-lead-time`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ lead_time: value, ...performedBy }),
       })
       if (!res.ok) {
@@ -517,7 +518,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     if (!confirm('Delete this item? This may affect sub-assemblies and final assemblies.')) return
     await fetch(`/api/bom/individual-items/${id}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(performedBy),
     })
     onRefresh(true)
@@ -526,7 +527,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
   const addItem = async () => {
     await fetch('/api/bom/individual-items', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ...newItem, cost_per_unit: Number(newItem.cost_per_unit), ...performedBy }),
     })
     setShowAdd(false)
@@ -540,7 +541,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
     try {
       const res = await fetch('/api/bom/individual-items/duplicate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id, new_part_number: newPart, ...performedBy }),
       })
       if (!res.ok) {
@@ -780,7 +781,7 @@ function NewSubAssemblyDialog({ individualItems, existingCategories, onCreated }
     try {
       const response = await fetch('/api/bom/sub-assemblies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       const data = await response.json()
@@ -1001,7 +1002,7 @@ function NewFinalAssemblyDialog({ subAssemblies, individualItems, existingProduc
     try {
       const response = await fetch('/api/bom/final-assemblies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       const data = await response.json()
@@ -1230,7 +1231,7 @@ function EditIndividualItemDialog({ item, onSaved }: {
     try {
       await fetch(`/api/bom/individual-items/${item.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ...form, cost_per_unit: Number(form.cost_per_unit), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       onSaved()
@@ -1314,7 +1315,7 @@ function EditSubAssemblyDialog({ assembly, individualItems, existingCategories, 
     setSaving(true); setError(null)
     try {
       const res = await fetch(`/api/bom/sub-assemblies/${assembly.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ...form, components: components.map(c => ({ component_part_number: c.component_part_number, quantity: c.quantity })), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       const data = await res.json()
@@ -1436,7 +1437,7 @@ function EditFinalAssemblyDialog({ assembly, subAssemblies, individualItems, exi
     setSaving(true); setError(null)
     try {
       const res = await fetch(`/api/bom/final-assemblies/${assembly.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ...form, components: components.map(c => ({ component_source: c.component_source, component_part_number: c.component_part_number, quantity: c.quantity, quantity_formula: c.quantity_formula || null })), _performed_by_name: profile?.full_name || 'Unknown', _performed_by_email: profile?.email || '' }),
       })
       const data = await res.json()
@@ -1749,7 +1750,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
     try {
       const res = await fetch('/api/bom/sub-assemblies/duplicate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id, new_part_number: newPart, ...performedBy }),
       })
       if (!res.ok) {
@@ -1764,7 +1765,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
   }
 
   const recalculate = async (id: string) => {
-    await fetch(`/api/bom/sub-assemblies/${id}/recalculate`, { method: 'POST' })
+    await fetch(`/api/bom/sub-assemblies/${id}/recalculate`, { method: 'POST', headers: authHeaders() })
     onRefresh(true)
   }
 
@@ -1772,7 +1773,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
     if (!confirm('Delete this sub-assembly?')) return
     await fetch(`/api/bom/sub-assemblies/${id}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(performedBy),
     })
     onRefresh(true)
@@ -1929,7 +1930,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
     try {
       const res = await fetch('/api/bom/final-assemblies/duplicate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id, new_part_number: newPart }),
       })
       if (!res.ok) {
@@ -1944,13 +1945,13 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   }
 
   const recalculate = async (id: string) => {
-    await fetch(`/api/bom/final-assemblies/${id}/recalculate`, { method: 'POST' })
+    await fetch(`/api/bom/final-assemblies/${id}/recalculate`, { method: 'POST', headers: authHeaders() })
     onRefresh(true)
   }
 
   const deleteAssembly = async (id: string) => {
     if (!confirm('Delete this final assembly?')) return
-    await fetch(`/api/bom/final-assemblies/${id}`, { method: 'DELETE' })
+    await fetch(`/api/bom/final-assemblies/${id}`, { method: 'DELETE', headers: authHeaders() })
     onRefresh(true)
   }
 
@@ -1959,7 +1960,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
     if (configs.length === 0) return
     await fetch('/api/bom/config', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ configs, apply_to_all: applyToAll }),
     })
     setShowConfig(false)
@@ -1970,7 +1971,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
   const updateOverhead = async (id: string, field: string, value: number) => {
     await fetch(`/api/bom/final-assemblies/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ [field]: value }),
     })
     onRefresh(true)

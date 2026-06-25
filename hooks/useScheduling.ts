@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders as buildAuthHeaders } from '@/lib/session-token'
 
-/** Simple fetch wrapper — read endpoints need no auth, write endpoints send x-user-id */
+/** Simple fetch wrapper — read endpoints need no auth, write endpoints send the Bearer token (authHeaders) */
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...opts,
@@ -16,9 +17,11 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json()
 }
 
-/** Fetch with user ID header for write operations */
-function authHeaders(userId: string): Record<string, string> {
-  return { 'x-user-id': userId }
+/** Auth headers for write/privileged scheduling endpoints. Hardened 2026-06-25:
+ *  sends the verified Supabase Bearer token (was the spoofable x-user-id). The
+ *  userId arg is kept for call-site compatibility but no longer used. */
+function authHeaders(_userId?: string): Record<string, string> {
+  return buildAuthHeaders()
 }
 
 // --- Schedule Entries ---

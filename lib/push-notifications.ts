@@ -1,5 +1,7 @@
 // Client-side push notification helpers
 
+import { authHeaders } from '@/lib/session-token'
+
 const VAPID_PUBLIC_KEY = 'BElvSWKigwRXGO8Pgl4FWaKdqLTbuY3xPNxQ9i9IebiEgpl0dyRcW_e6njCpYGca-TSVR8GJTZ3OlP40CUQw9BM'
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -40,7 +42,7 @@ export async function subscribeToPush(userId: string): Promise<boolean> {
 
     const res = await fetch('/api/notifications/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         userId,
         endpoint: subscription.endpoint,
@@ -64,7 +66,7 @@ export async function unsubscribeFromPush(userId: string): Promise<boolean> {
       await subscription.unsubscribe()
       await fetch('/api/notifications/subscribe', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ userId, endpoint: subscription.endpoint }),
       })
     }

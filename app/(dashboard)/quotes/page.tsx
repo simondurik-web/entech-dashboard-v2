@@ -7,6 +7,7 @@ import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
+import { authHeaders } from '@/lib/session-token'
 
 interface Quote {
   id: string
@@ -119,7 +120,7 @@ function QuotesContent() {
     try {
       const res = await fetch('/api/quotes/update', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id, [field]: value }),
       })
       if (!res.ok) throw new Error('Update failed')

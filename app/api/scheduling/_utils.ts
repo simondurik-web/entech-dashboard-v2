@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 const DASHBOARD_APP_ID = 'dashboard'
 
-/** Get user profile from x-user-id header, with app-specific role overlay */
+/** Resolve the user profile from the verified Supabase Bearer token, with the
+ *  app-specific role overlay. (Hardened 2026-06-25: was the spoofable x-user-id
+ *  header.) The function name is kept for its many call sites. */
 export async function getProfileFromHeader(req: NextRequest) {
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return null
 
   const { data: profile } = await supabaseAdmin

@@ -37,6 +37,7 @@ import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { toast } from '@/lib/use-toast'
 import { BomExpandPanel } from '@/components/customer-reference/BomExpandPanel'
 import { fetchBomMaps, emptyBomMaps, type BomMaps } from '@/lib/customer-reference-bom'
+import { authHeaders } from '@/lib/session-token'
 
 interface Customer {
   id: string
@@ -380,7 +381,7 @@ function CustomerReferencePageContent() {
     try {
       const res = await fetch('/api/customers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(customerForm),
       })
       const newCust = await res.json().catch(() => null)
@@ -415,7 +416,7 @@ function CustomerReferencePageContent() {
       const method = editingMapping ? 'PUT' : 'POST'
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...formData,
           _performed_by_name: profile?.full_name || 'Unknown',
@@ -436,7 +437,7 @@ function CustomerReferencePageContent() {
     try {
       await fetch(`/api/customer-part-mappings/${deleteTarget.id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           deleted_by_name: profile?.full_name || 'Unknown',
           deleted_by_email: profile?.email || '',
@@ -453,7 +454,7 @@ function CustomerReferencePageContent() {
     try {
       const res = await fetch('/api/customer-part-mappings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           customer_id: m.customer_id,
           customer_part_number: (m.customer_part_number || '') + '-COPY',

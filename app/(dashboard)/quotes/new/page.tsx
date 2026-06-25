@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { useI18n } from '@/lib/i18n'
+import { authHeaders } from '@/lib/session-token'
 
 // Sentinel "customer" for ad-hoc quotes: no customer record, parts picked
 // from the full catalog, prices typed manually (Simon 2026-06-11 — quoting
@@ -249,7 +250,7 @@ export default function NewQuotePage() {
     try {
       const res = await fetch('/api/quotes/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(genericMode ? {
           customerName: prospectName.trim(),
           paymentTerms: effectiveGenericTerms,
