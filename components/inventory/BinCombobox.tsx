@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 
 // A single bin/warehouse combobox: shows the committed `value`, click to reveal all bins,
 // type to filter, pick to commit. Focus selects-all so typing replaces (no manual delete);
@@ -57,8 +58,21 @@ export function BinCombobox({
           }, 150)
         }}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+        className="w-full rounded-lg border border-border bg-background pl-3 pr-9 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
       />
+      {(text || value) && (
+        // Clear the selection AND the typed text (mousedown-preventDefault so the
+        // input's blur-revert doesn't restore the old value first).
+        <button
+          type="button"
+          aria-label="clear"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { onChange(''); setText(''); setOpen(false) }}
+          className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
       {open && (
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
           <div data-lenis-prevent className="inv-scroll max-h-60 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>

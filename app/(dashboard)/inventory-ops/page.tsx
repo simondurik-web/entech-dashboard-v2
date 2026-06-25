@@ -2153,8 +2153,8 @@ export default function InventoryOpsPage() {
                 </div>
               )}
             </div>
-            {binOpen && (
-              <button onClick={() => setBinOpen(false)} className="rounded-md p-2 text-muted-foreground hover:text-foreground" aria-label={t('inventoryOps.cancel')}>
+            {(binOpen || binQuery) && (
+              <button onClick={() => { setBinQuery(''); setBinOpen(false) }} className="rounded-md p-2 text-muted-foreground hover:text-foreground" aria-label={t('inventoryOps.cancel')}>
                 <X className="h-4 w-4" />
               </button>
             )}
@@ -2379,12 +2379,34 @@ export default function InventoryOpsPage() {
             <ul className="divide-y divide-border border-t border-border">
               {recentLabels.map((l, i) => {
                 const s = labelStatus(l)
-                // Serialized labels have a pallet id (batch); non-serialized "generic"
-                // labels don't (batch=null) — for those the part number is the identity,
-                // and Reprint / open-in-search (both pallet-only) don't apply.
+                const timeStr = l.at ? new Date(l.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : ''
+                // Serialized labels (pallet id + bin + qty) get the SAME actionable row as
+                // the search results — history / move / reprint / edit / delete — by reusing
+                // renderPalletRow. A context header carries the recent-label info (who/when).
+                if (l.batch && l.warehouse && l.qty != null) {
+                  return (
+                    <li key={`${l.batch}-${l.at}-${i}`} className="py-2">
+                      <div className="mb-1 flex items-start justify-between gap-3 px-2.5 text-xs text-muted-foreground">
+                        <div className="min-w-0 truncate">
+                          {l.itemCode}
+                          {l.purpose ? ` · ${purposeText(l.purpose)}` : ''}
+                          {l.by ? ` · ${l.by}` : ''}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span className={s.cls}>{s.text}</span>
+                          {timeStr ? ` · ${timeStr}` : ''}
+                          {l.printer ? ` · ${l.printer}` : ''}
+                        </div>
+                      </div>
+                      <ul className="rounded-md border border-border bg-background/40">
+                        {renderPalletRow({ batch: l.batch, warehouse: l.warehouse, qty: l.qty }, l.itemCode)}
+                      </ul>
+                    </li>
+                  )
+                }
+                // Generic / non-serialized labels: no pallet id, so no pallet actions.
                 const meta = [
-                  l.batch ? l.itemCode : null, // for generic labels the code is the title (line 1), not repeated here
-                  l.warehouse,
+                  l.itemCode,
                   l.qty != null ? `${l.qty.toLocaleString()} ${t('inventoryOps.parts')}` : null,
                   l.purpose ? purposeText(l.purpose) : null,
                   l.by || null,
@@ -2392,43 +2414,13 @@ export default function InventoryOpsPage() {
                 return (
                   <li key={`${l.batch}-${l.at}-${i}`} className="flex items-start justify-between gap-3 py-2 text-sm">
                     <div className="min-w-0">
-                      {l.batch ? (
-                        // Tap the id to pull the pallet up in the search — gives the full
-                        // set of actions (history / move / edit / remove).
-                        <button
-                          type="button"
-                          onClick={() => { setViewMode('item'); setQuery(l.batch as string); setItemPickerOpen(false) }}
-                          className="font-mono text-xs font-medium text-primary hover:underline"
-                        >
-                          {l.batch}
-                        </button>
-                      ) : (
-                        <div className="font-mono text-xs font-medium">{l.itemCode}</div>
-                      )}
+                      <div className="font-mono text-xs font-medium">{l.itemCode}</div>
                       <div className="truncate text-xs text-muted-foreground">{meta}</div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="text-right text-xs">
-                        <div className={s.cls}>{s.text}</div>
-                        <div className="text-muted-foreground">
-                          {l.at ? new Date(l.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
-                        </div>
-                        {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
-                      </div>
-                      {/* Quick reprint (e.g. the print jammed or there was a mistake).
-                          Pallet-only — the reprint endpoint reissues a serialized pallet. */}
-                      {l.batch && (
-                        <button
-                          type="button"
-                          onClick={() => submitReprint(l.itemCode, l.batch as string)}
-                          disabled={busyBatch === l.batch}
-                          title={t('inventoryOps.reprint')}
-                          aria-label={t('inventoryOps.reprint')}
-                          className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                        >
-                          {busyBatch === l.batch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                        </button>
-                      )}
+                    <div className="shrink-0 text-right text-xs">
+                      <div className={s.cls}>{s.text}</div>
+                      <div className="text-muted-foreground">{timeStr}</div>
+                      {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
                     </div>
                   </li>
                 )
