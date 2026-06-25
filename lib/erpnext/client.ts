@@ -106,7 +106,7 @@ export async function searchItems(
     ]),
     listParam('fields', ['item_code', 'item_name']),
     'order_by=item_code asc',
-    'limit_page_length=25',
+    'limit_page_length=50',
   ].join('&')
   const r = await erpnextGet<{ data: { item_code: string; item_name: string }[] }>(
     `/api/resource/Item?${qs}`

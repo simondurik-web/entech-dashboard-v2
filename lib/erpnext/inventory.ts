@@ -302,7 +302,7 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
 }
 
 /** name + uom for a set of item codes (chunked 'in' queries). */
-async function itemNameMap(codes: string[]): Promise<Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>> {
+export async function itemNameMap(codes: string[]): Promise<Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>> {
   const nameMap = new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>()
   for (let i = 0; i < codes.length; i += 100) {
     const chunk = codes.slice(i, i + 100)
