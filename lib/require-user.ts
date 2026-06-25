@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { timingSafeEqual } from "crypto"
+import { createHash, timingSafeEqual } from "crypto"
 
 export type AuthedUser = { id: string; email: string | null }
+export type AuthedUserOrService = AuthedUser & { isService?: boolean }
 
 /**
  * Derive the caller's identity from the verified Supabase Bearer JWT.
@@ -39,10 +40,12 @@ export async function requireUser(req: NextRequest): Promise<AuthedUser | null> 
 }
 
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ab.length !== bb.length) return false
-  return timingSafeEqual(ab, bb)
+  // Hash both sides to fixed-length (32-byte) digests first, so the comparison
+  // is constant-time even when the inputs differ in length (no early-return
+  // length leak).
+  const ah = createHash("sha256").update(a).digest()
+  const bh = createHash("sha256").update(b).digest()
+  return timingSafeEqual(ah, bh)
 }
 
 /**
@@ -61,12 +64,15 @@ function safeEqual(a: string, b: string): boolean {
  * If the service key is absent/invalid, this is exactly `requireUser` (Bearer
  * JWT), so normal users are unaffected.
  */
-export async function requireUserOrService(req: NextRequest): Promise<AuthedUser | null> {
+export async function requireUserOrService(req: NextRequest): Promise<AuthedUserOrService | null> {
   const expected = process.env.PO_AUTOMATION_API_KEY
   const provided = req.headers.get("x-service-key")
   if (expected && provided && safeEqual(provided, expected)) {
     const uid = req.headers.get("x-user-id")
-    return { id: uid || "po-automation-service", email: null }
+    // isService = the secret key IS the authorization; callers should skip the
+    // per-user role check (the fallback id is only for audit attribution and
+    // would not pass canAccess* anyway).
+    return { id: uid || "po-automation-service", email: null, isService: true }
   }
   return requireUser(req)
 }

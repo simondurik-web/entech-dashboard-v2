@@ -66,13 +66,11 @@ function payloadLines(po: ProcessedPo): EditableLine[] {
  */
 export function PoEditModal({
   po,
-  userId,
   open,
   onClose,
   onSaved,
 }: {
   po: ProcessedPo
-  userId: string | null
   open: boolean
   onClose: () => void
   onSaved: () => void

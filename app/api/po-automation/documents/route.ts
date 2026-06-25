@@ -20,12 +20,14 @@ async function gate(req: NextRequest): Promise<NextResponse | string> {
   // requireUserOrService (not requireUser): the BOL / PO-PDF auto-upload scripts
   // (release_toter.py, attach_po_pdf.py) POST here server-side with no Supabase
   // user session, authenticating via the x-service-key shared secret instead.
-  const userId = (await requireUserOrService(req))?.id
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await canAccessPoAutomation(userId))) {
+  const authed = await requireUserOrService(req)
+  if (!authed?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // A valid service key IS the authorization (skip the per-user role check); a
+  // human caller still has to pass canAccessPoAutomation.
+  if (!authed.isService && !(await canAccessPoAutomation(authed.id))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  return userId
+  return authed.id
 }
 
 function norm(v: string | null): string {

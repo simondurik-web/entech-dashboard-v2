@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Camera, Trash2, RotateCcw, Loader2, Image as ImageIcon } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
-import { useAuth } from '@/lib/auth-context'
 import { authHeaders } from '@/lib/session-token'
 import { toast } from '@/lib/use-toast'
 import { Lightbox } from '@/components/ui/Lightbox'
@@ -24,7 +23,6 @@ export function PhotoGallery({
   onChange?: () => void
 }) {
   const { t } = useI18n()
-  const { user } = useAuth()
   const [photos, setPhotos] = useState<PurchasingPhoto[]>([])
   const [showDeleted, setShowDeleted] = useState(false)
   const [loading, setLoading] = useState(true)

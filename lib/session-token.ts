@@ -16,8 +16,35 @@ import { supabase } from "./supabase"
 // 401, which is correct: device sessions are read-only by construction.
 let cachedToken: string | null = null
 
+// Synchronously read the access token straight out of the persisted Supabase
+// session in localStorage. supabase-js stores it under `sb-<ref>-auth-token`;
+// we scan rather than reconstruct the key so we don't depend on the project
+// ref. This closes the first-paint race: a data fetch that fires on mount
+// (before the async getSession below resolves) still gets a token. The token
+// could be stale if the tab was closed >1h, but getSession()/onAuthStateChange
+// refresh it within ms, so this strictly improves on sending nothing.
+function readTokenFromStorage(): string | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+        const parsed = JSON.parse(raw)
+        const token = parsed?.access_token ?? parsed?.currentSession?.access_token
+        if (token) return token as string
+      }
+    }
+  } catch {
+    // storage blocked / malformed — fall back to the async path below
+  }
+  return null
+}
+
 if (typeof window !== "undefined") {
-  // Prime from the persisted session on first load...
+  // Prime synchronously so authHeaders() works on the very first render...
+  cachedToken = readTokenFromStorage()
+  // ...revalidate from the SDK (refreshes an expired token)...
   supabase.auth.getSession().then(({ data }) => {
     cachedToken = data.session?.access_token ?? null
   })

@@ -216,7 +216,6 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
       {canEdit && editOpen && (
         <PoEditModal
           po={po}
-          userId={userId}
           open={editOpen}
           onClose={() => setEditOpen(false)}
           onSaved={() => {
