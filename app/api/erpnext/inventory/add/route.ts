@@ -72,12 +72,17 @@ export async function POST(req: NextRequest) {
 
   // ─── Non-serialized: receive a quantity (boxes) + print one generic label per box ───
   if (!itemInfo.hasBatch) {
-    // Boxes are whole units, and we print one label per box — cap at the printable copy
-    // limit so the stock received can never exceed the labels produced (no silent mismatch).
-    const MAX_BOXES_PER_RECEIVE = 9999
-    if (!Number.isInteger(qty) || qty > MAX_BOXES_PER_RECEIVE) {
+    // One label per box. Cap at 10 labels per receive so a fat-finger (e.g. 500) can't
+    // flood the printer — the floor receives in small batches, and a bigger receipt is
+    // split into multiple adds. (Simon 2026-06-25, all non-serialized items.)
+    const MAX_LABELS_PER_RECEIVE = 10
+    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_LABELS_PER_RECEIVE) {
       return NextResponse.json(
-        { error: `For non-serialized items, qty must be a whole number of boxes (1..${MAX_BOXES_PER_RECEIVE}); split larger receipts.` },
+        {
+          error: `Maximum ${MAX_LABELS_PER_RECEIVE} labels at a time for non-serialized items (one label per box). Split larger receipts.`,
+          code: 'max_labels',
+          max: MAX_LABELS_PER_RECEIVE,
+        },
         { status: 400 }
       )
     }

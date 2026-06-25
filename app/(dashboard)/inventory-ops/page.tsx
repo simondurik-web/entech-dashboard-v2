@@ -921,7 +921,14 @@ export default function InventoryOpsPage() {
         }),
       })
       const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'add failed')
+      if (!r.ok) {
+        // Non-serialized label cap — show the bilingual message, not a raw server string.
+        if (d.code === 'max_labels') {
+          showFlash('err', t('inventoryOps.maxLabels').replace('{max}', String(d.max ?? 10)))
+          return
+        }
+        throw new Error(d.error || 'add failed')
+      }
       addKeyRef.current = null // success -> next add gets a fresh key
       const addedItemCode = addItem.itemCode
       showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
