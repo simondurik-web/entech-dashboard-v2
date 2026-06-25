@@ -302,17 +302,17 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
 }
 
 /** name + uom for a set of item codes (chunked 'in' queries). */
-async function itemNameMap(codes: string[]): Promise<Map<string, { itemName: string; uom: string }>> {
-  const nameMap = new Map<string, { itemName: string; uom: string }>()
+async function itemNameMap(codes: string[]): Promise<Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>> {
+  const nameMap = new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>()
   for (let i = 0; i < codes.length; i += 100) {
     const chunk = codes.slice(i, i + 100)
     const qs = [
       listParam('filters', [['item_code', 'in', chunk]]),
-      listParam('fields', ['item_code', 'item_name', 'stock_uom']),
+      listParam('fields', ['item_code', 'item_name', 'stock_uom', 'has_batch_no', 'custom_pieces_per_pack']),
       'limit_page_length=0',
     ].join('&')
-    const rows = (await erpnextGet<{ data: { item_code: string; item_name: string; stock_uom: string }[] }>(`/api/resource/Item?${qs}`)).data ?? []
-    for (const r of rows) nameMap.set(r.item_code, { itemName: r.item_name, uom: r.stock_uom })
+    const rows = (await erpnextGet<{ data: { item_code: string; item_name: string; stock_uom: string; has_batch_no?: number; custom_pieces_per_pack?: number }[] }>(`/api/resource/Item?${qs}`)).data ?? []
+    for (const r of rows) nameMap.set(r.item_code, { itemName: r.item_name, uom: r.stock_uom, hasBatch: !!r.has_batch_no, piecesPerPack: Number(r.custom_pieces_per_pack) || 1 })
   }
   return nameMap
 }
@@ -404,7 +404,10 @@ export async function getFullInventory(): Promise<InventoryRow[]> {
       itemName: meta?.itemName ?? b.item_code,
       uom: meta?.uom ?? '',
       warehouse: b.warehouse,
-      qty: b.actual_qty,
+      // Non-serialized items are stored in BOXES (1 stock unit = 1 box) — report the PART
+      // count (boxes x pieces-per-pack) so audit/valuation values parts, not boxes (e.g.
+      // 20 boxes of EB-BRN @500 = 10,000). Serialized pallets already track pieces.
+      qty: meta && !meta.hasBatch ? b.actual_qty * meta.piecesPerPack : b.actual_qty,
       pallets: (palletsByCell.get(`${b.item_code} ${b.warehouse}`) ?? []).sort((a, c) => a.batch.localeCompare(c.batch)),
     }
   })
