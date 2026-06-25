@@ -46,10 +46,14 @@ export function installApiFetchInterceptor(): void {
               : ""
 
       if (url && isSameOriginApi(url)) {
-        // Merge headers from the Request (if any) and the init override.
-        const headers = new Headers(
-          init?.headers ?? (input instanceof Request ? input.headers : undefined),
-        )
+        // Build the final header set in precedence order so nothing is dropped:
+        //   1) the original Request's headers (when input is a Request),
+        //   2) the init override on top,
+        //   3) our tokens, only if not already set by the caller.
+        const headers = new Headers(input instanceof Request ? input.headers : undefined)
+        if (init?.headers) {
+          new Headers(init.headers).forEach((value, key) => headers.set(key, value))
+        }
         if (!headers.has("authorization")) {
           const token = getAccessToken()
           if (token) headers.set("authorization", `Bearer ${token}`)
@@ -58,11 +62,9 @@ export function installApiFetchInterceptor(): void {
           const deviceToken = getDeviceToken()
           if (deviceToken) headers.set("x-device-token", deviceToken)
         }
-
-        if (input instanceof Request && !init) {
-          // Rebuild the Request so the body/method/etc. are preserved.
-          return originalFetch(new Request(input, { headers }))
-        }
+        // For both the (string, init) and (Request, init?) forms, passing the
+        // original input plus an init carrying the merged headers preserves the
+        // method/body (taken from input when init omits them).
         return originalFetch(input, { ...init, headers })
       }
     } catch {
