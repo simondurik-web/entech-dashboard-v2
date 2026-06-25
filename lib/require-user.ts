@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { timingSafeEqual } from "crypto"
 
 export type AuthedUser = { id: string; email: string | null }
 
@@ -35,4 +36,37 @@ export async function requireUser(req: NextRequest): Promise<AuthedUser | null> 
   } = await supabase.auth.getUser(token)
   if (error || !user) return null
   return { id: user.id, email: user.email ?? null }
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) return false
+  return timingSafeEqual(ab, bb)
+}
+
+/**
+ * Like {@link requireUser}, but ALSO accepts a trusted server-to-server caller
+ * that presents the shared automation key in the `x-service-key` header
+ * (compared in constant time against `PO_AUTOMATION_API_KEY`).
+ *
+ * Used by the PO automation scripts that run with NO Supabase user session —
+ * currently the BOL / PO-PDF auto-uploaders `release_toter.py` and
+ * `attach_po_pdf.py`, which POST to /api/po-automation/documents. For a valid
+ * service call, attribution falls back to the `x-user-id` header — which is
+ * safe HERE because it is gated behind the secret key (a browser cannot set a
+ * valid `x-service-key`), unlike the bare `x-user-id` trust this hardening
+ * removed everywhere else.
+ *
+ * If the service key is absent/invalid, this is exactly `requireUser` (Bearer
+ * JWT), so normal users are unaffected.
+ */
+export async function requireUserOrService(req: NextRequest): Promise<AuthedUser | null> {
+  const expected = process.env.PO_AUTOMATION_API_KEY
+  const provided = req.headers.get("x-service-key")
+  if (expected && provided && safeEqual(provided, expected)) {
+    const uid = req.headers.get("x-user-id")
+    return { id: uid || "po-automation-service", email: null }
+  }
+  return requireUser(req)
 }

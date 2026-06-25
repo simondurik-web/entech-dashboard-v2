@@ -12,12 +12,15 @@ import {
   validatedExt,
   type OrderDocType,
 } from '@/lib/po-automation/documents'
-import { requireUser } from '@/lib/require-user'
+import { requireUserOrService } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
 async function gate(req: NextRequest): Promise<NextResponse | string> {
-  const userId = (await requireUser(req))?.id
+  // requireUserOrService (not requireUser): the BOL / PO-PDF auto-upload scripts
+  // (release_toter.py, attach_po_pdf.py) POST here server-side with no Supabase
+  // user session, authenticating via the x-service-key shared secret instead.
+  const userId = (await requireUserOrService(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPoAutomation(userId))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
