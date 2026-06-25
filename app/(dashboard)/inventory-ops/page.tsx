@@ -100,7 +100,8 @@ interface RecentLabel {
   printerLocation: string | null
   purpose: string | null
   warehouse: string | null // bin/area the label was allocated to
-  qty: number | null // parts count printed on the label
+  qty: number | null // op quantity: pieces for serialized pallets, BOXES for non-serialized
+  piecesPerPack: number // pieces per box (1 unless set) — for the non-serialized part total
   by: string
   at: string | null
   status: string | null
@@ -332,27 +333,36 @@ export default function InventoryOpsPage() {
   // ─── By-item part-number picker (focus the search to browse/select all parts) ───
   const [itemPickerOpen, setItemPickerOpen] = useState(false)
   const [allItems, setAllItems] = useState<ItemOption[]>([])
-  const [allItemsLoaded, setAllItemsLoaded] = useState(false)
   const [allItemsLoading, setAllItemsLoading] = useState(false)
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const openItemPicker = useCallback(() => {
     if (blurTimerRef.current) clearTimeout(blurTimerRef.current) // cancel a pending close
     setItemPickerOpen(true)
-    if (allItemsLoaded || allItemsLoading) return // load once; the loading flag dedupes rapid focus
-    setAllItemsLoading(true)
-    authedFetch('/api/erpnext/inventory/items?all=1')
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => {
+  }, [])
+
+  // Part picker results: search the catalog SERVER-side as the user types. The old
+  // approach loaded EVERY item up front (limit_page_length=0) then filtered in the
+  // browser, which took 10-20s on a large catalog before anything showed. Now a typed
+  // query hits the indexed search (?q=, capped) and returns in ~1s. Debounced.
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) { setAllItems([]); setAllItemsLoading(false); return }
+    const c = new AbortController()
+    const id = setTimeout(async () => {
+      setAllItemsLoading(true)
+      try {
+        const r = await authedFetch(`/api/erpnext/inventory/items?q=${encodeURIComponent(q)}`, { signal: c.signal })
+        const d = await r.json()
         setAllItems(d.items ?? [])
-        setAllItemsLoaded(true)
-      })
-      .catch(() => {
-        // Leave allItemsLoaded false so a later focus retries; the empty list just shows
-        // "no results" (the user can still free-type to run the live search below).
-      })
-      .finally(() => setAllItemsLoading(false))
-  }, [allItemsLoaded, allItemsLoading, authedFetch])
+      } catch {
+        /* ignore (incl. abort on the next keystroke) */
+      } finally {
+        setAllItemsLoading(false)
+      }
+    }, 250)
+    return () => { clearTimeout(id); c.abort() }
+  }, [query, authedFetch])
 
   // ─── pallets (per item) ───
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
@@ -1349,13 +1359,10 @@ export default function InventoryOpsPage() {
   // Parts shown in the By-item picker: all parts, filtered by whatever's typed in the
   // search box (matches code or name). Rendered list is capped for DOM sanity; if more
   // match, a hint tells the user to keep typing (we never silently hide matches).
+  // allItems is already the server-side search result for the current query.
   const PART_PICKER_CAP = 500
-  const partFilter = query.trim().toLowerCase()
-  const matchedParts = partFilter
-    ? allItems.filter((i) => i.itemCode.toLowerCase().includes(partFilter) || i.itemName.toLowerCase().includes(partFilter))
-    : allItems
-  const filteredParts = matchedParts.slice(0, PART_PICKER_CAP)
-  const partsTruncated = matchedParts.length > filteredParts.length
+  const filteredParts = allItems.slice(0, PART_PICKER_CAP)
+  const partsTruncated = allItems.length > filteredParts.length
 
   // Recent-labels helpers: map the op action to a friendly purpose, and the print-job
   // status to a label + color (so a jam/failure stands out).
@@ -1383,7 +1390,7 @@ export default function InventoryOpsPage() {
   const renderPalletRow = (p: { batch: string; warehouse: string; qty: number }, itemCode: string) => (
     <li key={p.batch} className="px-2.5 py-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 font-mono text-xs">
+        <div className="min-w-0 flex-1 truncate font-mono text-xs">
           <span className={matchedPallet === p.batch ? 'font-semibold text-primary' : ''}>{p.batch}</span>
         </div>
         {editBatch === p.batch ? (
@@ -1407,7 +1414,7 @@ export default function InventoryOpsPage() {
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2.5">
             <span className="font-semibold tabular-nums">{p.qty.toLocaleString()}</span>
             <button
               onClick={() => toggleHistory(p.batch)}
@@ -2440,8 +2447,12 @@ export default function InventoryOpsPage() {
                   )
                 }
                 // Generic / non-serialized labels: no pallet id, so no pallet actions.
+                // Show BOTH the count (pallets/boxes) and the total pieces (count x
+                // pieces-per-pack), e.g. "10 pallets · 5,000 pieces".
                 const meta = [
-                  l.qty != null ? `${l.qty.toLocaleString()} ${t('inventoryOps.parts')}` : null,
+                  l.qty != null
+                    ? `${l.qty.toLocaleString()} ${t('inventoryOps.pallets')} · ${(l.qty * (l.piecesPerPack || 1)).toLocaleString()} ${t('inventoryOps.parts')}`
+                    : null,
                   l.purpose ? purposeText(l.purpose) : null,
                   l.by || null,
                 ].filter(Boolean).join(' · ')

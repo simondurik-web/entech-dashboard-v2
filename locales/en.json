@@ -1276,6 +1276,7 @@
   "inventoryOps.moved": "Moved pallet",
   "inventoryOps.reprint": "Reprint label",
   "inventoryOps.parts": "parts",
+  "inventoryOps.pallets": "pallets",
   "inventoryOps.maxLabels": "Maximum {max} labels at a time.",
   "inventoryOps.reprinted": "Reprinting label for",
   "inventoryOps.histRestored": "Returned to inventory",

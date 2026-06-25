@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { itemNameMap } from '@/lib/erpnext/inventory'
 
 // GET /api/erpnext/inventory/recent-labels?limit=10
 // The most recently printed labels, so an operator can find a label whose print jammed
@@ -41,8 +42,9 @@ export async function GET(req: NextRequest) {
     // carries the action (add / adjust / reprint / ...).
     const opKeyOf = (k: string | null) => (k && k.startsWith('print-') ? k.slice('print-'.length) : null)
     const opKeys = [...new Set(rows.map((r) => opKeyOf(r.idempotency_key)).filter(Boolean))] as string[]
+    const itemCodes = [...new Set(rows.map((r) => r.item_code).filter(Boolean))] as string[]
 
-    const [stationsRes, profilesRes, opsRes] = await Promise.all([
+    const [stationsRes, profilesRes, opsRes, itemMeta] = await Promise.all([
       stationIds.length
         ? supabaseAdmin.from('print_stations').select('id, name, location').in('id', stationIds)
         : Promise.resolve({ data: [] as { id: string; name: string | null; location: string | null }[] }),
@@ -52,6 +54,11 @@ export async function GET(req: NextRequest) {
       opKeys.length
         ? supabaseAdmin.from('inventory_ops_log').select('idempotency_key, action, qty, warehouse').in('idempotency_key', opKeys)
         : Promise.resolve({ data: [] as { idempotency_key: string; action: string; qty: number | null; warehouse: string | null }[] }),
+      // Pieces-per-pack so the panel can show the part total for non-serialized labels.
+      // Best-effort (ERPNext) — degrade to an empty map rather than failing the panel.
+      itemCodes.length
+        ? itemNameMap(itemCodes).catch(() => new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>())
+        : Promise.resolve(new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>()),
     ])
 
     // These enrichments are non-critical (the label id is the point); if one errors, log it
@@ -81,6 +88,8 @@ export async function GET(req: NextRequest) {
         // (from the op log row that produced this print).
         warehouse: op?.warehouse ?? null,
         qty: op?.qty ?? null,
+        // For non-serialized items, qty is BOXES; multiply by this for the part total.
+        piecesPerPack: itemMeta.get(r.item_code)?.piecesPerPack ?? 1,
         by: r.created_by ? nameMap.get(r.created_by) ?? '' : '',
         at: r.created_at,
         status: r.status,

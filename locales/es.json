@@ -1276,6 +1276,7 @@
   "inventoryOps.moved": "Tarima movida",
   "inventoryOps.reprint": "Reimprimir etiqueta",
   "inventoryOps.parts": "piezas",
+  "inventoryOps.pallets": "tarimas",
   "inventoryOps.maxLabels": "Máximo {max} etiquetas a la vez.",
   "inventoryOps.reprinted": "Reimprimiendo etiqueta de",
   "inventoryOps.histRestored": "Devuelta al inventario",
