@@ -94,7 +94,7 @@ interface RemovedPallet {
   uom: string
 }
 interface RecentLabel {
-  batch: string
+  batch: string | null
   itemCode: string
   printer: string | null
   printerLocation: string | null
@@ -2404,9 +2404,32 @@ export default function InventoryOpsPage() {
                     </li>
                   )
                 }
+                // Serialized but the op-log didn't carry bin/qty (e.g. an adjust/reprint
+                // origin): keep the recovery actions — quick reprint + tap-the-id to open
+                // it in the search (full actions there).
+                if (l.batch) {
+                  const m = [l.itemCode, l.purpose ? purposeText(l.purpose) : null, l.by || null].filter(Boolean).join(' · ')
+                  return (
+                    <li key={`${l.batch}-${l.at}-${i}`} className="flex items-start justify-between gap-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <button type="button" onClick={() => { setViewMode('item'); setQuery(l.batch as string); setItemPickerOpen(false) }} className="font-mono text-xs font-medium text-primary hover:underline">{l.batch}</button>
+                        <div className="truncate text-xs text-muted-foreground">{m}</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <div className="text-right text-xs">
+                          <div className={s.cls}>{s.text}</div>
+                          <div className="text-muted-foreground">{timeStr}</div>
+                          {l.printer && <div className="truncate text-muted-foreground">{l.printer}</div>}
+                        </div>
+                        <button type="button" onClick={() => submitReprint(l.itemCode, l.batch as string)} disabled={busyBatch === l.batch} title={t('inventoryOps.reprint')} aria-label={t('inventoryOps.reprint')} className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50">
+                          {busyBatch === l.batch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </li>
+                  )
+                }
                 // Generic / non-serialized labels: no pallet id, so no pallet actions.
                 const meta = [
-                  l.itemCode,
                   l.qty != null ? `${l.qty.toLocaleString()} ${t('inventoryOps.parts')}` : null,
                   l.purpose ? purposeText(l.purpose) : null,
                   l.by || null,
