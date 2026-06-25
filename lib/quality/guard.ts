@@ -52,6 +52,8 @@ export async function resolveQualityActor(
     .in("app_id", [DASHBOARD_APP_ID, QUALITY_APP_ID])
 
   const dashboardRole = appRoles?.find((r) => r.app_id === DASHBOARD_APP_ID)?.role ?? "visitor"
+  // A blocked molding user is locked out of the Quality subsystem too.
+  if (dashboardRole === "blocked") return DENIED
   const qualityRole = appRoles?.find((r) => r.app_id === QUALITY_APP_ID)?.role ?? null
   const email = profile.email ?? null
   const isSuper = email?.toLowerCase() === SUPER_ADMIN_EMAIL
