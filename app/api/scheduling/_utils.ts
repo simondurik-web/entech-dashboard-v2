@@ -24,10 +24,9 @@ export async function getProfileFromHeader(req: NextRequest) {
     .eq('app_id', DASHBOARD_APP_ID)
     .single()
 
-  if (appRole) {
-    return { ...profile, role: appRole.role }
-  }
-  return profile
+  // Access requires an explicit dashboard app-role; no enrollment -> visitor
+  // (matches overlayAppRole + the other guards; also lets 'blocked' deny).
+  return { ...profile, role: appRole?.role ?? 'visitor' }
 }
 
 export function canEditScheduling(role: string) {
