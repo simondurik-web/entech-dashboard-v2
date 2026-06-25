@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 export async function GET(
   _req: NextRequest,
@@ -23,7 +24,7 @@ export async function PATCH(
 ) {
   const { id } = await params
   const body = await req.json()
-  const userId = req.headers.get('x-user-id') || undefined
+  const userId = (await requireUser(req))?.id
 
   const updates: Record<string, unknown> = {}
 

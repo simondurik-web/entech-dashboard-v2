@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import type { QueueBucket } from "@/lib/rolltech-action-center/types"
+import { requireUser } from "@/lib/require-user"
 
 export const dynamic = "force-dynamic"
 
@@ -24,8 +25,8 @@ interface MutatePayload {
 }
 
 export async function POST(req: NextRequest) {
-  // Auth guard — require x-user-id header set by the session middleware/layout
-  const userId = req.headers.get("x-user-id")
+  // Auth guard — identity from the verified Supabase Bearer token.
+  const userId = (await requireUser(req))?.id
   if (!userId) {
     return NextResponse.json(
       { error: "Unauthorized" },

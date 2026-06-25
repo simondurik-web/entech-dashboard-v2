@@ -15,6 +15,7 @@ import type { Order } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -705,7 +706,7 @@ function OrdersPageContent() {
             if (label.id && user) {
               fetch(`/api/labels/${label.id}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                   label_status: 'printed',
                   printed_by_name: profile?.full_name || user.email || 'Unknown',

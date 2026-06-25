@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Send, Loader2, Plus, Trash2, AlertCircle, User as UserIcon, Bot, Mic, MicOff } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { authHeaders } from '@/lib/session-token'
 import { Button } from '@/components/ui/button'
 import { PhilReportDownload, isPhilReport, type PhilReport } from './PhilReportDownload'
 
@@ -73,7 +74,7 @@ export function PhilChat({ userId }: Props) {
     let cancelled = false
     setLoadingHistory(true)
     fetch(`/api/chat/phil?sessionId=${encodeURIComponent(sessionId)}`, {
-      headers: { 'x-user-id': userId },
+      headers: authHeaders(),
     })
       .then(async (res) => {
         if (cancelled) return
@@ -148,11 +149,10 @@ export function PhilChat({ userId }: Props) {
     try {
       const res = await fetch('/api/chat/phil', {
         method: 'POST',
-        headers: {
+        headers: authHeaders({
           'Content-Type': 'application/json',
-          'x-user-id': userId,
           Accept: 'text/event-stream',
-        },
+        }),
         body: JSON.stringify({ question, sessionId, language }),
       })
 
@@ -249,7 +249,7 @@ export function PhilChat({ userId }: Props) {
     async function recoverFromHistory(): Promise<boolean> {
       try {
         const res = await fetch(`/api/chat/phil?sessionId=${encodeURIComponent(sessionId)}`, {
-          headers: { 'x-user-id': userId },
+          headers: authHeaders(),
         })
         if (!res.ok) return false
         const data = await res.json()
@@ -285,7 +285,7 @@ export function PhilChat({ userId }: Props) {
     try {
       await fetch('/api/chat/phil', {
         method: 'DELETE',
-        headers: { 'x-user-id': userId },
+        headers: authHeaders(),
       })
     } finally {
       startNewChat()

@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useI18n } from '@/lib/i18n'
-import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { ArrowUpDown, Search, Package, Eye } from 'lucide-react'
 import type { LabelData } from '@/lib/label-utils'
 
@@ -44,7 +44,6 @@ interface GenerateLabelsDialogProps {
 
 export function GenerateLabelsDialog({ open, onOpenChange, onGenerated, initialLine }: GenerateLabelsDialogProps) {
   const { t } = useI18n()
-  const { user } = useAuth()
   const [orders, setOrders] = useState<OrderOption[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -203,16 +202,13 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated, initialL
       if (isRegenerate) {
         await fetch(`/api/labels?order_line=${encodeURIComponent(order.line)}`, {
           method: 'DELETE',
-          headers: user ? { 'x-user-id': user.id } : {},
+          headers: authHeaders(),
         })
       }
 
       const res = await fetch('/api/labels', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user ? { 'x-user-id': user.id } : {}),
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           order_lines: [order.line],
           ...(ppp !== order.partsPerPackage ? { custom_parts_per_package: { [order.line]: ppp } } : {}),

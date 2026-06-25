@@ -14,6 +14,7 @@ import {
 import { useI18n } from '@/lib/i18n'
 import type { ProcessedPo, PoStatus, PoEnteredVia } from '@/lib/po-automation/types'
 import type { PoLineItem } from '@/lib/po-automation/edit'
+import { authHeaders } from '@/lib/session-token'
 
 const STATUSES: PoStatus[] = [
   'pending',
@@ -125,7 +126,7 @@ export function PoEditModal({
       if (pdfFile) fd.append('file', pdfFile)
       const res = await fetch(`/api/po-automation/${po.id}`, {
         method: 'PATCH',
-        headers: { 'x-user-id': userId || '' },
+        headers: authHeaders(),
         body: fd,
       })
       if (!res.ok) {

@@ -12,11 +12,12 @@ import {
   validatedExt,
   type OrderDocType,
 } from '@/lib/po-automation/documents'
+import { requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
 async function gate(req: NextRequest): Promise<NextResponse | string> {
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPoAutomation(userId))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

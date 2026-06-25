@@ -6,6 +6,7 @@ import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMe
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
+import { authHeaders } from '@/lib/session-token'
 
 interface PoMatch {
   po_pdf_url: string | null
@@ -36,7 +37,7 @@ export function OrderPoBolSection({
   useEffect(() => {
     let active = true
     const qs = new URLSearchParams({ customer, po: poNumber }).toString()
-    fetch(`/api/po-automation?${qs}`, { headers: { 'x-user-id': userId || '' } })
+    fetch(`/api/po-automation?${qs}`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : { match: null }))
       .then((data) => {
         if (active) setMatch(data?.match ?? null)

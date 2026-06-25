@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const userId = req.headers.get('x-user-id') || undefined
+  const userId = (await requireUser(req))?.id
 
   const { data, error } = await supabaseAdmin
     .from('label_activity_log')

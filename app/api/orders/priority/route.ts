@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireUser } from "@/lib/require-user"
 
 const VALID_PRIORITIES = ["P1", "P2", "P3", "P4", "URGENT"]
 
@@ -40,7 +41,7 @@ async function hasManagePriority(profile: { role: string; custom_permissions?: R
 }
 
 export async function PUT(req: NextRequest) {
-  const userId = req.headers.get("x-user-id")
+  const userId = (await requireUser(req))?.id
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }

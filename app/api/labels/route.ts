@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { calculatePackages, generateQrData, validateLabelData } from '@/lib/label-utils'
+import { requireUser } from '@/lib/require-user'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'order_lines array is required' }, { status: 400 })
   }
 
-  const userId = req.headers.get('x-user-id') || undefined
+  const userId = (await requireUser(req))?.id
   const results: Array<{ order_line: string; labels?: unknown[]; error?: string }> = []
 
   for (const orderLine of order_lines) {
@@ -178,7 +179,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'order_line query parameter is required' }, { status: 400 })
   }
 
-  const userId = req.headers.get('x-user-id') || undefined
+  const userId = (await requireUser(req))?.id
 
   // Log the deletion
   const { data: existing } = await supabaseAdmin

@@ -4,6 +4,7 @@ import { normalizeStatus } from '@/lib/google-sheets'
 import { canAccessPoAutomation } from '@/lib/po-automation/guard'
 import { resolvePoActor } from '@/lib/po-automation/edit'
 import { isToterCustomer, TOTER_ACTIVE_STATUSES, type ToterEntryStatus } from '@/lib/po-automation/toter'
+import { requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ type ToterEntryRow = {
 const SELECT_COLS = 'id, line, if_number, po_number, customer, status, shipment_number, entered_at, error, created_at'
 
 async function gate(req: NextRequest): Promise<NextResponse | string> {
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPoAutomation(userId))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

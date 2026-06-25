@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireUser } from "@/lib/require-user"
 
 export const maxDuration = 800
 export const runtime = "nodejs"
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
         send("open", { ts: Date.now() })
 
         // --- Auth ---
-        const userId = req.headers.get("x-user-id")
+        const userId = (await requireUser(req))?.id
         if (!userId) {
           send("error", { detail: "auth_required", status: 401, fatal: true })
           return
@@ -342,7 +343,7 @@ export async function POST(req: NextRequest) {
 
 // GET /api/chat/phil?sessionId=... — fetch history for current user
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("x-user-id")
+  const userId = (await requireUser(req))?.id
   if (!userId) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 })
   }
@@ -384,7 +385,7 @@ export async function GET(req: NextRequest) {
 
 // DELETE /api/chat/phil?sessionId=... — clear session (or all sessions if omitted)
 export async function DELETE(req: NextRequest) {
-  const userId = req.headers.get("x-user-id")
+  const userId = (await requireUser(req))?.id
   if (!userId) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 })
   }

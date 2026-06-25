@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import type { DataTableViewConfig } from '@/lib/use-data-table'
 
 interface SavedView {
@@ -35,9 +36,7 @@ export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProp
 
   async function loadViews() {
     try {
-      const headers: Record<string, string> = {}
-      if (userId) headers['x-user-id'] = userId
-      const res = await fetch(`/api/views?page=${encodeURIComponent(page)}`, { headers })
+      const res = await fetch(`/api/views?page=${encodeURIComponent(page)}`, { headers: authHeaders() })
       if (!res.ok) return
       const data = await res.json()
       setViews(data)
@@ -55,7 +54,7 @@ export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProp
     try {
       const res = await fetch('/api/views', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ page, name: newName.trim(), config: getCurrentConfig(), shared: true }),
       })
       if (res.ok) {

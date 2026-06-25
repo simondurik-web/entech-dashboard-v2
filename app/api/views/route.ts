@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 export async function GET(req: NextRequest) {
   const page = req.nextUrl.searchParams.get('page')
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
 
   if (!page) return NextResponse.json({ error: 'page required' }, { status: 400 })
 
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const body = await req.json()

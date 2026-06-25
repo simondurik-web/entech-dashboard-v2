@@ -6,6 +6,7 @@ import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMe
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
 import type { OrderDocument } from '@/lib/po-automation/documents'
+import { authHeaders } from '@/lib/session-token'
 
 function isPdf(doc: OrderDocument): boolean {
   return /\.pdf($|\?)/i.test(doc.file_url ?? '') || /\.pdf$/i.test(doc.file_name ?? '')
@@ -50,7 +51,7 @@ export function BillOfLadingSection({
     try {
       const qs = new URLSearchParams({ customer, po: poNumber }).toString()
       const res = await fetch(`/api/po-automation/documents?${qs}`, {
-        headers: { 'x-user-id': userId || '' },
+        headers: authHeaders(),
         cache: 'no-store',
       })
       const data = res.ok ? await res.json() : { documents: [] }
@@ -86,7 +87,7 @@ export function BillOfLadingSection({
       if (note.trim()) fd.append('notes', note.trim())
       const res = await fetch('/api/po-automation/documents', {
         method: 'POST',
-        headers: { 'x-user-id': userId || '' },
+        headers: authHeaders(),
         body: fd,
       })
       if (!res.ok) {
@@ -111,7 +112,7 @@ export function BillOfLadingSection({
       try {
         const res = await fetch(`/api/po-automation/documents?id=${encodeURIComponent(id)}`, {
           method: 'DELETE',
-          headers: { 'x-user-id': userId || '' },
+          headers: authHeaders(),
         })
         if (res.ok) await load()
       } catch {

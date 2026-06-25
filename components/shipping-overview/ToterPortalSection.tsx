@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, ExternalLink, Loader2, Truck } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { TOTER_PORTAL_URL, TOTER_ACTIVE_STATUSES, type ToterEntryStatus } from '@/lib/po-automation/toter'
+import { authHeaders } from '@/lib/session-token'
 
 interface ToterEntry {
   status: ToterEntryStatus
@@ -61,7 +62,7 @@ export function ToterPortalSection({
   const fetchStatus = useCallback(async (): Promise<void> => {
     const qs = new URLSearchParams({ line, if: ifNumber }).toString()
     try {
-      const r = await fetch(`/api/po-automation/toter-portal?${qs}`, { headers: { 'x-user-id': userId || '' } })
+      const r = await fetch(`/api/po-automation/toter-portal?${qs}`, { headers: authHeaders() })
       const data: { entry: ToterEntry | null } = r.ok ? await r.json() : { entry: null }
       applyEntry(data?.entry ?? null)
     } catch {
@@ -94,7 +95,7 @@ export function ToterPortalSection({
     try {
       const res = await fetch('/api/po-automation/toter-portal', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId || '' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ line, ifNumber, poNumber, customer }),
       })
       if (!res.ok) throw new Error('request failed')

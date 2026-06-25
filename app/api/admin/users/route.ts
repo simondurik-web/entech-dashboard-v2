@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireUser } from "@/lib/require-user"
 
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 const DASHBOARD_APP_ID = "dashboard"
@@ -15,7 +16,7 @@ async function getAppRole(userId: string): Promise<string | null> {
 }
 
 async function isAdmin(req: NextRequest): Promise<boolean> {
-  const userId = req.headers.get("x-user-id")
+  const userId = (await requireUser(req))?.id
   if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")

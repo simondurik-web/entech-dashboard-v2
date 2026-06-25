@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth, type UserRole, SUPER_ADMIN_EMAIL } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { Search, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { DevicesPanel } from '@/components/admin/DevicesPanel'
@@ -49,7 +50,7 @@ export default function AdminUsersPage() {
   const fetchUsers = useCallback(async () => {
     if (!user) return
     const res = await fetch('/api/admin/users', {
-      headers: { 'x-user-id': user.id },
+      headers: authHeaders(),
     })
     if (res.ok) {
       const data = await res.json()
@@ -67,10 +68,7 @@ export default function AdminUsersPage() {
     setSaving(userId)
     await fetch('/api/admin/users', {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': user.id,
-      },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ user_id: userId, ...updates }),
     })
     await fetchUsers()
@@ -92,10 +90,7 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.id,
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ email: enrollEmail, role: enrollRole }),
       })
       if (res.ok) {

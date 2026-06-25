@@ -8,6 +8,7 @@ import {
   type ProcessedPo,
 } from "@/lib/po-automation/types"
 import { escapeLike } from "@/lib/po-automation/edit"
+import { requireUser } from "@/lib/require-user"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -37,7 +38,7 @@ function norm(value: string | null | undefined): string {
 export async function GET(req: NextRequest) {
   // Server-side permission gate — the service-role query below bypasses RLS, so
   // the client-side AccessGuard / canAccess() gate is not sufficient on its own.
-  const userId = req.headers.get("x-user-id")
+  const userId = (await requireUser(req))?.id
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }

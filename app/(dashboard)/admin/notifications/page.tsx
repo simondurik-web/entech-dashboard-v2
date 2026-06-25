@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth, SUPER_ADMIN_EMAIL } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { Bell, Send, History, Zap, Check } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 
@@ -64,8 +65,8 @@ export default function NotificationsAdminPage() {
   const fetchData = useCallback(async () => {
     if (!user) return
     const [usersRes, logsRes, rulesRes] = await Promise.all([
-      fetch('/api/admin/users', { headers: { 'x-user-id': user.id } }),
-      fetch('/api/notifications/log', { headers: { 'x-user-id': user.id } }),
+      fetch('/api/admin/users', { headers: authHeaders() }),
+      fetch('/api/notifications/log', { headers: authHeaders() }),
       fetch('/api/notification-rules'),
     ])
     if (usersRes.ok) {

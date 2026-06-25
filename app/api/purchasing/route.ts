@@ -4,6 +4,7 @@ import { resolveActor, logPurchasing } from '@/lib/purchasing/audit'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
 import { deriveDepartment } from '@/lib/purchasing/compute'
 import { EDITABLE_FIELDS, type PurchasingInput } from '@/lib/purchasing/types'
+import { requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,7 +57,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

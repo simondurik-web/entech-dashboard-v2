@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
 import { resolveActor, logPurchasing } from '@/lib/purchasing/audit'
+import { requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ async function auditPhoto(userId: string, photo: { order_id: string; original_na
 /** DELETE -> soft-delete (file stays in storage, recoverable via PATCH restore). */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ photoId: string }> }) {
   const { photoId } = await params
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -37,7 +38,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
 /** PATCH { restore: true } -> un-delete a soft-deleted photo. */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ photoId: string }> }) {
   const { photoId } = await params
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

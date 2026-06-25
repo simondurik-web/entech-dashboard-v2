@@ -11,6 +11,7 @@ import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { toast } from '@/lib/use-toast'
 import { Card, CardContent } from '@/components/ui/card'
 import { toRow } from '@/lib/purchasing/compute'
@@ -179,9 +180,11 @@ export default function PurchasingPage() {
     else table.setFilter('order_status', new Set([s]))
   }
 
-  const writeHeaders = useMemo(
-    () => ({ 'Content-Type': 'application/json', 'x-user-id': user?.id || '' }),
-    [user?.id]
+  // A function (not a memoized object) so each request reads the LIVE token —
+  // a memoized object would freeze a token that expires after ~1h on long-open tabs.
+  const writeHeaders = useCallback(
+    () => authHeaders({ 'Content-Type': 'application/json' }),
+    []
   )
 
   const openAdd = () => { setEditing(null); setDialogOpen(true) }
@@ -192,7 +195,7 @@ export default function PurchasingPage() {
     try {
       const url = editing ? `/api/purchasing/${editing.id}` : '/api/purchasing'
       const method = editing ? 'PATCH' : 'POST'
-      const res = await fetch(url, { method, headers: writeHeaders, body: JSON.stringify(input) })
+      const res = await fetch(url, { method, headers: writeHeaders(), body: JSON.stringify(input) })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         throw new Error(d.error || `HTTP ${res.status}`)
@@ -212,7 +215,7 @@ export default function PurchasingPage() {
   // Quick inline patch (e.g. set received date → status auto-flips to Received).
   const quickPatch = async (row: PurchasingRow, input: PurchasingInput) => {
     try {
-      const res = await fetch(`/api/purchasing/${row.id}`, { method: 'PATCH', headers: writeHeaders, body: JSON.stringify(input) })
+      const res = await fetch(`/api/purchasing/${row.id}`, { method: 'PATCH', headers: writeHeaders(), body: JSON.stringify(input) })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
       // Update just this row in place (no full-table skeleton flash).
@@ -227,7 +230,7 @@ export default function PurchasingPage() {
   const deleteRow = async (row: PurchasingRow) => {
     if (!window.confirm(t('purchasing.confirmDelete').replace('{item}', row.item_description || ''))) return
     try {
-      const res = await fetch(`/api/purchasing/${row.id}`, { method: 'DELETE', headers: writeHeaders })
+      const res = await fetch(`/api/purchasing/${row.id}`, { method: 'DELETE', headers: writeHeaders() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setExpandedRowKey(null)
       await load()

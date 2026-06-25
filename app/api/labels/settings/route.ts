@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'
 
 async function isAdmin(req: NextRequest): Promise<boolean> {
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return false
   const { data: profile } = await supabaseAdmin
     .from('user_profiles')
@@ -46,7 +47,7 @@ export async function PUT(req: NextRequest) {
 
   const body = await req.json()
   const { setting_key, setting_value } = body
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
 
   if (!setting_key || setting_value === undefined) {
     return NextResponse.json({ error: 'Missing setting_key or setting_value' }, { status: 400 })

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { Save, Check } from 'lucide-react'
 
 export function LabelSettings() {
@@ -34,10 +35,7 @@ export function LabelSettings() {
     for (const [key, value] of Object.entries(settings)) {
       await fetch('/api/labels/settings', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.id,
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ setting_key: key, setting_value: value }),
       })
     }

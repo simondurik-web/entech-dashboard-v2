@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { canAccessPurchasing } from '@/lib/purchasing/guard'
 import { resolveActor, logPurchasing } from '@/lib/purchasing/audit'
 import { PHOTO_BUCKET, MAX_PHOTO_BYTES, PHOTO_KINDS, photoPublicUrl, type PhotoKind } from '@/lib/purchasing/photos'
+import { requireUser } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 /** POST multipart (field "files") -> upload item photos to storage + rows. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!(await canAccessPurchasing(userId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireUser } from "@/lib/require-user"
 
 // Admin management of authorized devices (shared floor computers).
 // Same guard pattern as /api/admin/users.
@@ -19,7 +20,7 @@ const ALLOWED_DEVICE_ROLES = new Set([
 ])
 
 async function isAdmin(req: NextRequest): Promise<{ ok: boolean; userId: string | null }> {
-  const userId = req.headers.get("x-user-id")
+  const userId = (await requireUser(req))?.id ?? null
   if (!userId) return { ok: false, userId: null }
   const { data: profile } = await supabaseAdmin
     .from("user_profiles")

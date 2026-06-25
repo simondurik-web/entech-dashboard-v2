@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'
 
@@ -17,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const userId = req.headers.get('x-user-id')
+  const userId = (await requireUser(req))?.id
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const body = await req.json()
@@ -35,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const userId = _req.headers.get('x-user-id')
+  const userId = (await requireUser(_req))?.id
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   // Super admin can delete anyone's view

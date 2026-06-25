@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useI18n } from '@/lib/i18n'
-import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { Combobox } from './Combobox'
 import { DatePicker } from './DatePicker'
 import type { PurchasingInput, PurchasingOrder } from '@/lib/purchasing/types'
@@ -67,7 +67,6 @@ export function PurchasingForm({
   submitting?: boolean
 }) {
   const { t } = useI18n()
-  const { user } = useAuth()
   const [state, setState] = useState<Record<string, string | boolean>>(() => initialState(order))
   const [options, setOptions] = useState<OptionsMap>({ department: [], sub_department: [], person: [] })
   const set = (k: string, v: string | boolean) => setState((p) => ({ ...p, [k]: v }))
@@ -81,9 +80,11 @@ export function PurchasingForm({
 
   useEffect(() => { refetchOptions() }, [refetchOptions])
 
-  const optHeaders = useMemo(
-    () => ({ 'Content-Type': 'application/json', 'x-user-id': user?.id || '' }),
-    [user?.id]
+  // A function (not a memoized object) so each request reads the LIVE token —
+  // a memoized object would freeze a token that expires after ~1h on long-open tabs.
+  const optHeaders = useCallback(
+    () => authHeaders({ 'Content-Type': 'application/json' }),
+    []
   )
 
   // Persist a newly-typed option. Only add it to the shared list when the POST
@@ -91,7 +92,7 @@ export function PurchasingForm({
   // field by the Combobox regardless, so this entry saves either way.
   const addOption = useCallback(async (field: OptionField, value: string) => {
     try {
-      const res = await fetch('/api/purchasing/options', { method: 'POST', headers: optHeaders, body: JSON.stringify({ field, value }) })
+      const res = await fetch('/api/purchasing/options', { method: 'POST', headers: optHeaders(), body: JSON.stringify({ field, value }) })
       if (res.ok) {
         setOptions((prev) => (prev[field].includes(value) ? prev : { ...prev, [field]: [...prev[field], value] }))
       }
@@ -101,7 +102,7 @@ export function PurchasingForm({
   const editOption = useCallback(async (field: OptionField, oldValue: string, newValue: string) => {
     setOptions((prev) => ({ ...prev, [field]: prev[field].map((v) => (v === oldValue ? newValue : v)) }))
     try {
-      const res = await fetch('/api/purchasing/options', { method: 'PATCH', headers: optHeaders, body: JSON.stringify({ field, oldValue, newValue }) })
+      const res = await fetch('/api/purchasing/options', { method: 'PATCH', headers: optHeaders(), body: JSON.stringify({ field, oldValue, newValue }) })
       if (!res.ok) refetchOptions()
     } catch { refetchOptions() }
   }, [optHeaders, refetchOptions])
@@ -109,7 +110,7 @@ export function PurchasingForm({
   const deleteOption = useCallback(async (field: OptionField, value: string) => {
     setOptions((prev) => ({ ...prev, [field]: prev[field].filter((v) => v !== value) }))
     try {
-      const res = await fetch('/api/purchasing/options', { method: 'DELETE', headers: optHeaders, body: JSON.stringify({ field, value }) })
+      const res = await fetch('/api/purchasing/options', { method: 'DELETE', headers: optHeaders(), body: JSON.stringify({ field, value }) })
       if (!res.ok) refetchOptions()
     } catch { refetchOptions() }
   }, [optHeaders, refetchOptions])

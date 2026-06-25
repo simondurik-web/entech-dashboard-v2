@@ -6,6 +6,7 @@ import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { usePermissions } from '@/lib/use-permissions'
 import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -142,7 +143,7 @@ function LabelsPageContent() {
         siblings.filter(s => s.id).map(s =>
           fetch(`/api/labels/${s.id}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
               label_status: 'printed',
               printed_by_name: printedName,

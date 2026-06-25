@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { MonitorSmartphone, Trash2 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { authHeaders } from '@/lib/session-token'
 
 // Authorized devices (shared floor computers) — pairing requests appear here;
 // approving assigns a role the admin can change on the fly. Devices can never
@@ -29,7 +30,7 @@ export function DevicesPanel({ adminUserId }: { adminUserId: string }) {
   const [saving, setSaving] = useState<string | null>(null)
 
   const fetchDevices = useCallback(async () => {
-    const res = await fetch('/api/admin/devices', { headers: { 'x-user-id': adminUserId } })
+    const res = await fetch('/api/admin/devices', { headers: authHeaders() })
     if (res.ok) {
       const data = await res.json()
       setDevices(data.devices ?? [])
@@ -49,7 +50,7 @@ export function DevicesPanel({ adminUserId }: { adminUserId: string }) {
     setSaving(id)
     await fetch('/api/admin/devices', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'x-user-id': adminUserId },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id, ...patch }),
     })
     await fetchDevices()
@@ -61,7 +62,7 @@ export function DevicesPanel({ adminUserId }: { adminUserId: string }) {
     setSaving(id)
     await fetch('/api/admin/devices', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', 'x-user-id': adminUserId },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id }),
     })
     await fetchDevices()

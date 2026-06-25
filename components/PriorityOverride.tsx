@@ -99,7 +99,6 @@ export function PriorityOverride({ line, currentPriority, isOverridden, onUpdate
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': user.id,
           ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         },
         body: JSON.stringify({ line, priority: newPriority }),

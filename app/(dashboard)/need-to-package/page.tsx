@@ -19,6 +19,7 @@ import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import { GenerateLabelsDialog } from '@/components/labels/GenerateLabelsDialog'
 import type { LabelData } from '@/lib/label-utils'
@@ -313,7 +314,7 @@ function NeedToPackagePageContent() {
     try {
       await fetch(`/api/labels/${label.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           label_status: 'printed',
           printed_by_name: printedName,

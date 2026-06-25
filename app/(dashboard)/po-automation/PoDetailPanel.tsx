@@ -12,6 +12,7 @@ import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { PoEditModal } from './PoEditModal'
 import type { ProcessedPo } from '@/lib/po-automation/types'
 import type { PoAuditEntry } from '@/lib/po-automation/edit'
+import { authHeaders } from '@/lib/session-token'
 
 /** Friendly label for a screenshot derived from its filename. */
 function screenshotLabel(url: string): string {
@@ -52,7 +53,7 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
   const loadHistory = useCallback(() => {
     if (!canEdit) return
     fetch(`/api/po-automation/${po.id}`, {
-      headers: { 'x-user-id': userId || '' },
+      headers: authHeaders(),
       cache: 'no-store',
     })
       .then((res) => (res.ok ? res.json() : { entries: [] }))

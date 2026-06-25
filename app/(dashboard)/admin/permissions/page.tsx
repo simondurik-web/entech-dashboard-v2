@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { Save, Check } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { clearPermissionsCache } from '@/lib/use-permissions'
@@ -98,7 +99,7 @@ export default function AdminPermissionsPage() {
     const [permRes, usersRes] = await Promise.all([
       fetch('/api/admin/permissions'),
       user
-        ? fetch('/api/admin/users', { headers: { 'x-user-id': user.id } })
+        ? fetch('/api/admin/users', { headers: authHeaders() })
         : Promise.resolve(null),
     ])
 
@@ -143,10 +144,7 @@ export default function AdminPermissionsPage() {
       if (JSON.stringify(draft[role.role]) !== JSON.stringify(role.menu_access)) {
         await fetch('/api/admin/permissions', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': user.id,
-          },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             role: role.role,
             menu_access: draft[role.role],

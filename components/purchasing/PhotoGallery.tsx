@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Camera, Trash2, RotateCcw, Loader2, Image as ImageIcon } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { toast } from '@/lib/use-toast'
 import { Lightbox } from '@/components/ui/Lightbox'
 import type { PurchasingPhoto } from '@/lib/purchasing/photos'
@@ -56,7 +57,7 @@ export function PhotoGallery({
       const fd = new FormData()
       fd.append('kind', kind)
       Array.from(files).forEach((f) => fd.append('files', f))
-      const res = await fetch(`/api/purchasing/${orderId}/photos`, { method: 'POST', headers: { 'x-user-id': user?.id || '' }, body: fd })
+      const res = await fetch(`/api/purchasing/${orderId}/photos`, { method: 'POST', headers: authHeaders(), body: fd })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `HTTP ${res.status}`) }
       onChange?.()
     } catch (e) {
@@ -71,7 +72,7 @@ export function PhotoGallery({
   const removePhoto = async (p: PurchasingPhoto) => {
     setLightbox(null)
     try {
-      const res = await fetch(`/api/purchasing/photos/${p.id}`, { method: 'DELETE', headers: { 'x-user-id': user?.id || '' } })
+      const res = await fetch(`/api/purchasing/photos/${p.id}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       load(); onChange?.()
     } catch { toast({ title: t('purchasing.photos.deleteFailed'), type: 'error' }) }
@@ -79,7 +80,7 @@ export function PhotoGallery({
 
   const restorePhoto = async (p: PurchasingPhoto) => {
     try {
-      const res = await fetch(`/api/purchasing/photos/${p.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' }, body: JSON.stringify({ restore: true }) })
+      const res = await fetch(`/api/purchasing/photos/${p.id}`, { method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ restore: true }) })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       load(); onChange?.()
     } catch { toast({ title: t('purchasing.photos.restoreFailed'), type: 'error' }) }

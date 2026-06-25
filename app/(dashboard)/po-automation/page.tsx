@@ -9,6 +9,7 @@ import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { useI18n } from '@/lib/i18n'
 import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { PoDetailPanel } from './PoDetailPanel'
 import type {
   PoAutomationResponse,
@@ -54,7 +55,7 @@ export default function PoAutomationPage() {
     try {
       const res = await fetch('/api/po-automation', {
         cache: 'no-store',
-        headers: { 'x-user-id': user?.id || '' },
+        headers: authHeaders(),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData((await res.json()) as PoAutomationResponse)

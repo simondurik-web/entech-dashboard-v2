@@ -7,6 +7,7 @@ import { Trash2, ExternalLink, Pencil, FileDown, FileText, FileSpreadsheet, Chec
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth, isSuperAdmin } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { exportToCSV, exportToExcel } from '@/lib/export-utils'
@@ -218,9 +219,7 @@ function ReportsContent() {
 
   const loadViews = useCallback(async () => {
     try {
-      const headers: Record<string, string> = {}
-      if (userId) headers['x-user-id'] = userId
-      const res = await fetch('/api/views?page=__all', { headers })
+      const res = await fetch('/api/views?page=__all', { headers: authHeaders() })
       if (!res.ok) return
       setViews(await res.json())
     } catch { /* ignore */ }
@@ -233,7 +232,7 @@ function ReportsContent() {
     if (!userId) return
     const res = await fetch(`/api/views/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(patch),
     })
     if (res.ok) await loadViews()
@@ -243,7 +242,7 @@ function ReportsContent() {
     if (!userId) return
     if (!confirm('Delete this report?')) return
     // Super admin uses a special header to delete anyone's
-    const headers: Record<string, string> = { 'x-user-id': userId }
+    const headers = authHeaders()
     if (isAdmin) headers['x-super-admin'] = 'true'
     const res = await fetch(`/api/views/${id}`, { method: 'DELETE', headers })
     if (res.ok) setViews((prev) => prev.filter((v) => v.id !== id))

@@ -14,7 +14,7 @@ import { usePermissions } from '@/lib/use-permissions'
 import { PalletEditModal, type EditablePallet } from '@/components/PalletEditModal'
 import { LabelPreviewModal } from '@/components/labels/LabelPreviewModal'
 import type { LabelData } from '@/lib/label-utils'
-import { useAuth } from '@/lib/auth-context'
+import { authHeaders } from '@/lib/session-token'
 
 interface OrderDetailProps {
   ifNumber?: string
@@ -77,7 +77,7 @@ function PoFusionSection({
   useEffect(() => {
     let active = true
     const qs = new URLSearchParams({ customer, po: poNumber }).toString()
-    fetch(`/api/po-automation?${qs}`, { headers: { 'x-user-id': userId || '' } })
+    fetch(`/api/po-automation?${qs}`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : { match: null }))
       .then((data) => {
         if (active) setMatch(data?.match ?? null)
@@ -252,7 +252,6 @@ export function OrderDetail({
   const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelLoading, setLabelLoading] = useState(false)
-  const { user } = useAuth()
 
   useEffect(() => {
     let mounted = true
@@ -363,10 +362,7 @@ export function OrderDetail({
       } else {
         const genRes = await fetch('/api/labels', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(user ? { 'x-user-id': user.id } : {}),
-          },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ order_lines: [line] }),
         })
         const genData = await genRes.json()
