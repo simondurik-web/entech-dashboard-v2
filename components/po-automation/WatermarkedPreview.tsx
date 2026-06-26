@@ -4,25 +4,26 @@ import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { FileWarning, Loader2 } from 'lucide-react'
 
-// Reuse the same react-pdf canvas renderer the PdfViewer uses, but WITHOUT its
-// Open/Download toolbar — for a BOL that must be previewable yet not printable.
-const PdfCanvas = dynamic(() => import('@/components/ui/PdfCanvas'), {
+// Reuse react-pdf (same worker config as PdfCanvas) to render EVERY page, but
+// WITHOUT a download/print toolbar — a BOL must be fully readable yet not printable.
+const PdfAllPages = dynamic(() => import('@/components/ui/PdfAllPages'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[220px] items-center justify-center text-muted-foreground">
+    <div className="flex h-[280px] items-center justify-center text-muted-foreground">
       <Loader2 className="size-5 animate-spin" />
     </div>
   ),
 })
 
 /**
- * Non-printable, watermarked preview of a BOL (PDF first page or image). The
- * customer's BOL stays visible so a manager can confirm the right file is on the
- * order, but every affordance to obtain a clean copy is removed: no download /
- * open links, the file is rendered (image) or rasterized to canvas (PDF, no text
- * layer), drag + right-click are blocked, and a heavy diagonal "NOT VALID" stamp
- * plus a center disclaimer deface any screenshot. The clean copy is released only
- * from the Shipped section after the load is scanned + sent.
+ * Non-printable, watermarked preview of a BOL (all PDF pages, or an image). The
+ * ENTIRE document is shown (scrollable) so a manager can read every detail, but
+ * every affordance to obtain a clean copy is removed: no download / open links,
+ * pages are rasterized (no text layer), drag + right-click are blocked, a heavy
+ * tiled diagonal "NOT VALID" stamp covers the full height, and a disclaimer
+ * banner is pinned at the top. The clean copy is released only from the Shipped
+ * section after the load is scanned + sent. Screenshots are deliberately fine —
+ * any capture is defaced by the stamp.
  *
  * SCOPE LIMIT (closed in Slice 2): this stops the CASUAL bypass — the floor
  * worker who would click print and hand a clean BOL to the driver. It is NOT a
@@ -42,14 +43,14 @@ export function WatermarkedPreview({
   kind: 'pdf' | 'image'
   /** Short repeated diagonal stamp, e.g. "NOT VALID · NO VÁLIDO". */
   stampText: string
-  /** Center disclaimer sentence (the "scan in ERPNext to release" message). */
+  /** Disclaimer sentence (the "scan in ERPNext to release" message). */
   disclaimer: string
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(320)
   const [pdfFailed, setPdfFailed] = useState(false)
 
-  // Render the PDF canvas at the container's width so it fills the panel. A
+  // Render the PDF pages at the container's width so they fill the panel. A
   // ResizeObserver (not just window resize) catches the panel expand/collapse
   // that drives this UI — including a 0-width first mount inside a closed panel.
   useEffect(() => {
@@ -66,7 +67,7 @@ export function WatermarkedPreview({
   }, [])
 
   // Tiled diagonal stamp as an inline SVG background — repeats across the whole
-  // preview so no corner is clean.
+  // document height so no part of any page is clean.
   const tile = encodeURIComponent(
     `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='170'>` +
       `<text x='8' y='95' font-family='Helvetica,Arial,sans-serif' font-size='20' font-weight='700' ` +
@@ -80,39 +81,43 @@ export function WatermarkedPreview({
       onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
     >
-      <div className="flex max-h-[280px] justify-center overflow-hidden">
-        {kind === 'image' ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={url}
-            alt="BOL preview"
-            draggable={false}
-            className="pointer-events-none max-h-[280px] w-full object-contain"
+      {/* Scroll viewport — the WHOLE BOL is reachable; tall docs scroll. */}
+      <div className="max-h-[78vh] overflow-y-auto">
+        {/* Disclaimer banner — sticky so it stays visible while scrolling without
+            covering the document header at the top. */}
+        <div className="pointer-events-none sticky top-0 z-10 flex justify-center p-2">
+          <div className="max-w-[92%] rounded-md border-2 border-red-500/70 bg-background/90 px-3 py-1.5 text-center shadow-sm">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-red-600">{stampText}</div>
+            <div className="mt-0.5 text-[11px] font-medium text-foreground">{disclaimer}</div>
+          </div>
+        </div>
+        {/* Content wrapper sized to the full document so the stamp covers it all */}
+        <div className="relative flex justify-center">
+          {kind === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={url}
+              alt="BOL preview"
+              draggable={false}
+              className="pointer-events-none w-full object-contain"
+            />
+          ) : pdfFailed ? (
+            <div className="flex h-[280px] flex-col items-center justify-center gap-1 px-4 text-center text-xs text-muted-foreground">
+              <FileWarning className="size-5" />
+              {disclaimer}
+            </div>
+          ) : (
+            <div className="pointer-events-none w-full">
+              <PdfAllPages url={url} width={width} onError={() => setPdfFailed(true)} />
+            </div>
+          )}
+
+          {/* Tiled diagonal stamp over the full document height */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{ backgroundImage: `url("data:image/svg+xml,${tile}")`, backgroundRepeat: 'repeat' }}
           />
-        ) : pdfFailed ? (
-          <div className="flex h-[220px] flex-col items-center justify-center gap-1 px-4 text-center text-xs text-muted-foreground">
-            <FileWarning className="size-5" />
-            {disclaimer}
-          </div>
-        ) : (
-          <div className="pointer-events-none">
-            <PdfCanvas url={url} page={1} width={width} onLoadSuccess={() => {}} onError={() => setPdfFailed(true)} />
-          </div>
-        )}
-      </div>
-
-      {/* Tiled diagonal stamp */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{ backgroundImage: `url("data:image/svg+xml,${tile}")`, backgroundRepeat: 'repeat' }}
-      />
-
-      {/* Center disclaimer banner */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-3">
-        <div className="max-w-[90%] rounded-md border-2 border-red-500/70 bg-background/85 px-3 py-2 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-red-600">{stampText}</div>
-          <div className="mt-0.5 text-[11px] font-medium text-foreground">{disclaimer}</div>
         </div>
       </div>
     </div>
