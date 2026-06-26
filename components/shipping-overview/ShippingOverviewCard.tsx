@@ -69,11 +69,18 @@ function getDueState(order: ShippingOverviewOrder): { label: string; tone: strin
 export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOverviewCardProps) {
   const { t } = useI18n()
   const { canAccess, userId } = usePermissions()
-  const { user } = useAuth()
-  // Only users who can access PO Automation see the PO / BOL control, and only
-  // when we have a customer + PO to look up. Gating here means the fetch never
-  // fires for unpermitted users or orders missing the keys.
-  const showPoBol = canAccess('/po-automation') && !!order.customer?.trim() && !!order.poNumber?.trim()
+  const { user, profile } = useAuth()
+  // Shipping BOLs can be managed by Admin / Manager / Shipping Manager (Simon
+  // 2026-06-26) — a role check independent of PO-Automation access. The server
+  // route (canManageShippingBol) is the authoritative enforcement; this only
+  // governs UI visibility. PO-Automation users keep their existing access too.
+  const role = profile?.role
+  const canManageBol =
+    role === 'admin' || role === 'super_admin' || role === 'manager' || role === 'shipping_manager'
+  const canSeePoData = canAccess('/po-automation')
+  // Show the PO / BOL control to either audience, when we have the lookup keys.
+  const showPoBol = (canSeePoData || canManageBol) && !!order.customer?.trim() && !!order.poNumber?.trim()
+  const shipped = order.status === 'shipped'
   // Toter portal entry: only for Ready-to-Ship (staged) Toter/Wastequip orders,
   // and only for users who can access PO Automation.
   const showToterPortal =
@@ -194,6 +201,9 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
                     customer={order.customer.trim()}
                     poNumber={order.poNumber.trim()}
                     userId={userId ?? user?.id ?? null}
+                    shipped={shipped}
+                    canManage={canManageBol}
+                    showPoEntry={canSeePoData}
                   />
                 </div>
               )}

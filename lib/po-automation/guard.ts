@@ -59,3 +59,37 @@ export async function canAccessPoAutomation(userId: string | null | undefined): 
   const menu = (rolePerm?.menu_access ?? {}) as Record<string, boolean>
   return menu['/po-automation'] === true
 }
+
+// Roles allowed to manage shipping BOLs (upload / replace / delete / view the
+// clean copy) — Admin, Manager, Shipping Manager, per Simon 2026-06-26. This is
+// a role check independent of the /po-automation menu permission: a shipping
+// manager who can't see PO Automation can still manage the BOL on a shipment.
+const SHIPPING_BOL_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager'])
+
+/**
+ * Server-side gate for the shipping BOL controls. Mirrors canAccessPoAutomation's
+ * app-role overlay (user_app_roles for "dashboard" over user_profiles.role) but
+ * authorizes by role membership rather than the /po-automation menu flag.
+ */
+export async function canManageShippingBol(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false
+
+  const { data: profile } = await supabaseAdmin
+    .from('user_profiles')
+    .select('email, role, is_active')
+    .eq('id', userId)
+    .single()
+
+  if (!profile || profile.is_active === false) return false
+  if (profile.email?.toLowerCase() === SUPER_ADMIN_EMAIL) return true
+
+  const { data: appRole } = await supabaseAdmin
+    .from('user_app_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('app_id', DASHBOARD_APP_ID)
+    .maybeSingle()
+  const role = appRole?.role ?? profile.role
+
+  return SHIPPING_BOL_ROLES.has(role)
+}

@@ -537,6 +537,7 @@ export function OrderDetail({
                 poNumber={poNumber!.trim()}
                 userId={userId}
                 variant="card"
+                canManage
               />
             )}
 

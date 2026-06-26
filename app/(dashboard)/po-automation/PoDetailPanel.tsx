@@ -167,6 +167,7 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
           poNumber={po.po_number}
           userId={userId}
           variant="panel"
+          canManage
         />
       )}
 
