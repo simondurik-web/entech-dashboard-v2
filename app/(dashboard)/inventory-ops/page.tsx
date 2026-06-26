@@ -125,7 +125,9 @@ interface HistEvent {
   warehouse: string | null
 }
 
-const OFFICE_ROLES = ['admin', 'super_admin', 'manager', 'shipping_manager']
+// Roles allowed to DELETE/restore inventory (destructive ops). Advanced Users were
+// granted the same delete capability as managers (Simon 2026-06-25).
+const OFFICE_ROLES = ['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user']
 
 // Turn the ordered ops-log events into human timeline lines, deriving qty and
 // bin transitions from the sequence itself (no need to store before/after).

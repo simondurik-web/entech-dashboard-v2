@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 
 const MAX_QTY = 10_000_000
 // Removing stock is office-only, like serialized pallet removal.
-const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager'])
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user'])
 
 interface Body {
   itemCode?: string

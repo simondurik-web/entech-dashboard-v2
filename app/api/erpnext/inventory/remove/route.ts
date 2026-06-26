@@ -12,7 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager'])
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user'])
 
 interface RemoveBody {
   batch?: string
