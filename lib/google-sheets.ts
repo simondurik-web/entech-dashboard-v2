@@ -85,6 +85,7 @@ const COLS = {
   numPackages: 18,     // Column S: "Number of packages"
   requestedDate: 22,
   daysUntilDue: 23,
+  dailyCapacity: 21, // Column V: "Daily Capacity" (verified against live Main Data header 2026-06-26)
   tire: 26,        // Column AA: "Tire" (part number like "308")
   hasTire: 27,     // Column AB: "Have Tire?" (boolean)
   hub: 30,         // Column AE: "Hub" (part number like "H19.170.22100B")
@@ -93,7 +94,6 @@ const COLS = {
   bearings: 36,    // Column AK: "Bearings"
   shippedDate: 45, // Column AT: "Shipped Date"
   assignedTo: 47,  // Column AV: "Assigned to:"
-  dailyCapacity: 24, // Column Y: "Daily Capacity" (adjust if different)
 }
 
 function cellValue(row: { c: Array<{ v: unknown } | null> }, col: number): string {
