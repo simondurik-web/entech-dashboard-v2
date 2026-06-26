@@ -23,10 +23,20 @@ export function OrderPoBolSection({
   customer,
   poNumber,
   userId,
+  shipped = false,
+  canManage = false,
+  showPoEntry = true,
 }: {
   customer: string
   poNumber: string
   userId: string | null
+  /** Shipment status — drives the BOL watermark/reprint gating. */
+  shipped?: boolean
+  /** Whether the viewer may upload / edit / delete the BOL. */
+  canManage?: boolean
+  /** Show the PO Fusion-entry block (needs PO-Automation access). Hidden for
+   *  shipping managers who can manage the BOL but can't see PO data. */
+  showPoEntry?: boolean
 }) {
   const { t } = useI18n()
   const [match, setMatch] = useState<PoMatch | null>(null)
@@ -35,6 +45,9 @@ export function OrderPoBolSection({
   // The caller remounts via key on (customer, poNumber); initial state resets
   // per lookup. State updates only happen in async callbacks.
   useEffect(() => {
+    // When the PO entry is hidden we skip the fetch entirely; `loading` is only
+    // read inside the (then-unrendered) PO section, so no state update is needed.
+    if (!showPoEntry) return
     let active = true
     const qs = new URLSearchParams({ customer, po: poNumber }).toString()
     fetch(`/api/po-automation?${qs}`, { headers: authHeaders() })
@@ -51,7 +64,7 @@ export function OrderPoBolSection({
     return () => {
       active = false
     }
-  }, [customer, poNumber, userId])
+  }, [customer, poNumber, userId, showPoEntry])
 
   const pdfUrl = match && isSafeStorageUrl(match.po_pdf_url) ? match.po_pdf_url : null
   const screenshots = Array.isArray(match?.screenshot_urls)
@@ -63,27 +76,29 @@ export function OrderPoBolSection({
 
   return (
     <div className="space-y-3">
-      <section className="rounded-xl border-l-4 border-l-cyan-500 bg-muted/20 p-4">
-        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-foreground">
-          <Inbox className="size-4" />
-          <span>{t('po.detail.poFusionEntry')}</span>
-          {match?.so_numbers && (
-            <span className="ml-auto rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] tracking-normal text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
-              {t('po.detail.soNumbers')} {match.so_numbers}
-            </span>
+      {showPoEntry && (
+        <section className="rounded-xl border-l-4 border-l-cyan-500 bg-muted/20 p-4">
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-foreground">
+            <Inbox className="size-4" />
+            <span>{t('po.detail.poFusionEntry')}</span>
+            {match?.so_numbers && (
+              <span className="ml-auto rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] tracking-normal text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
+                {t('po.detail.soNumbers')} {match.so_numbers}
+              </span>
+            )}
+          </div>
+          {loading ? (
+            <p className="text-xs text-muted-foreground">{t('ui.loading')}</p>
+          ) : media.length > 0 ? (
+            <PoMediaThumbs items={media} size="lg" />
+          ) : (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <FileText className="size-3.5" />
+              {t('po.detail.noPdf')}
+            </p>
           )}
-        </div>
-        {loading ? (
-          <p className="text-xs text-muted-foreground">{t('ui.loading')}</p>
-        ) : media.length > 0 ? (
-          <PoMediaThumbs items={media} size="lg" />
-        ) : (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <FileText className="size-3.5" />
-            {t('po.detail.noPdf')}
-          </p>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* BOL list + upload (reuses the shared section, full-width panel variant) */}
       <BillOfLadingSection
@@ -92,6 +107,9 @@ export function OrderPoBolSection({
         poNumber={poNumber}
         userId={userId}
         variant="panel"
+        watermarkUntilShipped
+        shipped={shipped}
+        canManage={canManage}
       />
     </div>
   )

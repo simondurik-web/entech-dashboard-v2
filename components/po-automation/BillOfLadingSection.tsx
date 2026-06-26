@@ -1,35 +1,52 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ScrollText, Upload, Trash2, ImageIcon, Loader2 } from 'lucide-react'
+import { ScrollText, Upload, Trash2, ImageIcon, Loader2, Pencil, Printer } from 'lucide-react'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
+import { WatermarkedPreview } from '@/components/po-automation/WatermarkedPreview'
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
 import type { OrderDocument } from '@/lib/po-automation/documents'
-import { authHeaders } from '@/lib/session-token'
 
 function isPdf(doc: OrderDocument): boolean {
   return /\.pdf($|\?)/i.test(doc.file_url ?? '') || /\.pdf$/i.test(doc.file_name ?? '')
 }
 
 /**
- * Bill of Lading section — lists any BOLs for an order as compact thumbnails
- * (PoMediaThumbs — click to expand/download) and exposes an "Add BOL" upload
- * control with per-doc number/notes/delete. Role-gated by the
- * caller (only mounted for users who can access /po-automation), so the fetch
- * never fires for unpermitted users. Reused by OrderDetail + PoDetailPanel.
+ * Bill of Lading section. Lists an order's BOLs and exposes upload / edit-replace
+ * / delete for users allowed to manage shipping BOLs (Admin / Manager / Shipping
+ * Manager — `canManage`).
+ *
+ * Print gating is by shipment status:
+ *  - `shipped=false` (Ready to Ship): each BOL shows as a WATERMARKED, non-
+ *    printable preview — visible for verification, but no clean/printable copy.
+ *  - `shipped=true` (Shipped): the clean BOL is shown via PoMediaThumbs (open +
+ *    download) so it can be reprinted, because the load is already out.
  */
 export function BillOfLadingSection({
   customer,
   poNumber,
   userId,
   variant = 'card',
+  shipped = false,
+  canManage = false,
+  watermarkUntilShipped = false,
 }: {
   customer: string
   poNumber: string
   userId: string | null
   /** 'card' = compact amber card (OrderDetail); 'panel' = wider (PoDetailPanel). */
   variant?: 'card' | 'panel'
+  /** Shipment status — gates whether a clean (printable) copy is shown. */
+  shipped?: boolean
+  /** Whether the viewer may upload / edit / delete BOLs. */
+  canManage?: boolean
+  /**
+   * Shipping surface only: when true, a not-yet-shipped BOL renders watermarked +
+   * non-printable, and the clean copy unlocks once `shipped`. Default false keeps
+   * the original clean, always-uploadable behavior for the PO-Automation surfaces.
+   */
+  watermarkUntilShipped?: boolean
 }) {
   const { t } = useI18n()
   const [docs, setDocs] = useState<OrderDocument[]>([])
@@ -40,6 +57,12 @@ export function BillOfLadingSection({
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // Inline edit/replace state (one row at a time).
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editNumber, setEditNumber] = useState('')
+  const [editNote, setEditNote] = useState('')
+  const [editBusy, setEditBusy] = useState(false)
+  const editFileRef = useRef<HTMLInputElement>(null)
   // Bumped on every (re)load to invalidate in-flight responses — a stale fetch
   // (e.g. one started before an upload/delete) must not overwrite a newer list.
   const loadSeq = useRef(0)
@@ -51,7 +74,7 @@ export function BillOfLadingSection({
     try {
       const qs = new URLSearchParams({ customer, po: poNumber }).toString()
       const res = await fetch(`/api/po-automation/documents?${qs}`, {
-        headers: authHeaders(),
+        headers: { 'x-user-id': userId || '' },
         cache: 'no-store',
       })
       const data = res.ok ? await res.json() : { documents: [] }
@@ -87,7 +110,7 @@ export function BillOfLadingSection({
       if (note.trim()) fd.append('notes', note.trim())
       const res = await fetch('/api/po-automation/documents', {
         method: 'POST',
-        headers: authHeaders(),
+        headers: { 'x-user-id': userId || '' },
         body: fd,
       })
       if (!res.ok) {
@@ -106,13 +129,52 @@ export function BillOfLadingSection({
     }
   }, [customer, poNumber, userId, docNumber, note, t, load])
 
+  const openEdit = useCallback((doc: OrderDocument) => {
+    setEditId(doc.id)
+    setEditNumber(doc.doc_number ?? '')
+    setEditNote(doc.notes ?? '')
+    setError(null)
+    if (editFileRef.current) editFileRef.current.value = ''
+  }, [])
+
+  const handleUpdate = useCallback(
+    async (id: string) => {
+      setEditBusy(true)
+      setError(null)
+      try {
+        const fd = new FormData()
+        fd.append('id', id)
+        fd.append('doc_number', editNumber.trim())
+        fd.append('notes', editNote.trim())
+        const f = editFileRef.current?.files?.[0]
+        if (f) fd.append('file', f)
+        const res = await fetch('/api/po-automation/documents', {
+          method: 'PATCH',
+          headers: { 'x-user-id': userId || '' },
+          body: fd,
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(j?.error || `HTTP ${res.status}`)
+        }
+        setEditId(null)
+        await load()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t('po.bol.editError'))
+      } finally {
+        setEditBusy(false)
+      }
+    },
+    [editNumber, editNote, userId, t, load]
+  )
+
   const handleDelete = useCallback(
     async (id: string) => {
       if (!window.confirm(t('po.bol.deleteConfirm'))) return
       try {
         const res = await fetch(`/api/po-automation/documents?id=${encodeURIComponent(id)}`, {
           method: 'DELETE',
-          headers: authHeaders(),
+          headers: { 'x-user-id': userId || '' },
         })
         if (res.ok) await load()
       } catch {
@@ -124,6 +186,9 @@ export function BillOfLadingSection({
 
   const isPanel = variant === 'panel'
   const textXs = isPanel ? 'text-xs' : 'text-[10px]'
+  // A BOL is hidden behind the watermark only on the shipping surface and only
+  // until the load ships. Everywhere else (and once shipped) the clean copy shows.
+  const watermarked = watermarkUntilShipped && !shipped
 
   return (
     <div
@@ -155,99 +220,182 @@ export function BillOfLadingSection({
               const media: PoMediaItem[] = safe
                 ? [{ url: doc.file_url!, kind: isPdf(doc) ? 'pdf' : 'image', label }]
                 : []
+              const editing = editId === doc.id
               return (
-                <div key={doc.id} className="flex items-start gap-2 rounded-md border bg-background/60 p-2">
-                  {/* Small thumbnail — click to expand/download */}
-                  {safe ? (
-                    <PoMediaThumbs items={media} size={isPanel ? 'md' : 'sm'} />
-                  ) : (
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
-                      <ImageIcon className="size-4" />
+                <div key={doc.id} className="space-y-2 rounded-md border bg-background/60 p-2">
+                  <div className="flex items-start gap-2">
+                    {/* Thumbnail: clean (shipped) opens via PoMediaThumbs; unsafe url shows a placeholder */}
+                    {!safe ? (
+                      <div className="flex size-12 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+                        <ImageIcon className="size-4" />
+                      </div>
+                    ) : !watermarked ? (
+                      <PoMediaThumbs items={media} size={isPanel ? 'md' : 'sm'} />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className={`truncate font-medium ${isPanel ? 'text-xs' : 'text-[11px]'}`}>{label}</p>
+                      {doc.notes && <p className={`truncate ${textXs} text-muted-foreground`}>{doc.notes}</p>}
+                      {doc.uploaded_by_name && (
+                        <p className={`${textXs} text-muted-foreground`}>
+                          {t('po.bol.uploadedBy')} {doc.uploaded_by_name}
+                        </p>
+                      )}
+                      {watermarkUntilShipped && shipped && safe && (
+                        <p className={`flex items-center gap-1 ${textXs} text-emerald-600`}>
+                          <Printer className="size-3" /> {t('po.bol.reprintHint')}
+                        </p>
+                      )}
+                      {!safe && <p className={`${textXs} text-muted-foreground`}>{t('po.bol.unavailable')}</p>}
                     </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate font-medium ${isPanel ? 'text-xs' : 'text-[11px]'}`}>{label}</p>
-                    {doc.notes && <p className={`truncate ${textXs} text-muted-foreground`}>{doc.notes}</p>}
-                    {doc.uploaded_by_name && (
-                      <p className={`${textXs} text-muted-foreground`}>
-                        {t('po.bol.uploadedBy')} {doc.uploaded_by_name}
-                      </p>
-                    )}
-                    {!safe && (
-                      <p className={`${textXs} text-muted-foreground`}>{t('po.bol.unavailable')}</p>
+                    {canManage && !editing && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(doc)}
+                          aria-label={t('po.bol.edit')}
+                          title={t('po.bol.edit')}
+                          className="rounded p-1 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(doc.id)}
+                          aria-label={t('po.bol.delete')}
+                          title={t('po.bol.delete')}
+                          className="rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(doc.id)}
-                    aria-label={t('po.bol.delete')}
-                    title={t('po.bol.delete')}
-                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
+
+                  {/* Watermarked, non-printable preview shown until the load ships */}
+                  {watermarked && safe && (
+                    <WatermarkedPreview
+                      url={doc.file_url!}
+                      kind={isPdf(doc) ? 'pdf' : 'image'}
+                      stampText={t('po.bol.wmStamp')}
+                      disclaimer={t('po.bol.wmDisclaimer')}
+                    />
+                  )}
+
+                  {/* Inline edit / replace form */}
+                  {editing && (
+                    <div className="space-y-2 rounded-md border border-dashed p-2">
+                      <input
+                        type="text"
+                        value={editNumber}
+                        onChange={(e) => setEditNumber(e.target.value)}
+                        placeholder={t('po.bol.numberPlaceholder')}
+                        className="w-full rounded border bg-background px-2 py-1 text-xs"
+                      />
+                      <input
+                        type="text"
+                        value={editNote}
+                        onChange={(e) => setEditNote(e.target.value)}
+                        placeholder={t('po.bol.notePlaceholder')}
+                        className="w-full rounded border bg-background px-2 py-1 text-xs"
+                      />
+                      <label className={`block ${textXs} text-muted-foreground`}>{t('po.bol.replaceFile')}</label>
+                      <input
+                        ref={editFileRef}
+                        type="file"
+                        accept="application/pdf,image/png,image/jpeg,image/webp"
+                        className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-amber-500/15 file:px-2 file:py-1 file:text-xs file:text-amber-600"
+                      />
+                      {error && <p className="text-[10px] text-red-500">{error}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleUpdate(doc.id)}
+                          disabled={editBusy}
+                          className="inline-flex items-center gap-1 rounded bg-amber-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                        >
+                          {editBusy ? <Loader2 className="size-3 animate-spin" /> : null}
+                          {t('po.bol.save')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditId(null)
+                            setError(null)
+                          }}
+                          disabled={editBusy}
+                          className="rounded border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                        >
+                          {t('ui.cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })
           )}
 
-          {/* Add BOL control */}
-          {showForm ? (
-            <div className="space-y-2 rounded-md border border-dashed p-2">
-              <input
-                type="text"
-                value={docNumber}
-                onChange={(e) => setDocNumber(e.target.value)}
-                placeholder={t('po.bol.numberPlaceholder')}
-                className="w-full rounded border bg-background px-2 py-1 text-xs"
-              />
-              <input
-                ref={fileRef}
-                type="file"
-                accept="application/pdf,image/png,image/jpeg,image/webp"
-                className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-amber-500/15 file:px-2 file:py-1 file:text-xs file:text-amber-600"
-              />
-              <input
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={t('po.bol.notePlaceholder')}
-                className="w-full rounded border bg-background px-2 py-1 text-xs"
-              />
-              {error && <p className="text-[10px] text-red-500">{error}</p>}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleUpload()}
-                  disabled={uploading}
-                  className="inline-flex items-center gap-1 rounded bg-amber-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-                >
-                  {uploading ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
-                  {t('po.bol.upload')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForm(false)
-                    setError(null)
-                  }}
-                  disabled={uploading}
-                  className="rounded border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50"
-                >
-                  {t('ui.cancel')}
-                </button>
+          {/* Add BOL control — managers only */}
+          {canManage &&
+            (showForm ? (
+              <div className="space-y-2 rounded-md border border-dashed p-2">
+                <input
+                  type="text"
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  placeholder={t('po.bol.numberPlaceholder')}
+                  className="w-full rounded border bg-background px-2 py-1 text-xs"
+                />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,image/webp"
+                  className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-amber-500/15 file:px-2 file:py-1 file:text-xs file:text-amber-600"
+                />
+                <input
+                  type="text"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={t('po.bol.notePlaceholder')}
+                  className="w-full rounded border bg-background px-2 py-1 text-xs"
+                />
+                {error && <p className="text-[10px] text-red-500">{error}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleUpload()}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1 rounded bg-amber-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    {uploading ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+                    {t('po.bol.upload')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForm(false)
+                      setError(null)
+                    }}
+                    disabled={uploading}
+                    className="rounded border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                  >
+                    {t('ui.cancel')}
+                  </button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center gap-1 rounded border border-amber-500/30 px-2.5 py-1 text-xs font-medium text-amber-600 hover:bg-amber-500/10"
-            >
-              <Upload className="size-3" />
-              {t('po.bol.add')}
-            </button>
-          )}
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(true)
+                  setError(null)
+                }}
+                className="inline-flex items-center gap-1 rounded border border-amber-500/30 px-2.5 py-1 text-xs font-medium text-amber-600 hover:bg-amber-500/10"
+              >
+                <Upload className="size-3" />
+                {t('po.bol.add')}
+              </button>
+            ))}
         </div>
       )}
     </div>

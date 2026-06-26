@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { canAccessPoAutomation } from '@/lib/po-automation/guard'
+import { canAccessPoAutomation, canManageShippingBol } from '@/lib/po-automation/guard'
 import { resolvePoActor, str, escapeLike } from '@/lib/po-automation/edit'
 import {
   PO_DOC_BUCKET,
@@ -23,8 +23,10 @@ async function gate(req: NextRequest): Promise<NextResponse | string> {
   const authed = await requireUserOrService(req)
   if (!authed?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   // A valid service key IS the authorization (skip the per-user role check); a
-  // human caller still has to pass canAccessPoAutomation.
-  if (!authed.isService && !(await canAccessPoAutomation(authed.id))) {
+  // human caller passes if they can access PO Automation OR are allowed to
+  // manage shipping BOLs (Admin/Manager/Shipping Manager) — the latter lets a
+  // shipping manager without PO-Automation access still handle BOLs.
+  if (!authed.isService && !(await canAccessPoAutomation(authed.id)) && !(await canManageShippingBol(authed.id))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   return authed.id
@@ -222,4 +224,105 @@ export async function DELETE(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true })
+}
+
+/**
+ * PATCH /api/po-automation/documents — edit a BOL's number/notes and/or REPLACE
+ * its file (multipart: id required; doc_number, notes, file all optional). Used
+ * when the wrong file was uploaded or the customer sent an updated BOL — fixing
+ * it in place keeps the same row (and its history) instead of delete-and-re-add.
+ */
+export async function PATCH(req: NextRequest) {
+  const gated = await gate(req)
+  if (gated instanceof NextResponse) return gated
+  const userId = gated
+
+  const form = await req.formData()
+  const id = str(form.get('id'))
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  const { data: existing } = await supabaseAdmin
+    .schema('po_automation')
+    .from('order_documents')
+    .select('file_url, po_number, doc_type, doc_number, file_name')
+    .eq('id', id)
+    .single()
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const update: Record<string, string | null> = {}
+  const docNumber = str(form.get('doc_number'))
+  const notes = str(form.get('notes'))
+  if (form.has('doc_number')) update.doc_number = docNumber ?? null
+  if (form.has('notes')) update.notes = notes ?? null
+
+  // Optional file replacement — validate exactly like POST, upload the new object,
+  // swap the URL, then best-effort remove the old object after the row is updated.
+  const file = form.get('file')
+  let newPath: string | null = null
+  let oldPath: string | null = null
+  if (file instanceof File && file.size > 0) {
+    if (!isAllowedDocType(file.type)) {
+      return NextResponse.json({ error: 'Only PDF, PNG, JPEG or WebP files are allowed' }, { status: 400 })
+    }
+    const ext = validatedExt(file.type, file.name)
+    if (!ext) {
+      return NextResponse.json({ error: 'File extension does not match its type' }, { status: 400 })
+    }
+    if (file.size > MAX_DOC_BYTES) {
+      return NextResponse.json({ error: 'File too large (max 25MB)' }, { status: 400 })
+    }
+    const docType = (existing.doc_type as OrderDocType) ?? 'bol'
+    const poSlug = pathSlug(existing.po_number, 'unknown-po')
+    newPath = `${poSlug}/${docType}/${crypto.randomUUID()}.${ext}`
+    const buf = Buffer.from(await file.arrayBuffer())
+    const up = await supabaseAdmin.storage
+      .from(PO_DOC_BUCKET)
+      .upload(newPath, buf, { contentType: file.type, upsert: true })
+    if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 })
+    update.file_url = docPublicUrl(newPath)
+    update.file_name = file.name.slice(0, 200)
+    // Derive the old object path so we can clean it up after the swap.
+    if (existing.file_url) {
+      const marker = `/object/public/${PO_DOC_BUCKET}/`
+      const idx = existing.file_url.indexOf(marker)
+      if (idx >= 0) oldPath = decodeURIComponent(existing.file_url.slice(idx + marker.length))
+    }
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+  }
+
+  const { data: row, error } = await supabaseAdmin
+    .schema('po_automation')
+    .from('order_documents')
+    .update(update)
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) {
+    // If we already uploaded a replacement object, remove it so it isn't orphaned.
+    if (newPath) await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([newPath])
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Old object cleanup only after the row points at the new one (best-effort).
+  if (oldPath) await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([oldPath])
+
+  const actor = await resolvePoActor(userId)
+  const field = newPath ? 'bol_replaced' : 'bol_edited'
+  const { error: auditErr } = await supabaseAdmin
+    .schema('po_automation')
+    .from('po_audit_log')
+    .insert({
+      po_id: null,
+      po_number: existing.po_number ?? null,
+      changed_by: userId,
+      changed_by_name: actor.name,
+      changes: [{ field, old: existing.doc_number || existing.file_name || null, new: update.doc_number ?? docNumber ?? existing.doc_number ?? null }],
+      note: null,
+    })
+  if (auditErr) console.error('[po-automation] BOL edit audit error:', auditErr)
+
+  return NextResponse.json({ document: row })
 }
