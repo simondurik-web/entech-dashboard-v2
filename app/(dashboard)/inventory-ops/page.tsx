@@ -22,6 +22,7 @@ import {
   FileText,
   FileSpreadsheet,
   RefreshCw,
+  RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
@@ -108,6 +109,17 @@ interface RecentLabel {
   claimedAt: string | null
   printedAt: string | null
   error: string | null
+}
+interface DeletedLabel {
+  batch: string
+  itemCode: string
+  itemName: string | null
+  uom: string
+  qty: number | null // the label quantity (what was printed on the pallet)
+  warehouse: string | null // last bin it was in (restore target prefill)
+  by: string
+  at: string | null
+  restored: boolean // a later restore already returned it — disable re-restoring (would double stock)
 }
 interface Station {
   id: string
@@ -528,6 +540,35 @@ export default function InventoryOpsPage() {
   useEffect(() => {
     loadRecentLabels(false)
   }, [loadRecentLabels])
+
+  // ─── Recently deleted labels (a deleted-by-mistake pallet, returned to inventory in one
+  //     click — same label if the same qty, a new label if it changed) ───
+  const [deletedLabels, setDeletedLabels] = useState<DeletedLabel[]>([])
+  const [deletedLoading, setDeletedLoading] = useState(false)
+  const [deletedExpanded, setDeletedExpanded] = useState(false)
+  const [delRow, setDelRow] = useState<string | null>(null) // batch whose restore form is open
+  const [delQty, setDelQty] = useState('')
+  const [delBin, setDelBin] = useState('')
+  const [delRestoring, setDelRestoring] = useState(false)
+  const loadDeletedLabels = useCallback(
+    async (expanded: boolean) => {
+      setDeletedLoading(true)
+      try {
+        const r = await authedFetch(`/api/erpnext/inventory/recent-deletions?limit=${expanded ? 50 : 10}`)
+        if (!r.ok) throw new Error('recent deletions failed')
+        const d = await r.json()
+        setDeletedLabels(d.deletions ?? [])
+      } catch {
+        /* leave prior list; non-critical panel */
+      } finally {
+        setDeletedLoading(false)
+      }
+    },
+    [authedFetch]
+  )
+  useEffect(() => {
+    loadDeletedLabels(false)
+  }, [loadDeletedLabels])
 
   // ─── Bulk transfer (scan-to-queue → one atomic Material Transfer) ───
   const [destBin, setDestBin] = useState('')
@@ -1022,6 +1063,7 @@ export default function InventoryOpsPage() {
       clearOpKey('remove', batch, cleanReason)
       showFlash('ok', `${t('inventoryOps.removed')} ${batch}`)
       setHistoryOpen((h) => (h === batch ? null : h)) // removed pallet's row unmounts
+      loadDeletedLabels(deletedExpanded) // a new deletion to show in the recently-deleted log
       refreshAfterMutation(itemCode)
     } catch (e) {
       showFlash('err', (e as Error).message)
@@ -1103,9 +1145,27 @@ export default function InventoryOpsPage() {
     }
   }
 
-  // Return a removed/zeroed pallet's stock to inventory. Same qty as the label keeps the
-  // same serial (no new label); a different qty reissues a new serial + prints a new label
-  // (we confirm with the user first).
+  // Shared restore call: re-receipt a removed pallet's stock. Same qty as the label keeps the
+  // same serial (no new label); a different qty reissues a new serial + prints a new label.
+  // Returns the (possibly new) serial + whether a new label was printed; throws on failure.
+  // Callers own validation, the new-label confirm, busy state, the flash, and list refresh.
+  const doRestore = async (p: { batch: string; itemCode: string; labelQty: number }, qty: number, bin: string) => {
+    const willReissue = qty !== p.labelQty
+    const station = addStation || stations[0]?.id
+    if (willReissue && !station) throw new Error(t('inventoryOps.addMissing'))
+    const payload = `${qty}:${bin}`
+    const r = await authedFetch('/api/erpnext/inventory/restore', {
+      method: 'POST',
+      body: JSON.stringify({ batch: p.batch, itemCode: p.itemCode, qty, warehouse: bin, station, idempotencyKey: opKey('restore', p.batch, payload) }),
+    })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.error || 'restore failed')
+    clearOpKey('restore', p.batch, payload)
+    return { serial: (d.batch as string) ?? p.batch, newLabel: !!d.newLabel }
+  }
+
+  // Return a removed/zeroed pallet's stock to inventory (scan path). A different qty reissues
+  // a new serial + prints a new label (we confirm with the user first).
   const submitRestore = async () => {
     if (!removedPallet) return
     const qty = Number(restoreQty)
@@ -1118,35 +1178,15 @@ export default function InventoryOpsPage() {
       showFlash('err', t('inventoryOps.restoreBinRequired'))
       return
     }
-    const willReissue = qty !== removedPallet.labelQty
-    if (willReissue && !window.confirm(t('inventoryOps.restoreNewLabelConfirm'))) return
-    const station = addStation || stations[0]?.id
-    if (willReissue && !station) {
-      showFlash('err', t('inventoryOps.addMissing'))
-      return
-    }
+    if (qty !== removedPallet.labelQty && !window.confirm(t('inventoryOps.restoreNewLabelConfirm'))) return
     if (busyRef.current) return
     busyRef.current = true
     setRestoring(true)
-    const payload = `${qty}:${bin}`
     try {
-      const r = await authedFetch('/api/erpnext/inventory/restore', {
-        method: 'POST',
-        body: JSON.stringify({
-          batch: removedPallet.batch,
-          itemCode: removedPallet.itemCode,
-          qty,
-          warehouse: bin,
-          station,
-          idempotencyKey: opKey('restore', removedPallet.batch, payload),
-        }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'restore failed')
-      clearOpKey('restore', removedPallet.batch, payload)
-      const serial = (d.batch as string) ?? removedPallet.batch
-      showFlash('ok', d.newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
-      if (d.newLabel) loadRecentLabels(recentExpanded)
+      const { serial, newLabel } = await doRestore(removedPallet, qty, bin)
+      showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      if (newLabel) loadRecentLabels(recentExpanded)
+      loadDeletedLabels(deletedExpanded) // this deletion is now undone
       // Re-run the search on the (possibly new) serial so it now shows as stocked.
       setRemovedPallet(null)
       setQuery(serial)
@@ -1156,6 +1196,51 @@ export default function InventoryOpsPage() {
       setRestoring(false)
       busyRef.current = false
     }
+  }
+
+  // Return a deleted pallet to inventory from the Recently-deleted-labels panel (its inline
+  // Edit/restore form). Same qty -> the original label still works; a different qty reprints.
+  const submitDeletedRestore = async (row: DeletedLabel) => {
+    const qty = Number(delQty)
+    if (!(qty > 0)) {
+      showFlash('err', t('inventoryOps.restoreQtyInvalid'))
+      return
+    }
+    const bin = delBin.trim()
+    if (!bin) {
+      showFlash('err', t('inventoryOps.restoreBinRequired'))
+      return
+    }
+    // labelQty unknown (legacy row) -> treat any entry as a reprint so we never silently reuse
+    // a label for a quantity we couldn't verify.
+    const labelQty = row.qty ?? -1
+    if (qty !== labelQty && !window.confirm(t('inventoryOps.restoreNewLabelConfirm'))) return
+    if (busyRef.current) return
+    busyRef.current = true
+    setDelRestoring(true)
+    try {
+      const { serial, newLabel } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
+      showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      if (newLabel) loadRecentLabels(recentExpanded)
+      setDelRow(null)
+      loadDeletedLabels(deletedExpanded)
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setDelRestoring(false)
+      busyRef.current = false
+    }
+  }
+
+  // Open a deleted row's inline restore form, prefilled with its label qty + last bin.
+  const openDeletedRestore = (row: DeletedLabel) => {
+    if (delRow === row.batch) {
+      setDelRow(null)
+      return
+    }
+    setDelRow(row.batch)
+    setDelQty(row.qty != null ? String(row.qty) : '')
+    setDelBin(row.warehouse ?? '')
   }
 
   // ─── Quantity mode (non-serialized items): move/remove a quantity (boxes) per bin ───
@@ -2483,6 +2568,161 @@ export default function InventoryOpsPage() {
             >
               {recentExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               {recentExpanded ? t('inventoryOps.showLess') : t('inventoryOps.showMore')}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Recently deleted labels — a pallet deleted by mistake can be returned to inventory in
+          one click. Same quantity reuses the original label; a different quantity reprints a
+          new label. Shows last 10; expand to 50. Same info as the printed log (pallet id,
+          quantity, person) + History and Edit/restore. Visible on desktop + mobile. */}
+      <div className="mt-8 rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+            {t('inventoryOps.recentDeletions')}
+          </div>
+          <button
+            onClick={() => loadDeletedLabels(deletedExpanded)}
+            disabled={deletedLoading}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            title={t('inventoryOps.refresh')}
+            aria-label={t('inventoryOps.refresh')}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${deletedLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        {deletedLabels.length === 0 ? (
+          <div className="border-t border-border pt-3 text-xs text-muted-foreground">
+            {deletedLoading ? t('inventoryOps.loading') : t('inventoryOps.noRecentDeletions')}
+          </div>
+        ) : (
+          <>
+            <ul className="divide-y divide-border border-t border-border">
+              {deletedLabels.map((l, i) => {
+                const timeStr = l.at ? new Date(l.at).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : ''
+                const meta = [
+                  l.itemCode,
+                  l.qty != null ? `${l.qty.toLocaleString()} ${l.uom}` : null,
+                  l.warehouse,
+                  l.by || null,
+                ].filter(Boolean).join(' · ')
+                const open = delRow === l.batch
+                return (
+                  <li key={`${l.batch}-${l.at}-${i}`} className="py-2">
+                    <div className="flex items-start justify-between gap-3 px-0.5">
+                      <div className="min-w-0">
+                        <div className="font-mono text-xs font-medium">{l.batch}</div>
+                        <div className="truncate text-xs text-muted-foreground">{meta}</div>
+                        {timeStr && <div className="text-xs text-muted-foreground">{timeStr}</div>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {l.restored ? (
+                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">{t('inventoryOps.alreadyRestored')}</span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleHistory(l.batch)}
+                              title={t('inventoryOps.history')}
+                              aria-label={t('inventoryOps.history')}
+                              className={`shrink-0 rounded-md p-1.5 hover:bg-accent hover:text-foreground ${historyOpen === l.batch ? 'text-primary' : 'text-muted-foreground'}`}
+                            >
+                              <Clock className="h-4 w-4" />
+                            </button>
+                            {isOffice && (
+                              <button
+                                type="button"
+                                onClick={() => openDeletedRestore(l)}
+                                title={t('inventoryOps.restoreEdit')}
+                                aria-label={t('inventoryOps.restoreEdit')}
+                                className={`shrink-0 rounded-md p-1.5 hover:bg-accent hover:text-foreground ${open ? 'text-primary' : 'text-muted-foreground'}`}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {historyOpen === l.batch && (
+                      <div className="mt-2 rounded-md border border-border bg-muted/30 p-2">
+                        {historyLoading === l.batch ? (
+                          <div className="flex items-center gap-2 p-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('inventoryOps.loading')}
+                          </div>
+                        ) : (history[l.batch] ?? []).length === 0 ? (
+                          <div className="p-1 text-xs text-muted-foreground">{t('inventoryOps.noHistory')}</div>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {describeEvents(history[l.batch] ?? [], t).map((ev, hi) => (
+                              <li key={hi} className="text-xs">
+                                <span className="text-foreground">{ev.text}</span>
+                                <span className="text-muted-foreground"> · {ev.by}{ev.at ? ` · ${ev.at}` : ''}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {open && isOffice && !l.restored && (
+                      <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                        <div className="mb-2 text-sm font-medium">{t('inventoryOps.restoreTitle')}</div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                          <div className="sm:w-32">
+                            <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.restoreQty')}</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={delQty}
+                              onChange={(e) => setDelQty(e.target.value)}
+                              className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.restoreBin')}</label>
+                            <BinCombobox
+                              value={delBin}
+                              onChange={setDelBin}
+                              warehouses={warehouses}
+                              placeholder={t('inventoryOps.searchBin')}
+                              noBinsLabel={t('inventoryOps.noBins')}
+                            />
+                          </div>
+                          <button
+                            onClick={() => submitDeletedRestore(l)}
+                            disabled={delRestoring || !(Number(delQty) > 0) || !delBin}
+                            className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                          >
+                            {delRestoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                            {t('inventoryOps.restoreConfirm')}
+                          </button>
+                        </div>
+                        {Number(delQty) > 0 && l.qty != null && Number(delQty) !== l.qty && (
+                          <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-800">
+                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>{t('inventoryOps.restoreNewLabelNote')}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            <button
+              onClick={() => {
+                const next = !deletedExpanded
+                setDeletedExpanded(next)
+                loadDeletedLabels(next)
+              }}
+              className="mt-2 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              {deletedExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {deletedExpanded ? t('inventoryOps.showLess') : t('inventoryOps.showMore')}
             </button>
           </>
         )}

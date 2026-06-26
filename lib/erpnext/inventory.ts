@@ -1122,6 +1122,37 @@ export async function lookupRemovedPallet(code: string): Promise<RemovedPalletIn
   }
 }
 
+/** Best-effort label qty + last bin for a set of removed pallets, for the deletions log.
+ *  Both survive removal: the Batch (with custom_pallet_qty) is disabled, not deleted, and the
+ *  Stock Ledger keeps the bin it was issued out of. One batched Batch query for the qty; the
+ *  last bin per batch in parallel. Missing/errored lookups degrade to null rather than failing
+ *  the panel — the restore form lets the user type the qty / pick the bin. */
+export async function deletedPalletMeta(
+  batches: string[]
+): Promise<Map<string, { labelQty: number | null; lastWarehouse: string | null }>> {
+  const out = new Map<string, { labelQty: number | null; lastWarehouse: string | null }>()
+  const uniq = [...new Set(batches.filter(Boolean))]
+  if (uniq.length === 0) return out
+
+  const qtyMap = new Map<string, number>()
+  try {
+    const qs = [
+      listParam('filters', [['name', 'in', uniq]]),
+      listParam('fields', ['name', 'custom_pallet_qty']),
+      'limit_page_length=0',
+    ].join('&')
+    const rows =
+      (await erpnextGet<{ data: { name: string; custom_pallet_qty: number }[] }>(`/api/resource/Batch?${qs}`)).data ?? []
+    for (const r of rows) qtyMap.set(r.name, Number(r.custom_pallet_qty) || 0)
+  } catch (e) {
+    console.error('deletedPalletMeta: batch qty lookup failed:', (e as Error).message)
+  }
+
+  const bins = await Promise.all(uniq.map((b) => lastWarehouseForBatch(b).catch(() => null)))
+  uniq.forEach((b, i) => out.set(b, { labelQty: qtyMap.has(b) ? qtyMap.get(b)! : null, lastWarehouse: bins[i] }))
+  return out
+}
+
 export interface RestoreResult extends Committed {
   newLabel: boolean // true when a different qty forced a new serial + new label
   qty: number
