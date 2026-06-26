@@ -480,20 +480,40 @@ export default function InventoryOpsPage() {
   }
   const [confirmReq, setConfirmReq] = useState<ConfirmReq | null>(null)
   const [confirmReason, setConfirmReason] = useState('')
+  // Ref mirrors confirmReq so resolveConfirm can clear it synchronously (no double-resolve race)
+  // and askConfirm can abandon an in-flight request if a second one opens (rapid double-click).
+  const confirmReqRef = useRef<ConfirmReq | null>(null)
   const askConfirm = useCallback(
     (opts: Omit<ConfirmReq, 'resolve'>) =>
       new Promise<{ ok: boolean; reason: string }>((resolve) => {
+        confirmReqRef.current?.resolve({ ok: false, reason: '' }) // abandon any pending request
+        const req = { ...opts, resolve }
+        confirmReqRef.current = req
         setConfirmReason('')
-        setConfirmReq({ ...opts, resolve })
+        setConfirmReq(req)
       }),
     []
   )
   const resolveConfirm = (ok: boolean) => {
-    if (!confirmReq) return
-    confirmReq.resolve({ ok, reason: confirmReason.trim() })
+    const req = confirmReqRef.current
+    if (!req) return
+    confirmReqRef.current = null
+    req.resolve({ ok, reason: confirmReason.trim() })
     setConfirmReq(null)
     setConfirmReason('')
   }
+  // Keyboard: Escape cancels; Enter confirms the reprint dialog (the delete dialog's reason
+  // input owns its own Enter so typing a reason and hitting Enter submits there).
+  useEffect(() => {
+    if (!confirmReq) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') resolveConfirm(false)
+      else if (e.key === 'Enter' && !confirmReq.withReason) resolveConfirm(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmReq])
   const refreshSearch = useCallback(() => {
     const c = new AbortController()
     runSearch(query, c.signal)
@@ -1736,6 +1756,8 @@ export default function InventoryOpsPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="confirm-title"
+          aria-describedby="confirm-msg"
           onClick={() => resolveConfirm(false)}
         >
           <div
@@ -1747,8 +1769,8 @@ export default function InventoryOpsPage() {
                 className={`mt-0.5 h-5 w-5 shrink-0 ${confirmReq.danger ? 'text-red-600' : 'text-amber-600'}`}
               />
               <div className="min-w-0">
-                <h2 className="text-base font-semibold">{confirmReq.title}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{confirmReq.message}</p>
+                <h2 id="confirm-title" className="text-base font-semibold">{confirmReq.title}</h2>
+                <p id="confirm-msg" className="mt-1 text-sm text-muted-foreground">{confirmReq.message}</p>
                 {confirmReq.detail && (
                   <div className="mt-2 break-all font-mono text-sm font-medium">{confirmReq.detail}</div>
                 )}
@@ -1756,8 +1778,9 @@ export default function InventoryOpsPage() {
             </div>
             {confirmReq.withReason && (
               <div className="mt-4">
-                <label className="mb-1 block text-xs text-muted-foreground">{confirmReq.reasonLabel}</label>
+                <label htmlFor="confirm-reason" className="mb-1 block text-xs text-muted-foreground">{confirmReq.reasonLabel}</label>
                 <input
+                  id="confirm-reason"
                   type="text"
                   autoFocus
                   value={confirmReason}
@@ -1779,6 +1802,7 @@ export default function InventoryOpsPage() {
               </button>
               <button
                 type="button"
+                autoFocus={!confirmReq.withReason}
                 onClick={() => resolveConfirm(true)}
                 className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
                   confirmReq.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'
