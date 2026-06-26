@@ -6,7 +6,22 @@ Created: 2026-02-07
 
 ---
 
-## 🔐 ACTIVE HANDOFF → claude-3: API Auth Hardening (2026-06-25)
+## ✅ COMPLETE — API Auth Hardening (claude-3, finished 2026-06-26)
+
+All phases shipped to PROD:
+- **Phase 1** — 22 `x-user-id` routes → verified Supabase Bearer JWT (`lib/require-user.ts`); client sends it via `lib/session-token.ts` `authHeaders()`. Service-key path (`x-service-key` vs `PO_AUTOMATION_API_KEY`) for the PO upload scripts.
+- **Labels** — label writes → `requireUserOrDevice` (logged-in user OR approved floor device via `x-device-token`).
+- **Phase 2a** — every unauthenticated WRITE route locked (BOM, customers, quotes, orders/assign, notifications, pallet-records) + admin/permission checks (`requireAdmin`/`requirePermission`) on the sensitive ones; scheduling migrated off `x-user-id` (`scheduling/_utils.getProfileFromHeader`).
+- **Phase 2b** — all shared READ routes gated (`requireReadAccess`); a global client fetch interceptor (`lib/api-fetch-interceptor.ts`, installed from `auth-context`) auto-attaches the token to same-origin `/api/` calls; CDN caching removed from gated routes.
+- **Phase 3 (RLS)** — CRITICAL: the `anon`/`authenticated` Postgres roles had full read+write on ~48 tables (public anon key = browser → anyone could read/write the whole business DB directly). Revoked all anon/authenticated writes + reads except 8 browser-read tables (role_permissions, priority_overrides, bom_final_assemblies, qa_*). service-role API + postgres-superuser sync unaffected. Migration: `supabase/migrations/20260626_rls_lockdown_anon_authenticated.sql`. **GOTCHA: shared floor devices are the `anon` role to Supabase (no Supabase login) — that's why anon keeps SELECT on the 8 device-read tables.**
+- Cron (`cron/check-order-changes`) already gated via `CRON_SECRET`.
+- Codex-reviewed each phase; gemini/grok timed out on the large diffs. PO scripts (`quote_engine._headers`, `release_toter.py`, `attach_po_pdf.py`) updated to send `x-service-key` (po-automation repo). Vercel env `PO_AUTOMATION_API_KEY` set (prod+preview).
+
+Follow-ups (non-urgent): DROP the now-moot permissive RLS policies for cleanliness; consider role-scoped (not just authenticated) RLS if direct client reads ever expand.
+
+---
+
+## 🔐 (historical handoff) → claude-3: API Auth Hardening (2026-06-25)
 
 claude-2 (#erp) handed claude-3 (#molding-dashboard) a security project: **most API
 routes trust a spoofable `x-user-id` header instead of the login token.** Full plan,
