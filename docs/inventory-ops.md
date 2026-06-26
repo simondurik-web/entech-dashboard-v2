@@ -229,6 +229,21 @@ timestamp > this remove's) shows a **Restored** badge with no restore button.
   semantics live. Non-serialized box removals (`qty-remove`) are a bulk quantity, not a single
   label; re-add them through the normal receive flow.
 
+## Delete + reprint confirmation dialog (SHIPPED 2026-06-26 to staging) — page.tsx
+A misclick on the trash (delete) or reprint icon is costly — delete pulls stock, reprint voids
+the current label and reissues a new pallet code. Both now route through a promise-based
+confirmation modal (`askConfirm` → `confirmReq` state) with **Confirm / Cancel** before anything
+fires. The two delete paths (`submitRemove` pallet, `submitQtyRemove` boxes) fold the optional
+removal reason into the modal, **replacing the old `window.prompt`** (blank reason still removes;
+only Cancel aborts — behavior preserved). The reprint dialog (`submitReprint`) has no reason box.
+- **Re-entrancy:** a `confirmReqRef` mirrors the state so `resolveConfirm` clears it synchronously
+  (no double-resolve race) and a second `askConfirm` abandons any in-flight request `{ok:false}`
+  (rapid double-click can't orphan the first promise).
+- **Keyboard:** Escape cancels; Enter confirms (reason input owns Enter on the delete path, the
+  reprint dialog autofocuses + Enter-confirms its button). `aria-labelledby/describedby` wired.
+- Red confirm button for delete, amber for reprint. Bilingual: `inventoryOps.confirm{Delete,Reprint}{Title,Msg,Btn}`.
+- 4-agent reviewed (Opus/Codex/Gemini/Grok); the re-entrancy + keyboard fixes came from that pass.
+
 ## Mobile nav (SHIPPED 2026-06-22) — `components/layout/Sidebar.tsx`
 The iPhone drawer was a flat everything-list. Now all sections are wrapped in the same
 `CollapsibleNavSection` + `NavAccordionProvider` as desktop (one section open at a time,

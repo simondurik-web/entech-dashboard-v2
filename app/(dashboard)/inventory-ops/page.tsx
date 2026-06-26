@@ -462,6 +462,58 @@ export default function InventoryOpsPage() {
     if (flashRef.current) clearTimeout(flashRef.current)
     flashRef.current = setTimeout(() => setFlash(null), 5000)
   }
+
+  // ─── Confirmation dialog (delete + reprint) ───
+  // A misclick on the trash or reprint icon is costly: delete pulls stock and reprint voids the
+  // current label. Both now route through this promise-based modal so the worker must confirm.
+  // `withReason` shows an optional reason box (used by the two delete paths, replacing the old
+  // window.prompt). Resolves { ok, reason } so callers `if (!ok) return` and keep their flow.
+  type ConfirmReq = {
+    title: string
+    message: string
+    detail?: string // emphasized line, e.g. the pallet id or qty·bin being acted on
+    confirmLabel: string
+    danger?: boolean // red confirm button (delete) vs amber (reprint)
+    withReason?: boolean
+    reasonLabel?: string
+    resolve: (v: { ok: boolean; reason: string }) => void
+  }
+  const [confirmReq, setConfirmReq] = useState<ConfirmReq | null>(null)
+  const [confirmReason, setConfirmReason] = useState('')
+  // Ref mirrors confirmReq so resolveConfirm can clear it synchronously (no double-resolve race)
+  // and askConfirm can abandon an in-flight request if a second one opens (rapid double-click).
+  const confirmReqRef = useRef<ConfirmReq | null>(null)
+  const askConfirm = useCallback(
+    (opts: Omit<ConfirmReq, 'resolve'>) =>
+      new Promise<{ ok: boolean; reason: string }>((resolve) => {
+        confirmReqRef.current?.resolve({ ok: false, reason: '' }) // abandon any pending request
+        const req = { ...opts, resolve }
+        confirmReqRef.current = req
+        setConfirmReason('')
+        setConfirmReq(req)
+      }),
+    []
+  )
+  const resolveConfirm = (ok: boolean) => {
+    const req = confirmReqRef.current
+    if (!req) return
+    confirmReqRef.current = null
+    req.resolve({ ok, reason: confirmReason.trim() })
+    setConfirmReq(null)
+    setConfirmReason('')
+  }
+  // Keyboard: Escape cancels; Enter confirms the reprint dialog (the delete dialog's reason
+  // input owns its own Enter so typing a reason and hitting Enter submits there).
+  useEffect(() => {
+    if (!confirmReq) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') resolveConfirm(false)
+      else if (e.key === 'Enter' && !confirmReq.withReason) resolveConfirm(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmReq])
   const refreshSearch = useCallback(() => {
     const c = new AbortController()
     runSearch(query, c.signal)
@@ -1045,10 +1097,18 @@ export default function InventoryOpsPage() {
   }
 
   const submitRemove = async (itemCode: string, batch: string) => {
-    // The reason is OPTIONAL: clicking OK with a blank box still removes (faster); only
-    // Cancel (window.prompt returns null) aborts. A typed reason is still recorded.
-    const reason = window.prompt(t('inventoryOps.removeReason'))
-    if (reason === null) return
+    // Confirm first — deleting pulls stock out of inventory. The reason is OPTIONAL: confirming
+    // with a blank box still removes; only Cancel aborts. A typed reason is still recorded.
+    const { ok, reason } = await askConfirm({
+      title: t('inventoryOps.confirmDeleteTitle'),
+      message: t('inventoryOps.confirmDeleteMsg'),
+      detail: batch,
+      confirmLabel: t('inventoryOps.confirmDeleteBtn'),
+      danger: true,
+      withReason: true,
+      reasonLabel: t('inventoryOps.removeReason'),
+    })
+    if (!ok) return
     const cleanReason = reason.trim()
     if (busyRef.current) return
     busyRef.current = true
@@ -1111,6 +1171,15 @@ export default function InventoryOpsPage() {
       showFlash('err', t('inventoryOps.addMissing'))
       return
     }
+    // Confirm first — a reprint voids the current label and issues a new pallet code, so the old
+    // printed label must be discarded. Guards against an accidental tap on the reprint icon.
+    const { ok } = await askConfirm({
+      title: t('inventoryOps.confirmReprintTitle'),
+      message: t('inventoryOps.confirmReprintMsg'),
+      detail: batch,
+      confirmLabel: t('inventoryOps.confirmReprintBtn'),
+    })
+    if (!ok) return
     if (busyRef.current) return
     busyRef.current = true
     setBusyBatch(batch)
@@ -1292,9 +1361,18 @@ export default function InventoryOpsPage() {
       showFlash('err', t('inventoryOps.restoreQtyInvalid'))
       return
     }
-    // Reason is optional (OK with a blank box still removes); only Cancel aborts.
-    const reason = window.prompt(t('inventoryOps.removeReason'))
-    if (reason === null) return
+    // Confirm first — this pulls boxes out of inventory. Reason is optional (confirming with a
+    // blank box still removes); only Cancel aborts.
+    const { ok, reason } = await askConfirm({
+      title: t('inventoryOps.confirmDeleteTitle'),
+      message: t('inventoryOps.confirmDeleteMsg'),
+      detail: `${qty} · ${fromWarehouse}`,
+      confirmLabel: t('inventoryOps.confirmDeleteBtn'),
+      danger: true,
+      withReason: true,
+      reasonLabel: t('inventoryOps.removeReason'),
+    })
+    if (!ok) return
     const cleanReason = reason.trim()
     if (busyRef.current) return
     busyRef.current = true
@@ -1669,6 +1747,71 @@ export default function InventoryOpsPage() {
         >
           {flash.kind === 'ok' ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
           {flash.msg}
+        </div>
+      )}
+
+      {/* Confirmation dialog — gates delete + reprint against accidental taps */}
+      {confirmReq && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-title"
+          aria-describedby="confirm-msg"
+          onClick={() => resolveConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                className={`mt-0.5 h-5 w-5 shrink-0 ${confirmReq.danger ? 'text-red-600' : 'text-amber-600'}`}
+              />
+              <div className="min-w-0">
+                <h2 id="confirm-title" className="text-base font-semibold">{confirmReq.title}</h2>
+                <p id="confirm-msg" className="mt-1 text-sm text-muted-foreground">{confirmReq.message}</p>
+                {confirmReq.detail && (
+                  <div className="mt-2 break-all font-mono text-sm font-medium">{confirmReq.detail}</div>
+                )}
+              </div>
+            </div>
+            {confirmReq.withReason && (
+              <div className="mt-4">
+                <label htmlFor="confirm-reason" className="mb-1 block text-xs text-muted-foreground">{confirmReq.reasonLabel}</label>
+                <input
+                  id="confirm-reason"
+                  type="text"
+                  autoFocus
+                  value={confirmReason}
+                  onChange={(e) => setConfirmReason(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') resolveConfirm(true)
+                  }}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => resolveConfirm(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent"
+              >
+                {t('inventoryOps.cancel')}
+              </button>
+              <button
+                type="button"
+                autoFocus={!confirmReq.withReason}
+                onClick={() => resolveConfirm(true)}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
+                  confirmReq.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+              >
+                {confirmReq.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
