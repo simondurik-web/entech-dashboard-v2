@@ -58,9 +58,12 @@ export async function GET(req: NextRequest) {
     .from('user_printer_access')
     .select('user_id, station_id')
     .eq('allowed', false)
+  const { data: defaults } = await supabaseAdmin
+    .from('user_default_printer')
+    .select('user_id, station_id')
 
   return NextResponse.json(
-    { users, stations: stations ?? [], denied: denies ?? [] },
+    { users, stations: stations ?? [], denied: denies ?? [], defaults: defaults ?? [] },
     { headers: { 'Cache-Control': 'no-store' } }
   )
 }
@@ -73,6 +76,26 @@ export async function PUT(req: NextRequest) {
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
+
+  // Set/clear a user's DEFAULT printer (distinct body shape from a cell toggle).
+  if ('default_station_id' in body) {
+    const { user_id, default_station_id } = body as { user_id?: string; default_station_id?: string | null }
+    if (!user_id) return NextResponse.json({ error: 'user_id is required' }, { status: 400 })
+    if (!default_station_id) {
+      const { error } = await supabaseAdmin.from('user_default_printer').delete().eq('user_id', user_id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    } else {
+      const { error } = await supabaseAdmin.from('user_default_printer').upsert({
+        user_id,
+        station_id: default_station_id,
+        updated_by: admin.id,
+        updated_at: new Date().toISOString(),
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   const { user_id, station_id, allowed } = body as {
     user_id?: string
     station_id?: string

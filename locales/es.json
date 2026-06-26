@@ -358,6 +358,8 @@
   "printerAccess.forbidden": "Necesitas acceso de administrador para gestionar el acceso a impresoras.",
   "printerAccess.loadError": "No se pudo cargar el acceso a impresoras.",
   "printerAccess.saveError": "No se pudo guardar el cambio.",
+  "printerAccess.defaultPrinter": "Impresora predeterminada",
+  "printerAccess.noDefault": "Ninguna",
   "page.adminUsers": "Gestión de Usuarios",
   "page.adminUsersSubtitle": "Administra roles y permisos de usuarios",
   "page.allData": "Todos los Datos",

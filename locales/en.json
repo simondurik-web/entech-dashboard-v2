@@ -358,6 +358,8 @@
   "printerAccess.forbidden": "You need admin access to manage printer access.",
   "printerAccess.loadError": "Could not load printer access.",
   "printerAccess.saveError": "Could not save the change.",
+  "printerAccess.defaultPrinter": "Default printer",
+  "printerAccess.noDefault": "None",
   "page.adminUsers": "User Management",
   "page.adminUsersSubtitle": "Manage user roles and permissions",
   "page.allData": "All Data",

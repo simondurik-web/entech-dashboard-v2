@@ -32,6 +32,20 @@ export async function deniedStationIds(
   return new Set((data ?? []).map((r) => r.station_id as string))
 }
 
+/** The user's chosen default print station id, or null if none set. */
+export async function defaultStationForUser(userId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('user_default_printer')
+    .select('station_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) {
+    console.error('defaultStationForUser lookup failed:', error)
+    return null
+  }
+  return data?.station_id ?? null
+}
+
 /** True if the user may print to a specific station (default-allow; admins always). */
 export async function userCanPrintTo(
   userId: string,

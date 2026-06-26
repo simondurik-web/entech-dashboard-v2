@@ -252,6 +252,7 @@ export default function InventoryOpsPage() {
   const [warehouses, setWarehouses] = useState<string[]>([])
   const [defaultWarehouse, setDefaultWarehouse] = useState('')
   const [stations, setStations] = useState<Station[]>([])
+  const [defaultStationId, setDefaultStationId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -264,7 +265,10 @@ export default function InventoryOpsPage() {
       .catch(() => {})
     authedFetch('/api/erpnext/print-stations')
       .then((r) => r.json())
-      .then((d) => setStations(d.stations ?? []))
+      .then((d) => {
+        setStations(d.stations ?? [])
+        setDefaultStationId(d.defaultStationId ?? null)
+      })
       .catch(() => {})
   }, [user?.id, authedFetch])
 
@@ -977,8 +981,15 @@ export default function InventoryOpsPage() {
     if (defaultWarehouse) setAddWarehouse((w) => w || defaultWarehouse)
   }, [defaultWarehouse])
   useEffect(() => {
-    if (stations[0] && !addStation) setAddStation(stations[0].id)
-  }, [stations, addStation])
+    if (addStation || stations.length === 0) return
+    // Pre-select the user's default printer if they have one (and it's in their
+    // allowed list); otherwise fall back to the first station.
+    const preferred =
+      defaultStationId && stations.some((s) => s.id === defaultStationId)
+        ? defaultStationId
+        : stations[0].id
+    setAddStation(preferred)
+  }, [stations, addStation, defaultStationId])
 
   useEffect(() => {
     if (itemQuery.trim().length < 2) {

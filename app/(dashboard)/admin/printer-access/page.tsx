@@ -26,6 +26,7 @@ export default function PrinterAccessPage() {
   const [users, setUsers] = useState<AclUser[]>([])
   const [stations, setStations] = useState<AclStation[]>([])
   const [denied, setDenied] = useState<Set<string>>(new Set())
+  const [defaults, setDefaults] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [busyCell, setBusyCell] = useState<string | null>(null)
@@ -44,6 +45,7 @@ export default function PrinterAccessPage() {
       setUsers(data.users ?? [])
       setStations((data.stations ?? []).filter((s: AclStation) => s.enabled))
       setDenied(new Set((data.denied ?? []).map((d: { user_id: string; station_id: string }) => cellKey(d.user_id, d.station_id))))
+      setDefaults(new Map((data.defaults ?? []).map((d: { user_id: string; station_id: string }) => [d.user_id, d.station_id])))
     } catch {
       setError(t('printerAccess.loadError'))
     } finally {
@@ -95,6 +97,37 @@ export default function PrinterAccessPage() {
     [t]
   )
 
+  // Set/clear a user's default printer. Optimistic; reverts on failure.
+  const setDefault = useCallback(
+    async (userId: string, stationId: string) => {
+      const prevVal = defaults.get(userId) ?? ''
+      setError(null)
+      setDefaults((prev) => {
+        const n = new Map(prev)
+        if (stationId) n.set(userId, stationId)
+        else n.delete(userId)
+        return n
+      })
+      try {
+        const res = await fetch('/api/admin/printer-access', {
+          method: 'PUT',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ user_id: userId, default_station_id: stationId || null }),
+        })
+        if (!res.ok) throw new Error(String(res.status))
+      } catch {
+        setDefaults((prev) => {
+          const n = new Map(prev)
+          if (prevVal) n.set(userId, prevVal)
+          else n.delete(userId)
+          return n
+        })
+        setError(t('printerAccess.saveError'))
+      }
+    },
+    [defaults, t]
+  )
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -144,6 +177,7 @@ export default function PrinterAccessPage() {
                     </div>
                   </th>
                 ))}
+                <th className="px-3 py-3 text-center font-medium">{t('printerAccess.defaultPrinter')}</th>
               </tr>
             </thead>
             <tbody>
@@ -176,6 +210,28 @@ export default function PrinterAccessPage() {
                       </td>
                     )
                   })}
+                  <td className="px-3 py-2 text-center">
+                    {(() => {
+                      // The default can only be one of the user's ALLOWED printers.
+                      const allowed = stations.filter((s) => u.isAdmin || !denied.has(cellKey(u.id, s.id)))
+                      const current = defaults.get(u.id) ?? ''
+                      const value = allowed.some((s) => s.id === current) ? current : ''
+                      return (
+                        <select
+                          value={value}
+                          onChange={(e) => void setDefault(u.id, e.target.value)}
+                          className="rounded border border-border bg-background px-2 py-1 text-xs"
+                        >
+                          <option value="">{t('printerAccess.noDefault')}</option>
+                          {allowed.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      )
+                    })()}
+                  </td>
                 </tr>
               ))}
             </tbody>
