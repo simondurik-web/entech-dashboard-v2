@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { deniedStationIds } from '@/lib/erpnext/printer-access'
 
 // GET /api/erpnext/print-stations -> enabled print stations for the printer dropdown.
 
@@ -21,5 +22,8 @@ export async function GET(req: NextRequest) {
     console.error('list print stations failed:', error)
     return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })
   }
-  return NextResponse.json({ stations: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
+  // Per-user ACL: hide stations this user is restricted from (admins see all).
+  const denied = await deniedStationIds(guard.userId, guard.role)
+  const stations = (data ?? []).filter((s) => !denied.has(s.id))
+  return NextResponse.json({ stations }, { headers: { 'Cache-Control': 'no-store' } })
 }

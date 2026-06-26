@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
+import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveNextSerial, reissuePallet, verifyReissue, removeInventory, reconcileStockEntry, assertBatchItem, getBatchLocation, palletBase } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
@@ -49,6 +50,9 @@ export async function POST(req: NextRequest) {
     .single()
   if (!stationRow) {
     return NextResponse.json({ error: `Unknown or disabled printer station: ${station}` }, { status: 400 })
+  }
+  if (!(await userCanPrintTo(guard.userId, guard.role, station))) {
+    return NextResponse.json({ error: `Not allowed to print to this printer station: ${station}` }, { status: 403 })
   }
 
   const userId = guard.userId

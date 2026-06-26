@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
+import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import {
   restorePallet,
   reconcileStockEntry,
@@ -113,6 +114,9 @@ export async function POST(req: NextRequest) {
     const { data: stationRow } = await supabaseAdmin.from('print_stations').select('id').eq('id', station).eq('enabled', true).single()
     if (!stationRow) {
       return NextResponse.json({ error: `Unknown or disabled printer station: ${station}` }, { status: 400 })
+    }
+    if (!(await userCanPrintTo(guard.userId, guard.role, station))) {
+      return NextResponse.json({ error: `Not allowed to print to this printer station: ${station}` }, { status: 403 })
     }
   }
 

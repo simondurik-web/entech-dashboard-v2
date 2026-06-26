@@ -51,6 +51,7 @@ import {
   BookOpen,
   Building2,
   ExternalLink,
+  Printer,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -134,6 +135,7 @@ const palletAdminItem: NavItem = { tKey: "pallets.nav.admin", href: "/pallet-rec
 const adminItems: NavItem[] = [
   { tKey: "User Management", href: "/admin/users", icon: <Users className="size-4" /> },
   { tKey: "Role Permissions", href: "/admin/permissions", icon: <Settings className="size-4" /> },
+  { tKey: "Printer Access", href: "/admin/printer-access", icon: <Printer className="size-4" /> },
   { tKey: "Notifications", href: "/admin/notifications", icon: <Bell className="size-4" /> },
 ]
 
