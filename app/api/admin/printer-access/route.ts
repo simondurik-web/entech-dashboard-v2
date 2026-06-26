@@ -75,7 +75,10 @@ export async function PUT(req: NextRequest) {
   const admin = await requireAdmin(req)
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await req.json().catch(() => ({}))
+  const raw = await req.json().catch(() => ({}))
+  // Normalize to a plain object so the `'x' in body` checks below can't throw on
+  // valid-but-non-object JSON (null / string / number / array) — would 500 otherwise.
+  const body = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
 
   // Set/clear a user's DEFAULT printer (distinct body shape from a cell toggle).
   if ('default_station_id' in body) {
