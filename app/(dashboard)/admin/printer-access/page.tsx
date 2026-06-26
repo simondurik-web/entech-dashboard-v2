@@ -39,6 +39,7 @@ export default function PrinterAccessPage() {
         setForbidden(true)
         return
       }
+      if (!res.ok) throw new Error(String(res.status))
       const data = await res.json()
       setUsers(data.users ?? [])
       setStations((data.stations ?? []).filter((s: AclStation) => s.enabled))
@@ -56,12 +57,13 @@ export default function PrinterAccessPage() {
 
   // Toggle one cell. Optimistic; reverts on failure. Default-allow: checked =
   // allowed (no deny row), unchecked = denied.
+  // `currentlyChecked` is read from the rendered cell, not the `denied` state, so
+  // rapid clicks can't compute against a stale closure.
   const toggleCell = useCallback(
-    async (u: AclUser, stationId: string) => {
+    async (u: AclUser, stationId: string, currentlyChecked: boolean) => {
       if (u.isAdmin) return // admins always have all printers
       const key = cellKey(u.id, stationId)
-      const wasDenied = denied.has(key)
-      const nextAllowed = wasDenied // if currently denied, the click allows it
+      const nextAllowed = !currentlyChecked
       setBusyCell(key)
       setError(null)
       setDenied((prev) => {
@@ -78,10 +80,10 @@ export default function PrinterAccessPage() {
         })
         if (!res.ok) throw new Error(String(res.status))
       } catch {
-        // revert
+        // revert to the pre-click state
         setDenied((prev) => {
           const n = new Set(prev)
-          if (wasDenied) n.add(key)
+          if (nextAllowed) n.add(key)
           else n.delete(key)
           return n
         })
@@ -90,7 +92,7 @@ export default function PrinterAccessPage() {
         setBusyCell(null)
       }
     },
-    [denied, t]
+    [t]
   )
 
   if (loading) {
@@ -166,7 +168,7 @@ export default function PrinterAccessPage() {
                             type="checkbox"
                             checked={checked}
                             disabled={u.isAdmin}
-                            onChange={() => void toggleCell(u, s.id)}
+                            onChange={() => void toggleCell(u, s.id, checked)}
                             title={u.isAdmin ? t('printerAccess.allAccess') : undefined}
                             className="size-4 cursor-pointer rounded border-gray-300 text-primary accent-primary disabled:cursor-not-allowed disabled:opacity-50"
                           />

@@ -1,33 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireAdmin } from '@/lib/require-user'
 import { isPrinterAdminRole } from '@/lib/erpnext/printer-access'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'
 const DASHBOARD_APP_ID = 'dashboard'
-
-// Admin gate — mirrors app/api/admin/permissions (super-admin email OR the
-// dashboard app-role 'admin'). Returns the admin's own user id for audit.
-async function requireAdmin(req: NextRequest): Promise<string | null> {
-  const userId = (await requireUser(req))?.id
-  if (!userId) return null
-  const { data: profile } = await supabaseAdmin
-    .from('user_profiles')
-    .select('email')
-    .eq('id', userId)
-    .single()
-  if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL) return userId
-  const { data: appRole } = await supabaseAdmin
-    .from('user_app_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .eq('app_id', DASHBOARD_APP_ID)
-    .maybeSingle()
-  return appRole?.role === 'admin' ? userId : null
-}
 
 // GET — the matrix data: active users (with effective role), all stations, and
 // the current deny rows. Default-allow: a (user, station) cell is allowed unless
@@ -50,7 +29,10 @@ export async function GET(req: NextRequest) {
   const users = (profiles ?? [])
     .filter((u) => u.is_active !== false)
     .map((u) => {
-      const role = roleMap.get(u.id) ?? u.role
+      // Use the dashboard app-role (fallback 'visitor'), matching how the label
+      // routes resolve role for enforcement — so the matrix's "admin = all" lock
+      // can't diverge from who actually bypasses the ACL server-side.
+      const role = roleMap.get(u.id) ?? 'visitor'
       return { id: u.id, email: u.email, name: u.full_name ?? null, role, isAdmin: isPrinterAdminRole(role) }
     })
 
@@ -73,8 +55,8 @@ export async function GET(req: NextRequest) {
 // allowed=false writes a deny row. Admin-role users can't be restricted (they
 // bypass the ACL in enforcement anyway).
 export async function PUT(req: NextRequest) {
-  const adminId = await requireAdmin(req)
-  if (!adminId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const admin = await requireAdmin(req)
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const { user_id, station_id, allowed } = body as {
@@ -98,7 +80,7 @@ export async function PUT(req: NextRequest) {
       user_id,
       station_id,
       allowed: false,
-      updated_by: adminId,
+      updated_by: admin.id,
       updated_at: new Date().toISOString(),
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
