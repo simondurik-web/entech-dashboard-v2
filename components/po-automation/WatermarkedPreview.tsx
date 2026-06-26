@@ -22,8 +22,15 @@ const PdfCanvas = dynamic(() => import('@/components/ui/PdfCanvas'), {
  * open links, the file is rendered (image) or rasterized to canvas (PDF, no text
  * layer), drag + right-click are blocked, and a heavy diagonal "NOT VALID" stamp
  * plus a center disclaimer deface any screenshot. The clean copy is released only
- * from the Shipped section after the load is scanned + sent. Honest limit: the
- * web can't block an OS screenshot — the watermark makes any capture useless.
+ * from the Shipped section after the load is scanned + sent.
+ *
+ * SCOPE LIMIT (closed in Slice 2): this stops the CASUAL bypass — the floor
+ * worker who would click print and hand a clean BOL to the driver. It is NOT a
+ * hard control: the BOL lives in a PUBLIC storage bucket, so `url` is fetchable
+ * from the browser's network tab and the overlay is removable in devtools. The
+ * airtight fix (private bucket + a status-gated server endpoint that rasterizes
+ * + watermarks server-side, returning clean bytes only once shipped) lands with
+ * the ERPNext scan-gate in Slice 2.
  */
 export function WatermarkedPreview({
   url,
@@ -42,15 +49,20 @@ export function WatermarkedPreview({
   const [width, setWidth] = useState(320)
   const [pdfFailed, setPdfFailed] = useState(false)
 
-  // Render the PDF canvas at the container's width so it fills the panel.
+  // Render the PDF canvas at the container's width so it fills the panel. A
+  // ResizeObserver (not just window resize) catches the panel expand/collapse
+  // that drives this UI — including a 0-width first mount inside a closed panel.
   useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
     const measure = () => {
-      const w = wrapRef.current?.clientWidth
+      const w = el.clientWidth
       if (w && w > 0) setWidth(Math.min(w, 720))
     }
     measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   // Tiled diagonal stamp as an inline SVG background — repeats across the whole

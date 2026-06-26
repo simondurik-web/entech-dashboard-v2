@@ -25,7 +25,12 @@ async function gate(req: NextRequest): Promise<NextResponse | string> {
   // A valid service key IS the authorization (skip the per-user role check); a
   // human caller passes if they can access PO Automation OR are allowed to
   // manage shipping BOLs (Admin/Manager/Shipping Manager) — the latter lets a
-  // shipping manager without PO-Automation access still handle BOLs.
+  // shipping manager without PO-Automation access still handle BOLs. NOTE: this
+  // is intentionally a UNION, not the shipping-only role set: PO-Automation users
+  // have always been able to manage BOLs on the PO surface, so requiring the
+  // shipping role here would REGRESS that. No new capability is granted — each
+  // group keeps exactly what it already had. Surface-specific visibility (only
+  // the 3 roles see the controls in Shipping Overview) is handled client-side.
   if (!authed.isService && !(await canAccessPoAutomation(authed.id)) && !(await canManageShippingBol(authed.id))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -248,6 +253,11 @@ export async function PATCH(req: NextRequest) {
     .eq('id', id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // Defensive: this route only manages BOLs today, but guard against editing a
+  // future non-BOL doc_type through the same id-based endpoint.
+  if (existing.doc_type && existing.doc_type !== 'bol') {
+    return NextResponse.json({ error: 'Unsupported document type' }, { status: 400 })
+  }
 
   const update: Record<string, string | null> = {}
   const docNumber = str(form.get('doc_number'))

@@ -6,6 +6,7 @@ import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMe
 import { WatermarkedPreview } from '@/components/po-automation/WatermarkedPreview'
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
+import { authHeaders } from '@/lib/session-token'
 import type { OrderDocument } from '@/lib/po-automation/documents'
 
 function isPdf(doc: OrderDocument): boolean {
@@ -26,7 +27,6 @@ function isPdf(doc: OrderDocument): boolean {
 export function BillOfLadingSection({
   customer,
   poNumber,
-  userId,
   variant = 'card',
   shipped = false,
   canManage = false,
@@ -34,7 +34,8 @@ export function BillOfLadingSection({
 }: {
   customer: string
   poNumber: string
-  userId: string | null
+  /** Retained for caller compatibility; auth now rides the session token. */
+  userId?: string | null
   /** 'card' = compact amber card (OrderDetail); 'panel' = wider (PoDetailPanel). */
   variant?: 'card' | 'panel'
   /** Shipment status — gates whether a clean (printable) copy is shown. */
@@ -74,7 +75,7 @@ export function BillOfLadingSection({
     try {
       const qs = new URLSearchParams({ customer, po: poNumber }).toString()
       const res = await fetch(`/api/po-automation/documents?${qs}`, {
-        headers: { 'x-user-id': userId || '' },
+        headers: authHeaders(),
         cache: 'no-store',
       })
       const data = res.ok ? await res.json() : { documents: [] }
@@ -84,7 +85,7 @@ export function BillOfLadingSection({
     } finally {
       if (active()) setLoading(false)
     }
-  }, [customer, poNumber, userId])
+  }, [customer, poNumber])
 
   // The caller remounts via key on (customer, poNumber); initial state already
   // resets per lookup. State updates only happen in async callbacks.
@@ -110,7 +111,7 @@ export function BillOfLadingSection({
       if (note.trim()) fd.append('notes', note.trim())
       const res = await fetch('/api/po-automation/documents', {
         method: 'POST',
-        headers: { 'x-user-id': userId || '' },
+        headers: authHeaders(),
         body: fd,
       })
       if (!res.ok) {
@@ -127,7 +128,7 @@ export function BillOfLadingSection({
     } finally {
       setUploading(false)
     }
-  }, [customer, poNumber, userId, docNumber, note, t, load])
+  }, [customer, poNumber, docNumber, note, t, load])
 
   const openEdit = useCallback((doc: OrderDocument) => {
     setEditId(doc.id)
@@ -150,7 +151,7 @@ export function BillOfLadingSection({
         if (f) fd.append('file', f)
         const res = await fetch('/api/po-automation/documents', {
           method: 'PATCH',
-          headers: { 'x-user-id': userId || '' },
+          headers: authHeaders(),
           body: fd,
         })
         if (!res.ok) {
@@ -165,7 +166,7 @@ export function BillOfLadingSection({
         setEditBusy(false)
       }
     },
-    [editNumber, editNote, userId, t, load]
+    [editNumber, editNote, t, load]
   )
 
   const handleDelete = useCallback(
@@ -174,14 +175,14 @@ export function BillOfLadingSection({
       try {
         const res = await fetch(`/api/po-automation/documents?id=${encodeURIComponent(id)}`, {
           method: 'DELETE',
-          headers: { 'x-user-id': userId || '' },
+          headers: authHeaders(),
         })
         if (res.ok) await load()
       } catch {
         /* ignore */
       }
     },
-    [userId, load, t]
+    [load, t]
   )
 
   const isPanel = variant === 'panel'
