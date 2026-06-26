@@ -1153,6 +1153,28 @@ export async function deletedPalletMeta(
   return out
 }
 
+/** True if ANY serial in a pallet's family currently holds stock. Restoring a pallet that's
+ *  already back in stock would double-count it — this is the authoritative server-side guard
+ *  against a stale/duplicate restore (a stale deletions panel, a fail-open status lookup, or a
+ *  different-qty re-restore of the now-zero old serial while a reissued serial holds the stock).
+ *  Scans the whole family because a reissue restore moves stock to a NEW serial. */
+export async function familyHasLiveStock(batch: string): Promise<boolean> {
+  const base = palletBase(batch)
+  const qs = [
+    listParam('or_filters', [['name', '=', base], ['name', 'like', `${base}-%`]]),
+    listParam('fields', ['name', 'item']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows =
+    (await erpnextGet<{ data: { name: string; item: string }[] }>(`/api/resource/Batch?${qs}`)).data ?? []
+  const fam = rows.filter((r) => r.name === base || r.name.startsWith(`${base}-`))
+  for (const r of fam) {
+    const loc = await getBatchLocation(r.name, r.item)
+    if (loc && loc.qty > 0) return true
+  }
+  return false
+}
+
 export interface RestoreResult extends Committed {
   newLabel: boolean // true when a different qty forced a new serial + new label
   qty: number

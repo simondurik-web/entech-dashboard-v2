@@ -6,6 +6,7 @@ import {
   reserveNextSerial,
   assertBatchItem,
   palletBase,
+  familyHasLiveStock,
 } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
@@ -76,6 +77,14 @@ export async function POST(req: NextRequest) {
       await assertBatchItem(batch, itemCode, false) // may be disabled (it was removed)
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 })
+    }
+    // Authoritative "already restored" guard: if any serial in this pallet's family already
+    // holds stock, this pallet is back in inventory — restoring again would double-count it.
+    // Do NOT rely on the client/read-model `restored` flag (a stale tab or a fail-open status
+    // lookup could still POST here). A reissue restore moves stock to a new serial, so the
+    // submitted (now-zero) old batch wouldn't be caught by a batch-only check — scan the family.
+    if (await familyHasLiveStock(batch)) {
+      return NextResponse.json({ error: 'This pallet is already in stock (it was already returned to inventory).' }, { status: 409 })
     }
     const doc = await erpnextGetDoc<{ custom_pallet_qty?: number }>('Batch', batch).catch(() => null)
     const labelQty = Number(doc?.custom_pallet_qty) || 0

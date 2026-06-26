@@ -1224,6 +1224,7 @@ export default function InventoryOpsPage() {
       if (newLabel) loadRecentLabels(recentExpanded)
       setDelRow(null)
       loadDeletedLabels(deletedExpanded)
+      refreshAfterMutation(row.itemCode) // the item's main results now reflect the returned stock
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -1234,6 +1235,7 @@ export default function InventoryOpsPage() {
 
   // Open a deleted row's inline restore form, prefilled with its label qty + last bin.
   const openDeletedRestore = (row: DeletedLabel) => {
+    if (busyRef.current) return // don't switch rows mid-restore (would close the active form)
     if (delRow === row.batch) {
       setDelRow(null)
       return
@@ -2618,31 +2620,31 @@ export default function InventoryOpsPage() {
                         {timeStr && <div className="text-xs text-muted-foreground">{timeStr}</div>}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
+                        {/* History stays available even after a deletion is undone (it's a
+                            read-only log); only the restore button is hidden once restored. */}
+                        <button
+                          type="button"
+                          onClick={() => toggleHistory(l.batch)}
+                          title={t('inventoryOps.history')}
+                          aria-label={t('inventoryOps.history')}
+                          className={`shrink-0 rounded-md p-1.5 hover:bg-accent hover:text-foreground ${historyOpen === l.batch ? 'text-primary' : 'text-muted-foreground'}`}
+                        >
+                          <Clock className="h-4 w-4" />
+                        </button>
                         {l.restored ? (
                           <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700">{t('inventoryOps.alreadyRestored')}</span>
                         ) : (
-                          <>
+                          isOffice && (
                             <button
                               type="button"
-                              onClick={() => toggleHistory(l.batch)}
-                              title={t('inventoryOps.history')}
-                              aria-label={t('inventoryOps.history')}
-                              className={`shrink-0 rounded-md p-1.5 hover:bg-accent hover:text-foreground ${historyOpen === l.batch ? 'text-primary' : 'text-muted-foreground'}`}
+                              onClick={() => openDeletedRestore(l)}
+                              title={t('inventoryOps.restoreEdit')}
+                              aria-label={t('inventoryOps.restoreEdit')}
+                              className={`shrink-0 rounded-md p-1.5 hover:bg-accent hover:text-foreground ${open ? 'text-primary' : 'text-muted-foreground'}`}
                             >
-                              <Clock className="h-4 w-4" />
+                              <RotateCcw className="h-4 w-4" />
                             </button>
-                            {isOffice && (
-                              <button
-                                type="button"
-                                onClick={() => openDeletedRestore(l)}
-                                title={t('inventoryOps.restoreEdit')}
-                                aria-label={t('inventoryOps.restoreEdit')}
-                                className={`shrink-0 rounded-md p-1.5 hover:bg-accent hover:text-foreground ${open ? 'text-primary' : 'text-muted-foreground'}`}
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-                            )}
-                          </>
+                          )
                         )}
                       </div>
                     </div>

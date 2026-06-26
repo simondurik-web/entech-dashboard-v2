@@ -74,9 +74,10 @@ export async function GET(req: NextRequest) {
     const deletions = rows.map((r) => {
       const meta = r.batch ? palletMeta.get(r.batch) : undefined
       const item = r.item_code ? itemMeta.get(r.item_code) : undefined
-      // Undone if a restore on this family happened after this deletion.
+      // Undone if a restore on this family happened after this deletion. Compare as numeric
+      // timestamps (not raw strings) so any format/precision variation can't misjudge it.
       const restoredTs = r.family ? restoredAt.get(r.family) : undefined
-      const restored = !!(restoredTs && r.created_at && restoredTs > r.created_at)
+      const restored = !!(restoredTs && r.created_at && new Date(restoredTs).getTime() > new Date(r.created_at).getTime())
       return {
         batch: r.batch,
         itemCode: r.item_code,
