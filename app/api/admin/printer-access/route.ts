@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const DASHBOARD_APP_ID = 'dashboard'
+const INVENTORY_OPS_PATH = '/inventory-ops'
 
 // GET — the matrix data: active users (with effective role), all stations, and
 // the current deny rows. Default-allow: a (user, station) cell is allowed unless
@@ -26,6 +27,18 @@ export async function GET(req: NextRequest) {
     .eq('app_id', DASHBOARD_APP_ID)
   const roleMap = new Map((appRoles ?? []).map((r) => [r.user_id, r.role]))
 
+  // Only list users who can actually use inventory-ops / print labels — mirrors
+  // requireInventoryAccess: admins, or a role whose menu_access grants
+  // '/inventory-ops'. Keeps the matrix to people in the workflow (no clutter).
+  const { data: rolePerms } = await supabaseAdmin
+    .from('role_permissions')
+    .select('role, menu_access')
+  const invOpsRoles = new Set<string>()
+  for (const rp of rolePerms ?? []) {
+    const menu = (rp.menu_access ?? {}) as Record<string, boolean>
+    if (menu[INVENTORY_OPS_PATH] === true) invOpsRoles.add(rp.role as string)
+  }
+
   const users = (profiles ?? [])
     .filter((u) => u.is_active !== false)
     .map((u) => {
@@ -35,6 +48,7 @@ export async function GET(req: NextRequest) {
       const role = roleMap.get(u.id) ?? 'visitor'
       return { id: u.id, email: u.email, name: u.full_name ?? null, role, isAdmin: isPrinterAdminRole(role) }
     })
+    .filter((u) => u.isAdmin || invOpsRoles.has(u.role))
 
   const { data: stations } = await supabaseAdmin
     .from('print_stations')
