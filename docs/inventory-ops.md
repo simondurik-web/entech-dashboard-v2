@@ -206,6 +206,29 @@ information. In ERPNext these items have `has_batch_no=0`; stock is a plain quan
   Route `/restore`; same-vs-different decided from the authoritative `custom_pallet_qty`, the
   reissue serial reserved + pinned in `result_batch` like reprint.
 
+## Recently deleted labels panel (SHIPPED 2026-06-26 to staging) — `recent-deletions/route.ts`, page.tsx
+A log panel under "Recently printed labels", same shape: the most recent serialized pallet
+deletions (last 10, expand to 50). Each row shows the pallet id, label quantity, last bin,
+who deleted it, and when. Per row: **History** (read-only, available even after the deletion
+is undone) and, for office roles, an inline **Edit / return to inventory** form — qty +
+destination bin, prefilled to the label qty + last bin. Reuses the `/restore` route: same qty
+reuses the printed label, a different qty reprints a new one (confirm first). A deletion
+already undone (a later successful `restore` op on the same pallet `family`, newest restore
+timestamp > this remove's) shows a **Restored** badge with no restore button.
+- **Data:** `GET /api/erpnext/inventory/recent-deletions` reads `inventory_ops_log` rows with
+  `action='remove' status='done'`, enriches label qty + last bin via `deletedPalletMeta`
+  (both survive removal: the Batch is disabled not deleted; the Stock Ledger keeps the bin),
+  item names via `itemNameMap`. All enrichment is best-effort (`.catch` → null) so a failed
+  ERPNext call degrades a field, never breaks the panel. Read-only + `requireInventoryAccess`.
+- **Double-restore guard (authoritative, server-side):** `/restore` calls `familyHasLiveStock`
+  on the first attempt and rejects (409) if ANY serial in the pallet family already holds
+  stock — closes the stale-panel / fail-open-status / different-qty-reissue (old serial at 0,
+  new serial holds stock) double-count hole. Does NOT trust the read-model `restored` flag.
+  Hardens the scan-restore path too. 4-agent reviewed (Opus/Codex/Gemini/Grok all APPROVE).
+- **Scope:** serialized PALLET deletions only — that's where the reuse-or-reprint-label
+  semantics live. Non-serialized box removals (`qty-remove`) are a bulk quantity, not a single
+  label; re-add them through the normal receive flow.
+
 ## Mobile nav (SHIPPED 2026-06-22) — `components/layout/Sidebar.tsx`
 The iPhone drawer was a flat everything-list. Now all sections are wrapped in the same
 `CollapsibleNavSection` + `NavAccordionProvider` as desktop (one section open at a time,
