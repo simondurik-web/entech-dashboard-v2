@@ -117,6 +117,9 @@ export default function PrinterAccessPage() {
         if (!res.ok) throw new Error(String(res.status))
       } catch {
         setDefaults((prev) => {
+          // Only revert if our optimistic value is still the current one — a newer
+          // change to this user's default since must not be clobbered by our revert.
+          if ((prev.get(userId) ?? '') !== (stationId || '')) return prev
           const n = new Map(prev)
           if (prevVal) n.set(userId, prevVal)
           else n.delete(userId)

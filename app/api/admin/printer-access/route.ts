@@ -121,6 +121,13 @@ export async function PUT(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Denying a station that was this user's default would leave a stale default
+    // (masked at read time, but cleaner to drop it).
+    await supabaseAdmin
+      .from('user_default_printer')
+      .delete()
+      .eq('user_id', user_id)
+      .eq('station_id', station_id)
   }
 
   return NextResponse.json({ ok: true })
