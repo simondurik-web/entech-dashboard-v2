@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { deniedStationIds, defaultStationForUser } from '@/lib/erpnext/printer-access'
+import { allowedStationIds, defaultStationForUser } from '@/lib/erpnext/printer-access'
 
 // GET /api/erpnext/print-stations -> enabled print stations for the printer dropdown.
 
@@ -22,9 +22,10 @@ export async function GET(req: NextRequest) {
     console.error('list print stations failed:', error)
     return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })
   }
-  // Per-user ACL: hide stations this user is restricted from (admins see all).
-  const denied = await deniedStationIds(guard.userId, guard.role)
-  const stations = (data ?? []).filter((s) => !denied.has(s.id))
+  // Per-user ACL (default-deny): show only stations this user is explicitly
+  // granted (admins see all).
+  const allowed = await allowedStationIds(guard.userId, guard.role)
+  const stations = allowed === 'all' ? (data ?? []) : (data ?? []).filter((s) => allowed.has(s.id))
   // The caller's default station — only echoed if it's actually in their allowed
   // list, so the UI never pre-selects a printer they can't use.
   const def = await defaultStationForUser(guard.userId)

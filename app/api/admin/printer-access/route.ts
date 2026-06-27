@@ -10,8 +10,8 @@ const DASHBOARD_APP_ID = 'dashboard'
 const INVENTORY_OPS_PATH = '/inventory-ops'
 
 // GET — the matrix data: active users (with effective role), all stations, and
-// the current deny rows. Default-allow: a (user, station) cell is allowed unless
-// it appears in `denied`. Admin-role users are always-all (the UI locks them).
+// the current grant rows. Default-DENY: a (user, station) cell is denied unless
+// it appears in `allowed`. Admin-role users are always-all (the UI locks them).
 export async function GET(req: NextRequest) {
   if (!(await requireAdmin(req))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -54,23 +54,23 @@ export async function GET(req: NextRequest) {
     .from('print_stations')
     .select('id, name, location, enabled')
     .order('name')
-  const { data: denies } = await supabaseAdmin
+  const { data: grants } = await supabaseAdmin
     .from('user_printer_access')
     .select('user_id, station_id')
-    .eq('allowed', false)
+    .eq('allowed', true)
   const { data: defaults } = await supabaseAdmin
     .from('user_default_printer')
     .select('user_id, station_id')
 
   return NextResponse.json(
-    { users, stations: stations ?? [], denied: denies ?? [], defaults: defaults ?? [] },
+    { users, stations: stations ?? [], allowed: grants ?? [], defaults: defaults ?? [] },
     { headers: { 'Cache-Control': 'no-store' } }
   )
 }
 
-// PUT — toggle one cell. allowed=true drops the deny row (back to default-allow);
-// allowed=false writes a deny row. Admin-role users can't be restricted (they
-// bypass the ACL in enforcement anyway).
+// PUT — toggle one cell. allowed=true writes a grant row; allowed=false drops
+// the grant row (back to default-DENY). Admin-role users can't be restricted
+// (they bypass the ACL in enforcement anyway).
 export async function PUT(req: NextRequest) {
   const admin = await requireAdmin(req)
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -109,22 +109,24 @@ export async function PUT(req: NextRequest) {
   }
 
   if (allowed) {
+    // Grant: write an allowed=true row.
+    const { error } = await supabaseAdmin.from('user_printer_access').upsert({
+      user_id,
+      station_id,
+      allowed: true,
+      updated_by: admin.id,
+      updated_at: new Date().toISOString(),
+    })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  } else {
+    // Revoke: drop the grant row (no row = denied under default-deny).
     const { error } = await supabaseAdmin
       .from('user_printer_access')
       .delete()
       .eq('user_id', user_id)
       .eq('station_id', station_id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  } else {
-    const { error } = await supabaseAdmin.from('user_printer_access').upsert({
-      user_id,
-      station_id,
-      allowed: false,
-      updated_by: admin.id,
-      updated_at: new Date().toISOString(),
-    })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    // Denying a station that was this user's default would leave a stale default
+    // Revoking a station that was this user's default would leave a stale default
     // (masked at read time, but cleaner to drop it).
     await supabaseAdmin
       .from('user_default_printer')

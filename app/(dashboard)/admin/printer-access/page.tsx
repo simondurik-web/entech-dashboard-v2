@@ -25,7 +25,7 @@ export default function PrinterAccessPage() {
   const { t } = useI18n()
   const [users, setUsers] = useState<AclUser[]>([])
   const [stations, setStations] = useState<AclStation[]>([])
-  const [denied, setDenied] = useState<Set<string>>(new Set())
+  const [granted, setGranted] = useState<Set<string>>(new Set())
   const [defaults, setDefaults] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
@@ -44,7 +44,7 @@ export default function PrinterAccessPage() {
       const data = await res.json()
       setUsers(data.users ?? [])
       setStations((data.stations ?? []).filter((s: AclStation) => s.enabled))
-      setDenied(new Set((data.denied ?? []).map((d: { user_id: string; station_id: string }) => cellKey(d.user_id, d.station_id))))
+      setGranted(new Set((data.allowed ?? []).map((d: { user_id: string; station_id: string }) => cellKey(d.user_id, d.station_id))))
       setDefaults(new Map((data.defaults ?? []).map((d: { user_id: string; station_id: string }) => [d.user_id, d.station_id])))
     } catch {
       setError(t('printerAccess.loadError'))
@@ -57,9 +57,9 @@ export default function PrinterAccessPage() {
     void fetchData()
   }, [fetchData])
 
-  // Toggle one cell. Optimistic; reverts on failure. Default-allow: checked =
-  // allowed (no deny row), unchecked = denied.
-  // `currentlyChecked` is read from the rendered cell, not the `denied` state, so
+  // Toggle one cell. Optimistic; reverts on failure. Default-DENY: checked =
+  // granted (allowed=true row), unchecked = denied (no row).
+  // `currentlyChecked` is read from the rendered cell, not the `granted` state, so
   // rapid clicks can't compute against a stale closure.
   const toggleCell = useCallback(
     async (u: AclUser, stationId: string, currentlyChecked: boolean) => {
@@ -68,10 +68,10 @@ export default function PrinterAccessPage() {
       const nextAllowed = !currentlyChecked
       setBusyCell(key)
       setError(null)
-      setDenied((prev) => {
+      setGranted((prev) => {
         const n = new Set(prev)
-        if (nextAllowed) n.delete(key)
-        else n.add(key)
+        if (nextAllowed) n.add(key)
+        else n.delete(key)
         return n
       })
       try {
@@ -83,10 +83,10 @@ export default function PrinterAccessPage() {
         if (!res.ok) throw new Error(String(res.status))
       } catch {
         // revert to the pre-click state
-        setDenied((prev) => {
+        setGranted((prev) => {
           const n = new Set(prev)
-          if (nextAllowed) n.add(key)
-          else n.delete(key)
+          if (nextAllowed) n.delete(key)
+          else n.add(key)
           return n
         })
         setError(t('printerAccess.saveError'))
@@ -195,7 +195,7 @@ export default function PrinterAccessPage() {
                   </td>
                   {stations.map((s) => {
                     const key = cellKey(u.id, s.id)
-                    const checked = u.isAdmin || !denied.has(key)
+                    const checked = u.isAdmin || granted.has(key)
                     return (
                       <td key={s.id} className="px-3 py-2 text-center">
                         {busyCell === key ? (
@@ -216,7 +216,7 @@ export default function PrinterAccessPage() {
                   <td className="px-3 py-2 text-center">
                     {(() => {
                       // The default can only be one of the user's ALLOWED printers.
-                      const allowed = stations.filter((s) => u.isAdmin || !denied.has(cellKey(u.id, s.id)))
+                      const allowed = stations.filter((s) => u.isAdmin || granted.has(cellKey(u.id, s.id)))
                       const current = defaults.get(u.id) ?? ''
                       const value = allowed.some((s) => s.id === current) ? current : ''
                       return (

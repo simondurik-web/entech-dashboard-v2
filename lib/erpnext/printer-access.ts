@@ -1,32 +1,39 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 /**
- * Per-user printer ACL (default-allow). A user may print to every enabled
- * `print_stations` row UNLESS a `user_printer_access` row marks that station
- * `allowed=false`. Admins / super-admins bypass entirely (always all printers).
- * Managed from Admin > Printer Access. Enforced server-side in the printer
- * dropdown (`/api/erpnext/print-stations`) AND every label route, so a blocked
- * printer can't be reached by hand-crafting a request — not just hidden in the UI.
+ * Per-user printer ACL (default-DENY). A user may print to an enabled
+ * `print_stations` row ONLY when a `user_printer_access` row grants it
+ * (`allowed=true`). No row → no access. Admins / super-admins bypass entirely
+ * (always all printers). Managed from Admin > Printer Access.
+ * Enforced server-side in the printer dropdown (`/api/erpnext/print-stations`)
+ * AND every label route, so a printer can't be reached by hand-crafting a
+ * request — not just hidden in the UI.
+ *
+ * Default-deny means new users and newly-added printers start with ZERO access;
+ * an admin must explicitly grant each (user, station) pair.
  */
 export function isPrinterAdminRole(role: string | null | undefined): boolean {
   return role === 'admin' || role === 'super_admin'
 }
 
-/** Station ids explicitly denied to this user (allowed=false). Admins → empty. */
-export async function deniedStationIds(
+/**
+ * Station ids this user is explicitly granted (`allowed=true`).
+ * Returns `'all'` for admins (they bypass the ACL). On a read error, fails
+ * CLOSED (empty set / no access) to honour the default-deny posture.
+ */
+export async function allowedStationIds(
   userId: string,
   role?: string | null
-): Promise<Set<string>> {
-  if (isPrinterAdminRole(role)) return new Set()
+): Promise<Set<string> | 'all'> {
+  if (isPrinterAdminRole(role)) return 'all'
   const { data, error } = await supabaseAdmin
     .from('user_printer_access')
     .select('station_id')
     .eq('user_id', userId)
-    .eq('allowed', false)
+    .eq('allowed', true)
   if (error) {
-    // Fail OPEN to the default-allow posture rather than block all printing on a
-    // read error — the ACL is a restriction layer, not the primary access gate.
-    console.error('deniedStationIds lookup failed:', error)
+    // Fail CLOSED: deny everything rather than risk granting on a read error.
+    console.error('allowedStationIds lookup failed:', error)
     return new Set()
   }
   return new Set((data ?? []).map((r) => r.station_id as string))
@@ -46,7 +53,7 @@ export async function defaultStationForUser(userId: string): Promise<string | nu
   return data?.station_id ?? null
 }
 
-/** True if the user may print to a specific station (default-allow; admins always). */
+/** True if the user may print to a specific station (default-DENY; admins always). */
 export async function userCanPrintTo(
   userId: string,
   role: string | null | undefined,
@@ -60,8 +67,9 @@ export async function userCanPrintTo(
     .eq('station_id', stationId)
     .maybeSingle()
   if (error) {
+    // Fail CLOSED: deny on a read error to honour the default-deny posture.
     console.error('userCanPrintTo lookup failed:', error)
-    return true // fail open to default-allow
+    return false
   }
-  return data?.allowed !== false
+  return data?.allowed === true
 }
