@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth, type UserRole, SUPER_ADMIN_EMAIL } from '@/lib/auth-context'
 import { authHeaders } from '@/lib/session-token'
-import { Search, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-react'
+import { Search, ChevronDown, ChevronRight, UserPlus, X, Pencil, Check } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { DevicesPanel } from '@/components/admin/DevicesPanel'
 
@@ -40,6 +40,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState<string | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
   const [showEnroll, setShowEnroll] = useState(false)
   const [enrollEmail, setEnrollEmail] = useState('')
   const [enrollRole, setEnrollRole] = useState<UserRole>('regular_user')
@@ -73,6 +75,25 @@ export default function AdminUsersPage() {
     })
     await fetchUsers()
     setSaving(null)
+  }
+
+  const startEditName = (u: UserRecord) => {
+    setNameDraft(u.full_name ?? '')
+    setEditingName(u.id)
+  }
+
+  const cancelEditName = () => {
+    setEditingName(null)
+    setNameDraft('')
+  }
+
+  const saveName = async (u: UserRecord) => {
+    const next = nameDraft.trim()
+    setEditingName(null)
+    if (next !== (u.full_name ?? '')) {
+      await updateUser(u.id, { full_name: next || null })
+    }
+    setNameDraft('')
   }
 
   const toggleCustomPermission = (u: UserRecord, path: string) => {
@@ -222,30 +243,74 @@ export default function AdminUsersPage() {
               <>
                 <tr key={u.id} className="border-b hover:bg-muted/30">
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => setExpandedUser(expandedUser === u.id ? null : u.id)}
-                      className="flex items-center gap-2"
-                    >
-                      {expandedUser === u.id ? (
-                        <ChevronDown className="size-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="size-4 text-muted-foreground" />
-                      )}
-                      {u.avatar_url ? (
-                        <img
-                          src={u.avatar_url}
-                          alt=""
-                          className="size-7 rounded-full"
-                        />
-                      ) : (
-                        <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                          {(u.full_name?.[0] ?? u.email[0]).toUpperCase()}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setExpandedUser(expandedUser === u.id ? null : u.id)}
+                        className="flex items-center gap-2"
+                      >
+                        {expandedUser === u.id ? (
+                          <ChevronDown className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        )}
+                        {u.avatar_url ? (
+                          <img
+                            src={u.avatar_url}
+                            alt=""
+                            className="size-7 rounded-full"
+                          />
+                        ) : (
+                          <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                            {(u.full_name?.[0] ?? u.email[0]).toUpperCase()}
+                          </div>
+                        )}
+                        {editingName !== u.id && (
+                          <span className="font-medium">
+                            {u.full_name || t('admin.noName')}
+                          </span>
+                        )}
+                      </button>
+                      {editingName === u.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={nameDraft}
+                            autoFocus
+                            maxLength={80}
+                            onChange={(e) => setNameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveName(u)
+                              if (e.key === 'Escape') cancelEditName()
+                            }}
+                            placeholder={t('admin.noName')}
+                            className="w-44 rounded border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                          <button
+                            onClick={() => saveName(u)}
+                            disabled={saving === u.id}
+                            title={t('ui.save')}
+                            className="rounded p-1 text-green-600 hover:bg-muted dark:text-green-400"
+                          >
+                            <Check className="size-4" />
+                          </button>
+                          <button
+                            onClick={cancelEditName}
+                            title={t('ui.cancel')}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <X className="size-4" />
+                          </button>
                         </div>
+                      ) : (
+                        <button
+                          onClick={() => startEditName(u)}
+                          title={t('admin.editName')}
+                          className="rounded p-1 text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
                       )}
-                      <span className="font-medium">
-                        {u.full_name || t('admin.noName')}
-                      </span>
-                    </button>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
                   <td className="px-4 py-3">

@@ -72,7 +72,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { user_id, role, custom_permissions, is_active } = body
+  const { user_id, role, custom_permissions, is_active, full_name } = body
 
   if (!user_id) return NextResponse.json({ error: "Missing user id" }, { status: 400 })
 
@@ -108,6 +108,14 @@ export async function PUT(req: NextRequest) {
   if (role !== undefined) profileUpdates.role = role
   if (custom_permissions !== undefined) profileUpdates.custom_permissions = custom_permissions
   if (is_active !== undefined) profileUpdates.is_active = is_active
+  // Admin-editable display name. This is the single source of truth that flows to
+  // pallet labels ("By: <name>" via resolveUserName), the user list, and activity
+  // logs — so cleaning up a messy Gmail-derived name here fixes it everywhere.
+  // Empty -> null so it falls back to the email.
+  if (full_name !== undefined) {
+    const trimmed = typeof full_name === "string" ? full_name.trim().slice(0, 80) : ""
+    profileUpdates.full_name = trimmed || null
+  }
 
   if (Object.keys(profileUpdates).length > 1) {
     await supabaseAdmin.from("user_profiles").update(profileUpdates).eq("id", user_id)
