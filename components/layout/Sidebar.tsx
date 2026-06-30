@@ -43,7 +43,6 @@ import {
   FileBarChart,
   ChevronRight,
   Bell,
-  Inbox,
   ShoppingCart,
   CircleDot,
   Disc,
@@ -97,7 +96,6 @@ const salesItems: NavItem[] = [
 ]
 
 const toolsItems: NavItem[] = [
-  { tKey: "Sales Action Center", href: "/rolltech-actions", icon: <Inbox className="size-4" /> },
   { tKey: "nav.poAutomation", href: "/po-automation", icon: <ClipboardList className="size-4" /> },
   { tKey: "nav.purchasing", href: "/purchasing", icon: <ShoppingCart className="size-4" /> },
   { tKey: "nav.bom", href: "/bom", icon: <Layers className="size-4" /> },

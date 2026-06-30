@@ -118,14 +118,17 @@ async function sendNotificationsForEvent(
     await supabaseAdmin.from('push_subscriptions').delete().in('id', stale)
   }
 
-  // Log it
-  await supabaseAdmin.from('notification_log').insert({
-    title, body,
-    sent_by: null,
-    target_role: 'auto',
-    target_user_id: null,
-    sent_count: sent,
-  })
+  // Log it — only when something was actually delivered, to avoid flooding
+  // notification_log with no-op rows (it was growing ~14k/day otherwise).
+  if (sent > 0) {
+    await supabaseAdmin.from('notification_log').insert({
+      title, body,
+      sent_by: null,
+      target_role: 'auto',
+      target_user_id: null,
+      sent_count: sent,
+    })
+  }
 
   return sent
 }

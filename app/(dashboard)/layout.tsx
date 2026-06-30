@@ -34,7 +34,6 @@ import {
   Settings,
   Bell,
   FileBarChart,
-  Inbox,
   ShoppingCart,
   CircleDot,
   Disc,
@@ -48,7 +47,6 @@ import { useI18n } from "@/lib/i18n"
 
 const baseCommandPaletteItems = [
   { label: 'Orders', href: '/orders', section: 'Production', icon: <ClipboardList className="size-4" /> },
-  { label: 'RollTech Action Center', href: '/rolltech-actions', section: 'Production', icon: <Inbox className="size-4" /> },
   { label: 'Need to Make', href: '/need-to-make', section: 'Production', icon: <Factory className="size-4" /> },
   { label: 'Need to Package', href: '/need-to-package', section: 'Production', icon: <Package className="size-4" /> },
   { label: 'Staged', href: '/staged', section: 'Production', icon: <PackageCheck className="size-4" /> },
