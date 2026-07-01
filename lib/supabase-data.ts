@@ -2,7 +2,10 @@
  * Supabase data layer — drop-in replacement for google-sheets.ts fetch functions.
  * Returns the SAME types so API routes and pages don't need changes.
  */
-import { supabase } from './supabase'
+// Server-only data layer (imported only by app/api/* routes). Use the SERVICE-ROLE client:
+// these tables have RLS enabled and grant SELECT only to service_role, so the anon client gets
+// 'permission denied' and the app silently falls back to the (now-frozen) Google Sheet.
+import { supabaseAdmin as supabase } from './supabase-admin'
 import { calculateSalesMath, getProfitPerPart, isNoOpSalesMathRow, summarizeSalesOrders } from './sales-math'
 import {
   type Order,
