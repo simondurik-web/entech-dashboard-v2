@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { actorId, actorName, forbidden } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { appendPalletRecord, getCustomerByLine } from '@/lib/pallets/google'
+import { getCustomerByLine } from '@/lib/pallets/google'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,24 +22,28 @@ export async function POST(request: NextRequest) {
     const recordedByName = actorName(actor)
     const customer = await getCustomerByLine(line_number)
 
+    // Mark the order In Progress in the live ERPNext-backed table (post-Fusion cutover):
+    // set work_order_status='wip' unless it's already at/past a later stage. This is what
+    // makes the order show as "In Progress" the moment the pallet-label feature is used.
     try {
-      await appendPalletRecord({
-        now,
-        line_number,
-        pallet_number: 0,
-        weight: '',
-        parts_per_pallet: '',
-        length: '',
-        width: '',
-        height: '',
-        photo_urls: [],
-        recorded_by: recordedBy,
-        recorded_by_name: recordedByName,
-        customer,
-        internal_status: 'STARTED',
-      })
-    } catch (sheetError) {
-      console.error('Started marker sheet write error (non-fatal):', sheetError)
+      const lineInt = parseInt(String(line_number), 10)
+      if (!Number.isNaN(lineInt)) {
+        const { data: existing } = await supabaseAdmin
+          .from('dashboard_orders')
+          .select('work_order_status')
+          .eq('line', lineInt)
+          .maybeSingle()
+        const cur = (existing?.work_order_status || '').toString().trim().toLowerCase()
+        // don't downgrade completed/staged/shipped back to wip
+        if (!['completed', 'staged', 'shipped'].includes(cur)) {
+          await supabaseAdmin
+            .from('dashboard_orders')
+            .update({ work_order_status: 'wip' })
+            .eq('line', lineInt)
+        }
+      }
+    } catch (statusError) {
+      console.error('Order start status update error (non-fatal):', statusError)
     }
 
     try {

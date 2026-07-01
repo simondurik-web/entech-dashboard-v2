@@ -1,16 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { fetchShippingRecords, type ShippingRecord } from '@/lib/google-sheets'
 import { resolveRecordPhotos } from '@/lib/photo-resolver'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireReadAccess } from '@/lib/require-user'
+import { buildOrderDisplayLookup, resolveDisplayOrder } from '@/lib/order-display'
 
-export async function GET(req: NextRequest) {
-  if (!(await requireReadAccess(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function GET() {
   try {
-    // Fetch from BOTH sources in parallel
-    const [sheetRecords, dbResult] = await Promise.all([
+    // Fetch records + the live-order display lookup in parallel
+    const [sheetRecords, dbResult, orderLookup] = await Promise.all([
       fetchShippingRecords(),
       supabaseAdmin.from('shipping_records').select('*').order('created_at', { ascending: false }),
+      buildOrderDisplayLookup(),
     ])
 
     // Resolve legacy Drive URLs → Supabase Storage URLs
@@ -38,37 +38,16 @@ export async function GET(req: NextRequest) {
       closeUpPhotos: r.closeup_photos || [],
     }))
 
-    // Enrich customer names from dashboard_orders using IF# lookup
+    // Upgrade the displayed IF# → current Sales Order number for any record that maps
+    // to a live ERPNext order (DB records by line number, sheet records by embedded IF
+    // token). Records with no live match keep their original historical IF#.
     const allRecords = [...resolvedSheet, ...dbRecords]
-    const ifNumbersToLookup = [...new Set(
-      allRecords
-        .filter(r => (!r.customer || !r.customer.trim()) && r.ifNumber && r.ifNumber.trim())
-        .map(r => r.ifNumber.trim().toUpperCase())
-    )]
-
-    if (ifNumbersToLookup.length > 0) {
-      const { data: orders } = await supabaseAdmin
-        .from('dashboard_orders')
-        .select('if_number,customer,line')
-        .in('if_number', ifNumbersToLookup)
-
-      if (orders && orders.length > 0) {
-        const customerMap = new Map<string, { customer: string; line: string }>()
-        for (const o of orders) {
-          const key = o.if_number?.toUpperCase()
-          if (key && o.customer) {
-            customerMap.set(key, { customer: o.customer, line: o.line || '' })
-          }
-        }
-
-        for (const r of allRecords) {
-          if ((!r.customer || !r.customer.trim()) && r.ifNumber) {
-            const info = customerMap.get(r.ifNumber.trim().toUpperCase())
-            if (info) {
-              r.customer = info.customer
-            }
-          }
-        }
+    for (const r of allRecords) {
+      const info = resolveDisplayOrder(orderLookup, (r as ShippingRecord & { lineNumber?: string }).lineNumber, r.ifNumber)
+      if (info) {
+        r.ifNumber = info.ifNumber || r.ifNumber
+        if (!r.customer || !r.customer.trim()) r.customer = info.customer
+        if (!r.category || !r.category.trim()) r.category = info.category
       }
     }
 

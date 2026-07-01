@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { google } from 'googleapis'
 import { MAIN_SPREADSHEET_ID } from '@/lib/google-sheets-config'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 const SHEETS_WRITE_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 const DEFAULT_SECRET_PATH = path.resolve(process.cwd(), '..', '..', 'secrets', 'google-service-account.json')
@@ -100,58 +101,92 @@ export function sanitizeCell<T>(value: T): T | string {
   return value
 }
 
+// Statuses that mean the order is no longer an active production candidate.
+const TERMINAL_ORDER_STATUSES = new Set([
+  'shipped', 'invoiced', 'to bill', 'cancelled', 'canceled', 'closed', 'void', 'staged',
+])
+
+/** Count non-deleted pallet_records per line number (WIP = pallet label feature used). */
+async function palletCountsByLine(lines: string[]): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {}
+  if (lines.length === 0) return counts
+  const { data, error } = await supabaseAdmin
+    .from('pallet_records')
+    .select('line_number')
+    .in('line_number', lines)
+  if (error) throw error
+  for (const row of data || []) {
+    const ln = String(row.line_number)
+    counts[ln] = (counts[ln] || 0) + 1
+  }
+  return counts
+}
+
+/**
+ * Live production orders — reads dashboard_orders (ERPNext-backed, post-Fusion cutover
+ * 2026-06-30), NOT the frozen Google Sheet. if_number is the new "SAL-ORD-… (IF…)"
+ * value. Status is DERIVED from real pallet activity (Simon's model: pending = in the
+ * system but not started, WIP = pallet label feature used, completed = all pallets made),
+ * with an explicit work_order_status override respected.
+ */
 export async function getOrders(includeCompleted = false): Promise<PalletOrder[]> {
-  const sheets = getPalletSheets()
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'Main Data!A:Z',
+  const { data, error } = await supabaseAdmin
+    .from('dashboard_orders')
+    .select('line,category,if_number,if_status_fusion,work_order_status,po_number,customer,part_number,order_qty,number_of_packages,shipped_date')
+  if (error) throw error
+
+  // Keep only rows with a Sales Order number that aren't shipped/cancelled/staged.
+  const candidates = (data || []).filter((r) => {
+    if (!r.if_number || !String(r.if_number).trim()) return false
+    if (r.shipped_date && String(r.shipped_date).trim()) return false
+    const raw = (r.work_order_status || r.if_status_fusion || '').toString().trim().toLowerCase()
+    if (TERMINAL_ORDER_STATUSES.has(raw)) return false
+    return true
   })
 
-  const rows = res.data.values
-  if (!rows || rows.length < 2) return []
+  const counts = await palletCountsByLine(candidates.map((r) => String(r.line)).filter(Boolean))
 
-  return rows.slice(1)
-    .map((row, idx) => {
-      const statusRaw = (row[7] || '').trim()
-      const statusLower = statusRaw.toLowerCase()
-      const status = statusLower === 'completed'
-        ? 'completed'
-        : statusLower === 'work in progress'
-          ? 'wip'
-          : 'pending'
+  return candidates
+    .map((r) => {
+      const line = String(r.line ?? '')
+      const raw = (r.work_order_status || r.if_status_fusion || '').toString().trim()
+      const rawLower = raw.toLowerCase()
+      const numPallets = parseInt(String(r.number_of_packages ?? ''), 10) || 0
+      const made = counts[line] || 0
+      const status: 'pending' | 'wip' | 'completed' =
+        rawLower === 'completed' || (numPallets > 0 && made >= numPallets)
+          ? 'completed'
+          : made > 0 || ['work in progress', 'wip', 'in progress'].includes(rawLower)
+            ? 'wip'
+            : 'pending'
       return {
-        id: `sheet-${idx}`,
-        line_number: row[0] || '',
-        category: row[1] || '',
-        if_number: row[5] || '',
+        id: `db-${line}`,
+        line_number: line,
+        category: r.category || '',
+        if_number: r.if_number || '',
         status,
-        status_raw: statusRaw,
-        po_number: row[8] || '',
-        customer: row[9] || '',
-        part_number: row[11] || '',
-        order_qty: parseInt(row[15], 10) || 0,
-        num_pallets: parseInt(row[18], 10) || 0,
+        status_raw: raw,
+        po_number: r.po_number || '',
+        customer: r.customer || '',
+        part_number: r.part_number || '',
+        order_qty: parseInt(String(r.order_qty ?? ''), 10) || 0,
+        num_pallets: numPallets,
       } satisfies PalletOrder
     })
-    .filter((o) => {
-      if (!o.if_number) return false
-      const s = o.status_raw.toLowerCase()
-      if (s === '' || s === 'pending' || s === 'work in progress') return true
-      if (includeCompleted && s === 'completed') return true
-      return false
-    })
+    .filter((o) => (o.status === 'completed' ? includeCompleted : true))
 }
 
 export async function getCustomerByLine(lineNumber: string): Promise<string> {
   try {
-    const sheets = getPalletSheets()
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'Main Data!A:J',
-    })
-    const rows = res.data.values || []
-    const row = rows.find((r) => String(r[0]) === String(lineNumber))
-    return row?.[9] || ''
+    const lineInt = parseInt(String(lineNumber), 10)
+    if (Number.isNaN(lineInt)) return ''
+    const { data } = await supabaseAdmin
+      .from('dashboard_orders')
+      .select('customer')
+      .eq('line', lineInt)
+      .limit(1)
+      .maybeSingle()
+    return data?.customer || ''
   } catch (error) {
     console.error('Customer lookup error:', error)
     return ''

@@ -640,7 +640,7 @@ export default function ProductionPage() {
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="font-bold text-base text-foreground">IF# {order.if_number}</p>
+                    <p className="font-bold text-base text-foreground">{order.if_number}</p>
                     {statusBadge(order.status)}
                   </div>
                   <p className="text-muted-foreground font-medium">{order.customer}</p>
@@ -681,7 +681,7 @@ export default function ProductionPage() {
         <div className={`bg-card rounded-xl shadow-sm p-4 mb-4 ${selectedOrder.status === 'completed' ? 'border-2 border-emerald-200' : 'border border-border'}`}>
           <div className="flex justify-between items-start mb-2">
             <div>
-              <p className="font-bold text-xl text-foreground">IF# {selectedOrder.if_number}</p>
+              <p className="font-bold text-xl text-foreground">{selectedOrder.if_number}</p>
               <p className="text-muted-foreground font-medium">{selectedOrder.customer}</p>
               <p className="text-muted-foreground text-sm">PO: {selectedOrder.po_number}</p>
               <div className="flex gap-3 text-sm text-muted-foreground mt-1">
@@ -914,7 +914,7 @@ export default function ProductionPage() {
         <div className="bg-card rounded-xl shadow-sm p-4 space-y-4 border border-border">
           {/* Order context */}
           <div className="bg-muted rounded-lg p-3 text-sm border border-border">
-            <p className="text-foreground"><strong>IF# {selectedOrder.if_number}</strong> · {selectedOrder.customer}</p>
+            <p className="text-foreground"><strong>{selectedOrder.if_number}</strong> · {selectedOrder.customer}</p>
             <p className="text-muted-foreground">Line: {selectedOrder.line_number} {selectedOrder.part_number && `· Part: ${selectedOrder.part_number}`}</p>
           </div>
 

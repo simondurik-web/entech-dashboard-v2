@@ -154,7 +154,7 @@ function ShippingRecordsPageContent() {
   const COLUMNS: ColumnDef<ShippingRow>[] = useMemo(() => [
     { key: 'timestamp', label: 'Date', sortable: true, render: (_v, row) => formatDate((row as ShippingRow)._parsed) },
     { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-    { key: 'ifNumber', label: 'IF#', sortable: true },
+    { key: 'ifNumber', label: 'Sales Order', sortable: true },
     { key: 'category', label: 'Category', sortable: true, filterable: true },
     { key: 'carrier', label: 'Carrier', sortable: true, filterable: true },
     { key: 'bol', label: 'BOL#', sortable: true },
@@ -295,7 +295,7 @@ function ShippingRecordsPageContent() {
                       <CardTitle className="text-lg">{record.customer || 'Unknown'}</CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
-                        IF# {ifNum} • {record.carrier || 'Unknown carrier'}
+                        {ifNum} • {record.carrier || 'Unknown carrier'}
                       </p>
                     </div>
                     <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600">{t('status.shipped')}</span>

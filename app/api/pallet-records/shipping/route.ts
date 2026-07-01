@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { actorId, actorName, adminOnly, forbidden, isOwnRecord, isWithinThreeDays } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { appendShippingRecord, getPalletSheets, markShippingDeletedInSheet, SHEET_ID } from '@/lib/pallets/google'
+import { appendShippingRecord, markShippingDeletedInSheet } from '@/lib/pallets/google'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,27 +26,29 @@ type ShippingRecord = {
 }
 
 async function getStagedOrders() {
-  const sheets = getPalletSheets()
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'Main Data!A:S',
-  })
+  // Staged orders ready to ship — reads dashboard_orders (ERPNext-backed, post-Fusion
+  // cutover 2026-06-30), NOT the frozen Google Sheet. An order is "staged" when its
+  // internal work_order_status is set to 'staged' (populated by the staging feature).
+  const { data, error } = await supabaseAdmin
+    .from('dashboard_orders')
+    .select('line,category,if_number,work_order_status,po_number,customer,order_qty,number_of_packages')
+  if (error) throw error
 
-  const rows = res.data.values
-  if (!rows || rows.length < 2) return []
-
-  return rows.slice(1)
-    .filter((row) => (row[7] || '').trim().toLowerCase() === 'staged' && (row[5] || '').trim())
-    .map((row, idx) => ({
+  return (data || [])
+    .filter((r) =>
+      (r.work_order_status || '').toString().trim().toLowerCase() === 'staged' &&
+      (r.if_number || '').toString().trim()
+    )
+    .map((r, idx) => ({
       id: `staged-${idx}`,
-      line_number: row[0] || '',
-      category: row[1] || '',
-      if_number: row[5] || '',
+      line_number: String(r.line ?? ''),
+      category: r.category || '',
+      if_number: r.if_number || '',
       status: 'staged',
-      po_number: row[8] || '',
-      customer: row[9] || '',
-      order_qty: parseInt(row[15], 10) || 0,
-      num_pallets: parseInt(row[18], 10) || 0,
+      po_number: r.po_number || '',
+      customer: r.customer || '',
+      order_qty: parseInt(String(r.order_qty ?? ''), 10) || 0,
+      num_pallets: parseInt(String(r.number_of_packages ?? ''), 10) || 0,
     }))
 }
 
