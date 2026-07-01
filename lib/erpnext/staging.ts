@@ -158,13 +158,18 @@ export async function getStagingProgress(soName: string): Promise<StagingProgres
   }
 }
 
-/** Names of the Reserved Stock Reservation Entries currently on an SO. */
+// Active reservation statuses. Reserving a big SO line one pallet at a time makes each
+// individual entry "Partially Reserved" (it covers only part of the line), so filtering to
+// "Reserved" alone would miss real reservations and undercount the staged pallets.
+const ACTIVE_SRE_STATUS = ['Reserved', 'Partially Reserved', 'Partially Delivered']
+
+/** Names of the active (Reserved / Partially Reserved) Stock Reservation Entries on an SO. */
 async function reservationNamesForSO(soName: string): Promise<string[]> {
   const qs = [
     listParam('filters', [
       ['voucher_type', '=', 'Sales Order'],
       ['voucher_no', '=', soName],
-      ['status', '=', 'Reserved'],
+      ['status', 'in', ACTIVE_SRE_STATUS],
       ['docstatus', '=', 1],
     ]),
     listParam('fields', ['name']),

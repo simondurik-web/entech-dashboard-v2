@@ -5,6 +5,7 @@ import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getIte
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
+import { reserveBatchesToSO } from '@/lib/erpnext/staging'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/add
@@ -200,6 +201,24 @@ export async function POST(req: NextRequest) {
       return existing?.id ?? null
     },
   })
+
+  // If the operator picked a Sales Order while adding this pallet, reserve the pallet's batch
+  // to that order (the "label + select SO" staging path — mirrors the "Prepare for staging"
+  // tab). Best-effort: the pallet + label already succeeded, so a reservation hiccup must not
+  // fail the request. Idempotent by nature — a retry re-reserving an already-reserved batch
+  // hits ERPNext's available-to-reserve cap and is reported as a warning, never a double-lock.
+  if (salesOrder && result.status >= 200 && result.status < 300) {
+    const committedBatch = (result.body?.batch as string | undefined) ?? batch
+    try {
+      const r = await reserveBatchesToSO({
+        soName: salesOrder,
+        items: [{ itemCode, warehouse, batch: committedBatch, qty }],
+      })
+      result.body.staging = { reserved: r.reserved, staged: r.staged }
+    } catch (e) {
+      result.body.staging = { reserved: 0, staged: false, warning: (e as Error).message }
+    }
+  }
 
   return NextResponse.json(result.body, { status: result.status })
 }
