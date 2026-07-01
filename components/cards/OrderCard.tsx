@@ -52,7 +52,7 @@ function statusBadge(status: string) {
   else if (s === 'wip' || s === 'work in progress' || s === 'making' || s === 'released' || s === 'in production') color = 'bg-teal-500/20 text-teal-600'
   else if (s === 'pending' || s === 'need to make' || s === 'approved') color = 'bg-yellow-500/20 text-yellow-600'
   else if (s === 'cancelled') color = 'bg-red-500/20 text-red-600'
-  return <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${color}`}>{status || 'N/A'}</span>
+  return <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${color}`}>{status ? status.charAt(0).toUpperCase() + status.slice(1) : 'N/A'}</span>
 }
 
 function dueDisplay(days: number | null) {
@@ -95,7 +95,7 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
           {statusOverride ? (
             statusBadge(statusOverride)
           ) : (
-            statusBadge(order.internalStatus)
+            statusBadge(normalizeStatus(order.internalStatus, order.ifStatus))
           )}
         </div>
       </CardHeader>

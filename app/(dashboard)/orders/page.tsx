@@ -393,10 +393,9 @@ function OrdersPageContent() {
       label: t('table.status'),
       sortable: true,
       filterable: true,
-      render: (v) => {
-        const status = String(v || '')
-        const displayLabel = statusDisplayLabel(status, t)
-        const normalized = normalizeStatus(status, '')
+      render: (v, row) => {
+        const normalized = normalizeStatus(String(v || ''), String((row as OrderRow).ifStatus || ''))
+        const displayLabel = statusDisplayLabel(normalized, t)
         return (
           <StatusBadge status={normalized} label={displayLabel || t('ui.na')} />
         )

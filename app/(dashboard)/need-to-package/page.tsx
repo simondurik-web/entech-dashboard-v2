@@ -215,7 +215,7 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
       label: t('table.status'),
       sortable: true,
       filterable: true,
-      render: (v) => <StatusBadge status={String(v || '')} t={t} />,
+      render: (v, row) => <StatusBadge status={normalizeStatus(String(v || ''), String(row.ifStatus || ''))} t={t} />,
     },
     {
       key: 'daysUntilDue',
