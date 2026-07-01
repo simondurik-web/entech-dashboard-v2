@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   RefreshCw,
   RotateCcw,
+  PackageCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
@@ -67,6 +68,15 @@ interface BinContentItem {
   uom: string
   qty: number
   pallets: { batch: string; qty: number }[]
+}
+interface StagingSalesOrder {
+  name: string
+  customer: string
+  poNo: string | null
+  orderedQty: number
+  reservedQty: number
+  deliveryDate: string | null
+  stagingStatus: string | null
 }
 interface InventoryRow {
   itemCode: string
@@ -524,7 +534,7 @@ export default function InventoryOpsPage() {
   }, [query, runSearch])
 
   // ─── Locations view (browse by bin) ───
-  const [viewMode, setViewMode] = useState<'item' | 'bin' | 'transfer'>('item')
+  const [viewMode, setViewMode] = useState<'item' | 'bin' | 'transfer' | 'stage'>('item')
   const [binQuery, setBinQuery] = useState('')
   const [binOpen, setBinOpen] = useState(false)
   const [selectedBin, setSelectedBin] = useState<string | null>(null)
@@ -723,10 +733,131 @@ export default function InventoryOpsPage() {
     }
   }
 
+  // ─── Prepare for staging (scan pallets → reserve them to an open Sales Order) ───
+  // The queue is constrained to ONE item (you reserve pallets of a single part to an SO line),
+  // so the open-orders lookup is filtered by that item. Mirrors the Transfer tab's scan-to-queue.
+  const [stageQueue, setStageQueue] = useState<PalletLookup[]>([])
+  const [stageScanInput, setStageScanInput] = useState('')
+  const [stageQueueBusy, setStageQueueBusy] = useState(false)
+  const [stageScanOpen, setStageScanOpen] = useState(false)
+  const [stageOrders, setStageOrders] = useState<StagingSalesOrder[]>([])
+  const [stageOrdersLoading, setStageOrdersLoading] = useState(false)
+  const [selectedSo, setSelectedSo] = useState<string>('')
+  const [staging, setStaging] = useState(false)
+  const lastStageScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
+
+  const stageItemCode = stageQueue[0]?.itemCode ?? ''
+  const stageQueuePcs = stageQueue.reduce((s, p) => s + p.qty, 0)
+
+  // Open Sales Orders for the queued item — so the operator picks the order to reserve against.
+  const loadStageOrders = useCallback(
+    async (itemCode: string) => {
+      if (!itemCode) {
+        setStageOrders([])
+        return
+      }
+      setStageOrdersLoading(true)
+      try {
+        const r = await authedFetch(`/api/erpnext/staging/orders?itemCode=${encodeURIComponent(itemCode)}`)
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error || 'lookup failed')
+        setStageOrders(d.salesOrders ?? [])
+      } catch {
+        setStageOrders([])
+        showFlash('err', t('inventoryOps.error'))
+      } finally {
+        setStageOrdersLoading(false)
+      }
+    },
+    [authedFetch, t]
+  )
+
+  // Reload orders whenever the queued item changes (first scan sets it, clearing resets it).
+  useEffect(() => {
+    if (!stageItemCode) {
+      setStageOrders([])
+      setSelectedSo('')
+      return
+    }
+    loadStageOrders(stageItemCode)
+  }, [stageItemCode, loadStageOrders])
+
+  // Resolve a scanned/typed pallet code and add it to the staging queue. Rejects an unknown
+  // code, a split pallet, a duplicate, or a pallet of a DIFFERENT item than the queue holds
+  // (one order line takes one part).
+  const addToStageQueue = async (rawCode: string) => {
+    const code = rawCode.trim()
+    if (!code || stageQueueBusy) return
+    setStageQueueBusy(true)
+    try {
+      const r = await authedFetch(`/api/erpnext/inventory/pallet-lookup?code=${encodeURIComponent(code)}`)
+      const d = await r.json()
+      const p: PalletLookup | null = d.pallet ?? null
+      if (!p) {
+        showFlash('err', `${code}: ${t('inventoryOps.transferNotFound')}`)
+        return
+      }
+      if (p.split) {
+        showFlash('err', `${p.batch}: ${t('inventoryOps.transferSplit')}`)
+        return
+      }
+      if (stageQueue.length > 0 && p.itemCode !== stageQueue[0].itemCode) {
+        showFlash('err', `${p.batch}: ${t('inventoryOps.stageDifferentItem')}`)
+        return
+      }
+      if (stageQueue.some((x) => x.batch === p.batch)) {
+        showFlash('ok', `${p.batch} ${t('inventoryOps.transferAlreadyQueued')}`)
+        return
+      }
+      setStageQueue((q) => (q.some((x) => x.batch === p.batch) ? q : [...q, p]))
+      setStageScanInput('')
+    } catch {
+      showFlash('err', t('inventoryOps.error'))
+    } finally {
+      setStageQueueBusy(false)
+    }
+  }
+
+  const postStage = async () => {
+    if (!selectedSo || stageQueue.length === 0 || staging || busyRef.current) return
+    busyRef.current = true
+    setStaging(true)
+    const batches = stageQueue.map((p) => p.batch).sort()
+    const key = opKey('stage-reserve', selectedSo, batches)
+    try {
+      const r = await authedFetch('/api/erpnext/staging/assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          soName: selectedSo,
+          pallets: stageQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode, warehouse: p.warehouse, qty: p.qty })),
+          idempotencyKey: key,
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'staging failed')
+      clearOpKey('stage-reserve', selectedSo, batches)
+      const reserved = typeof d.reserved === 'number' ? d.reserved : stageQueue.length
+      showFlash(
+        'ok',
+        d.staged
+          ? `${t('inventoryOps.stageStaged')} ${selectedSo}`
+          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selectedSo}`
+      )
+      // Clearing the queue hides the orders panel and (via the item effect) resets selection.
+      setStageQueue([])
+      setSelectedSo('')
+    } catch (e) {
+      showFlash('err', (e as Error).message)
+    } finally {
+      setStaging(false)
+      busyRef.current = false
+    }
+  }
+
   // Toggle By item / By bin / Transfer. RELOADS the view we switch INTO so it never shows
   // data that went stale from a mutation in another view, and closes any open edit/move/
   // history panel (those are single-value states shared across views).
-  const switchView = (mode: 'item' | 'bin' | 'transfer') => {
+  const switchView = (mode: 'item' | 'bin' | 'transfer' | 'stage') => {
     setViewMode(mode)
     setEditBatch(null)
     setMovingBatch(null)
@@ -735,6 +866,8 @@ export default function InventoryOpsPage() {
       if (selectedBin) loadBin(selectedBin)
     } else if (mode === 'transfer') {
       loadLastTransfer()
+    } else if (mode === 'stage') {
+      // Nothing to preload — orders load once the first pallet is scanned (they filter by item).
     } else if (query) {
       refreshSearch()
     }
@@ -2038,6 +2171,12 @@ export default function InventoryOpsPage() {
           >
             {t('inventoryOps.transferTab')}
           </button>
+          <button
+            onClick={() => switchView('stage')}
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${viewMode === 'stage' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('inventoryOps.stageTab')}
+          </button>
         </div>
         <button
           onClick={downloadFullInventory}
@@ -2603,6 +2742,185 @@ export default function InventoryOpsPage() {
               if (lastScanRef.current.code === code && now - lastScanRef.current.at < 2500) return
               lastScanRef.current = { code, at: now }
               addToQueue(code) // keep the scanner open for the next label
+            }}
+          />
+        )}
+      </>
+      )}
+
+      {viewMode === 'stage' && (
+      <>
+        {/* Scan pallets of one part, pick the open Sales Order that needs it, then reserve
+            (lock) each pallet's batch to that order. Full coverage auto-marks it Staged. */}
+        <div className="relative mb-2">
+          <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={stageScanInput}
+            onChange={(e) => setStageScanInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addToStageQueue(stageScanInput)
+              }
+            }}
+            placeholder={t('inventoryOps.stageScanPlaceholder')}
+            className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-24 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+            {stageQueueBusy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            <button
+              type="button"
+              onClick={() => addToStageQueue(stageScanInput)}
+              disabled={!stageScanInput.trim() || stageQueueBusy}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+              aria-label={t('inventoryOps.transferAdd')}
+              title={t('inventoryOps.transferAdd')}
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setStageScanOpen(true)}
+              aria-label={t('inventoryOps.scan')}
+              title={t('inventoryOps.scan')}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <ScanLine className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Scanned pallets queue */}
+        <div className="mb-4 rounded-xl border border-border bg-card p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-sm font-medium">
+              {t('inventoryOps.stageQueue')}{' '}
+              {stageQueue.length > 0 && (
+                <span className="text-muted-foreground">
+                  ({stageQueue.length} · {stageQueuePcs.toLocaleString()} {t('inventoryOps.stagePieces')})
+                </span>
+              )}
+            </div>
+            {stageQueue.length > 0 && (
+              <button onClick={() => setStageQueue([])} className="text-xs text-muted-foreground hover:text-foreground">
+                {t('inventoryOps.transferClear')}
+              </button>
+            )}
+          </div>
+          {stageQueue.length === 0 ? (
+            <div className="border-t border-border pt-3 text-xs text-muted-foreground">{t('inventoryOps.stageQueueEmpty')}</div>
+          ) : (
+            <>
+              <div className="border-t border-border pt-2 text-xs text-muted-foreground">
+                {stageQueue[0].itemCode} · {stageQueue[0].itemName}
+              </div>
+              <ul className="divide-y divide-border">
+                {stageQueue.map((p) => (
+                  <li key={p.batch} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs font-medium">{p.batch}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {p.qty.toLocaleString()} {t('inventoryOps.stagePieces')} · {p.warehouse}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setStageQueue((q) => q.filter((x) => x.batch !== p.batch))}
+                      className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-red-600"
+                      aria-label={t('inventoryOps.transferRemove')}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+
+        {/* Open Sales Orders for the queued part — pick one to reserve against */}
+        {stageQueue.length > 0 && (
+          <div className="mb-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              {t('inventoryOps.stagePickOrder')}
+              {stageOrdersLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            {!stageOrdersLoading && stageOrders.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
+                {t('inventoryOps.stageNoOrders')}
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {stageOrders.map((o) => {
+                  const projected = o.reservedQty + stageQueuePcs
+                  const covers = o.orderedQty > 0 && projected >= o.orderedQty
+                  const isStaged = o.stagingStatus === 'Staged'
+                  return (
+                    <li key={o.name}>
+                      <button
+                        onClick={() => setSelectedSo(o.name)}
+                        className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                          selectedSo === o.name ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-accent'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <span className="font-mono">{o.name}</span>
+                              {isStaged && (
+                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                  {t('inventoryOps.stageStagedBadge')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {o.customer}
+                              {o.poNo ? ` · ${t('inventoryOps.stagePo')} ${o.poNo}` : ''}
+                              {o.deliveryDate ? ` · ${t('inventoryOps.stageDue')} ${o.deliveryDate}` : ''}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right text-xs">
+                            <div className="font-medium">
+                              {o.reservedQty.toLocaleString()} / {o.orderedQty.toLocaleString()}
+                            </div>
+                            <div className={covers ? 'text-emerald-600' : 'text-muted-foreground'}>
+                              {covers ? t('inventoryOps.stageWillCover') : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Stage / Reserve */}
+        <div className="mb-4">
+          <button
+            onClick={postStage}
+            disabled={!selectedSo || stageQueue.length === 0 || staging}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {staging ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+            {t('inventoryOps.stageReserveBtn')}
+          </button>
+          {selectedSo && stageQueue.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              {stageQueue.length} {t('inventoryOps.stagePalletsWord')} · {stageQueuePcs.toLocaleString()} {t('inventoryOps.stagePieces')} → <span className="font-mono">{selectedSo}</span>
+            </div>
+          )}
+        </div>
+
+        {stageScanOpen && (
+          <PalletScanner
+            onClose={() => setStageScanOpen(false)}
+            onResult={(code) => {
+              const now = Date.now()
+              if (lastStageScanRef.current.code === code && now - lastStageScanRef.current.at < 2500) return
+              lastStageScanRef.current = { code, at: now }
+              addToStageQueue(code) // keep the scanner open for the next label
             }}
           />
         )}

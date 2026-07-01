@@ -186,6 +186,26 @@ export async function erpnextUpdate<T = Record<string, unknown>>(
   return r.data
 }
 
+/** Run a whitelisted controller method on a document (Frappe's run_doc_method).
+ *  `args` is JSON-encoded into the `args` field, which the handler parses and spreads as
+ *  kwargs onto the method (so the method's parameter names must match `args`' keys). Used
+ *  for methods that aren't plain resource writes — e.g. Sales Order.create_stock_reservation_entries.
+ *  The dt/dn form skips the timestamp check, so no re-fetch is needed. */
+export async function erpnextRunDocMethod<T = unknown>(
+  dt: string,
+  dn: string,
+  method: string,
+  args: Record<string, unknown>
+): Promise<T> {
+  const r = await erpnextSend<{ message?: T }>('POST', `/api/method/run_doc_method`, {
+    dt,
+    dn,
+    method,
+    args: JSON.stringify(args),
+  })
+  return r.message as T
+}
+
 /** Call a whitelisted GET method, e.g. get_batch_qty. */
 export async function erpnextCallGet<T = unknown>(
   method: string,
