@@ -1349,5 +1349,11 @@
   "inventoryOps.optional": "optional",
   "inventoryOps.searchSalesOrder": "Search sales orders for this part...",
   "inventoryOps.noSalesOrders": "No open sales orders for this part",
-  "nav.inventoryOps": "Inventory Ops"
+  "nav.inventoryOps": "Inventory Ops",
+  "login.or": "or",
+  "login.emailPlaceholder": "you@company.com",
+  "login.emailLink": "Email me a login link",
+  "login.sending": "Sending…",
+  "login.magicLinkSent": "Check your email for a login link.",
+  "login.emailError": "Couldn't send the link. Check the address and try again."
 }

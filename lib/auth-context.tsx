@@ -44,6 +44,10 @@ type AuthContextType = {
   profile: UserProfile | null
   loading: boolean
   signIn: () => Promise<void>
+  // Passwordless email login: sends a magic link. Returns an error string on
+  // failure, or null on success. New external users still land as `visitor`
+  // (no access) — the link only authenticates, it never grants a role.
+  signInWithEmail: (email: string) => Promise<string | null>
   signOut: () => Promise<void>
 }
 
@@ -52,6 +56,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signIn: async () => {},
+  signInWithEmail: async () => null,
   signOut: async () => {},
 })
 
@@ -284,6 +289,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  // Sends a magic link to any email address. Signups stay open, but the profile
+  // upsert on first login defaults the role to `visitor`, so an external user
+  // who clicks the link gets no floor/ERP/admin access until an admin promotes
+  // them — same default-deny gate as Google sign-in.
+  const signInWithEmail = async (email: string): Promise<string | null> => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo:
+          typeof window !== "undefined" ? window.location.origin + "/orders" : undefined,
+      },
+    })
+    return error ? error.message : null
+  }
+
   const signOut = async () => {
     await supabase.auth.signOut()
     setUser(null)
@@ -304,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile: effectiveProfile, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, profile: effectiveProfile, loading, signIn, signInWithEmail, signOut }}>
       {children}
     </AuthContext.Provider>
   )

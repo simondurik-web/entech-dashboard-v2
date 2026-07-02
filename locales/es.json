@@ -1349,5 +1349,11 @@
   "inventoryOps.optional": "opcional",
   "inventoryOps.searchSalesOrder": "Buscar órdenes de venta para esta parte...",
   "inventoryOps.noSalesOrders": "No hay órdenes de venta abiertas para esta parte",
-  "nav.inventoryOps": "Operaciones de Inventario"
+  "nav.inventoryOps": "Operaciones de Inventario",
+  "login.or": "o",
+  "login.emailPlaceholder": "tu@empresa.com",
+  "login.emailLink": "Enviarme un enlace de acceso",
+  "login.sending": "Enviando…",
+  "login.magicLinkSent": "Revisa tu correo para el enlace de acceso.",
+  "login.emailError": "No se pudo enviar el enlace. Verifica la dirección e inténtalo de nuevo."
 }
