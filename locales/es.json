@@ -1362,5 +1362,14 @@
   "login.emailLink": "Enviarme un enlace de acceso",
   "login.sending": "Enviando…",
   "login.magicLinkSent": "Revisa tu correo para el enlace de acceso.",
-  "login.emailError": "No se pudo enviar el enlace. Verifica la dirección e inténtalo de nuevo."
+  "login.emailError": "No se pudo enviar el enlace. Verifica la dirección e inténtalo de nuevo.",
+  "login.codeSendBtn": "Enviarme un código de acceso",
+  "login.sendingCode": "Enviando…",
+  "login.codeSentPrefix": "Enviamos un código de acceso a",
+  "login.codePlaceholder": "Ingresa el código",
+  "login.verifyBtn": "Verificar e iniciar sesión",
+  "login.verifying": "Verificando…",
+  "login.differentEmail": "Usar otro correo",
+  "login.enterCode": "Ingresa el código de tu correo",
+  "login.codeInvalid": "Ese código no es válido o expiró."
 }

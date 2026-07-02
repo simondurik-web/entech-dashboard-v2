@@ -1362,5 +1362,14 @@
   "login.emailLink": "Email me a login link",
   "login.sending": "Sending…",
   "login.magicLinkSent": "Check your email for a login link.",
-  "login.emailError": "Couldn't send the link. Check the address and try again."
+  "login.emailError": "Couldn't send the link. Check the address and try again.",
+  "login.codeSendBtn": "Email me a login code",
+  "login.sendingCode": "Sending…",
+  "login.codeSentPrefix": "We emailed a login code to",
+  "login.codePlaceholder": "Enter code",
+  "login.verifyBtn": "Verify & sign in",
+  "login.verifying": "Verifying…",
+  "login.differentEmail": "Use a different email",
+  "login.enterCode": "Enter the code from your email",
+  "login.codeInvalid": "That code is invalid or expired."
 }

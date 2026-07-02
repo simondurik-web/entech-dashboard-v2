@@ -6,34 +6,18 @@ import { usePermissions } from "@/lib/use-permissions"
 import { useQualityAccess } from "@/lib/use-quality-access"
 import { usePalletAccess } from "@/lib/use-pallet-access"
 import { useI18n } from "@/lib/i18n"
-import { LogIn, MonitorSmartphone, Mail, CheckCircle2 } from "lucide-react"
+import { LogIn, MonitorSmartphone } from "lucide-react"
 import Link from "next/link"
-import { useState, type ReactNode } from "react"
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-type EmailUiState = "idle" | "sending" | "sent" | "error"
+import { type ReactNode } from "react"
+import { EmailCodeLogin } from "@/components/auth/EmailCodeLogin"
 
 export function AccessGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const { user, loading, signIn, signInWithEmail, signOut, profile } = useAuth()
+  const { user, loading, signIn, signOut, profile } = useAuth()
   const { canAccess } = usePermissions()
   const { canSeeQuality, canManageQuality, canEditLimits } = useQualityAccess()
   const { canSeePallets, isPalletAdmin } = usePalletAccess()
   const { t } = useI18n()
-  const [email, setEmail] = useState("")
-  const [emailState, setEmailState] = useState<EmailUiState>("idle")
-
-  async function submitEmail(e: React.FormEvent) {
-    e.preventDefault()
-    const addr = email.trim()
-    if (!EMAIL_RE.test(addr)) {
-      setEmailState("error")
-      return
-    }
-    setEmailState("sending")
-    const err = await signInWithEmail(addr)
-    setEmailState(err ? "error" : "sent")
-  }
 
   const accessDenied = (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8">
@@ -61,38 +45,9 @@ export function AccessGuard({ children }: { children: ReactNode }) {
               <div className="h-px flex-1 bg-white/10" />
             </div>
 
-            {/* Passwordless email magic link — works for any email address */}
-            {emailState === "sent" ? (
-              <div className="flex items-center justify-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-300">
-                <CheckCircle2 className="size-4 shrink-0" />
-                {t('login.magicLinkSent')}
-              </div>
-            ) : (
-              <form onSubmit={submitEmail} className="space-y-2 text-left">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    if (emailState === "error") setEmailState("idle")
-                  }}
-                  placeholder={t('login.emailPlaceholder')}
-                  autoComplete="email"
-                  className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-blue-500/60 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={emailState === "sending"}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-white/10 disabled:opacity-60"
-                >
-                  <Mail className="size-4" />
-                  {emailState === "sending" ? t('login.sending') : t('login.emailLink')}
-                </button>
-                {emailState === "error" && (
-                  <p className="text-xs text-red-300">{t('login.emailError')}</p>
-                )}
-              </form>
-            )}
+            {/* Passwordless email LOGIN CODE — corporate-inbox-safe typed code
+                (replaces the magic link). Themed variant for the in-app card. */}
+            <EmailCodeLogin redirectTo={pathname || "/orders"} />
 
             <Link
               href="/login"

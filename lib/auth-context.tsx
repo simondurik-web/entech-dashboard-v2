@@ -44,10 +44,14 @@ type AuthContextType = {
   profile: UserProfile | null
   loading: boolean
   signIn: () => Promise<void>
-  // Passwordless email login: sends a magic link. Returns an error string on
-  // failure, or null on success. New external users still land as `visitor`
-  // (no access) — the link only authenticates, it never grants a role.
-  signInWithEmail: (email: string) => Promise<string | null>
+  // Passwordless email LOGIN CODE (replaces the magic link — corporate Outlook
+  // Safe Links pre-scans and burns one-time links; a typed code is immune).
+  // startEmailCode emails an 8-digit code via our own Resend sender; verifyEmailCode
+  // checks it client-side and establishes the localStorage session. Both return an
+  // error string on failure, or null on success. New external users still land as
+  // `visitor` (no access) — the code only authenticates, it never grants a role.
+  startEmailCode: (email: string) => Promise<string | null>
+  verifyEmailCode: (email: string, token: string) => Promise<string | null>
   signOut: () => Promise<void>
 }
 
@@ -56,7 +60,8 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signIn: async () => {},
-  signInWithEmail: async () => null,
+  startEmailCode: async () => null,
+  verifyEmailCode: async () => null,
   signOut: async () => {},
 })
 
@@ -289,17 +294,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  // Sends a magic link to any email address. Signups stay open, but the profile
-  // upsert on first login defaults the role to `visitor`, so an external user
-  // who clicks the link gets no floor/ERP/admin access until an admin promotes
-  // them — same default-deny gate as Google sign-in.
-  const signInWithEmail = async (email: string): Promise<string | null> => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo:
-          typeof window !== "undefined" ? window.location.origin + "/orders" : undefined,
-      },
+  // Step 1 — email an 8-digit login code. Our /start route asks Supabase to
+  // GENERATE (not send) the OTP and delivers it via our own Resend sender
+  // ("Molding Dashboard Login"), so the shared Supabase mailer + its template are
+  // untouched and corporate Safe Links can't burn a link. Returns an error string
+  // or null.
+  const startEmailCode = async (email: string): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/auth/otp/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        return data?.error || "Could not send the code. Try again."
+      }
+      return null
+    } catch {
+      return "Could not send the code. Try again."
+    }
+  }
+
+  // Step 2 — verify the code CLIENT-side. This app stores its session in
+  // localStorage (no cookies/SSR), so verifyOtp here drops the real session into
+  // localStorage and fires onAuthStateChange(SIGNED_IN), which runs the existing
+  // profile funnel (/api/auth/profile) — new external users default to `visitor`
+  // (no access), same default-deny gate as Google sign-in. Returns an error
+  // string or null.
+  const verifyEmailCode = async (email: string, token: string): Promise<string | null> => {
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: token.trim().replace(/\s+/g, ""),
+      type: "email",
     })
     return error ? error.message : null
   }
@@ -324,7 +351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile: effectiveProfile, loading, signIn, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ user, profile: effectiveProfile, loading, signIn, startEmailCode, verifyEmailCode, signOut }}>
       {children}
     </AuthContext.Provider>
   )

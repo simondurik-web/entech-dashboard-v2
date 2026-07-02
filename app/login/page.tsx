@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n"
-import { LogIn, MonitorSmartphone, Clock, CheckCircle2, Mail } from "lucide-react"
+import { LogIn, MonitorSmartphone, Clock, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
+import { EmailCodeLogin } from "@/components/auth/EmailCodeLogin"
 import {
   getDeviceToken,
   getOrCreateDeviceToken,
@@ -19,29 +20,11 @@ type DeviceUiState =
 
 const POLL_MS = 5000
 
-type EmailUiState = "idle" | "sending" | "sent" | "error"
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 export default function LoginPage() {
-  const { signIn, signInWithEmail } = useAuth()
+  const { signIn } = useAuth()
   const { t } = useI18n()
   const [device, setDevice] = useState<DeviceUiState>({ phase: "idle" })
   const pollRef = useRef<number | null>(null)
-  const [email, setEmail] = useState("")
-  const [emailState, setEmailState] = useState<EmailUiState>("idle")
-
-  async function submitEmail(e: React.FormEvent) {
-    e.preventDefault()
-    const addr = email.trim()
-    if (!EMAIL_RE.test(addr)) {
-      setEmailState("error")
-      return
-    }
-    setEmailState("sending")
-    const err = await signInWithEmail(addr)
-    setEmailState(err ? "error" : "sent")
-  }
 
   const stopPolling = useCallback(() => {
     if (pollRef.current !== null) {
@@ -143,38 +126,9 @@ export default function LoginPage() {
           <div className="h-px flex-1 bg-white/10" />
         </div>
 
-        {/* Passwordless email magic link — works for any email address */}
-        {emailState === "sent" ? (
-          <div className="flex items-center justify-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-300">
-            <CheckCircle2 className="size-4 shrink-0" />
-            {t("login.magicLinkSent")}
-          </div>
-        ) : (
-          <form onSubmit={submitEmail} className="space-y-2 text-left">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                if (emailState === "error") setEmailState("idle")
-              }}
-              placeholder={t("login.emailPlaceholder")}
-              autoComplete="email"
-              className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-blue-500/60 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={emailState === "sending"}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:opacity-60"
-            >
-              <Mail className="size-4" />
-              {emailState === "sending" ? t("login.sending") : t("login.emailLink")}
-            </button>
-            {emailState === "error" && (
-              <p className="text-xs text-red-300">{t("login.emailError")}</p>
-            )}
-          </form>
-        )}
+        {/* Passwordless email LOGIN CODE — corporate-inbox-safe (typed code, not a
+            one-time link Safe Links can burn). Works for any email address. */}
+        <EmailCodeLogin dark redirectTo="/orders" />
 
         <Link
           href="/orders"
