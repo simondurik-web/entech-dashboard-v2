@@ -1355,6 +1355,7 @@
   "inventoryOps.optional": "opcional",
   "inventoryOps.searchSalesOrder": "Buscar órdenes de venta para esta parte...",
   "inventoryOps.noSalesOrders": "No hay órdenes de venta abiertas para esta parte",
+  "inventoryOps.reservedTo": "Reservado →",
   "nav.inventoryOps": "Operaciones de Inventario",
   "login.or": "o",
   "login.emailPlaceholder": "tu@empresa.com",

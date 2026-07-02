@@ -43,6 +43,15 @@ interface Pallet {
   warehouse: string
   qty: number
 }
+// A pallet's live reservation to a Sales Order (from ERPNext), surfaced as a badge.
+interface BatchReservation {
+  batch: string
+  so: string
+  customer: string | null
+  poNo: string | null
+  reservedQty: number
+  status: string
+}
 interface LocateResult {
   itemCode: string
   itemName: string
@@ -394,6 +403,9 @@ export default function InventoryOpsPage() {
 
   // ─── pallets (per item) ───
   const [pallets, setPallets] = useState<Record<string, Pallet[]>>({})
+  // Live SO reservations keyed by batch. `null` = checked, not reserved (so the effect
+  // below doesn't re-query it); a value renders the "Reserved → SO" badge on the pallet.
+  const [reservations, setReservations] = useState<Record<string, BatchReservation | null>>({})
   const [palletsLoading, setPalletsLoading] = useState<string | null>(null)
   const [palletsError, setPalletsError] = useState<Record<string, boolean>>({})
   // Tracks item codes whose pallet load is in flight. `palletsLoading` is a single
@@ -606,6 +618,43 @@ export default function InventoryOpsPage() {
   useEffect(() => {
     loadRecentLabels(false)
   }, [loadRecentLabels])
+
+  // Look up SO reservations for a set of pallet batches (live from ERPNext) and merge
+  // them into the map. Records `null` for batches with no reservation so we don't refetch.
+  const loadReservations = useCallback(
+    async (batches: string[]) => {
+      const want = Array.from(new Set(batches.filter(Boolean)))
+      if (want.length === 0) return
+      try {
+        const qs = want.map((b) => encodeURIComponent(b)).join(',')
+        const r = await authedFetch(`/api/erpnext/inventory/reservations?batches=${qs}`)
+        if (!r.ok) return
+        const d = await r.json()
+        const found: Record<string, BatchReservation> = d.reservations ?? {}
+        setReservations((prev) => {
+          const next = { ...prev }
+          for (const b of want) next[b] = found[b] ?? null
+          return next
+        })
+      } catch {
+        /* non-critical badge — leave unresolved */
+      }
+    },
+    [authedFetch]
+  )
+
+  // Whenever the visible pallet set changes (a new search, a bin load, a post-mutation
+  // pallet refresh, or the recent-labels refresh), re-fetch reservations for exactly the
+  // batches on screen so a released/added reservation reflects on the next refresh — the
+  // badge stays live rather than only accumulating. Deliberately NOT keyed on
+  // `reservations` (it's this effect's own output) so there is no refetch loop.
+  useEffect(() => {
+    const batches: string[] = []
+    for (const arr of Object.values(pallets)) for (const p of arr) batches.push(p.batch)
+    if (binContents) for (const it of binContents.items) for (const p of it.pallets) batches.push(p.batch)
+    for (const l of recentLabels) if (l.batch) batches.push(l.batch)
+    if (batches.length) loadReservations(batches)
+  }, [pallets, binContents, recentLabels, loadReservations])
 
   // ─── Recently deleted labels (a deleted-by-mistake pallet, returned to inventory in one
   //     click — same label if the same qty, a new label if it changed) ───
@@ -1776,6 +1825,19 @@ export default function InventoryOpsPage() {
           </div>
         )}
       </div>
+
+      {reservations[p.batch] && (
+        <div className="mt-1">
+          <span
+            title={`${t('inventoryOps.reservedTo')} ${reservations[p.batch]!.so}${reservations[p.batch]!.poNo ? ` · PO ${reservations[p.batch]!.poNo}` : ''} · ${reservations[p.batch]!.reservedQty.toLocaleString()} · ${reservations[p.batch]!.status}`}
+            className="inline-flex items-center gap-1 rounded bg-purple-100 px-1.5 py-0.5 text-[11px] font-medium text-purple-800 dark:bg-purple-950 dark:text-purple-300"
+          >
+            🔒 {t('inventoryOps.reservedTo')} {reservations[p.batch]!.so}
+            {reservations[p.batch]!.customer ? ` · ${reservations[p.batch]!.customer}` : ''}
+            {` · ${reservations[p.batch]!.reservedQty.toLocaleString()}`}
+          </span>
+        </div>
+      )}
 
       {movingBatch === p.batch && (
         <div className="mt-2 rounded-md border border-border bg-background p-2">

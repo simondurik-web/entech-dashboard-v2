@@ -45,6 +45,8 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 
 const OPEN_SO_EXCLUDE = ['Completed', 'Closed', 'Cancelled', 'On Hold']
 const SO_FETCH_CONCURRENCY = 6
+// Max batches per SRE `in` filter, to keep the GET URL under ERPNext/Cloudflare limits.
+const RES_BATCH_CHUNK = 100
 
 interface SOItemRow {
   name: string
@@ -162,6 +164,105 @@ export async function getStagingProgress(soName: string): Promise<StagingProgres
 // individual entry "Partially Reserved" (it covers only part of the line), so filtering to
 // "Reserved" alone would miss real reservations and undercount the staged pallets.
 const ACTIVE_SRE_STATUS = ['Reserved', 'Partially Reserved', 'Partially Delivered']
+
+/** A pallet's live reservation to a Sales Order (from ERPNext Stock Reservation Entries). */
+export type BatchReservation = {
+  batch: string
+  so: string
+  customer: string | null
+  poNo: string | null
+  reservedQty: number
+  status: string
+}
+
+/**
+ * For the given pallet batches, return which are reserved to a Sales Order — live from
+ * ERPNext, so it reflects existing reservations, not just new ones. Bounded work: one
+ * SRE list (child-table filter on the reserved batch), N full-doc reads to map each
+ * matched SRE back to its batch (the child table isn't listable directly for
+ * dashboard-svc), and one Sales Order lookup for customer/PO. Batches with no active
+ * reservation are simply absent from the returned map.
+ */
+export async function reservationsForBatches(
+  batches: string[]
+): Promise<Record<string, BatchReservation>> {
+  const uniq = Array.from(new Set(batches.map((b) => String(b ?? '').trim()).filter(Boolean)))
+  const out: Record<string, BatchReservation> = {}
+  if (uniq.length === 0) return out
+
+  // 1) Active SREs whose reserved batch entries include any of our batches. Chunk the
+  //    `in` filter (like MAX_CODES elsewhere) so a large bin never builds an over-long
+  //    GET URL to ERPNext.
+  const uniqSet = new Set(uniq)
+  const chunks: string[][] = []
+  for (let i = 0; i < uniq.length; i += RES_BATCH_CHUNK) chunks.push(uniq.slice(i, i + RES_BATCH_CHUNK))
+  const sreLists = await mapLimit(chunks, SO_FETCH_CONCURRENCY, (chunk) => {
+    const qs = [
+      listParam('filters', [
+        ['Serial and Batch Entry', 'batch_no', 'in', chunk],
+        ['status', 'in', ACTIVE_SRE_STATUS],
+        ['docstatus', '=', 1],
+      ]),
+      listParam('fields', ['name', 'voucher_no', 'reserved_qty', 'status']),
+      'limit_page_length=0',
+    ].join('&')
+    return erpnextGet<{ data: { name: string; voucher_no: string; reserved_qty: number; status: string }[] }>(
+      `/api/resource/Stock Reservation Entry?${qs}`
+    ).then((r) => r.data ?? [])
+  })
+  // Dedup SREs by name (a batch can appear in only one chunk, but be defensive).
+  const sres = Array.from(new Map(sreLists.flat().map((s) => [s.name, s])).values())
+  if (sres.length === 0) return out
+
+  // 2) Resolve each SRE back to the batch(es) it reserves (child table read via full doc).
+  //    Concurrency-capped like the other ERPNext fan-outs so a big bin can't fire dozens
+  //    of simultaneous full-doc GETs and blow the function timeout.
+  const byBatch: Record<string, { so: string; reservedQty: number; status: string }> = {}
+  await mapLimit(sres, SO_FETCH_CONCURRENCY, async (s) => {
+    try {
+      const full = await erpnextGetDoc<{ sb_entries?: { batch_no: string; qty: number }[] }>(
+        'Stock Reservation Entry',
+        s.name
+      )
+      for (const e of full.sb_entries ?? []) {
+        const b = String(e.batch_no ?? '').trim()
+        if (b && uniqSet.has(b) && !byBatch[b]) {
+          byBatch[b] = { so: s.voucher_no, reservedQty: Number(e.qty) || Number(s.reserved_qty) || 0, status: s.status }
+        }
+      }
+    } catch {
+      /* skip a single unreadable SRE rather than fail the whole lookup */
+    }
+  })
+
+  // 3) SO details (customer, PO) for the distinct sales orders.
+  const soNames = Array.from(new Set(Object.values(byBatch).map((v) => v.so)))
+  const soInfo: Record<string, { customer: string | null; poNo: string | null }> = {}
+  if (soNames.length) {
+    const sq = [
+      listParam('filters', [['name', 'in', soNames]]),
+      listParam('fields', ['name', 'customer', 'po_no']),
+      'limit_page_length=0',
+    ].join('&')
+    const sos =
+      (await erpnextGet<{ data: { name: string; customer: string | null; po_no: string | null }[] }>(
+        `/api/resource/Sales Order?${sq}`
+      )).data ?? []
+    for (const so of sos) soInfo[so.name] = { customer: so.customer ?? null, poNo: so.po_no ?? null }
+  }
+
+  for (const [batch, v] of Object.entries(byBatch)) {
+    out[batch] = {
+      batch,
+      so: v.so,
+      customer: soInfo[v.so]?.customer ?? null,
+      poNo: soInfo[v.so]?.poNo ?? null,
+      reservedQty: v.reservedQty,
+      status: v.status,
+    }
+  }
+  return out
+}
 
 /** Names of the active (Reserved / Partially Reserved) Stock Reservation Entries on an SO. */
 async function reservationNamesForSO(soName: string): Promise<string[]> {
