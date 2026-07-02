@@ -22,7 +22,7 @@ export type PalletOrder = {
   line_number: string
   category: string
   if_number: string
-  status: 'pending' | 'wip' | 'completed'
+  status: 'pending' | 'wip' | 'completed' | 'staged'
   status_raw: string
   po_number: string
   customer: string
@@ -129,17 +129,21 @@ async function palletCountsByLine(lines: string[]): Promise<Record<string, numbe
  * system but not started, WIP = pallet label feature used, completed = all pallets made),
  * with an explicit work_order_status override respected.
  */
-export async function getOrders(includeCompleted = false): Promise<PalletOrder[]> {
+export async function getOrders(includeCompleted = false, includeStaged = false): Promise<PalletOrder[]> {
   const { data, error } = await supabaseAdmin
     .from('dashboard_orders')
     .select('line,category,if_number,if_status_fusion,work_order_status,po_number,customer,part_number,order_qty,number_of_packages,shipped_date')
   if (error) throw error
 
-  // Keep only rows with a Sales Order number that aren't shipped/cancelled/staged.
+  // Keep only rows with a Sales Order number that aren't shipped/cancelled.
   const candidates = (data || []).filter((r) => {
     if (!r.if_number || !String(r.if_number).trim()) return false
     if (r.shipped_date && String(r.shipped_date).trim()) return false
     const raw = (r.work_order_status || r.if_status_fusion || '').toString().trim().toLowerCase()
+    // Staged orders are surfaced (when requested) so the pallet-photo gate can
+    // hold the not-yet-photographed ones in Production; the orders route filters
+    // out staged orders that are already fully photographed / force-shipped.
+    if (raw === 'staged') return includeStaged
     if (TERMINAL_ORDER_STATUSES.has(raw)) return false
     return true
   })
@@ -153,12 +157,14 @@ export async function getOrders(includeCompleted = false): Promise<PalletOrder[]
       const rawLower = raw.toLowerCase()
       const numPallets = parseInt(String(r.number_of_packages ?? ''), 10) || 0
       const made = counts[line] || 0
-      const status: 'pending' | 'wip' | 'completed' =
-        rawLower === 'completed' || (numPallets > 0 && made >= numPallets)
-          ? 'completed'
-          : made > 0 || ['work in progress', 'wip', 'in progress'].includes(rawLower)
-            ? 'wip'
-            : 'pending'
+      const status: 'pending' | 'wip' | 'completed' | 'staged' =
+        rawLower === 'staged'
+          ? 'staged'
+          : rawLower === 'completed' || (numPallets > 0 && made >= numPallets)
+            ? 'completed'
+            : made > 0 || ['work in progress', 'wip', 'in progress'].includes(rawLower)
+              ? 'wip'
+              : 'pending'
       return {
         id: `db-${line}`,
         line_number: line,

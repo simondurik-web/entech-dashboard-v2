@@ -3,6 +3,7 @@ import { actorId, actorName, adminOnly, forbidden, isOwnRecord, isWithinThreeDay
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { appendShippingRecord, markShippingDeletedInSheet } from '@/lib/pallets/google'
+import { getStagingGates, isReadyForShipping } from '@/lib/pallets/staging-gate'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,7 @@ async function getStagedOrders() {
     .select('line,category,if_number,work_order_status,po_number,customer,order_qty,number_of_packages')
   if (error) throw error
 
-  return (data || [])
+  const staged = (data || [])
     .filter((r) =>
       (r.work_order_status || '').toString().trim().toLowerCase() === 'staged' &&
       (r.if_number || '').toString().trim()
@@ -50,6 +51,13 @@ async function getStagedOrders() {
       order_qty: parseInt(String(r.order_qty ?? ''), 10) || 0,
       num_pallets: parseInt(String(r.number_of_packages ?? ''), 10) || 0,
     }))
+
+  // Pallet-photo gate: a Staged order only shows in Shipping once every
+  // expected pallet has a valid photo (or an admin forced it). Until then it
+  // stays in Production so the pallets can be photographed. Mirrors the
+  // inverse filter in /api/pallet-records/orders.
+  const gates = staged.length ? await getStagingGates(staged.map((o) => o.line_number)) : {}
+  return staged.filter((o) => isReadyForShipping(o.num_pallets, gates[o.line_number]))
 }
 
 function shippingSheetArgs(record: ShippingRecord, now: string) {

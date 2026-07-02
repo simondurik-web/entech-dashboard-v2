@@ -91,6 +91,7 @@ export default function ProductionPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [prefilled, setPrefilled] = useState(false)
   const [startingOrder, setStartingOrder] = useState(false)
+  const [forcing, setForcing] = useState(false)
   const realPallets = useMemo(() => pallets.filter((p) => p.pallet_number !== 0), [pallets])
 
   const fetchPalletCounts = useCallback(async (orderList: Order[]) => {
@@ -512,16 +513,45 @@ export default function ProductionPage() {
     }
   }
 
+  // Admin-only: override the pallet-photo gate and push a Staged order to
+  // Shipping now, even if not every pallet has been photographed.
+  const forceToShipping = async () => {
+    if (!selectedOrder || forcing) return
+    if (!confirm(t('prod.forceConfirm'))) return
+    setForcing(true)
+    setError('')
+    try {
+      const res = await apiFetch('/api/pallet-records/force-shipping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ line_number: selectedOrder.line_number }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      setSuccessMsg(t('prod.forced'))
+      setTimeout(() => {
+        setView('list')
+        setSelectedOrder(null)
+        fetchOrders()
+      }, 1200)
+    } catch {
+      setError(t('prod.error'))
+    } finally {
+      setForcing(false)
+    }
+  }
+
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-amber-100 text-amber-800 border border-amber-200',
       wip: 'bg-sky-100 dark:bg-sky-950 text-blue-800 dark:text-sky-300 border border-blue-200',
       completed: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+      staged: 'bg-purple-100 text-purple-800 border border-purple-200',
     }
     const labels: Record<string, string> = {
       pending: t('prod.pending'),
       wip: t('prod.wip'),
       completed: t('prod.completed'),
+      staged: t('prod.needsPhotos'),
     }
     return (
       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${colors[status] || 'bg-muted text-foreground'}`}>
@@ -670,6 +700,13 @@ export default function ProductionPage() {
     const recorded = realPallets.length
     const total = selectedOrder.num_pallets
     const pct = progressPercent(recorded, total)
+    // Distinct photographed pallets — mirrors the server gate (count pallet
+    // numbers, not rows) so the banner never disagrees with list placement.
+    const photographed = new Set(
+      realPallets
+        .filter((p) => (p.photo_urls?.filter(Boolean).length || 0) > 0)
+        .map((p) => p.pallet_number)
+    ).size
 
     return (
       <div className="p-4 max-w-2xl mx-auto">
@@ -706,6 +743,27 @@ export default function ProductionPage() {
             </div>
           </div>
         </div>
+
+        {/* Pallet-photo gate — Staged in ERP, held in Production until every
+            pallet is photographed. Admins can override with Force to Shipping. */}
+        {selectedOrder.status === 'staged' && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
+            <p className="font-semibold text-purple-900">📷 {t('prod.needsPhotos')}</p>
+            <p className="text-sm text-purple-700 mt-1">{t('prod.stagedHold')}</p>
+            <p className="text-sm text-purple-800 mt-2 font-medium">
+              {total > 0 ? `${photographed}/${total}` : photographed} {t('prod.photographed')}
+            </p>
+            {userRole === 'admin' && (
+              <button
+                onClick={forceToShipping}
+                disabled={forcing}
+                className="mt-3 w-full py-3 bg-purple-600 text-white rounded-lg font-semibold text-base active:bg-purple-700 disabled:opacity-50"
+              >
+                {forcing ? t('prod.saving') : `🚚 ${t('prod.forceToShipping')}`}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Start Order button — only show when Pending and no pallets yet */}
         {selectedOrder.status === 'pending' && realPallets.length === 0 && (
