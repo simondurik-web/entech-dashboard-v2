@@ -348,6 +348,8 @@
   "order.shipment": "Shipment",
   "order.totalWeight": "Total Weight",
   "orders.noun": "orders",
+  "orders.archived": "Archived",
+  "orders.archivedHint": "Historical order from the pre-ERPNext archive (read-only)",
   "page.adminPermissions": "Role Permissions",
   "page.adminPermissionsSubtitle": "Configure menu access for each role",
   "page.adminPrinterAccess": "Printer Access",

@@ -123,48 +123,68 @@ async function fetchAllRows(table: string): Promise<Record<string, unknown>[]> {
   return allRows
 }
 
+// Shared dashboard_orders row → Order mapper. Used for both the live table and
+// the fusion archive, which share the exact same column structure.
+function mapRowToOrder(row: Record<string, unknown>): Order {
+  return {
+    line: str(row.line),
+    category: str(row.category),
+    dateOfRequest: str(row.date_of_request),
+    priorityLevel: num(row.priority_level),
+    urgentOverride: bool(row.urgent_override),
+    ifNumber: str(row.if_number),
+    ifStatus: str(row.if_status_fusion),
+    internalStatus: str(row.work_order_status),
+    poNumber: str(row.po_number),
+    customer: str(row.customer),
+    partNumber: str(row.part_number),
+    orderQty: num(row.order_qty),
+    packaging: str(row.packaging),
+    partsPerPackage: num(row.parts_per_package),
+    numPackages: num(row.number_of_packages),
+    fusionInventory: num(row.fusion_inventory),
+    hubMold: str(row.hub_mold),
+    tire: str(row.tire),
+    hasTire: bool(row.have_tire),
+    hub: str(row.hub),
+    hasHub: bool(row.have_hub),
+    bearings: str(row.bearings),
+    requestedDate: str(row.requested_completion_date),
+    daysUntilDue: num(row.days_until_promise) || null,
+    shippedDate: str(row.shipped_date),
+    assignedTo: str(row.assigned_to),
+    dailyCapacity: num(row.daily_capacity),
+    priorityOverride: row.priority_override ? str(row.priority_override) : null,
+    priorityChangedBy: row.priority_changed_by ? str(row.priority_changed_by) : null,
+    priorityChangedAt: row.priority_changed_at ? str(row.priority_changed_at) : null,
+  }
+}
+
 export async function fetchOrdersFromDB(): Promise<Order[]> {
   const data = await fetchAllRows('dashboard_orders')
   if (!data.length) return []
 
   return data
-    .map((row): Order => ({
-      line: str(row.line),
-      category: str(row.category),
-      dateOfRequest: str(row.date_of_request),
-      priorityLevel: num(row.priority_level),
-      urgentOverride: bool(row.urgent_override),
-      ifNumber: str(row.if_number),
-      ifStatus: str(row.if_status_fusion),
-      internalStatus: str(row.work_order_status),
-      poNumber: str(row.po_number),
-      customer: str(row.customer),
-      partNumber: str(row.part_number),
-      orderQty: num(row.order_qty),
-      packaging: str(row.packaging),
-      partsPerPackage: num(row.parts_per_package),
-      numPackages: num(row.number_of_packages),
-      fusionInventory: num(row.fusion_inventory),
-      hubMold: str(row.hub_mold),
-      tire: str(row.tire),
-      hasTire: bool(row.have_tire),
-      hub: str(row.hub),
-      hasHub: bool(row.have_hub),
-      bearings: str(row.bearings),
-      requestedDate: str(row.requested_completion_date),
-      daysUntilDue: num(row.days_until_promise) || null,
-      shippedDate: str(row.shipped_date),
-      assignedTo: str(row.assigned_to),
-      dailyCapacity: num(row.daily_capacity),
-      priorityOverride: row.priority_override ? str(row.priority_override) : null,
-      priorityChangedBy: row.priority_changed_by ? str(row.priority_changed_by) : null,
-      priorityChangedAt: row.priority_changed_at ? str(row.priority_changed_at) : null,
-    }))
+    .map(mapRowToOrder)
     .filter((o) => o.line && o.customer)
     .filter((o) => {
       const status = normalizeStatus(o.internalStatus, o.ifStatus)
       return status !== 'cancelled'
     })
+}
+
+// Pre-ERPNext Google-Sheet order history — a full snapshot taken at the 2026-06-30
+// cutover (dashboard_orders_fusion_archive, same columns as dashboard_orders).
+// Read-only; surfaced in Orders Data search so old orders show alongside current
+// ones. Cancelled orders are KEPT here (unlike the live feed) — the archive is the
+// complete historical record. Each row is flagged archived so the UI can mark it.
+export async function fetchArchivedOrders(): Promise<Order[]> {
+  const data = await fetchAllRows('dashboard_orders_fusion_archive')
+  if (!data.length) return []
+
+  return data
+    .map((row) => ({ ...mapRowToOrder(row), archived: true }))
+    .filter((o) => o.line && o.customer)
 }
 
 // ─── All Data (dashboard_orders, all columns as key-value) ───

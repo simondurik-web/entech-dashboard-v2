@@ -166,6 +166,11 @@ function OrdersPageContent() {
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
+  // Pre-ERPNext order archive (read-only), loaded in the background and merged
+  // into the table only while searching (see tableData). Search is controlled at
+  // the page level so we can widen the dataset when a query is active.
+  const [archiveOrders, setArchiveOrders] = useState<Order[]>([])
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -237,7 +242,24 @@ function OrdersPageContent() {
   ]), [])
 
   const ORDER_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
-    { key: 'line', label: t('table.line'), sortable: true },
+    {
+      key: 'line',
+      label: t('table.line'),
+      sortable: true,
+      render: (v, row) => (
+        <span className="inline-flex items-center gap-1.5">
+          {String(v ?? '')}
+          {row.archived && (
+            <span
+              title={t('orders.archivedHint')}
+              className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              {t('orders.archived')}
+            </span>
+          )}
+        </span>
+      ),
+    },
     { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
     { key: 'poNumber', label: t('table.po'), sortable: true },
     {
@@ -427,6 +449,9 @@ function OrdersPageContent() {
       label: '🏷️',
       render: (_v: OrderRow[keyof OrderRow], row: OrderRow) => {
         const order = row as unknown as Order
+        // Archived (pre-ERPNext) rows are read-only history — never expose label
+        // generation on them (they key by line and could hit a live order).
+        if (order.archived) return null
         const isPrinted = printedLines.has(order.line)
         return (
           <button
@@ -479,6 +504,28 @@ function OrdersPageContent() {
     fetchData()
   }, [fetchData])
 
+  // Load the pre-ERPNext order archive in the background. It's only merged into
+  // the table when the user searches, so this never blocks or changes the default
+  // view. Non-critical — silent on failure.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await fetchJsonAndCache<Order[]>('/api/orders-archive')
+        if (!cancelled && Array.isArray(data)) {
+          setArchiveOrders(
+            data.map((o) => ({ ...o, effectivePriority: getEffectivePriority(o) || '-' })) as Order[]
+          )
+        }
+      } catch {
+        /* archive is optional — search just won't include history */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Fetch printed label statuses for icon visual
   useEffect(() => {
     fetch('/api/labels?status=printed')
@@ -516,17 +563,48 @@ function OrdersPageContent() {
     setExpandedOrderKey((prev) => (prev === key ? null : key))
   }
 
-  const filtered = filterByStatus(filterByCategory(orders, categoryFilter), activeStatuses) as OrderRow[]
+  const currentCat = useMemo(() => filterByCategory(orders, categoryFilter), [orders, categoryFilter])
+  const browseFiltered = useMemo(
+    () => filterByStatus(currentCat, activeStatuses) as OrderRow[],
+    [currentCat, activeStatuses]
+  )
+  const archiveCat = useMemo(
+    () => filterByCategory(archiveOrders, categoryFilter),
+    [archiveOrders, categoryFilter]
+  )
+
+  // Default browse = current orders, status-filtered (unchanged). While searching
+  // (≥2 chars), widen to include the pre-ERPNext archive — deduped by IF#+line so
+  // the live row wins — and ignore the status chips, so a lookup by IF#, line,
+  // customer, PO or part surfaces old and current orders together in one table.
+  const tableData = useMemo<OrderRow[]>(() => {
+    const q = search.trim()
+    if (q.length < 2 || archiveCat.length === 0) return browseFiltered
+    // Current rows win; also dedup within the archive so a repeated IF#+line
+    // can't produce a duplicate React key / double-expanded row.
+    const keyOf = (o: Order) => `${o.ifNumber || 'no-if'}::${o.line || 'no-line'}`
+    const seen = new Set(currentCat.map(keyOf))
+    const extra: Order[] = []
+    for (const a of archiveCat) {
+      const k = keyOf(a)
+      if (seen.has(k)) continue
+      seen.add(k)
+      extra.push(a)
+    }
+    return [...currentCat, ...extra] as OrderRow[]
+  }, [search, browseFiltered, currentCat, archiveCat])
 
   const table = useDataTable({
-    data: filtered,
+    data: tableData,
     columns: ORDER_COLUMNS,
     storageKey: 'orders',
+    searchTerm: search,
+    onSearchChange: setSearch,
   })
 
-  // Stats
-  const totalOrders = filtered.length
-  const totalUnits = filtered.reduce((sum, o) => sum + o.orderQty, 0)
+  // Stats reflect the ACTIVE order set only — the archive never inflates the cards.
+  const totalOrders = browseFiltered.length
+  const totalUnits = browseFiltered.reduce((sum, o) => sum + o.orderQty, 0)
   const needToMake = orders.filter((o) => getOrderStatus(o) === 'pending').length
   const making = orders.filter((o) => getOrderStatus(o) === 'wip').length
   const completed = orders.filter((o) => getOrderStatus(o) === 'completed').length
@@ -636,7 +714,8 @@ function OrdersPageContent() {
       {!loading && !error && (
         <DataTable
           table={table}
-          data={filtered}
+          data={tableData}
+          {...(search.trim().length >= 2 ? { pageSize: 300 } : {})}
           noun={t('orders.noun')}
           exportFilename="orders.csv"
           page="orders"
@@ -663,7 +742,7 @@ function OrdersPageContent() {
                 hubPartNum={order.hub}
                 customer={order.customer}
                 poNumber={order.poNumber}
-                canEdit={canEditPallets}
+                canEdit={canEditPallets && !order.archived}
                 userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />

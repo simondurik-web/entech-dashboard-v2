@@ -26,6 +26,11 @@ export interface UseDataTableOptions<T> {
   data: T[]
   columns: ColumnDef<T>[]
   storageKey?: string
+  // Optional controlled search. When provided, the hook uses this value instead
+  // of its own state and reports changes via onSearchChange — lets a page react
+  // to the search term (e.g. widen the dataset while a search is active).
+  searchTerm?: string
+  onSearchChange?: (term: string) => void
 }
 
 export interface UseDataTableReturn<T> {
@@ -54,6 +59,8 @@ export function useDataTable<T extends Record<string, unknown>>({
   data,
   columns,
   storageKey,
+  searchTerm: controlledSearch,
+  onSearchChange,
 }: UseDataTableOptions<T>): UseDataTableReturn<T> {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>(null)
@@ -82,7 +89,15 @@ export function useDataTable<T extends Record<string, unknown>>({
     }
     return columns.map((c) => c.key)
   })
-  const [searchTerm, setSearchTerm] = useState('')
+  const [internalSearch, setInternalSearch] = useState('')
+  const searchTerm = controlledSearch ?? internalSearch
+  const setSearch = useCallback(
+    (term: string) => {
+      if (onSearchChange) onSearchChange(term)
+      else setInternalSearch(term)
+    },
+    [onSearchChange]
+  )
   const sortDirRef = useRef(sortDir)
   sortDirRef.current = sortDir
 
@@ -162,10 +177,10 @@ export function useDataTable<T extends Record<string, unknown>>({
 
   const clearAllFilters = useCallback(() => {
     setFilters(new Map())
-    setSearchTerm('')
+    setSearch('')
     setSortKey(null)
     setSortDir(null)
-  }, [])
+  }, [setSearch])
 
   const toggleColumn = useCallback((key: string) => {
     setHiddenColumns((prev) => {
@@ -192,14 +207,14 @@ export function useDataTable<T extends Record<string, unknown>>({
     setHiddenColumns(new Set(columns.filter((c) => c.defaultHidden).map((c) => c.key)))
     setColumnOrder(columns.map((c) => c.key))
     setFilters(new Map())
-    setSearchTerm('')
+    setSearch('')
     setSortKey(null)
     setSortDir(null)
     if (storageKey && typeof window !== 'undefined') {
       localStorage.removeItem(`dt-hidden-${storageKey}`)
       localStorage.removeItem(`dt-order-${storageKey}`)
     }
-  }, [columns, storageKey])
+  }, [columns, storageKey, setSearch])
 
   const applyView = useCallback((config: DataTableViewConfig) => {
     if (config.columnOrder && config.columnOrder.length > 0) {
@@ -304,7 +319,7 @@ export function useDataTable<T extends Record<string, unknown>>({
     clearFilter,
     clearAllFilters,
     toggleColumn,
-    setSearch: setSearchTerm,
+    setSearch,
     moveColumn,
     resetView,
     applyView,

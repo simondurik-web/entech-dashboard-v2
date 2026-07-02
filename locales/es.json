@@ -348,6 +348,8 @@
   "order.shipment": "Envío",
   "order.totalWeight": "Peso Total",
   "orders.noun": "órdenes",
+  "orders.archived": "Archivado",
+  "orders.archivedHint": "Pedido histórico del archivo anterior a ERPNext (solo lectura)",
   "page.adminPermissions": "Permisos de Roles",
   "page.adminPermissionsSubtitle": "Configura el acceso al menú para cada rol",
   "page.adminPrinterAccess": "Acceso a Impresoras",
