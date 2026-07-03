@@ -160,12 +160,59 @@ function mapRowToOrder(row: Record<string, unknown>): Order {
   }
 }
 
+// Part-intrinsic roll-tech attributes (same for every order of a given part).
+type PartEnrichment = { category?: string; tire?: string; hub?: string; hubMold?: string }
+
+// Roll-tech part numbers look like NNN.NNN.xxx (e.g. 668.254.353, 6845.201.1612);
+// the middle 3-digit segment is the tire. Molding/SnapPad parts are alphabetic
+// (EB-6PK-…, THRESH-…, OFLEX-…), so this only matches roll-tech.
+const ROLLTECH_PN_RE = /^\d{3,4}\.(\d{3})\./
+
 export async function fetchOrdersFromDB(): Promise<Order[]> {
   const data = await fetchAllRows('dashboard_orders')
   if (!data.length) return []
 
+  // The ERPNext sync creates new order rows WITHOUT the roll-tech enrichment
+  // (category/tire/hub/hub_mold left null), while older rows for the same part
+  // still carry it. Build a part_number -> enrichment reference from the populated
+  // rows so we can self-heal the null ones — otherwise Orders Data + Need to
+  // Package show N/A tire/hub and can't tell a roll-tech order from a molding one.
+  const ref = new Map<string, PartEnrichment>()
+  for (const row of data) {
+    const pn = str(row.part_number)
+    if (!pn) continue
+    const cur = ref.get(pn) ?? {}
+    if (!cur.category && str(row.category)) cur.category = str(row.category)
+    if (!cur.tire && str(row.tire)) cur.tire = str(row.tire)
+    if (!cur.hub && str(row.hub)) cur.hub = str(row.hub)
+    if (!cur.hubMold && str(row.hub_mold)) cur.hubMold = str(row.hub_mold)
+    ref.set(pn, cur)
+  }
+
   return data
-    .map(mapRowToOrder)
+    .map((row) => {
+      const o = mapRowToOrder(row)
+      // 1) Backfill from a populated sibling row of the same part (exact, part-intrinsic).
+      const r = ref.get(o.partNumber)
+      if (r) {
+        if (!o.category && r.category) o.category = r.category
+        if (!o.tire && r.tire) o.tire = r.tire
+        if (!o.hub && r.hub) o.hub = r.hub
+        if (!o.hubMold && r.hubMold) o.hubMold = r.hubMold
+      }
+      // 2) Last-resort: derive category + tire from the roll-tech part-number shape,
+      //    so a brand-new roll-tech part (no populated sibling yet) still tags right.
+      if (!o.category || getCategory(o.category) === 'Other') {
+        const m = o.partNumber.match(ROLLTECH_PN_RE)
+        if (m) {
+          // Match the DB's stored casing ('Roll tech') so the category column /
+          // filter dropdown don't show a mix of 'Roll tech' and 'Roll Tech'.
+          if (!o.category) o.category = 'Roll tech'
+          if (!o.tire) o.tire = m[1]
+        }
+      }
+      return o
+    })
     .filter((o) => o.line && o.customer)
     .filter((o) => {
       const status = normalizeStatus(o.internalStatus, o.ifStatus)
