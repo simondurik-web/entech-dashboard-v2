@@ -48,6 +48,17 @@ export async function erpnextGet<T = unknown>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** Raw GET (non-JSON) against ERPNext — used to stream binary assets (item
+ *  pictures, PDFs) that sit behind the Cloudflare Access gate. Returns the raw
+ *  Response; the caller checks res.ok and forwards body + content-type. */
+export async function erpnextFetchRaw(path: string): Promise<Response> {
+  return fetch(`${BASE}${path}`, {
+    headers: authHeaders(),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000),
+  })
+}
+
 /** Escape SQL LIKE metacharacters so a user typing % or _ doesn't broaden the
  *  match (or hammer ERPNext). MariaDB default escape char is backslash. */
 function escapeLike(s: string): string {
