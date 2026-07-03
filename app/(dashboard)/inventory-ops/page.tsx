@@ -124,6 +124,8 @@ interface RecentLabel {
   warehouse: string | null // bin/area the label was allocated to
   qty: number | null // op quantity: pieces for serialized pallets, BOXES for non-serialized
   piecesPerPack: number // pieces per box (1 unless set) — for the non-serialized part total
+  weightLb: number | null // pallet weight/dims when captured at print (Simon 2026-07-03)
+  dims: string | null
   by: string
   at: string | null
   status: string | null
@@ -138,6 +140,8 @@ interface DeletedLabel {
   uom: string
   qty: number | null // the label quantity (what was printed on the pallet)
   warehouse: string | null // last bin it was in (restore target prefill)
+  weightLb: number | null // pallet weight/dims when captured at print
+  dims: string | null
   by: string
   at: string | null
   restored: boolean // a later restore already returned it — disable re-restoring (would double stock)
@@ -3189,7 +3193,10 @@ export default function InventoryOpsPage() {
                         </div>
                       </div>
                       <ul className="rounded-md border border-border bg-background/40">
-                        {renderPalletRow({ batch: l.batch, warehouse: l.warehouse ?? '', qty: l.qty }, l.itemCode)}
+                        {renderPalletRow(
+                          { batch: l.batch, warehouse: l.warehouse ?? '', qty: l.qty, weightLb: l.weightLb ?? undefined, dims: l.dims ?? undefined },
+                          l.itemCode
+                        )}
                       </ul>
                     </li>
                   )
@@ -3198,7 +3205,8 @@ export default function InventoryOpsPage() {
                 // origin): keep the recovery actions — quick reprint + tap-the-id to open
                 // it in the search (full actions there).
                 if (l.batch) {
-                  const m = [l.itemCode, l.purpose ? purposeText(l.purpose) : null, l.by || null].filter(Boolean).join(' · ')
+                  const wd = [l.weightLb ? `${l.weightLb.toLocaleString()} lb` : null, l.dims ? `${l.dims} in` : null].filter(Boolean).join(' · ')
+                  const m = [l.itemCode, wd || null, l.purpose ? purposeText(l.purpose) : null, l.by || null].filter(Boolean).join(' · ')
                   return (
                     <li key={`${l.batch}-${l.at}-${i}`} className="flex items-start justify-between gap-3 py-2 text-sm">
                       <div className="min-w-0">
@@ -3290,6 +3298,8 @@ export default function InventoryOpsPage() {
                 const meta = [
                   l.itemCode,
                   l.qty != null ? `${l.qty.toLocaleString()} ${l.uom}` : null,
+                  l.weightLb ? `${l.weightLb.toLocaleString()} lb` : null,
+                  l.dims ? `${l.dims} in` : null,
                   l.warehouse,
                   l.by || null,
                 ].filter(Boolean).join(' · ')

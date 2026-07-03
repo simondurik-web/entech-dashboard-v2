@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { itemNameMap, deletedPalletMeta } from '@/lib/erpnext/inventory'
+import { itemNameMap, deletedPalletMeta, batchWeightDims } from '@/lib/erpnext/inventory'
 
 // GET /api/erpnext/inventory/recent-deletions?limit=10
 // The most recently DELETED pallets (serialized removals), so a pallet deleted by mistake
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const userIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))] as string[]
     const families = [...new Set(rows.map((r) => r.family).filter(Boolean))] as string[]
 
-    const [profilesRes, restoresRes, itemMeta, palletMeta] = await Promise.all([
+    const [profilesRes, restoresRes, itemMeta, palletMeta, weightDims] = await Promise.all([
       userIds.length
         ? supabaseAdmin.from('user_profiles').select('id, full_name, email').in('id', userIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] }),
@@ -58,6 +58,10 @@ export async function GET(req: NextRequest) {
         : Promise.resolve(new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>()),
       // Label qty + last bin (from ERPNext — both survive removal). Best-effort.
       deletedPalletMeta(batches).catch(() => new Map<string, { labelQty: number | null; lastWarehouse: string | null }>()),
+      // Pallet weight/dims (also survive removal on the Batch). Best-effort.
+      batches.length
+        ? batchWeightDims(batches).catch(() => new Map<string, { weightLb: number | null; dims: string | null }>())
+        : Promise.resolve(new Map<string, { weightLb: number | null; dims: string | null }>()),
     ])
 
     if ('error' in profilesRes && profilesRes.error) console.error('recent-deletions: user_profiles enrichment failed:', profilesRes.error.message)
@@ -85,6 +89,8 @@ export async function GET(req: NextRequest) {
         uom: item?.uom ?? 'pcs',
         qty: meta?.labelQty ?? null,
         warehouse: meta?.lastWarehouse ?? null,
+        weightLb: r.batch ? (weightDims.get(r.batch)?.weightLb ?? null) : null,
+        dims: r.batch ? (weightDims.get(r.batch)?.dims ?? null) : null,
         by: r.created_by ? nameMap.get(r.created_by) ?? '' : '',
         at: r.created_at,
         restored,
