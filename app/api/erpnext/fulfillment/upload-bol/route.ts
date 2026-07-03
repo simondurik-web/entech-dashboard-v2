@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
       bytes: await file.arrayBuffer(),
       attachedToDoctype: 'Delivery Note',
       attachedToName: dn,
+      contentType: file.type,
     })
     return NextResponse.json({ fileName }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

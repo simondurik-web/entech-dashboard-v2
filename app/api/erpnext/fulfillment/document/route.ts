@@ -24,9 +24,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
   try {
-    // only serve documents for real, submitted DNs
-    const doc = await erpnextGetDoc<{ docstatus: number }>('Delivery Note', dn)
-    if (doc.docstatus !== 1) return NextResponse.json({ error: 'Not available' }, { status: 404 })
+    // only serve documents for real, submitted, fulfillment-flow DNs (tied to
+    // an SO) — not arbitrary guessed Delivery Notes
+    const doc = await erpnextGetDoc<{ docstatus: number; custom_ship_against_so?: string | null }>(
+      'Delivery Note',
+      dn
+    )
+    if (doc.docstatus !== 1 || !doc.custom_ship_against_so) {
+      return NextResponse.json({ error: 'Not available' }, { status: 404 })
+    }
 
     const format = type === 'bol' ? BOL_FORMAT : PACKING_SLIP_FORMAT
     const qs = new URLSearchParams({ doctype: 'Delivery Note', name: dn, format })

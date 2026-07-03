@@ -78,6 +78,7 @@ export interface StagedPallet {
   qty: number // reserved qty from this pallet
   warehouse: string
   status: string // SRE status (Reserved / Partially Reserved / Partially Delivered)
+  soDetail: string | null // the SO Item row the reservation targets
 }
 
 export interface FulfillmentOrder {
@@ -135,32 +136,41 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
       ['status', 'in', ACTIVE_SRE_STATUS],
       ['docstatus', '=', 1],
     ]),
-    listParam('fields', ['name', 'item_code', 'warehouse', 'status', 'reserved_qty']),
+    listParam('fields', ['name', 'item_code', 'warehouse', 'status', 'reserved_qty', 'voucher_detail_no']),
     'limit_page_length=0',
   ].join('&')
   const sres =
     (await erpnextGet<{
-      data: { name: string; item_code: string; warehouse: string; status: string; reserved_qty: number }[]
+      data: {
+        name: string
+        item_code: string
+        warehouse: string
+        status: string
+        reserved_qty: number
+        voucher_detail_no?: string | null
+      }[]
     }>(`/api/resource/Stock Reservation Entry?${qs}`)).data ?? []
 
+  // FAIL CLOSED on an unreadable SRE: this list is the authoritative staged set
+  // that Complete Shipment validates scans against — silently dropping one
+  // could make a partial load look exact (codex review 2026-07-03).
   const palletLists = await mapLimit(sres, SRE_FETCH_CONCURRENCY, async (s) => {
-    try {
-      const full = await erpnextGetDoc<{ sb_entries?: { batch_no?: string | null; qty: number }[] }>(
-        'Stock Reservation Entry',
-        s.name
-      )
-      return (full.sb_entries ?? [])
-        .filter((e) => e.batch_no)
-        .map((e) => ({
-          palletId: String(e.batch_no),
-          itemCode: s.item_code,
-          qty: Math.abs(Number(e.qty) || 0) || Number(s.reserved_qty) || 0,
-          warehouse: s.warehouse,
-          status: s.status,
-        }))
-    } catch {
-      return [] // one unreadable SRE shouldn't blank the whole screen
-    }
+    const full = await erpnextGetDoc<{ sb_entries?: { batch_no?: string | null; qty: number }[] }>(
+      'Stock Reservation Entry',
+      s.name
+    )
+    return (full.sb_entries ?? [])
+      .filter((e) => e.batch_no)
+      .map((e) => ({
+        palletId: String(e.batch_no),
+        itemCode: s.item_code,
+        qty: Math.abs(Number(e.qty) || 0) || Number(s.reserved_qty) || 0,
+        warehouse: s.warehouse,
+        status: s.status,
+        // the SO Item row this reservation targets — keeps multi-line SOs
+        // (same item on several release lines) shipping against the right line
+        soDetail: s.voucher_detail_no ?? null,
+      }))
   })
   // One pallet can appear in only one active reservation for this SO; dedupe defensively.
   const pallets = Array.from(
@@ -259,6 +269,14 @@ export const PACKING_SLIP_FORMAT = 'Packing Slip - Entech'
  *  shipment — carries the server's user-facing (often bilingual) message. */
 export class ShipmentRejectedError extends Error {}
 
+/** Redact money-shaped fragments from a server message before it reaches the
+ *  shipping floor (currency symbols/amounts, "rate/price/amount N"). */
+function scrubMoney(s: string): string {
+  return s
+    .replace(/[$€£]\s?\d[\d,]*(?:\.\d+)?/g, '[…]')
+    .replace(/\b(rate|price|amount|total|valuation)\b[^.;,]{0,20}?\d[\d,]*(?:\.\d+)?/gi, '$1 […]')
+}
+
 export interface CompleteShipmentInput {
   soName: string
   scannedPallets: string[] // what the floor scanned — revalidated against live ERPNext state
@@ -272,6 +290,9 @@ export interface CompleteShipmentResult {
   stagingStatus: string | null
   attachedBol: boolean
   attachedPackingSlip: boolean
+  // set when a post-submit step failed — the shipment ITSELF is done (stock
+  // relieved), the UI must show success plus this warning, never an error
+  warning: 'mark_shipped_failed' | null
 }
 
 /** Fetch a print-format PDF for a DN. Returns null (not throws) on failure so
@@ -335,26 +356,36 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
   const scanned = new Set(input.scannedPallets.map((p) => p.trim().toUpperCase()).filter(Boolean))
 
   const order = await getFulfillmentOrder(soName)
-  if (order.stagingStatus === 'Shipped') {
-    throw new ShipmentRejectedError(`Order ${soName} is already shipped`)
-  }
   const staged = new Map(order.pallets.map((p) => [p.palletId.toUpperCase(), p]))
-  if (staged.size === 0) throw new ShipmentRejectedError(`Order ${soName} has no staged pallets`)
-  const missing = [...staged.keys()].filter((p) => !scanned.has(p))
-  const extra = [...scanned].filter((p) => !staged.has(p))
-  if (missing.length || extra.length) {
-    throw new ShipmentRejectedError(
-      `Scanned pallets do not match the staged records` +
-        (missing.length ? ` — missing: ${missing.join(', ')}` : '') +
-        (extra.length ? ` — not staged: ${extra.join(', ')}` : '')
-    )
+
+  // Idempotent retry FIRST: if a DN with this exact pallet set already exists
+  // (double-tap, or a retry after the first attempt flipped the SO to Shipped),
+  // continue from where it left off instead of rejecting (codex review).
+  const existing = await findExistingDn(
+    soName,
+    new Set(staged.size ? staged.keys() : scanned)
+  )
+
+  if (!existing) {
+    if (order.stagingStatus === 'Shipped') {
+      throw new ShipmentRejectedError(`Order ${soName} is already shipped`)
+    }
+    if (staged.size === 0) throw new ShipmentRejectedError(`Order ${soName} has no staged pallets`)
+    const missing = [...staged.keys()].filter((p) => !scanned.has(p))
+    const extra = [...scanned].filter((p) => !staged.has(p))
+    if (missing.length || extra.length) {
+      throw new ShipmentRejectedError(
+        `Scanned pallets do not match the staged records` +
+          (missing.length ? ` — missing: ${missing.join(', ')}` : '') +
+          (extra.length ? ` — not staged: ${extra.join(', ')}` : '')
+      )
+    }
   }
   const lineByItem = new Map(order.lines.map((l) => [l.itemCode, l]))
 
   // 1-2) create or reuse the DN
   let dn: string
   let alreadySubmitted = false
-  const existing = await findExistingDn(soName, new Set(staged.keys()))
   if (existing) {
     dn = existing.name
     alreadySubmitted = existing.docstatus === 1
@@ -365,7 +396,9 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
       batch_no: p.palletId,
       use_serial_batch_fields: 1,
       against_sales_order: soName,
-      so_detail: lineByItem.get(p.itemCode)?.soItem,
+      // prefer the SO line the RESERVATION targets — an SO can carry the same
+      // item on several release lines and itemCode alone would collapse them
+      so_detail: p.soDetail ?? lineByItem.get(p.itemCode)?.soItem,
       custom_customer_part_no: customerPartNos[p.itemCode] ?? null,
       // rate + warehouse intentionally omitted — server scripts own them
     }))
@@ -378,25 +411,50 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     dn = created.name
   }
 
-  // 3) submit — the scan safety gate runs here; surface its message verbatim
+  // 3) submit — the scan safety gate runs here. Its message is shown to the
+  // floor, so scrub any money-shaped fragments a generic frappe validation
+  // could carry (hard rule: no prices in this UI).
   if (!alreadySubmitted) {
     const fresh = await erpnextGetDoc('Delivery Note', dn)
     try {
       await erpnextSubmit(fresh)
     } catch (e) {
-      throw new ShipmentRejectedError(parseErpErrorMessage(e instanceof Error ? e.message : String(e)))
+      const msg = parseErpErrorMessage(e instanceof Error ? e.message : String(e))
+      throw new ShipmentRejectedError(scrubMoney(msg))
     }
   }
 
-  // 4) mark shipped (allow_on_submit custom fields; fires the SO rollup)
-  await erpnextUpdate('Delivery Note', dn, {
-    custom_shipped: 1,
-    custom_shipped_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
-    custom_shipped_by: userName || 'dashboard',
-  })
+  // From here on the shipment EXISTS (stock is relieved) — nothing below may
+  // throw, or the operator would see "failed" for a completed shipment and
+  // retry unsafely (codex review). Failures degrade to warnings instead.
 
-  // 5) documents — best-effort, never fail the shipment over a PDF
+  // 4) mark shipped (allow_on_submit custom fields; fires the SO rollup)
+  let warning: CompleteShipmentResult['warning'] = null
+  try {
+    await erpnextUpdate('Delivery Note', dn, {
+      custom_shipped: 1,
+      custom_shipped_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      custom_shipped_by: userName || 'dashboard',
+    })
+  } catch (e) {
+    console.error(`completeShipment ${dn}: mark-shipped failed (shipment itself is submitted):`, e)
+    warning = 'mark_shipped_failed'
+  }
+
+  // 5) documents — best-effort, never fail the shipment over a PDF. A retry
+  // of an already-shipped DN skips files that are already attached.
+  const alreadyAttached = new Set(
+    (
+      (await erpnextGet<{ data: { file_name: string }[] }>(
+        `/api/resource/File?${listParam('filters', [
+          ['attached_to_doctype', '=', 'Delivery Note'],
+          ['attached_to_name', '=', dn],
+        ])}&${listParam('fields', ['file_name'])}&limit_page_length=0`
+      ).catch(() => ({ data: [] }))).data ?? []
+    ).map((f) => f.file_name)
+  )
   const attach = async (format: string, fileName: string): Promise<boolean> => {
+    if (alreadyAttached.has(fileName)) return true
     const pdf = await fetchDnPdf(dn, format)
     if (!pdf) return false
     try {
@@ -416,13 +474,16 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     attach(PACKING_SLIP_FORMAT, `PackingSlip-${dn}.pdf`),
   ])
 
-  const after = await erpnextGetDoc<{ custom_staging_status?: string | null }>('Sales Order', soName)
+  const stagingStatus = await erpnextGetDoc<{ custom_staging_status?: string | null }>('Sales Order', soName)
+    .then((s) => s.custom_staging_status ?? null)
+    .catch(() => null)
   return {
     dn,
     so: soName,
-    stagingStatus: after.custom_staging_status ?? null,
+    stagingStatus,
     attachedBol,
     attachedPackingSlip,
+    warning,
   }
 }
 
