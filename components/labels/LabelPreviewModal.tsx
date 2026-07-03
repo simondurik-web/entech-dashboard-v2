@@ -184,7 +184,7 @@ export function LabelPreviewModal({ label, siblingLabels, open, onOpenChange, on
             <LabelRow label="PO Number:" value={currentLabel.po_number || '—'} />
 
             {/* IF# */}
-            <LabelRow label="IF#" value={currentLabel.if_number || '—'} />
+            <LabelRow label="SO#" value={currentLabel.if_number || '—'} />
 
             {/* Parts per Package */}
             <LabelRow label="Parts per Package:" value={currentLabel.parts_per_package?.toLocaleString()} />
@@ -260,7 +260,7 @@ export function LabelPreviewModal({ label, siblingLabels, open, onOpenChange, on
                   <LabelRow label="Hub Style:" value={lb.hub_style || '—'} />
                   <LabelRow label="Bearings:" value={lb.bearings || '—'} />
                   <LabelRow label="PO Number:" value={lb.po_number || '—'} />
-                  <LabelRow label="IF#" value={lb.if_number || '—'} />
+                  <LabelRow label="SO#" value={lb.if_number || '—'} />
                   <LabelRow label="Parts per Package:" value={lb.parts_per_package?.toLocaleString()} />
                   <LabelRow label="Package number:" value={lb.pallet_number ? `${lb.pallet_number} of ${lb.num_packages}` : `of ${lb.num_packages}`} />
                   <LabelRow label="Type of packaging" value={lb.packaging_type || '—'} />

@@ -35,7 +35,7 @@ type StagedRow = StagedRecord & Record<string, unknown>
 const COLUMNS: ColumnDef<StagedRow>[] = [
   { key: 'timestamp', label: 'Date Staged', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'ifNumber', label: 'IF#', sortable: true },
+  { key: 'ifNumber', label: 'SO#', sortable: true },
   {
     key: 'partNumber', label: 'Part Number', sortable: true, filterable: true,
     render: (v) => (
@@ -230,7 +230,7 @@ function StagedRecordsPageContent() {
                     <div>
                       <CardTitle className="text-lg">📦 {record.partNumber || 'Unknown'}</CardTitle>
                       <p className="text-sm text-muted-foreground">
-                        IF# {record.ifNumber} • {record.customer || 'Unknown'}
+                        SO# {record.ifNumber} • {record.customer || 'Unknown'}
                       </p>
                     </div>
                     <span className="px-2 py-1 text-xs rounded bg-blue-500/20 text-blue-600">

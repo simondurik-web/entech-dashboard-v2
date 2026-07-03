@@ -664,7 +664,7 @@ export default function ShippingPage() {
               <div onClick={() => openForm(order)} className="cursor-pointer active:bg-muted">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-bold text-lg text-foreground">IF# {order.if_number}</p>
+                    <p className="font-bold text-lg text-foreground">SO# {order.if_number}</p>
                     <p className="text-muted-foreground font-medium">{order.customer}</p>
                     <p className="text-muted-foreground text-sm">PO: {order.po_number} · Line: {order.line_number}</p>
                   </div>
@@ -782,7 +782,7 @@ export default function ShippingPage() {
 
         <div className="bg-gradient-to-r from-amber-600 to-amber-500 text-white rounded-xl p-4 mb-4 shadow-lg">
           <h2 className="text-lg font-bold">✏️ Edit Pallets</h2>
-          <p className="text-amber-100 text-sm">IF# {editStagedOrder.if_number} · {editStagedOrder.customer}</p>
+          <p className="text-amber-100 text-sm">SO# {editStagedOrder.if_number} · {editStagedOrder.customer}</p>
           <p className="text-amber-100 text-sm">PO: {editStagedOrder.po_number} · Line: {editStagedOrder.line_number} · {stagedPallets.length} pallets</p>
         </div>
 
@@ -974,7 +974,7 @@ export default function ShippingPage() {
         {/* Selected order context */}
         {selectedOrder && (
           <div className="bg-muted rounded-lg p-3 text-sm">
-            <p><strong>IF# {selectedOrder.if_number}</strong> · {selectedOrder.customer}</p>
+            <p><strong>SO# {selectedOrder.if_number}</strong> · {selectedOrder.customer}</p>
             <p className="text-muted-foreground">PO: {selectedOrder.po_number} · Line: {selectedOrder.line_number}</p>
           </div>
         )}

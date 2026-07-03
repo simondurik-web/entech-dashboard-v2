@@ -784,8 +784,36 @@ export async function listSalesOrdersForItem(itemCode: string): Promise<SalesOrd
   for (const r of rows) {
     if (!byName.has(r.name)) byName.set(r.name, { name: r.name, customer: r.customer, status: r.status, deliveryDate: r.delivery_date ?? null })
   }
+
+  // Drop orders that can't take any more of THIS item (fully shipped and/or
+  // fully reserved — a "To Bill" order whose stock all left still passed the
+  // status filter and offered itself for new labels; Simon caught SO-00076
+  // doing exactly that, 2026-07-03). Per line: what's left to stage is
+  // ordered − max(delivered, reserved) — reserved stays populated even after
+  // delivery, and delivered covers shipped-without-reservation. A partially
+  // shipped multi-release order keeps its open lines and stays listed.
+  const open: SalesOrderOption[] = []
+  await Promise.all(
+    [...byName.values()].map(async (opt) => {
+      try {
+        const doc = await erpnextGetDoc<{
+          items?: { item_code: string; qty: number; stock_qty?: number | null; delivered_qty?: number | null; stock_reserved_qty?: number | null; reserve_stock?: number | null }[]
+        }>('Sales Order', opt.name)
+        const remaining = (doc.items ?? [])
+          .filter((l) => l.item_code === itemCode)
+          .reduce((s, l) => {
+            const ordered = Number(l.stock_qty ?? l.qty) || 0
+            const used = Math.max(Number(l.delivered_qty) || 0, Number(l.stock_reserved_qty) || 0)
+            return s + Math.max(0, ordered - used)
+          }, 0)
+        if (remaining > 1e-6) open.push(opt)
+      } catch {
+        open.push(opt) // fail open for the DISPLAY list; reservation guards enforce
+      }
+    })
+  )
   // Soonest delivery first; undated last.
-  return [...byName.values()].sort((a, b) => (a.deliveryDate ?? '9999').localeCompare(b.deliveryDate ?? '9999') || a.name.localeCompare(b.name))
+  return open.sort((a, b) => (a.deliveryDate ?? '9999').localeCompare(b.deliveryDate ?? '9999') || a.name.localeCompare(b.name))
 }
 
 export interface QtyResult extends Committed {
