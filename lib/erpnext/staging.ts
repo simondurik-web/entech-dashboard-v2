@@ -111,27 +111,29 @@ export async function listOpenSalesOrdersForItem(itemCode: string): Promise<Stag
   const orders = await mapLimit(names, SO_FETCH_CONCURRENCY, async (name) => {
     const doc = await erpnextGetDoc<SODoc>('Sales Order', name)
     let ordered = 0
-    let reserved = 0
+    let used = 0
     for (const it of doc.items ?? []) {
       if (it.item_code !== itemCode) continue
       ordered += orderedOf(it)
-      reserved += reservedOf(it)
+      // per line, what's spoken for: reserved OR already delivered (a manual
+      // ERPNext ship without a reservation still consumes the line)
+      used += Math.max(reservedOf(it), Number(it.delivered_qty) || 0)
     }
     const order: StagingSalesOrder = {
       name: doc.name,
       customer: doc.customer,
       poNo: doc.po_no ?? null,
       orderedQty: ordered,
-      reservedQty: reserved,
+      reservedQty: used,
       deliveryDate: doc.delivery_date ?? null,
       stagingStatus: doc.custom_staging_status ?? null,
     }
     return order
   })
 
-  // An order whose need for THIS item is fully reserved must not be offered as
-  // a staging target at all — over-assigning stock to a covered order was a
-  // real loophole (Simon 2026-07-03). Tiny epsilon vs float stock_qty.
+  // An order whose need for THIS item is fully reserved OR shipped must not be
+  // offered as a staging target at all — over-assigning stock to a covered
+  // order was a real loophole (Simon 2026-07-03). Tiny epsilon vs float qty.
   const open = orders.filter((o) => o.orderedQty - o.reservedQty > 1e-6)
 
   // Soonest delivery first (undated last), then by name for stability.

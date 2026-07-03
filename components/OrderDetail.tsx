@@ -490,7 +490,7 @@ export function OrderDetail({
           <div className="flex items-center gap-3">
             <p className="text-sm font-semibold">{t('order.details')}</p>
             <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded">
-              IF# {ifNumber || '-'} {line ? `• Line ${line}` : ''}
+              SO# {ifNumber || '-'} {line ? `• Line ${line}` : ''}
             </span>
           </div>
           <button onClick={onClose} className="rounded-md border bg-background px-2 py-1 text-xs hover:bg-muted transition-colors">

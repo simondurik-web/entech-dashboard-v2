@@ -263,7 +263,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated, initialL
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search by line #, customer, part number, PO, or IF#..."
+            placeholder="Search by line #, customer, part number, PO, or SO#..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"

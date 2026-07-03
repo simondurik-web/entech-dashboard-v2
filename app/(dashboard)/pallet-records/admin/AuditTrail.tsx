@@ -354,7 +354,7 @@ export default function AuditTrail() {
                             {entry.old_data.carrier ? <p><span className="text-muted-foreground">Carrier:</span> {String(entry.old_data.carrier)}</p> : null}
                             {entry.old_data.customer ? <p><span className="text-muted-foreground">Customer:</span> {String(entry.old_data.customer)}</p> : null}
                             {entry.old_data.system_type ? <p><span className="text-muted-foreground">System:</span> {String(entry.old_data.system_type)}</p> : null}
-                            {entry.old_data.if_number ? <p><span className="text-muted-foreground">IF#:</span> {String(entry.old_data.if_number)}</p> : null}
+                            {entry.old_data.if_number ? <p><span className="text-muted-foreground">SO#:</span> {String(entry.old_data.if_number)}</p> : null}
                           </>
                         )}
                       </div>

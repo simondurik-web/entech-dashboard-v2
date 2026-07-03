@@ -124,7 +124,7 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
             </p>
           </div>
           <div>
-            <span className="text-muted-foreground">IF#</span>
+            <span className="text-muted-foreground">SO#</span>
             <p className="font-semibold truncate">{order.ifNumber || '-'}</p>
           </div>
           <div>
