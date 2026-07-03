@@ -515,6 +515,7 @@ export interface UndoShipmentResult {
   dn: string
   so: string | null
   stagingStatus: string | null
+  soItems: string[] // the SO lines the cancelled DN covered (scopes the dashboard flip)
 }
 
 /** Recompute the SO's staging status after an undo, mirroring the ERPNext
@@ -578,18 +579,20 @@ export async function undoShipment(dnName: string): Promise<UndoShipmentResult> 
     name: string
     docstatus: number
     custom_ship_against_so?: string | null
+    items?: { so_detail?: string | null }[]
   }>('Delivery Note', dnName)
   const so = doc.custom_ship_against_so ?? null
   if (doc.docstatus !== 1 || !so) {
     throw new ShipmentRejectedError(`Delivery Note ${dnName} is not an undoable dashboard shipment`)
   }
+  const soItems = [...new Set((doc.items ?? []).map((i) => i.so_detail).filter((s): s is string => !!s))]
   try {
     await erpnextCancel('Delivery Note', dnName)
   } catch (e) {
     throw new ShipmentRejectedError(parseErpErrorMessage(e instanceof Error ? e.message : String(e)))
   }
   const stagingStatus = await recomputeStagingAfterUndo(so)
-  return { dn: dnName, so, stagingStatus }
+  return { dn: dnName, so, stagingStatus, soItems }
 }
 
 /** The Item's picture path (e.g. "/files/Tire 163-….jpg") or null. Used by the
