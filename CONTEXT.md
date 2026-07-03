@@ -28,10 +28,17 @@ shipping floor never leaves it. Canonical brief + decisions:
   card-tap double-fire in `OrderCard` (stopPropagation; DataTable's 6/09 wrapper re-toggled the
   expand state, breaking card expansion on phones for staged/orders/shipped/need-to-package) and
   added an `expandedAction` slot so Ship Order shows inside the expanded card on phones.
-- **Next**: Phase 3 complete-shipment (DN create+submit, BOL+packing slip PDFs attached,
-  undo-shipment returning pallets to stock, reservation interplay on the sandbox first);
-  Phase 4 customer-BOL upload + "shipping team" role + polish. Packing-slip print format needs a
-  logo + internal AND customer P/N; Simon wants a mock to review first.
+- **Phases 3+4 SHIPPED to staging overnight 2026-07-03 (PRs #157/#158/#159)** — Complete
+  Shipment is real: DN create+submit through the ERPNext scan gate (so_detail from the
+  reservation → correct line on multi-release SOs; reservations consumed/restored natively),
+  BOL + "Packing Slip - Entech" PDFs attached (deduped), custom_shipped rollup, shipped view
+  (PDF buttons, customer-BOL upload, undo = DN cancel + staging recompute). Idempotent
+  double-tap/crash/retry. Shipped section rows get "Shipping documents". GPT-5.5-reviewed
+  (8/9 findings fixed; #6 floor-wide undo is per spec, ask Simon about role-restricting).
+  Device-tested at iPhone/iPad viewports end-to-end incl. a real UI-driven ship+undo cycle.
+  Full build log: erp-4molding/FULFILLMENT-WRAPPER-BRIEF.md.
+- **Pending Simon**: packing-slip design approval (mock PDF), "shipping team" role creation +
+  user assignment, one real order shadowed before floor rollout, then staging → main promotion.
 
 ---
 
