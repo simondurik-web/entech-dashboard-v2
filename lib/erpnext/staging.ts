@@ -129,8 +129,13 @@ export async function listOpenSalesOrdersForItem(itemCode: string): Promise<Stag
     return order
   })
 
+  // An order whose need for THIS item is fully reserved must not be offered as
+  // a staging target at all — over-assigning stock to a covered order was a
+  // real loophole (Simon 2026-07-03). Tiny epsilon vs float stock_qty.
+  const open = orders.filter((o) => o.orderedQty - o.reservedQty > 1e-6)
+
   // Soonest delivery first (undated last), then by name for stability.
-  return orders.sort(
+  return open.sort(
     (a, b) =>
       (a.deliveryDate ?? '9999').localeCompare(b.deliveryDate ?? '9999') || a.name.localeCompare(b.name)
   )
@@ -348,6 +353,28 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
     (so.items ?? []).find((l) => l.item_code === itemCode && l.reserve_stock)
 
   const before = new Set(await reservationNamesForSO(soName))
+
+  // Hard over-reserve guard (Simon 2026-07-03): a line can never be reserved past
+  // its ordered qty — not fully-covered lines taking more pallets, and not a
+  // pallet bigger than what the line still needs. Tracks a running total so a
+  // multi-pallet queue can't collectively overshoot either.
+  const runningReserved = new Map<string, number>()
+  for (const p of items) {
+    const line = p.salesOrderItem
+      ? (so.items ?? []).find((l) => l.name === p.salesOrderItem)
+      : lineFor(p.itemCode)
+    if (!line) continue // the missing-line error below reports it
+    const already = runningReserved.get(line.name) ?? reservedOf(line)
+    const remaining = orderedOf(line) - already
+    if (p.qty > remaining + 1e-6) {
+      throw new Error(
+        remaining <= 1e-6
+          ? `${soName} already has all ${orderedOf(line).toLocaleString()} of ${p.itemCode} reserved — nothing left to stage`
+          : `${soName} only needs ${remaining.toLocaleString()} more of ${p.itemCode}; pallet ${p.batch} holds ${p.qty.toLocaleString()}`
+      )
+    }
+    runningReserved.set(line.name, already + p.qty)
+  }
 
   for (const p of items) {
     const salesOrderItem = p.salesOrderItem ?? lineFor(p.itemCode)?.name
