@@ -45,12 +45,17 @@ export async function POST(req: NextRequest) {
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
   const salesOrder = body.salesOrder?.trim() || undefined
   const qty = Number(body.qty)
-  // Optional pallet weight/dims (Simon 2026-07-03): loose validation, stored on
-  // the Batch and printed on the label (the ZPL template sanitizes further).
+  // Optional pallet weight/dims (Simon 2026-07-03): stored on the Batch and
+  // printed on the label. Dims must be the normalized NxNxN the three-box UI
+  // composes — a freeform string would drift across operators.
   const weightLb = Number.isFinite(Number(body.weightLb)) && Number(body.weightLb) > 0
     ? Math.min(99999, Math.round(Number(body.weightLb) * 10) / 10)
     : undefined
-  const dims = body.dims?.trim().slice(0, 30) || undefined
+  const dimsRaw = body.dims?.trim() || undefined
+  if (dimsRaw && !/^\d+(\.\d+)?x\d+(\.\d+)?x\d+(\.\d+)?$/.test(dimsRaw)) {
+    return NextResponse.json({ error: 'dims must be LxWxH numbers (e.g. 48x40x60)' }, { status: 400 })
+  }
+  const dims = dimsRaw
   if (!itemCode || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY || !warehouse || !station || !idempotencyKey) {
     return NextResponse.json(
       { error: 'itemCode, qty (1..10M), warehouse, station, and idempotencyKey are required' },
