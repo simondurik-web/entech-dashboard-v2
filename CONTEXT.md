@@ -21,8 +21,15 @@ shipping floor never leaves it. Canonical brief + decisions:
   fulfillment routes gate on `/staged`.
 - **Test sandbox**: ERPNext "Test Customer" + SO-00075 + TEST-PLT-1/2 (staged). Manage with
   `erp-4molding/scripts/fulfillment-test-sandbox.py` (create/status/cleanup).
-- **Next**: Phase 2 scan & check (scan/type pallet, green/red vs SO, remove, green light);
-  Phase 3 complete-shipment (DN create+submit, BOL+packing slip PDFs attached, undo-shipment);
+- **Phase 2 SHIPPED to staging (PR #155, 2026-07-02 late)** — scan & check: camera scanner
+  (shared PalletScanner remounted per decode) + Type Pallet ID; staged pallets turn green when
+  scanned; wrong scans red with reason (`/api/erpnext/fulfillment/pallet` lookup); all-match green
+  light → Complete Shipment → confirmation prompt (submit disabled — Phase 3). Fixed the mobile
+  card-tap double-fire in `OrderCard` (stopPropagation; DataTable's 6/09 wrapper re-toggled the
+  expand state, breaking card expansion on phones for staged/orders/shipped/need-to-package) and
+  added an `expandedAction` slot so Ship Order shows inside the expanded card on phones.
+- **Next**: Phase 3 complete-shipment (DN create+submit, BOL+packing slip PDFs attached,
+  undo-shipment returning pallets to stock, reservation interplay on the sandbox first);
   Phase 4 customer-BOL upload + "shipping team" role + polish. Packing-slip print format needs a
   logo + internal AND customer P/N; Simon wants a mock to review first.
 
