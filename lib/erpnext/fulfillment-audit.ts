@@ -63,8 +63,16 @@ export async function listFulfillmentLog(so: string): Promise<FulfillmentLogRow[
 }
 
 /** Flip the order's dashboard rows immediately. `mode` mirrors what the sync
- *  will compute on its next run. if_number is "SO-00075" or "SO-00075 (IF…)". */
-export async function flipDashboardStatus(so: string, mode: 'shipped' | 'staged'): Promise<void> {
+ *  will compute on its next run. if_number is "SO-00075" or "SO-00075 (IF…)".
+ *  `soItems` (Sales Order Item child names) scopes the flip to just those
+ *  LINES via erp_order_line_map — shipping one line of a multi-line order must
+ *  not mark its sibling lines shipped (found via SO-00037, 2026-07-03). No
+ *  soItems -> all the order's rows (whole-order actions). */
+export async function flipDashboardStatus(
+  so: string,
+  mode: 'shipped' | 'staged',
+  soItems?: string[]
+): Promise<void> {
   try {
     const today = new Date()
     const patch: Record<string, unknown> = { work_order_status: mode }
@@ -75,11 +83,20 @@ export async function flipDashboardStatus(so: string, mode: 'shipped' | 'staged'
       // Orders Data / Shipping Overview (Simon 2026-07-03)
       patch.shipped_date = null
     }
-    // so is validated upstream (^[A-Za-z0-9-]+$), safe to embed in the filter
-    await supabaseAdmin
-      .from('dashboard_orders')
-      .update(patch)
-      .or(`if_number.eq.${so},if_number.like.${so} (%`)
+    let q = supabaseAdmin.from('dashboard_orders').update(patch)
+    if (soItems && soItems.length > 0) {
+      const { data: mapRows } = await supabaseAdmin
+        .from('erp_order_line_map')
+        .select('line')
+        .in('erp_so_item_name', soItems)
+      const lines = (mapRows ?? []).map((r) => r.line)
+      if (lines.length === 0) return // unmapped lines -> let the sync handle it
+      q = q.in('line', lines)
+    } else {
+      // so is validated upstream (^[A-Za-z0-9-]+$), safe to embed in the filter
+      q = q.or(`if_number.eq.${so},if_number.like.${so} (%`)
+    }
+    await q
   } catch (e) {
     console.error('dashboard status flip failed:', e)
   }

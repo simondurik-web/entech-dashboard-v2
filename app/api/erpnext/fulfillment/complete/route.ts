@@ -82,7 +82,11 @@ export async function POST(req: NextRequest) {
       userId: guard.userId,
       userName: userName || guard.email,
     })
-    flipDashboardStatus(so, 'shipped')
+    flipDashboardStatus(
+      so,
+      'shipped',
+      order.pallets.map((p) => p.soDetail).filter((s): s is string => !!s)
+    )
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (error instanceof ShipmentRejectedError) {
