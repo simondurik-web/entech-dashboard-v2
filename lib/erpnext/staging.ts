@@ -4,6 +4,7 @@ import {
   erpnextCreate,
   erpnextUpdate,
   erpnextRunDocMethod,
+  erpnextCancel,
 } from './client'
 import type { Committed } from './operation'
 
@@ -173,6 +174,7 @@ export type BatchReservation = {
   poNo: string | null
   reservedQty: number
   status: string
+  sre: string // the Stock Reservation Entry name (needed to release/move it)
 }
 
 /**
@@ -217,7 +219,7 @@ export async function reservationsForBatches(
   // 2) Resolve each SRE back to the batch(es) it reserves (child table read via full doc).
   //    Concurrency-capped like the other ERPNext fan-outs so a big bin can't fire dozens
   //    of simultaneous full-doc GETs and blow the function timeout.
-  const byBatch: Record<string, { so: string; reservedQty: number; status: string }> = {}
+  const byBatch: Record<string, { so: string; reservedQty: number; status: string; sre: string }> = {}
   await mapLimit(sres, SO_FETCH_CONCURRENCY, async (s) => {
     try {
       const full = await erpnextGetDoc<{ sb_entries?: { batch_no: string; qty: number }[] }>(
@@ -227,7 +229,12 @@ export async function reservationsForBatches(
       for (const e of full.sb_entries ?? []) {
         const b = String(e.batch_no ?? '').trim()
         if (b && uniqSet.has(b) && !byBatch[b]) {
-          byBatch[b] = { so: s.voucher_no, reservedQty: Number(e.qty) || Number(s.reserved_qty) || 0, status: s.status }
+          byBatch[b] = {
+            so: s.voucher_no,
+            reservedQty: Number(e.qty) || Number(s.reserved_qty) || 0,
+            status: s.status,
+            sre: s.name,
+          }
         }
       }
     } catch {
@@ -259,9 +266,36 @@ export async function reservationsForBatches(
       poNo: soInfo[v.so]?.poNo ?? null,
       reservedQty: v.reservedQty,
       status: v.status,
+      sre: v.sre,
     }
   }
   return out
+}
+
+/** Release ONE pallet's reservation (cancel its Stock Reservation Entry) and
+ *  recompute the source order's staging state: losing a pallet drops a fully-
+ *  staged order back to Open so it shows as needing staging again. Used by the
+ *  move-to-another-order flow (Simon 2026-07-03). */
+export async function releaseBatchReservation(
+  batch: string
+): Promise<{ released: boolean; fromSo?: string; customer?: string | null }> {
+  const res = (await reservationsForBatches([batch]))[batch]
+  if (!res) return { released: false }
+  await erpnextCancel('Stock Reservation Entry', res.sre)
+
+  const fromSo = res.so
+  const progress = await getStagingProgress(fromSo)
+  const remaining = (await reservationNamesForSO(fromSo)).length
+  if (!progress.staged && progress.stagingStatus === 'Staged') {
+    await erpnextUpdate('Sales Order', fromSo, {
+      custom_staging_status: 'Open',
+      custom_staged_at: null,
+      custom_staged_pallets: remaining,
+    })
+  } else {
+    await erpnextUpdate('Sales Order', fromSo, { custom_staged_pallets: remaining })
+  }
+  return { released: true, fromSo, customer: res.customer }
 }
 
 /** Names of the active (Reserved / Partially Reserved) Stock Reservation Entries on an SO. */

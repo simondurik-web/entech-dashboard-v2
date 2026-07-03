@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { reserveBatchesToSO } from '@/lib/erpnext/staging'
-import { runInventoryOp } from '@/lib/erpnext/operation'
+import { reserveBatchesToSO, reservationsForBatches, releaseBatchReservation } from '@/lib/erpnext/staging'
+import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
+import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 
 // POST /api/erpnext/staging/assign
 // Reserve a set of scanned pallets (batches) to an open Sales Order in ERPNext.
@@ -22,6 +23,10 @@ const MAX_PALLETS = 200
 interface AssignBody {
   soName?: string
   pallets?: { batch?: string; itemCode?: string; warehouse?: string; qty?: number }[]
+  // Move pallets already reserved to ANOTHER order onto this one (release +
+  // re-reserve). Without it, such pallets 409 with the conflict list so the UI
+  // can ask the operator to confirm the move (Simon 2026-07-03).
+  allowMove?: boolean
   idempotencyKey?: string
 }
 
@@ -62,6 +67,24 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = guard.userId
+
+  // Pallets reserved to a DIFFERENT order: hard-stop unless the operator
+  // explicitly confirmed the move (allowMove). Same-order reservations are
+  // filtered out (already staged — nothing to do for them).
+  const existing = await reservationsForBatches(pallets.map((p) => p.batch))
+  const moves = pallets
+    .map((p) => existing[p.batch])
+    .filter((r): r is NonNullable<typeof r> => !!r && r.so !== soName)
+  if (moves.length > 0 && !body.allowMove) {
+    return NextResponse.json(
+      {
+        error: 'Some pallets are reserved to another order',
+        moves: moves.map((m) => ({ batch: m.batch, so: m.so, customer: m.customer })),
+      },
+      { status: 409 }
+    )
+  }
+
   // Bind the op identity to SO + the exact (sorted, de-duped) pallet set, so reusing the key
   // with a different SO/pallet set is rejected rather than run against the wrong reservation.
   const fingerprint = JSON.stringify({ so: soName, batches: [...new Set(pallets.map((p) => p.batch))].sort() })
@@ -72,7 +95,26 @@ export async function POST(req: NextRequest) {
     createdBy: userId,
     // family null: spans many pallets, no Stock Entry, so it sits outside the per-pallet lock.
     meta: { warehouse: soName, qty: pallets.length, item_code: fingerprint, batch: null, family: null },
-    erp: () => reserveBatchesToSO({ soName, items: pallets }),
+    erp: async () => {
+      // Release first (idempotent: a retry finds no reservation and skips).
+      for (const m of moves) {
+        const rel = await releaseBatchReservation(m.batch)
+        if (rel.released) {
+          const userName = await resolveUserName(userId)
+          logFulfillment({
+            action: 'move_reservation',
+            so: soName,
+            dn: '-',
+            customer: m.customer,
+            pallets: [m.batch],
+            userId,
+            userName,
+            detail: `moved ${m.batch} from ${m.so}`,
+          })
+        }
+      }
+      return reserveBatchesToSO({ soName, items: pallets })
+    },
   })
 
   return NextResponse.json(result.body, { status: result.status })
