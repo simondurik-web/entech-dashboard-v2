@@ -91,7 +91,7 @@ export interface FulfillmentOrder {
   lines: FulfillmentLine[]
   pallets: StagedPallet[]
   // latest submitted Delivery Note tied to this SO (wrapper or manual scan flow)
-  deliveryNote: { name: string; shipped: boolean } | null
+  deliveryNote: { name: string; shipped: boolean; attachments: string[] } | null
 }
 
 /** Everything the Ship Order screen needs for one Sales Order, in two-plus-N
@@ -181,6 +181,21 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
     (await erpnextGet<{ data: { name: string; custom_shipped?: number }[] }>(
       `/api/resource/Delivery Note?${dnQs}`
     )).data?.[0] ?? null
+  let dnAttachments: string[] = []
+  if (dnRow) {
+    const fq = [
+      listParam('filters', [
+        ['attached_to_doctype', '=', 'Delivery Note'],
+        ['attached_to_name', '=', dnRow.name],
+      ]),
+      listParam('fields', ['file_name']),
+      'limit_page_length=0',
+    ].join('&')
+    dnAttachments = (
+      (await erpnextGet<{ data: { file_name: string }[] }>(`/api/resource/File?${fq}`).catch(() => ({ data: [] })))
+        .data ?? []
+    ).map((f) => f.file_name)
+  }
 
   return {
     so: doc.name,
@@ -192,7 +207,9 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
     stagedAt: doc.custom_staged_at ?? null,
     lines,
     pallets,
-    deliveryNote: dnRow ? { name: dnRow.name, shipped: !!dnRow.custom_shipped } : null,
+    deliveryNote: dnRow
+      ? { name: dnRow.name, shipped: !!dnRow.custom_shipped, attachments: dnAttachments }
+      : null,
   }
 }
 
