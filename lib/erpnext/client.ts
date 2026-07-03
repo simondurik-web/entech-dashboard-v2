@@ -59,6 +59,61 @@ export async function erpnextFetchRaw(path: string): Promise<Response> {
   })
 }
 
+/** Multipart upload to frappe's upload_file, attaching a file to a document.
+ *  Content-Type is set by fetch from the FormData boundary — do not set it. */
+export async function erpnextUploadFile(input: {
+  fileName: string
+  bytes: ArrayBuffer | Uint8Array
+  attachedToDoctype: string
+  attachedToName: string
+  isPrivate?: boolean
+}): Promise<{ name: string; file_url: string }> {
+  const form = new FormData()
+  const bytes = input.bytes instanceof Uint8Array ? new Uint8Array(input.bytes) : new Uint8Array(input.bytes)
+  form.set('file', new Blob([bytes as BlobPart], { type: 'application/pdf' }), input.fileName)
+  form.set('doctype', input.attachedToDoctype)
+  form.set('docname', input.attachedToName)
+  form.set('is_private', input.isPrivate === false ? '0' : '1')
+  const res = await fetch(`${BASE}/api/method/upload_file`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+    cache: 'no-store',
+    signal: AbortSignal.timeout(30000),
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`ERPNext upload_file -> ${res.status} ${t.slice(0, 300)}`)
+  }
+  const j = (await res.json()) as { message: { name: string; file_url: string } }
+  return j.message
+}
+
+/** Best-effort human message out of an ERPNext error body. Frappe packs the
+ *  user-facing text (often bilingual, with HTML) into _server_messages. */
+export function parseErpErrorMessage(raw: string): string {
+  const stripTags = (s: string) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+  try {
+    const bodyStart = raw.indexOf('{')
+    const body = JSON.parse(raw.slice(bodyStart)) as { _server_messages?: string; exception?: string }
+    if (body._server_messages) {
+      const msgs = (JSON.parse(body._server_messages) as string[]).map((m) => {
+        try {
+          return stripTags((JSON.parse(m) as { message?: string }).message ?? m)
+        } catch {
+          return stripTags(m)
+        }
+      })
+      const joined = msgs.filter(Boolean).join(' — ')
+      if (joined) return joined
+    }
+    if (body.exception) return stripTags(body.exception.split(':').slice(1).join(':') || body.exception)
+  } catch {
+    /* fall through to raw */
+  }
+  return stripTags(raw).slice(0, 300)
+}
+
 /** Escape SQL LIKE metacharacters so a user typing % or _ doesn't broaden the
  *  match (or hammer ERPNext). MariaDB default escape char is backslash. */
 function escapeLike(s: string): string {
