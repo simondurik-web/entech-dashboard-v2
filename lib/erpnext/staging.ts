@@ -347,37 +347,49 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
     throw new Error(`Sales Order ${soName} is not open (status ${so.status})`)
   }
 
-  // Resolve each itemCode to a matching SO line once (the line the reservation targets). A
-  // pallet's batch qty accrues onto that line; multiple pallets of the same item stack on it.
-  const lineFor = (itemCode: string): SOItemRow | undefined =>
-    (so.items ?? []).find((l) => l.item_code === itemCode && l.reserve_stock)
-
   const before = new Set(await reservationNamesForSO(soName))
 
-  // Hard over-reserve guard (Simon 2026-07-03): a line can never be reserved past
-  // its ordered qty — not fully-covered lines taking more pallets, and not a
-  // pallet bigger than what the line still needs. Tracks a running total so a
-  // multi-pallet queue can't collectively overshoot either.
+  // Allocate each pallet to an SO LINE with room left, spilling to the next
+  // line when one fills — multi-release orders carry the SAME item on several
+  // lines (500+500+500+500), and pinning everything to the first line both
+  // mis-attributed reservations and tripped the over-reserve guard after one
+  // release's worth (found while creating SO-00077, 2026-07-03). Doubles as
+  // the hard over-reserve guard (Simon 2026-07-03): nothing can be reserved
+  // past what the order still needs, including across a multi-pallet queue.
   const runningReserved = new Map<string, number>()
+  const remainingOf = (l: SOItemRow) => orderedOf(l) - (runningReserved.get(l.name) ?? reservedOf(l))
+  const allocations = new Map<string, string>() // batch -> SO Item name
   for (const p of items) {
-    const line = p.salesOrderItem
-      ? (so.items ?? []).find((l) => l.name === p.salesOrderItem)
-      : lineFor(p.itemCode)
-    if (!line) continue // the missing-line error below reports it
-    const already = runningReserved.get(line.name) ?? reservedOf(line)
-    const remaining = orderedOf(line) - already
-    if (p.qty > remaining + 1e-6) {
-      throw new Error(
-        remaining <= 1e-6
-          ? `${soName} already has all ${orderedOf(line).toLocaleString()} of ${p.itemCode} reserved — nothing left to stage`
-          : `${soName} only needs ${remaining.toLocaleString()} more of ${p.itemCode}; pallet ${p.batch} holds ${p.qty.toLocaleString()}`
+    let line: SOItemRow | undefined
+    if (p.salesOrderItem) {
+      line = (so.items ?? []).find((l) => l.name === p.salesOrderItem)
+      if (line && p.qty > remainingOf(line) + 1e-6) line = undefined
+    } else {
+      // first line of this item that can take the WHOLE pallet
+      line = (so.items ?? []).find(
+        (l) => l.item_code === p.itemCode && l.reserve_stock && p.qty <= remainingOf(l) + 1e-6
       )
     }
-    runningReserved.set(line.name, already + p.qty)
+    if (!line) {
+      const itemLines = (so.items ?? []).filter((l) => l.item_code === p.itemCode && l.reserve_stock)
+      if (itemLines.length === 0) {
+        throw new Error(`Sales Order ${soName} has no reservable line for item ${p.itemCode}`)
+      }
+      const totalRemaining = itemLines.reduce((s, l) => s + Math.max(0, remainingOf(l)), 0)
+      throw new Error(
+        totalRemaining <= 1e-6
+          ? `${soName} already has all of ${p.itemCode} reserved — nothing left to stage`
+          : totalRemaining >= p.qty
+            ? `Pallet ${p.batch} (${p.qty.toLocaleString()}) is larger than any single release line of ${soName} still open — use a smaller pallet or reduce its qty`
+            : `${soName} only needs ${totalRemaining.toLocaleString()} more of ${p.itemCode}; pallet ${p.batch} holds ${p.qty.toLocaleString()}`
+      )
+    }
+    runningReserved.set(line.name, (runningReserved.get(line.name) ?? reservedOf(line)) + p.qty)
+    allocations.set(p.batch, line.name)
   }
 
   for (const p of items) {
-    const salesOrderItem = p.salesOrderItem ?? lineFor(p.itemCode)?.name
+    const salesOrderItem = allocations.get(p.batch)
     if (!salesOrderItem) {
       throw new Error(`Sales Order ${soName} has no reservable line for item ${p.itemCode}`)
     }
