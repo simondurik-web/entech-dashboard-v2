@@ -144,7 +144,10 @@ export function buildPalletZpl(label: PalletLabel): string {
     `^FO${x},${y}^A0R,${h},${h}^FD${text}^FS`
 
   const Y = 36 // left margin (reading)
-  const lines: string[] = ['^XA', '^PW812', '^LL1218', '^CI28', '^LH0,0']
+  // ^PR2: print at 2 in/s (ZT411 default is 6). Slower head speed = noticeably
+  // crisper text/QR/logo edges on thermal media; Simon 2026-07-03 explicitly
+  // traded speed for quality. Applies to every label this template prints.
+  const lines: string[] = ['^XA', '^PR2', '^PW812', '^LL1218', '^CI28', '^LH0,0']
 
   // Header block (reading top -> down): part number, qty, then the pallet id
   // directly under the qty (Simon 2026-06-21). Fonts are sized so the longest
@@ -185,14 +188,17 @@ export function buildPalletZpl(label: PalletLabel): string {
   // toward the reading bottom to free ~0.9in above it for the logo, and the
   // timestamp/printed-by move to the bottom of the LEFT text column.
   const branded = label.brand === 'snappad'
+  // Branded: reserve a REAL top margin (40 dots ≈ 0.2in) above the logo — the
+  // first physical print (2026-07-03) clipped the logo top with only ~10 dots
+  // of margin (printers eat the label edge). Logo sits 8 dots off the QR.
   const qrX = branded
-    ? Math.max(10, 812 - qr.px - SNAPPAD_LOGO_MEDIA_W - 20)
+    ? Math.max(10, 812 - qr.px - SNAPPAD_LOGO_MEDIA_W - 8 - 40)
     : Math.max(20, Math.min(150, 812 - qr.px - 20))
   const qrY = Math.min(610, 1218 - qr.px - 10)
   lines.push(`^FO${qrX},${qrY}${qr.field}^FS`)
   if (branded) {
     // Logo above the QR (reading), horizontally centered over it.
-    const logoX = qrX + qr.px + 10
+    const logoX = qrX + qr.px + 8
     const logoY = Math.max(0, qrY + Math.round((qr.px - SNAPPAD_LOGO_MEDIA_H) / 2))
     lines.push(`^FO${logoX},${logoY}${SNAPPAD_LOGO_GFA}^FS`)
     // Timestamp + printed-by continue the left column's step-down.
