@@ -6,6 +6,28 @@ Created: 2026-02-07
 
 ---
 
+## 🚚 IN PROGRESS — Fulfillment Wrapper (claude-2 via #erp, started 2026-07-02)
+
+Wrap ERPNext shipping (SO → scan pallets → DN → BOL/packing slip) in the dashboard so the
+shipping floor never leaves it. Canonical brief + decisions:
+`~/clawd/projects/erp-4molding/FULFILLMENT-WRAPPER-BRIEF.md`. ERPNext server-side scripts
+(rate-fill from SO, scan gate, shipped rollup) enforce correctness; the dashboard is a thin client.
+
+- **Phase 1 SHIPPED to staging (PR #153, 2026-07-02)** — read-only: Ship Order button on
+  /staged (Ready to Ship) → `/staged/ship?so=` (lines, ordered/staged/delivered qtys, item
+  pictures via `/api/erpnext/fulfillment/item-image` proxy, staged pallet list; NO prices — floor
+  never sees dollar amounts). New `lib/erpnext/fulfillment.ts`; `requireMenuAccess(path)` in
+  `lib/erpnext/auth.ts` generalizes `requireInventoryAccess` (same guard, parameterized menu key);
+  fulfillment routes gate on `/staged`.
+- **Test sandbox**: ERPNext "Test Customer" + SO-00075 + TEST-PLT-1/2 (staged). Manage with
+  `erp-4molding/scripts/fulfillment-test-sandbox.py` (create/status/cleanup).
+- **Next**: Phase 2 scan & check (scan/type pallet, green/red vs SO, remove, green light);
+  Phase 3 complete-shipment (DN create+submit, BOL+packing slip PDFs attached, undo-shipment);
+  Phase 4 customer-BOL upload + "shipping team" role + polish. Packing-slip print format needs a
+  logo + internal AND customer P/N; Simon wants a mock to review first.
+
+---
+
 ## ✅ COMPLETE — API Auth Hardening (claude-3, finished 2026-06-26)
 
 All phases shipped to PROD:
