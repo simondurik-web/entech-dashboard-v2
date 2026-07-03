@@ -42,6 +42,8 @@ interface Pallet {
   batch: string
   warehouse: string
   qty: number
+  weightLb?: number
+  dims?: string
 }
 // A pallet's live reservation to a Sales Order (from ERPNext), surfaced as a badge.
 interface BatchReservation {
@@ -366,6 +368,14 @@ export default function InventoryOpsPage() {
       c.abort()
     }
   }, [query, runSearch])
+
+  // Deep link: /inventory-ops?q=<pallet or part> (the pallet sections on the
+  // order rows link here). window.location avoids the useSearchParams Suspense
+  // requirement on this already-huge client page.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (q) setQuery(q.trim().toUpperCase())
+  }, [])
 
   // ─── By-item part-number picker (focus the search to browse/select all parts) ───
   const [itemPickerOpen, setItemPickerOpen] = useState(false)
@@ -1126,6 +1136,10 @@ export default function InventoryOpsPage() {
   const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection (BinCombobox)
   const [addStation, setAddStation] = useState('')
   const [adding, setAdding] = useState(false)
+  // Optional pallet weight (lb) + dimensions (LxWxH in) — stored on the Batch,
+  // printed on the label (Simon 2026-07-03).
+  const [addWeight, setAddWeight] = useState('')
+  const [addDims, setAddDims] = useState('')
   // Sales Order to attach to the label (optional). The list is filtered server-side to the
   // open SOs that actually include the selected part, so the dropdown stays short.
   const [salesOrder, setSalesOrder] = useState('') // committed SO name ('' = none)
@@ -1215,6 +1229,8 @@ export default function InventoryOpsPage() {
           warehouse: addWarehouse,
           station: addStation,
           salesOrder: salesOrder || undefined,
+          weightLb: Number(addWeight) > 0 ? Number(addWeight) : undefined,
+          dims: addDims.trim() || undefined,
           idempotencyKey: addKeyRef.current,
         }),
       })
@@ -1233,6 +1249,8 @@ export default function InventoryOpsPage() {
       setAddItem(null)
       setItemQuery('')
       setAddQty('')
+      setAddWeight('')
+      setAddDims('')
       setAddOpen(false)
       // Refresh the active search so the new pallet appears: bins/totals via the search,
       // and the item's pallet rows directly (covers an already-cached item outside
@@ -1747,7 +1765,7 @@ export default function InventoryOpsPage() {
   // edit/move/history panels). Shared by the By-item search results AND the By-bin
   // Locations view so both have identical capabilities. `warehouse` is the pallet's
   // current bin (used to exclude it from the Move target list).
-  const renderPalletRow = (p: { batch: string; warehouse: string; qty: number }, itemCode: string) => (
+  const renderPalletRow = (p: { batch: string; warehouse: string; qty: number; weightLb?: number; dims?: string }, itemCode: string) => (
     <li key={p.batch} className="px-2.5 py-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1 truncate font-mono text-xs">
@@ -1825,6 +1843,14 @@ export default function InventoryOpsPage() {
           </div>
         )}
       </div>
+
+      {(p.weightLb || p.dims) && (
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
+          {p.weightLb ? `${p.weightLb.toLocaleString()} lb` : ''}
+          {p.weightLb && p.dims ? ' · ' : ''}
+          {p.dims ? `${p.dims} in` : ''}
+        </div>
+      )}
 
       {reservations[p.batch] && (
         <div className="mt-1">
@@ -2168,6 +2194,29 @@ export default function InventoryOpsPage() {
                 min="1"
                 value={addQty}
                 onChange={(e) => setAddQty(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletWeight')}</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={addWeight}
+                onChange={(e) => setAddWeight(e.target.value)}
+                placeholder={t('inventoryOps.optional')}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletDims')}</label>
+              <input
+                type="text"
+                value={addDims}
+                onChange={(e) => setAddDims(e.target.value)}
+                placeholder="48x40x60"
+                maxLength={30}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>

@@ -30,8 +30,14 @@ any change here.
 - **Generated date/time** + **printed-by name** print in the scan zone (replaced the
   old "SCAN PALLET" caption). Stamped server-side at print time by the route (the
   user name is resolved from `user_profiles`).
-- TODO (later, agreed): Weight + Dimensions under the pallet id; reprint
-  serialization (see Open/pending).
+- **Weight + Dimensions (SHIPPED 2026-07-03)**: optional inputs on the Add form
+  (`Weight (lb)` number + `Dimensions (LxWxH in)` text). Stored on the Batch as
+  `custom_pallet_weight` (Float) + `custom_pallet_dims` (Data) — ERPNext has no
+  native per-batch weight/dims (script: erp-4molding
+  `scripts/erpnext-custom-2026-07-03/12_pallet_weight_dims.py`). Printed on the
+  label via the existing optional Weight/Dimensions rows (`{n} lb` / raw dims
+  string); a reprint/reissue CARRIES THEM OVER to the new serial and prints them.
+  Shown under the pallet row in inventory-ops (grey `850 lb · 48x40x60 in` line).
 
 ## Print pipeline
 - Dashboard (Vercel) builds ZPL and enqueues a `print_jobs` row (Supabase) for a

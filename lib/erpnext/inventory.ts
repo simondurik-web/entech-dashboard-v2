@@ -144,6 +144,8 @@ export interface AddInventoryInput {
   warehouse: string
   opKey: string
   batch: string // pre-minted unique pallet id (see generatePalletId); reused on retry
+  weightLb?: number // optional pallet weight, captured at label print (Simon 2026-07-03)
+  dims?: string // optional pallet dimensions, e.g. "48x40x60"
 }
 
 export interface AddInventoryResult extends Committed {
@@ -155,13 +157,19 @@ export interface AddInventoryResult extends Committed {
  *  Receipt binding it (use_serial_batch_fields + batch_no both required), submit.
  *  The Stock Entry is stamped [op:<key>] for reconcile. */
 export async function addInventory(input: AddInventoryInput): Promise<AddInventoryResult> {
-  const { itemCode, qty, warehouse, opKey, batch } = input
+  const { itemCode, qty, warehouse, opKey, batch, weightLb, dims } = input
   const { itemName, uom } = await preflight(itemCode, warehouse)
 
   // Batch create is skip-if-exists (the id is reserved per op + reused on retry),
   // so a retry of the same add reuses the batch instead of orphaning a new one.
   if (!(await erpnextGet(`/api/resource/Batch/${encodeURIComponent(batch)}`).then(() => true).catch(() => false))) {
-    await erpnextCreate('Batch', { batch_id: batch, item: itemCode, custom_pallet_qty: qty })
+    await erpnextCreate('Batch', {
+      batch_id: batch,
+      item: itemCode,
+      custom_pallet_qty: qty,
+      ...(weightLb ? { custom_pallet_weight: weightLb } : {}),
+      ...(dims ? { custom_pallet_dims: dims } : {}),
+    })
   }
 
   const stockEntry = await submitStockEntry({
@@ -210,6 +218,8 @@ export interface Pallet {
   batch: string
   warehouse: string
   qty: number
+  weightLb?: number
+  dims?: string
 }
 
 /** On-hand pallets (batches) for an item, one row per (batch, warehouse). Backed by
@@ -219,7 +229,7 @@ export interface Pallet {
 export async function listPallets(itemCode: string): Promise<Pallet[]> {
   const locs = await enumeratePallets([itemCode])
   return locs
-    .map((l) => ({ batch: l.batch, warehouse: l.warehouse, qty: l.qty }))
+    .map((l) => ({ batch: l.batch, warehouse: l.warehouse, qty: l.qty, weightLb: l.weightLb, dims: l.dims }))
     .sort((a, b) => a.batch.localeCompare(b.batch))
 }
 
@@ -254,6 +264,8 @@ interface PalletLoc {
   batch: string
   warehouse: string
   qty: number
+  weightLb?: number
+  dims?: string
 }
 
 // Bounded concurrency for the per-batch get_batch_qty fan-out.
@@ -265,7 +277,7 @@ const BATCH_QTY_CONCURRENCY = 10
  *  total call count is ~(#batches), not (#items × #batches). */
 async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
   if (itemCodes.length === 0) return []
-  const batches: { name: string; item: string }[] = []
+  const batches: { name: string; item: string; custom_pallet_weight?: number; custom_pallet_dims?: string }[] = []
   for (let i = 0; i < itemCodes.length; i += 100) {
     const chunk = itemCodes.slice(i, i + 100)
     const qs = [
@@ -273,10 +285,14 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
         ['item', 'in', chunk],
         ['disabled', '=', 0],
       ]),
-      listParam('fields', ['name', 'item']),
+      listParam('fields', ['name', 'item', 'custom_pallet_weight', 'custom_pallet_dims']),
       'limit_page_length=0',
     ].join('&')
-    batches.push(...((await erpnextGet<{ data: { name: string; item: string }[] }>(`/api/resource/Batch?${qs}`)).data ?? []))
+    batches.push(
+      ...((await erpnextGet<{
+        data: { name: string; item: string; custom_pallet_weight?: number; custom_pallet_dims?: string }[]
+      }>(`/api/resource/Batch?${qs}`)).data ?? [])
+    )
   }
   const perBatch = await mapLimit(batches, BATCH_QTY_CONCURRENCY, async (b) => {
     // Retry once on a transient blip, then PROPAGATE: a report that silently omits pallets
@@ -291,7 +307,14 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
         )
         return (r.message ?? [])
           .filter((x) => x.qty > 0)
-          .map((x) => ({ item: b.item, batch: b.name, warehouse: x.warehouse, qty: x.qty }))
+          .map((x) => ({
+            item: b.item,
+            batch: b.name,
+            warehouse: x.warehouse,
+            qty: x.qty,
+            weightLb: b.custom_pallet_weight || undefined,
+            dims: b.custom_pallet_dims || undefined,
+          }))
       } catch (e) {
         lastErr = e
       }
@@ -904,8 +927,19 @@ export async function reissuePallet(input: {
   const uom = item.stock_uom ?? 'Nos'
 
   // Ensure the (reserved) new batch exists; skip-if-exists so a retry reuses it.
+  // Weight/dims carry over from the pallet being reissued (same physical pallet).
   if (!(await erpnextGet(`/api/resource/Batch/${encodeURIComponent(newBatch)}`).then(() => true).catch(() => false))) {
-    await erpnextCreate('Batch', { batch_id: newBatch, item: itemCode, custom_pallet_qty: target })
+    const old = await erpnextGetDoc<{ custom_pallet_weight?: number; custom_pallet_dims?: string }>(
+      'Batch',
+      oldBatch
+    ).catch(() => null)
+    await erpnextCreate('Batch', {
+      batch_id: newBatch,
+      item: itemCode,
+      custom_pallet_qty: target,
+      ...(old?.custom_pallet_weight ? { custom_pallet_weight: old.custom_pallet_weight } : {}),
+      ...(old?.custom_pallet_dims ? { custom_pallet_dims: old.custom_pallet_dims } : {}),
+    })
   }
 
   const locNew = await getBatchLocation(newBatch, itemCode)

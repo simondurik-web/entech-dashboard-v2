@@ -208,6 +208,97 @@ function DrawingThumbs({ drawings, onOpen }: { drawings: { main?: Drawing | null
   )
 }
 
+// ── ERP pallets assigned to this order (reservations while staged, the DN's
+// pallets once shipped). Renders only for ERP-era orders (SO-… in the IF
+// column). Users with inventory-ops access get a Manage link per pallet
+// (reprint / history / move / edit live there). Simon 2026-07-03.
+interface ErpPallet {
+  palletId: string
+  itemCode: string
+  qty: number
+  warehouse?: string
+  shipped?: boolean
+}
+
+function ErpPalletsSection({ ifNumber }: { ifNumber?: string }) {
+  const { t } = useI18n()
+  const { canAccess } = usePermissions()
+  const canManage = canAccess('/inventory-ops')
+  const soName = (ifNumber || '').split(' ')[0]
+  const isErp = /^(SO|SAL-ORD)-/.test(soName)
+  const [rows, setRows] = useState<ErpPallet[] | null>(null)
+
+  useEffect(() => {
+    if (!isErp) return
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/erpnext/fulfillment/order?so=${encodeURIComponent(soName)}`)
+        if (!res.ok) return // no access / not found -> section stays hidden
+        const body = await res.json()
+        if (!mounted) return
+        const staged: ErpPallet[] = (body.order?.pallets ?? []).map(
+          (p: { palletId: string; itemCode: string; qty: number; warehouse: string }) => ({
+            palletId: p.palletId,
+            itemCode: p.itemCode,
+            qty: p.qty,
+            warehouse: p.warehouse,
+          })
+        )
+        const shipped: ErpPallet[] = (body.order?.shippedPallets ?? []).map(
+          (p: { palletId: string; itemCode: string; qty: number }) => ({ ...p, shipped: true })
+        )
+        setRows(staged.length ? staged : shipped)
+      } catch {
+        /* hidden on failure */
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [isErp, soName])
+
+  if (!isErp || rows === null) return null
+  return (
+    <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-2.5" style={{ borderTopWidth: 2, borderTopColor: 'rgb(6, 182, 212)' }}>
+      <h4 className="flex items-center gap-1.5 text-xs font-semibold text-cyan-400 mb-2">
+        <Package className="size-3" /> {t('order.erpPallets')}
+        {rows.length > 0 && (
+          <span className="ml-auto text-[10px] bg-cyan-500/20 px-1.5 py-0.5 rounded">{rows.length}</span>
+        )}
+      </h4>
+      {rows.length === 0 ? (
+        <p className="text-[10px] text-muted-foreground">{t('order.noErpPallets')}</p>
+      ) : (
+        <div className="divide-y divide-border/50">
+          {rows.map((p) => (
+            <div key={p.palletId} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+              <div className="min-w-0">
+                <span className="font-mono font-bold">{p.palletId}</span>
+                <span className="text-muted-foreground"> · {p.itemCode} · {p.qty.toLocaleString()} pcs</span>
+                {p.warehouse && <span className="text-muted-foreground"> · {p.warehouse}</span>}
+                {p.shipped && (
+                  <span className="ml-1.5 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-blue-400">
+                    {t('order.palletShippedTag')}
+                  </span>
+                )}
+              </div>
+              {canManage && !p.shipped && (
+                <a
+                  href={`/inventory-ops?q=${encodeURIComponent(p.palletId)}`}
+                  className="shrink-0 rounded bg-cyan-500/10 px-2 py-1 font-medium text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                >
+                  {t('order.managePallet')}
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Compact stat chip */
 function Chip({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
@@ -518,6 +609,9 @@ export function OrderDetail({
                 )}
               </div>
             </div>
+
+            {/* ── ERP pallets assigned to this order ── */}
+            <ErpPalletsSection ifNumber={ifNumber} />
 
             {/* ── PO & Fusion Entry — role-gated (PO Automation access) ── */}
             {showPoSection && (
