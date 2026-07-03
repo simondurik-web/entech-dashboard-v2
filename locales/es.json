@@ -1307,6 +1307,7 @@
   "inventoryOps.dimsIncomplete": "Llena las tres casillas de dimensiones (largo, ancho, alto) o déjalas todas vacías.",
   "inventoryOps.palletDims": "Dimensiones — opcional",
   "inventoryOps.palletWeight": "Peso (lb) — opcional",
+  "inventoryOps.stageOnlyNeeds": "solo necesita {n} más — la cola no cabe",
   "inventoryOps.stageMoveConfirm": "Estas tarimas están reservadas a OTRA orden. Prepararlas aquí las quitará de esa orden (que volverá a necesitar preparación):",
   "inventoryOps.stageMoveNeedsPrinter": "Elige una impresora primero — las tarimas movidas reciben una etiqueta NUEVA (la anterior deja de funcionar).",
   "inventoryOps.stageMoveRelabel": "Cada tarima movida recibe un código NUEVO y una etiqueta nueva se imprime en {printer}. Pega la etiqueta nueva y TIRA la anterior — ya no escaneará.",

@@ -3052,12 +3052,21 @@ export default function InventoryOpsPage() {
                   const projected = o.reservedQty + stageQueuePcs
                   const covers = o.orderedQty > 0 && projected >= o.orderedQty
                   const isStaged = o.stagingStatus === 'Staged'
+                  // The queue must FIT: an order can't take more than it still
+                  // needs (over-staging loophole, Simon 2026-07-03).
+                  const remaining = o.orderedQty - o.reservedQty
+                  const fits = stageQueuePcs <= remaining
                   return (
                     <li key={o.name}>
                       <button
-                        onClick={() => setSelectedSo(o.name)}
+                        onClick={() => fits && setSelectedSo(o.name)}
+                        disabled={!fits}
                         className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                          selectedSo === o.name ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-accent'
+                          !fits
+                            ? 'border-border bg-card opacity-50 cursor-not-allowed'
+                            : selectedSo === o.name
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border bg-card hover:bg-accent'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -3080,8 +3089,12 @@ export default function InventoryOpsPage() {
                             <div className="font-medium">
                               {o.reservedQty.toLocaleString()} / {o.orderedQty.toLocaleString()}
                             </div>
-                            <div className={covers ? 'text-emerald-600' : 'text-muted-foreground'}>
-                              {covers ? t('inventoryOps.stageWillCover') : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
+                            <div className={!fits ? 'text-amber-600' : covers ? 'text-emerald-600' : 'text-muted-foreground'}>
+                              {!fits
+                                ? t('inventoryOps.stageOnlyNeeds').replace('{n}', remaining.toLocaleString())
+                                : covers
+                                  ? t('inventoryOps.stageWillCover')
+                                  : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
                             </div>
                           </div>
                         </div>
