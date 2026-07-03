@@ -324,6 +324,32 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
   return perBatch.flat()
 }
 
+/** Weight/dims for a set of pallet batches (chunked 'in' query; best-effort).
+ *  Feeds the printed/deleted label history so the pallet's physical data shows
+ *  right in the row (Simon 2026-07-03). */
+export async function batchWeightDims(
+  batches: string[]
+): Promise<Map<string, { weightLb: number | null; dims: string | null }>> {
+  const out = new Map<string, { weightLb: number | null; dims: string | null }>()
+  const uniq = [...new Set(batches.filter(Boolean))]
+  for (let i = 0; i < uniq.length; i += 100) {
+    const chunk = uniq.slice(i, i + 100)
+    const qs = [
+      listParam('filters', [['name', 'in', chunk]]),
+      listParam('fields', ['name', 'custom_pallet_weight', 'custom_pallet_dims']),
+      'limit_page_length=0',
+    ].join('&')
+    const rows =
+      (await erpnextGet<{ data: { name: string; custom_pallet_weight?: number; custom_pallet_dims?: string }[] }>(
+        `/api/resource/Batch?${qs}`
+      )).data ?? []
+    for (const r of rows) {
+      out.set(r.name, { weightLb: r.custom_pallet_weight || null, dims: r.custom_pallet_dims || null })
+    }
+  }
+  return out
+}
+
 /** name + uom for a set of item codes (chunked 'in' queries). */
 export async function itemNameMap(codes: string[]): Promise<Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>> {
   const nameMap = new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>()

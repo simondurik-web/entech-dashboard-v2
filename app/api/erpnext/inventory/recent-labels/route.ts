@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { itemNameMap } from '@/lib/erpnext/inventory'
+import { itemNameMap, batchWeightDims } from '@/lib/erpnext/inventory'
 
 // GET /api/erpnext/inventory/recent-labels?limit=10
 // The most recently printed labels, so an operator can find a label whose print jammed
@@ -44,7 +44,8 @@ export async function GET(req: NextRequest) {
     const opKeys = [...new Set(rows.map((r) => opKeyOf(r.idempotency_key)).filter(Boolean))] as string[]
     const itemCodes = [...new Set(rows.map((r) => r.item_code).filter(Boolean))] as string[]
 
-    const [stationsRes, profilesRes, opsRes, itemMeta] = await Promise.all([
+    const batchIds = [...new Set(rows.map((r) => r.batch).filter(Boolean))] as string[]
+    const [stationsRes, profilesRes, opsRes, itemMeta, weightDims] = await Promise.all([
       stationIds.length
         ? supabaseAdmin.from('print_stations').select('id, name, location').in('id', stationIds)
         : Promise.resolve({ data: [] as { id: string; name: string | null; location: string | null }[] }),
@@ -59,6 +60,10 @@ export async function GET(req: NextRequest) {
       itemCodes.length
         ? itemNameMap(itemCodes).catch(() => new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>())
         : Promise.resolve(new Map<string, { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }>()),
+      // Pallet weight/dims for the history rows — best-effort like the rest.
+      batchIds.length
+        ? batchWeightDims(batchIds).catch(() => new Map<string, { weightLb: number | null; dims: string | null }>())
+        : Promise.resolve(new Map<string, { weightLb: number | null; dims: string | null }>()),
     ])
 
     // These enrichments are non-critical (the label id is the point); if one errors, log it
@@ -90,6 +95,8 @@ export async function GET(req: NextRequest) {
         qty: op?.qty ?? null,
         // For non-serialized items, qty is BOXES; multiply by this for the part total.
         piecesPerPack: itemMeta.get(r.item_code)?.piecesPerPack ?? 1,
+        weightLb: r.batch ? (weightDims.get(r.batch)?.weightLb ?? null) : null,
+        dims: r.batch ? (weightDims.get(r.batch)?.dims ?? null) : null,
         by: r.created_by ? nameMap.get(r.created_by) ?? '' : '',
         at: r.created_at,
         status: r.status,
