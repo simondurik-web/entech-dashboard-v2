@@ -37,8 +37,17 @@ shipping floor never leaves it. Canonical brief + decisions:
   (8/9 findings fixed; #6 floor-wide undo is per spec, ask Simon about role-restricting).
   Device-tested at iPhone/iPad viewports end-to-end incl. a real UI-driven ship+undo cycle.
   Full build log: erp-4molding/FULFILLMENT-WRAPPER-BRIEF.md.
-- **Pending Simon**: packing-slip design approval (mock PDF), "shipping team" role creation +
-  user assignment, one real order shadowed before floor rollout, then staging → main promotion.
+- **2026-07-03 feedback round (PRs #161/#162)**: ship_loads permission + shipping_team role
+  (+ per-permission descriptions in the admin matrix), BOL signature pad (driver name + finger/
+  mouse; skippable), fulfillment_log audit trail + Load Log UI, instant status flip on
+  complete/undo, ERP shipped rows fixed on Shipped/Orders/Shipping Overview (shipped_date +
+  revenue now synced from ERPNext; undo clears; cancelled SOs clear), "Pallets (ERP)" section on
+  all expanded order rows (+ /inventory-ops?q= deep link), pallet weight/dims (Batch custom
+  fields, Add-form inputs, printed on labels, carried on reprint). Sandbox = SO-00076 staged on
+  real pallets JZW3/Q0WX. Sync scripts changed: molding/db-migration sync_erpnext_orders.py +
+  sync_erpnext_to_dashboard.py (shipped_date, revenue, Cancelled guard).
+- **Pending Simon**: assign users to shipping_team, physical scan test on SO-00076, one real
+  order shadowed before floor rollout, then staging → main promotion.
 
 ---
 
