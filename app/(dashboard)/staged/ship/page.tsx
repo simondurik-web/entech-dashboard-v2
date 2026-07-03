@@ -9,6 +9,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  FileText,
   Keyboard,
   Package,
   RefreshCw,
@@ -58,6 +59,7 @@ interface FulfillmentOrder {
   stagedAt: string | null
   lines: FulfillmentLine[]
   pallets: StagedPallet[]
+  deliveryNote: { name: string; shipped: boolean } | null
 }
 
 interface PalletLookup {
@@ -102,6 +104,12 @@ function ShipOrderContent() {
   const [typed, setTyped] = useState('')
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [shipError, setShipError] = useState<string | null>(null)
+  // Set right after a successful completion (before the re-fetch lands) so the
+  // shipped view shows instantly; on later visits order.deliveryNote drives it.
+  const [justShipped, setJustShipped] = useState<{ dn: string; docsOk: boolean } | null>(null)
   const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -258,6 +266,93 @@ function ShipOrderContent() {
     processScan(value)
   }
 
+  const authedPost = useCallback(
+    async (url: string, body: unknown) => {
+      const run = async () => {
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token
+        return fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(body),
+        })
+      }
+      let res = await run()
+      if (res.status === 401) {
+        await supabase.auth.refreshSession()
+        res = await run()
+      }
+      return res
+    },
+    []
+  )
+
+  const doComplete = async () => {
+    if (!order || submitting) return
+    setSubmitting(true)
+    setShipError(null)
+    try {
+      const res = await authedPost('/api/erpnext/fulfillment/complete', {
+        so: order.so,
+        pallets: [...scannedOk],
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || t('fulfillment.shipFailed'))
+      setConfirmOpen(false)
+      setJustShipped({
+        dn: body.result.dn as string,
+        docsOk: !!(body.result.attachedBol && body.result.attachedPackingSlip),
+      })
+      fetchOrder() // refresh statuses/delivered qtys in the background
+    } catch (err) {
+      setConfirmOpen(false)
+      setShipError(err instanceof Error ? err.message : t('fulfillment.shipFailed'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const doUndo = async (dn: string) => {
+    if (undoing) return
+    if (!window.confirm(t('fulfillment.undoConfirm'))) return
+    setUndoing(true)
+    setShipError(null)
+    try {
+      const res = await authedPost('/api/erpnext/fulfillment/undo', { dn })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || t('fulfillment.undoFailed'))
+      setJustShipped(null)
+      setScannedOk(new Set())
+      setMismatches([])
+      await fetchOrder()
+    } catch (err) {
+      setShipError(err instanceof Error ? err.message : t('fulfillment.undoFailed'))
+    } finally {
+      setUndoing(false)
+    }
+  }
+
+  // Open a PDF (BOL / packing slip) — fetched with auth, shown via a blob URL
+  // so it works from Safari on iPhone/iPad (AirPrint from the viewer).
+  const openDocument = async (dn: string, type: 'bol' | 'packing') => {
+    try {
+      const res = await authedFetch(`/api/erpnext/fulfillment/document?dn=${encodeURIComponent(dn)}&type=${type}`)
+      if (!res.ok) throw new Error()
+      const url = URL.createObjectURL(await res.blob())
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      setShipError(t('fulfillment.documentFailed'))
+    }
+  }
+
+  // The shipped state: either we just completed it, or the order came back shipped.
+  const shippedDn = justShipped?.dn ?? (order?.deliveryNote?.shipped ? order.deliveryNote.name : null)
+  const isShipped = !!shippedDn || order?.stagingStatus === 'Shipped'
+
   return (
     <div className="p-4 pb-44 max-w-3xl mx-auto">
       <Link
@@ -375,7 +470,58 @@ function ShipOrderContent() {
             ))}
           </div>
 
+          {/* Ship error (gate rejection etc.) */}
+          {shipError && (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 mb-4 text-sm text-red-600 font-semibold">
+              {shipError}
+            </div>
+          )}
+
+          {/* Shipped view */}
+          {isShipped && (
+            <div className="rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-5 mb-4">
+              <div className="flex items-center gap-3 mb-4">
+                <CheckCircle2 className="size-10 text-emerald-600 shrink-0" />
+                <div>
+                  <p className="text-lg font-bold text-emerald-600">{t('fulfillment.shippedTitle')}</p>
+                  {shippedDn && <p className="text-sm text-muted-foreground">{shippedDn}</p>}
+                </div>
+              </div>
+              {justShipped && !justShipped.docsOk && (
+                <p className="text-xs text-amber-600 mb-3">{t('fulfillment.docsPartial')}</p>
+              )}
+              {shippedDn && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => openDocument(shippedDn, 'bol')}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors"
+                  >
+                    <FileText className="size-4" />
+                    {t('fulfillment.viewBol')}
+                  </button>
+                  <button
+                    onClick={() => openDocument(shippedDn, 'packing')}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors"
+                  >
+                    <FileText className="size-4" />
+                    {t('fulfillment.viewPackingSlip')}
+                  </button>
+                </div>
+              )}
+              {shippedDn && (
+                <button
+                  onClick={() => doUndo(shippedDn)}
+                  disabled={undoing}
+                  className="mt-4 w-full text-center text-xs text-muted-foreground underline underline-offset-2 disabled:opacity-50"
+                >
+                  {undoing ? t('fulfillment.undoing') : t('fulfillment.undoShipment')}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Scan progress */}
+          {!isShipped && (
           <div
             className={`rounded-xl border p-4 mb-4 ${
               allMatch
@@ -406,8 +552,11 @@ function ShipOrderContent() {
               </div>
             )}
           </div>
+          )}
 
           {/* Staged pallets — each turns green once scanned */}
+          {!isShipped && (
+          <>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             {t('fulfillment.stagedPallets')} ({order.pallets.length})
           </h2>
@@ -490,11 +639,13 @@ function ShipOrderContent() {
           >
             {t('fulfillment.completeShipment')}
           </button>
+          </>
+          )}
         </>
       )}
 
       {/* Sticky scan bar */}
-      {!loading && !error && order && order.pallets.length > 0 && (
+      {!loading && !error && order && !isShipped && order.pallets.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto space-y-2">
             {feedback && (
@@ -612,18 +763,21 @@ function ShipOrderContent() {
             <div className="flex gap-2">
               <button
                 onClick={() => setConfirmOpen(false)}
-                className="flex-1 rounded-xl border border-border py-3 font-semibold hover:bg-muted transition-colors"
+                disabled={submitting}
+                className="flex-1 rounded-xl border border-border py-3 font-semibold hover:bg-muted transition-colors disabled:opacity-50"
               >
                 {t('fulfillment.confirmCancel')}
               </button>
               <button
-                disabled
-                className="flex-1 rounded-xl bg-emerald-600 text-white py-3 font-bold opacity-40 cursor-not-allowed"
+                onClick={doComplete}
+                disabled={submitting}
+                className="flex-1 rounded-xl bg-emerald-600 text-white py-3 font-bold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {t('fulfillment.confirmSubmit')}
+                {submitting && <RefreshCw className="size-4 animate-spin" />}
+                {submitting ? t('fulfillment.submitting') : t('fulfillment.confirmSubmit')}
               </button>
             </div>
-            <p className="text-xs text-muted-foreground text-center mt-3">{t('fulfillment.submitComingSoon')}</p>
+            <p className="text-xs text-muted-foreground text-center mt-3">{t('fulfillment.submitNote')}</p>
           </div>
         </div>
       )}
