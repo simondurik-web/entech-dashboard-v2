@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
         userId: guard.userId,
         userName: userName || guard.email,
       })
-      flipDashboardStatus(result.so, 'staged')
+      flipDashboardStatus(result.so, 'staged', result.soItems)
     }
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
