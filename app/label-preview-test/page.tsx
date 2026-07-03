@@ -111,7 +111,7 @@ export default function LabelPreviewTest() {
             <LabelRow label="Hub Style:" value={l.hub_style} />
             <LabelRow label="Bearings:" value={l.bearings} />
             <LabelRow label="PO Number:" value={l.po_number} />
-            <LabelRow label="IF#:" value={l.if_number} />
+            <LabelRow label="SO#:" value={l.if_number} />
 
             <div style={{ borderTop: '2px solid black', margin: '16px 0' }} />
 

@@ -136,7 +136,7 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
             )}
           </div>
           <div className="mt-1 font-mono text-xs text-muted-foreground">
-            {order.partNumber} • IF#: {order.ifNumber || '-'} • Line: {order.line || '-'} • PO: {order.poNumber || '-'}
+            {order.partNumber} • SO#: {order.ifNumber || '-'} • Line: {order.line || '-'} • PO: {order.poNumber || '-'}
           </div>
         </div>
 

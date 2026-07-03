@@ -64,7 +64,7 @@ function toDateInputValue(d: Date): string {
 const COLUMNS: ColumnDef<PalletRow>[] = [
   { key: 'timestamp', label: 'Date', sortable: true, render: (_v, row) => formatDate((row as PalletRow)._parsed) },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true },
-  { key: 'ifNumber', label: 'IF#', sortable: true },
+  { key: 'ifNumber', label: 'SO#', sortable: true },
   { key: 'lineNumber', label: 'Line #', sortable: true, filterable: true, render: (v) => (v as string) || '-' },
   { key: 'palletNumber', label: 'Pallet #', sortable: true },
   { key: 'category', label: 'Category', sortable: true, filterable: true },
@@ -335,7 +335,7 @@ function PalletRecordsPageContent() {
                         <CardTitle className="text-lg">{safeString(record.customer)}</CardTitle>
                         <p className="text-sm text-muted-foreground">
                           {isB2B && <span className="text-blue-500 font-medium">B2B </span>}
-                          IF# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
+                          SO# {ifNum}{record.lineNumber ? ` • Line ${safeString(record.lineNumber)}` : ''} • Pallet #{safeString(record.palletNumber)}
                         </p>
                       </div>
                       <span className="text-xs text-muted-foreground">{formatDate(record._parsed)}</span>
