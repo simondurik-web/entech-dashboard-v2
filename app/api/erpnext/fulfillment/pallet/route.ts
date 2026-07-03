@@ -21,7 +21,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid pallet id' }, { status: 400 })
   }
   try {
-    const pallet = await lookupPalletForFulfillment(id)
+    const full = await lookupPalletForFulfillment(id)
+    // Slim response: only what the mismatch UI needs — no on-hand quantities
+    // or reservation customer names (enumeration hardening, codex review).
+    const pallet = {
+      palletId: full.palletId,
+      itemCode: full.itemCode,
+      disabled: full.disabled,
+      reservedTo: full.reservedTo ? { so: full.reservedTo.so } : null,
+    }
     return NextResponse.json({ pallet }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('fulfillment pallet lookup failed:', error)

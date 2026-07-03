@@ -67,8 +67,7 @@ interface PalletLookup {
   palletId: string
   itemCode: string | null
   disabled: boolean
-  onHandQty: number
-  reservedTo: { so: string; customer: string | null } | null
+  reservedTo: { so: string } | null
 }
 
 // A wrong scan, with the reason it doesn't belong to this load.
@@ -307,7 +306,7 @@ function ShipOrderContent() {
       setConfirmOpen(false)
       setJustShipped({
         dn: body.result.dn as string,
-        docsOk: !!(body.result.attachedBol && body.result.attachedPackingSlip),
+        docsOk: !!(body.result.attachedBol && body.result.attachedPackingSlip && !body.result.warning),
       })
       fetchOrder() // refresh statuses/delivered qtys in the background
     } catch (err) {

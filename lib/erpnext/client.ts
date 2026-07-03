@@ -67,10 +67,11 @@ export async function erpnextUploadFile(input: {
   attachedToDoctype: string
   attachedToName: string
   isPrivate?: boolean
+  contentType?: string // default application/pdf; pass the real type for photos
 }): Promise<{ name: string; file_url: string }> {
   const form = new FormData()
   const bytes = input.bytes instanceof Uint8Array ? new Uint8Array(input.bytes) : new Uint8Array(input.bytes)
-  form.set('file', new Blob([bytes as BlobPart], { type: 'application/pdf' }), input.fileName)
+  form.set('file', new Blob([bytes as BlobPart], { type: input.contentType ?? 'application/pdf' }), input.fileName)
   form.set('doctype', input.attachedToDoctype)
   form.set('docname', input.attachedToName)
   form.set('is_private', input.isPrivate === false ? '0' : '1')
