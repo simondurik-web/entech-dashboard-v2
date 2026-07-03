@@ -1,8 +1,9 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
-import { RefreshCw } from 'lucide-react'
+import { FileText, RefreshCw } from 'lucide-react'
 import { DataTable } from '@/components/data-table'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { OrderDetail } from '@/components/OrderDetail'
@@ -255,7 +256,20 @@ function ShippedPageContent() {
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}
           renderExpandedContent={(row) => {
             const order = row as unknown as Order
+            const soName = (order.ifNumber || '').split(' ')[0]
             return (
+              <div>
+                {/^(SO|SAL-ORD)-/.test(soName) && (
+                  <div className="px-3 pt-3">
+                    <Link
+                      href={`/staged/ship?so=${encodeURIComponent(soName)}`}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted transition-colors"
+                    >
+                      <FileText className="size-4" />
+                      {t('fulfillment.shippingDocs')}
+                    </Link>
+                  </div>
+                )}
               <OrderDetail
                 ifNumber={order.ifNumber}
                 line={order.line}
@@ -270,10 +284,12 @@ function ShippedPageContent() {
                 userName={profile?.full_name || ''}
                 onClose={() => setExpandedOrderKey(null)}
               />
+              </div>
             )
           }}
           renderCard={(row, i) => {
             const order = row as unknown as Order
+            const soName = (order.ifNumber || '').split(' ')[0]
             return (
               <OrderCard
                 order={order}
@@ -282,6 +298,19 @@ function ShippedPageContent() {
                 onToggle={() => toggleExpanded(order)}
                 statusOverride="Shipped"
                 showShipDate
+                expandedAction={
+                  /^(SO|SAL-ORD)-/.test(soName) ? (
+                    <div className="mb-3">
+                      <Link
+                        href={`/staged/ship?so=${encodeURIComponent(soName)}`}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted transition-colors"
+                      >
+                        <FileText className="size-4" />
+                        {t('fulfillment.shippingDocs')}
+                      </Link>
+                    </div>
+                  ) : null
+                }
               />
             )
           }}

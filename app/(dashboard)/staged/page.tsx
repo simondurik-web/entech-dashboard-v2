@@ -1,8 +1,9 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Truck } from 'lucide-react'
 import { OrderCard } from '@/components/cards/OrderCard'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
@@ -63,8 +64,10 @@ export default function StagedPage() {
 function StagedPageContent() {
   const { t } = useI18n()
   const { profile } = useAuth()
-  const { canAccess } = usePermissions()
+  const { canAccess, canAccessExact } = usePermissions()
   const canEditPallets = canAccess('edit_pallet_records')
+  // "Ship Loads" action permission — page visibility alone doesn't ship
+  const canShipLoads = canAccessExact('ship_loads')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
@@ -297,8 +300,24 @@ function StagedPageContent() {
             onRowClick={(row) => toggleExpanded(row as unknown as Order)}
             renderExpandedContent={(row) => {
               const order = row as unknown as Order
+              // ERPNext SO name lives in ifNumber since the ERP cutover
+              // ("SO-00043" or "SO-00043 (IF12345)"); legacy SAL-ORD names too.
+              const soName = (order.ifNumber || '').split(' ')[0]
+              const canShip = canShipLoads && /^(SO|SAL-ORD)-/.test(soName)
               return (
-                <OrderDetail
+                <div>
+                  {canShip && (
+                    <div className="px-3 pt-3">
+                      <Link
+                        href={`/staged/ship?so=${encodeURIComponent(soName)}`}
+                        className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
+                      >
+                        <Truck className="size-4" />
+                        {t('fulfillment.shipOrder')}
+                      </Link>
+                    </div>
+                  )}
+                  <OrderDetail
                   ifNumber={order.ifNumber}
                   line={order.line}
                   tirePartNum={order.tire}
@@ -309,11 +328,13 @@ function StagedPageContent() {
                   canEdit={canEditPallets}
                   userName={profile?.full_name || ''}
                   onClose={() => setExpandedOrderKey(null)}
-                />
+                  />
+                </div>
               )
             }}
             renderCard={(row, i) => {
               const order = row as unknown as Order
+              const soName = (order.ifNumber || '').split(' ')[0]
               return (
                 <OrderCard
                   order={order}
@@ -321,6 +342,19 @@ function StagedPageContent() {
                   isExpanded={expandedOrderKey === getOrderKey(order)}
                   onToggle={() => toggleExpanded(order)}
                   statusOverride="Staged"
+                  expandedAction={
+                    canShipLoads && /^(SO|SAL-ORD)-/.test(soName) ? (
+                      <div className="mb-3">
+                        <Link
+                          href={`/staged/ship?so=${encodeURIComponent(soName)}`}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold hover:bg-primary/90 transition-colors"
+                        >
+                          <Truck className="size-4" />
+                          {t('fulfillment.shipOrder')}
+                        </Link>
+                      </div>
+                    ) : null
+                  }
                 />
               )
             }}

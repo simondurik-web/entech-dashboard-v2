@@ -108,12 +108,18 @@ export async function POST(req: NextRequest) {
     label: async (committed) => {
       const printBatch = committed.batch ?? newBatch
       const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
+      const batchDoc = await erpnextGetDoc<{ custom_pallet_weight?: number; custom_pallet_dims?: string }>(
+        'Batch',
+        printBatch
+      ).catch(() => null)
       const zpl = buildPalletZpl({
         itemCode,
         itemName: item.item_name ?? itemCode,
         qty: target,
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
+        weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
+        dimensions: batchDoc?.custom_pallet_dims || undefined,
         generatedAt: labelTimestamp(),
         printedBy,
       })

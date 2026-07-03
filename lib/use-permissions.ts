@@ -131,6 +131,23 @@ export function usePermissions() {
     [profile, permissions]
   )
 
+  // Exact-key check for ACTION permissions (e.g. 'ship_loads'): unlike
+  // canAccess there is NO parent-path fallback, so page access ('/staged')
+  // never implies the action.
+  const canAccessExact = useCallback(
+    (key: string): boolean => {
+      if (!profile) return false
+      if (profile.role === 'blocked') return false
+      if (profile.role === 'admin' || profile.role === 'super_admin') return true
+      if (profile.custom_permissions && key in profile.custom_permissions) {
+        return profile.custom_permissions[key] === true
+      }
+      const rolePerm = permissions.find((p) => p.role === profile.role)
+      return rolePerm?.menu_access[key] === true
+    },
+    [profile, permissions]
+  )
+
   const refreshPermissions = useCallback(async () => {
     const { data } = await supabase.from("role_permissions").select("role, menu_access")
     if (data) {
@@ -140,7 +157,7 @@ export function usePermissions() {
     }
   }, [])
 
-  return { canAccess, permissions, refreshPermissions, userId: profile?.id ?? null }
+  return { canAccess, canAccessExact, permissions, refreshPermissions, userId: profile?.id ?? null }
 }
 
 // Clear cache (useful after admin updates permissions)

@@ -19,7 +19,7 @@ interface UserRecord {
   created_at: string
 }
 
-const ROLES: UserRole[] = ['visitor', 'regular_user', 'advanced_user', 'group_leader', 'shipping_manager', 'manager', 'admin', 'blocked']
+const ROLES: UserRole[] = ['visitor', 'regular_user', 'advanced_user', 'group_leader', 'shipping_team', 'shipping_manager', 'manager', 'admin', 'blocked']
 
 const ALL_MENU_PATHS = [
   '/orders', '/need-to-make', '/need-to-package', '/staged', '/shipped',
@@ -31,6 +31,7 @@ const ALL_MENU_PATHS = [
   '/admin/users', '/admin/permissions',
   '/phil-assistant',
   'manage_priority',
+  'ship_loads',
 ]
 
 export default function AdminUsersPage() {

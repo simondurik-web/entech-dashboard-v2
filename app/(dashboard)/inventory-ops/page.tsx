@@ -42,6 +42,8 @@ interface Pallet {
   batch: string
   warehouse: string
   qty: number
+  weightLb?: number
+  dims?: string
 }
 // A pallet's live reservation to a Sales Order (from ERPNext), surfaced as a badge.
 interface BatchReservation {
@@ -366,6 +368,14 @@ export default function InventoryOpsPage() {
       c.abort()
     }
   }, [query, runSearch])
+
+  // Deep link: /inventory-ops?q=<pallet or part> (the pallet sections on the
+  // order rows link here). window.location avoids the useSearchParams Suspense
+  // requirement on this already-huge client page.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (q) setQuery(q.trim().toUpperCase())
+  }, [])
 
   // ─── By-item part-number picker (focus the search to browse/select all parts) ───
   const [itemPickerOpen, setItemPickerOpen] = useState(false)
@@ -785,7 +795,11 @@ export default function InventoryOpsPage() {
   // ─── Prepare for staging (scan pallets → reserve them to an open Sales Order) ───
   // The queue is constrained to ONE item (you reserve pallets of a single part to an SO line),
   // so the open-orders lookup is filtered by that item. Mirrors the Transfer tab's scan-to-queue.
-  const [stageQueue, setStageQueue] = useState<PalletLookup[]>([])
+  // Queue items carry the pallet's EXISTING reservation (if any) so a pallet
+  // locked to another order can be MOVED — release + re-reserve on confirm
+  // (Simon 2026-07-03: emergency order needs a pallet staged for a later one).
+  type StageQueueItem = PalletLookup & { reservedTo?: { so: string; customer: string | null } }
+  const [stageQueue, setStageQueue] = useState<StageQueueItem[]>([])
   const [stageScanInput, setStageScanInput] = useState('')
   const [stageQueueBusy, setStageQueueBusy] = useState(false)
   const [stageScanOpen, setStageScanOpen] = useState(false)
@@ -858,7 +872,20 @@ export default function InventoryOpsPage() {
         showFlash('ok', `${p.batch} ${t('inventoryOps.transferAlreadyQueued')}`)
         return
       }
-      setStageQueue((q) => (q.some((x) => x.batch === p.batch) ? q : [...q, p]))
+      // Already reserved to an order? Queue it flagged for a MOVE (amber row +
+      // explicit confirmation at post time) instead of failing at ERPNext.
+      let reservedTo: { so: string; customer: string | null } | undefined
+      try {
+        const rr = await authedFetch(`/api/erpnext/inventory/reservations?batches=${encodeURIComponent(p.batch)}`)
+        if (rr.ok) {
+          const rd = await rr.json()
+          const res = rd.reservations?.[p.batch]
+          if (res) reservedTo = { so: res.so, customer: res.customer ?? null }
+        }
+      } catch {
+        /* reservation lookup is advisory — the server re-checks at post time */
+      }
+      setStageQueue((q) => (q.some((x) => x.batch === p.batch) ? q : [...q, { ...p, reservedTo }]))
       setStageScanInput('')
     } catch {
       showFlash('err', t('inventoryOps.error'))
@@ -869,6 +896,26 @@ export default function InventoryOpsPage() {
 
   const postStage = async () => {
     if (!selectedSo || stageQueue.length === 0 || staging || busyRef.current) return
+    // Moves need an explicit operator confirmation listing what leaves which
+    // order — and a printer, because a moved pallet is RELABELED (new code +
+    // fresh label with the new order; the old label stops scanning).
+    const moves = stageQueue.filter((p) => p.reservedTo && p.reservedTo.so !== selectedSo)
+    if (moves.length > 0) {
+      if (!addStation) {
+        showFlash('err', t('inventoryOps.stageMoveNeedsPrinter'))
+        return
+      }
+      const stationName = stations.find((s) => s.id === addStation)?.name ?? addStation
+      const list = moves
+        .map((m) => `${m.batch} — ${m.reservedTo!.so}${m.reservedTo!.customer ? ` (${m.reservedTo!.customer})` : ''}`)
+        .join('\n')
+      if (
+        !window.confirm(
+          `${t('inventoryOps.stageMoveConfirm')}\n\n${list}\n\n${t('inventoryOps.stageMoveRelabel').replace('{printer}', stationName)}`
+        )
+      )
+        return
+    }
     busyRef.current = true
     setStaging(true)
     const batches = stageQueue.map((p) => p.batch).sort()
@@ -879,6 +926,8 @@ export default function InventoryOpsPage() {
         body: JSON.stringify({
           soName: selectedSo,
           pallets: stageQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode, warehouse: p.warehouse, qty: p.qty })),
+          allowMove: moves.length > 0,
+          station: moves.length > 0 ? addStation : undefined,
           idempotencyKey: key,
         }),
       })
@@ -886,11 +935,15 @@ export default function InventoryOpsPage() {
       if (!r.ok) throw new Error(d.error || 'staging failed')
       clearOpKey('stage-reserve', selectedSo, batches)
       const reserved = typeof d.reserved === 'number' ? d.reserved : stageQueue.length
+      const relabels = (d.relabels ?? []) as { oldBatch: string; newBatch: string }[]
+      const relabelNote = relabels.length
+        ? ` · ${t('inventoryOps.stageRelabeled')} ${relabels.map((x) => `${x.oldBatch}→${x.newBatch}`).join(', ')}`
+        : ''
       showFlash(
         'ok',
-        d.staged
+        (d.staged
           ? `${t('inventoryOps.stageStaged')} ${selectedSo}`
-          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selectedSo}`
+          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selectedSo}`) + relabelNote
       )
       // Clearing the queue hides the orders panel and (via the item effect) resets selection.
       setStageQueue([])
@@ -1126,6 +1179,14 @@ export default function InventoryOpsPage() {
   const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection (BinCombobox)
   const [addStation, setAddStation] = useState('')
   const [adding, setAdding] = useState(false)
+  // Optional pallet weight (lb) + dimensions — stored on the Batch, printed on
+  // the label (Simon 2026-07-03). Dimensions are THREE separate numeric boxes
+  // (L/W/H) so the stored format is always identical ("48x40x60") no matter
+  // who types it — freeform invited xX/space/format drift (Simon 2026-07-03).
+  const [addWeight, setAddWeight] = useState('')
+  const [addDimL, setAddDimL] = useState('')
+  const [addDimW, setAddDimW] = useState('')
+  const [addDimH, setAddDimH] = useState('')
   // Sales Order to attach to the label (optional). The list is filtered server-side to the
   // open SOs that actually include the selected part, so the dropdown stays short.
   const [salesOrder, setSalesOrder] = useState('') // committed SO name ('' = none)
@@ -1202,6 +1263,14 @@ export default function InventoryOpsPage() {
       showFlash('err', t('inventoryOps.addMissing'))
       return
     }
+    // Dimensions: all three or none (a partial LxWxH would print garbage).
+    const dimVals = [addDimL, addDimW, addDimH].map((v) => v.trim())
+    const dimsFilled = dimVals.filter((v) => v !== '').length
+    if (dimsFilled > 0 && (dimsFilled < 3 || dimVals.some((v) => !(Number(v) > 0)))) {
+      showFlash('err', t('inventoryOps.dimsIncomplete'))
+      return
+    }
+    const dims = dimsFilled === 3 ? dimVals.map((v) => String(Number(v))).join('x') : undefined
     if (busyRef.current) return
     busyRef.current = true
     if (!addKeyRef.current) addKeyRef.current = uuid() // reused across retries
@@ -1215,6 +1284,8 @@ export default function InventoryOpsPage() {
           warehouse: addWarehouse,
           station: addStation,
           salesOrder: salesOrder || undefined,
+          weightLb: Number(addWeight) > 0 ? Number(addWeight) : undefined,
+          dims,
           idempotencyKey: addKeyRef.current,
         }),
       })
@@ -1233,6 +1304,10 @@ export default function InventoryOpsPage() {
       setAddItem(null)
       setItemQuery('')
       setAddQty('')
+      setAddWeight('')
+      setAddDimL('')
+      setAddDimW('')
+      setAddDimH('')
       setAddOpen(false)
       // Refresh the active search so the new pallet appears: bins/totals via the search,
       // and the item's pallet rows directly (covers an already-cached item outside
@@ -1747,7 +1822,7 @@ export default function InventoryOpsPage() {
   // edit/move/history panels). Shared by the By-item search results AND the By-bin
   // Locations view so both have identical capabilities. `warehouse` is the pallet's
   // current bin (used to exclude it from the Move target list).
-  const renderPalletRow = (p: { batch: string; warehouse: string; qty: number }, itemCode: string) => (
+  const renderPalletRow = (p: { batch: string; warehouse: string; qty: number; weightLb?: number; dims?: string }, itemCode: string) => (
     <li key={p.batch} className="px-2.5 py-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1 truncate font-mono text-xs">
@@ -1825,6 +1900,14 @@ export default function InventoryOpsPage() {
           </div>
         )}
       </div>
+
+      {(p.weightLb || p.dims) && (
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
+          {p.weightLb ? `${p.weightLb.toLocaleString()} lb` : ''}
+          {p.weightLb && p.dims ? ' · ' : ''}
+          {p.dims ? `${p.dims} in` : ''}
+        </div>
+      )}
 
       {reservations[p.batch] && (
         <div className="mt-1">
@@ -2170,6 +2253,53 @@ export default function InventoryOpsPage() {
                 onChange={(e) => setAddQty(e.target.value)}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletWeight')}</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={addWeight}
+                onChange={(e) => setAddWeight(e.target.value)}
+                placeholder={t('inventoryOps.optional')}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletDims')}</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={addDimL}
+                  onChange={(e) => setAddDimL(e.target.value)}
+                  placeholder={t('inventoryOps.dimL')}
+                  aria-label={t('inventoryOps.dimL')}
+                  className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={addDimW}
+                  onChange={(e) => setAddDimW(e.target.value)}
+                  placeholder={t('inventoryOps.dimW')}
+                  aria-label={t('inventoryOps.dimW')}
+                  className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={addDimH}
+                  onChange={(e) => setAddDimH(e.target.value)}
+                  placeholder={t('inventoryOps.dimH')}
+                  aria-label={t('inventoryOps.dimH')}
+                  className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.printer')}</label>
@@ -2884,6 +3014,12 @@ export default function InventoryOpsPage() {
                       <div className="truncate text-xs text-muted-foreground">
                         {p.qty.toLocaleString()} {t('inventoryOps.stagePieces')} · {p.warehouse}
                       </div>
+                      {p.reservedTo && p.reservedTo.so !== selectedSo && (
+                        <div className="mt-0.5 inline-flex items-center rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-600">
+                          {t('inventoryOps.stageWillMove')} {p.reservedTo.so}
+                          {p.reservedTo.customer ? ` (${p.reservedTo.customer})` : ''}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => setStageQueue((q) => q.filter((x) => x.batch !== p.batch))}
@@ -2916,12 +3052,21 @@ export default function InventoryOpsPage() {
                   const projected = o.reservedQty + stageQueuePcs
                   const covers = o.orderedQty > 0 && projected >= o.orderedQty
                   const isStaged = o.stagingStatus === 'Staged'
+                  // The queue must FIT: an order can't take more than it still
+                  // needs (over-staging loophole, Simon 2026-07-03).
+                  const remaining = o.orderedQty - o.reservedQty
+                  const fits = stageQueuePcs <= remaining
                   return (
                     <li key={o.name}>
                       <button
-                        onClick={() => setSelectedSo(o.name)}
+                        onClick={() => fits && setSelectedSo(o.name)}
+                        disabled={!fits}
                         className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                          selectedSo === o.name ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-accent'
+                          !fits
+                            ? 'border-border bg-card opacity-50 cursor-not-allowed'
+                            : selectedSo === o.name
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border bg-card hover:bg-accent'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -2944,8 +3089,12 @@ export default function InventoryOpsPage() {
                             <div className="font-medium">
                               {o.reservedQty.toLocaleString()} / {o.orderedQty.toLocaleString()}
                             </div>
-                            <div className={covers ? 'text-emerald-600' : 'text-muted-foreground'}>
-                              {covers ? t('inventoryOps.stageWillCover') : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
+                            <div className={!fits ? 'text-amber-600' : covers ? 'text-emerald-600' : 'text-muted-foreground'}>
+                              {!fits
+                                ? t('inventoryOps.stageOnlyNeeds').replace('{n}', remaining.toLocaleString())
+                                : covers
+                                  ? t('inventoryOps.stageWillCover')
+                                  : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
                             </div>
                           </div>
                         </div>

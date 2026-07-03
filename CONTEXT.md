@@ -6,6 +6,51 @@ Created: 2026-02-07
 
 ---
 
+## 🚚 IN PROGRESS — Fulfillment Wrapper (claude-2 via #erp, started 2026-07-02)
+
+Wrap ERPNext shipping (SO → scan pallets → DN → BOL/packing slip) in the dashboard so the
+shipping floor never leaves it. Canonical brief + decisions:
+`~/clawd/projects/erp-4molding/FULFILLMENT-WRAPPER-BRIEF.md`. ERPNext server-side scripts
+(rate-fill from SO, scan gate, shipped rollup) enforce correctness; the dashboard is a thin client.
+
+- **Phase 1 SHIPPED to staging (PR #153, 2026-07-02)** — read-only: Ship Order button on
+  /staged (Ready to Ship) → `/staged/ship?so=` (lines, ordered/staged/delivered qtys, item
+  pictures via `/api/erpnext/fulfillment/item-image` proxy, staged pallet list; NO prices — floor
+  never sees dollar amounts). New `lib/erpnext/fulfillment.ts`; `requireMenuAccess(path)` in
+  `lib/erpnext/auth.ts` generalizes `requireInventoryAccess` (same guard, parameterized menu key);
+  fulfillment routes gate on `/staged`.
+- **Test sandbox**: ERPNext "Test Customer" + SO-00075 + TEST-PLT-1/2 (staged). Manage with
+  `erp-4molding/scripts/fulfillment-test-sandbox.py` (create/status/cleanup).
+- **Phase 2 SHIPPED to staging (PR #155, 2026-07-02 late)** — scan & check: camera scanner
+  (shared PalletScanner remounted per decode) + Type Pallet ID; staged pallets turn green when
+  scanned; wrong scans red with reason (`/api/erpnext/fulfillment/pallet` lookup); all-match green
+  light → Complete Shipment → confirmation prompt (submit disabled — Phase 3). Fixed the mobile
+  card-tap double-fire in `OrderCard` (stopPropagation; DataTable's 6/09 wrapper re-toggled the
+  expand state, breaking card expansion on phones for staged/orders/shipped/need-to-package) and
+  added an `expandedAction` slot so Ship Order shows inside the expanded card on phones.
+- **Phases 3+4 SHIPPED to staging overnight 2026-07-03 (PRs #157/#158/#159)** — Complete
+  Shipment is real: DN create+submit through the ERPNext scan gate (so_detail from the
+  reservation → correct line on multi-release SOs; reservations consumed/restored natively),
+  BOL + "Packing Slip - Entech" PDFs attached (deduped), custom_shipped rollup, shipped view
+  (PDF buttons, customer-BOL upload, undo = DN cancel + staging recompute). Idempotent
+  double-tap/crash/retry. Shipped section rows get "Shipping documents". GPT-5.5-reviewed
+  (8/9 findings fixed; #6 floor-wide undo is per spec, ask Simon about role-restricting).
+  Device-tested at iPhone/iPad viewports end-to-end incl. a real UI-driven ship+undo cycle.
+  Full build log: erp-4molding/FULFILLMENT-WRAPPER-BRIEF.md.
+- **2026-07-03 feedback round (PRs #161/#162)**: ship_loads permission + shipping_team role
+  (+ per-permission descriptions in the admin matrix), BOL signature pad (driver name + finger/
+  mouse; skippable), fulfillment_log audit trail + Load Log UI, instant status flip on
+  complete/undo, ERP shipped rows fixed on Shipped/Orders/Shipping Overview (shipped_date +
+  revenue now synced from ERPNext; undo clears; cancelled SOs clear), "Pallets (ERP)" section on
+  all expanded order rows (+ /inventory-ops?q= deep link), pallet weight/dims (Batch custom
+  fields, Add-form inputs, printed on labels, carried on reprint). Sandbox = SO-00076 staged on
+  real pallets JZW3/Q0WX. Sync scripts changed: molding/db-migration sync_erpnext_orders.py +
+  sync_erpnext_to_dashboard.py (shipped_date, revenue, Cancelled guard).
+- **Pending Simon**: assign users to shipping_team, physical scan test on SO-00076, one real
+  order shadowed before floor rollout, then staging → main promotion.
+
+---
+
 ## ✅ COMPLETE — API Auth Hardening (claude-3, finished 2026-06-26)
 
 All phases shipped to PROD:

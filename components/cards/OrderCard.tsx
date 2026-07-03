@@ -73,16 +73,24 @@ interface OrderCardProps {
   showShipDate?: boolean
   /** Extra fields to show in grid */
   extraFields?: React.ReactNode
+  /** Rendered at the top of the expanded area, above OrderDetail (e.g. Ship Order) */
+  expandedAction?: React.ReactNode
 }
 
-export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields }: OrderCardProps) {
+export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields, expandedAction }: OrderCardProps) {
   const style = categoryStyle(order.category)
 
   return (
     <Card
       key={`${order.ifNumber}-${index}`}
       className={`border-l-4 cursor-pointer transition-colors ${style.border} ${style.bg} ${isExpanded ? 'ring-1 ring-primary/20' : ''}`}
-      onClick={onToggle}
+      // stopPropagation: DataTable's mobile card wrapper adds its own tap handler
+      // when the page passes onRowClick; letting this bubble made one tap toggle
+      // the expand state twice (open+close = "nothing happens" on phones).
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
     >
       <CardHeader className="pb-1 pt-3 px-3">
         <div className="flex justify-between items-start gap-2">
@@ -134,6 +142,7 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
           className={`grid transition-all duration-300 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
         >
           <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {isExpanded && expandedAction}
             {isExpanded && (
               <OrderDetail
                 ifNumber={order.ifNumber}
