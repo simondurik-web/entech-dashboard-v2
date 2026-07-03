@@ -1179,10 +1179,14 @@ export default function InventoryOpsPage() {
   const [addWarehouse, setAddWarehouse] = useState('') // committed bin selection (BinCombobox)
   const [addStation, setAddStation] = useState('')
   const [adding, setAdding] = useState(false)
-  // Optional pallet weight (lb) + dimensions (LxWxH in) — stored on the Batch,
-  // printed on the label (Simon 2026-07-03).
+  // Optional pallet weight (lb) + dimensions — stored on the Batch, printed on
+  // the label (Simon 2026-07-03). Dimensions are THREE separate numeric boxes
+  // (L/W/H) so the stored format is always identical ("48x40x60") no matter
+  // who types it — freeform invited xX/space/format drift (Simon 2026-07-03).
   const [addWeight, setAddWeight] = useState('')
-  const [addDims, setAddDims] = useState('')
+  const [addDimL, setAddDimL] = useState('')
+  const [addDimW, setAddDimW] = useState('')
+  const [addDimH, setAddDimH] = useState('')
   // Sales Order to attach to the label (optional). The list is filtered server-side to the
   // open SOs that actually include the selected part, so the dropdown stays short.
   const [salesOrder, setSalesOrder] = useState('') // committed SO name ('' = none)
@@ -1259,6 +1263,14 @@ export default function InventoryOpsPage() {
       showFlash('err', t('inventoryOps.addMissing'))
       return
     }
+    // Dimensions: all three or none (a partial LxWxH would print garbage).
+    const dimVals = [addDimL, addDimW, addDimH].map((v) => v.trim())
+    const dimsFilled = dimVals.filter((v) => v !== '').length
+    if (dimsFilled > 0 && (dimsFilled < 3 || dimVals.some((v) => !(Number(v) > 0)))) {
+      showFlash('err', t('inventoryOps.dimsIncomplete'))
+      return
+    }
+    const dims = dimsFilled === 3 ? dimVals.map((v) => String(Number(v))).join('x') : undefined
     if (busyRef.current) return
     busyRef.current = true
     if (!addKeyRef.current) addKeyRef.current = uuid() // reused across retries
@@ -1273,7 +1285,7 @@ export default function InventoryOpsPage() {
           station: addStation,
           salesOrder: salesOrder || undefined,
           weightLb: Number(addWeight) > 0 ? Number(addWeight) : undefined,
-          dims: addDims.trim() || undefined,
+          dims,
           idempotencyKey: addKeyRef.current,
         }),
       })
@@ -1293,7 +1305,9 @@ export default function InventoryOpsPage() {
       setItemQuery('')
       setAddQty('')
       setAddWeight('')
-      setAddDims('')
+      setAddDimL('')
+      setAddDimW('')
+      setAddDimH('')
       setAddOpen(false)
       // Refresh the active search so the new pallet appears: bins/totals via the search,
       // and the item's pallet rows directly (covers an already-cached item outside
@@ -2254,14 +2268,38 @@ export default function InventoryOpsPage() {
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletDims')}</label>
-              <input
-                type="text"
-                value={addDims}
-                onChange={(e) => setAddDims(e.target.value)}
-                placeholder="48x40x60"
-                maxLength={30}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-              />
+              <div className="grid grid-cols-3 gap-1.5">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={addDimL}
+                  onChange={(e) => setAddDimL(e.target.value)}
+                  placeholder={t('inventoryOps.dimL')}
+                  aria-label={t('inventoryOps.dimL')}
+                  className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={addDimW}
+                  onChange={(e) => setAddDimW(e.target.value)}
+                  placeholder={t('inventoryOps.dimW')}
+                  aria-label={t('inventoryOps.dimW')}
+                  className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={addDimH}
+                  onChange={(e) => setAddDimH(e.target.value)}
+                  placeholder={t('inventoryOps.dimH')}
+                  aria-label={t('inventoryOps.dimH')}
+                  className="w-full rounded-lg border border-border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.printer')}</label>
