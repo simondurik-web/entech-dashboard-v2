@@ -3,7 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveBatchesToSO, reservationsForBatches, releaseBatchReservation } from '@/lib/erpnext/staging'
 import { reserveNextSerial, reissuePallet } from '@/lib/erpnext/inventory'
-import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
+import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
       for (const r of moves) {
         try {
           const [item, batchDoc] = await Promise.all([
-            erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', r.itemCode),
+            erpnextGetDoc<{ item_name?: string; stock_uom?: string; item_group?: string }>('Item', r.itemCode),
             erpnextGetDoc<{ custom_pallet_weight?: number; custom_pallet_dims?: string }>('Batch', r.newBatch),
           ])
           const zpl = buildPalletZpl({
@@ -207,6 +207,7 @@ export async function POST(req: NextRequest) {
             salesOrder: soName,
             weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
             dimensions: batchDoc?.custom_pallet_dims || undefined,
+            brand: brandForItemGroup(item.item_group),
             generatedAt: labelTimestamp(),
             printedBy,
           })

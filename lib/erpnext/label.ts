@@ -14,6 +14,7 @@
 //  - Sales Order / Weight / Dimensions print only when provided (room reserved).
 
 import QRCode from 'qrcode'
+import { SNAPPAD_LOGO_GFA, SNAPPAD_LOGO_MEDIA_W, SNAPPAD_LOGO_MEDIA_H } from './snappad-logo'
 
 // The operation runs server-side on Vercel (UTC), so a bare new Date().toLocaleString()
 // stamps the label in UTC. The shop is on US Eastern (Middlebury, IN), so force the zone.
@@ -45,11 +46,23 @@ export interface PalletLabel {
   ref?: string // optional PO/IF reference
   qrPayload?: string // QR contents; defaults to `batch`. Non-serialized labels encode the part number.
   copies?: number // print this many identical copies (^PQ) — non-serialized: one per box.
+  // Product-brand logo (Simon 2026-07-03: DEFAULT for all Snap Pad item-group
+  // products, current and future). This is the PRODUCT's brand, not company
+  // branding — the no-company-logo rule (2026-06-21) still applies to
+  // everything else. Only affects layout when set; other labels are unchanged.
+  brand?: 'snappad'
 }
 
 // Sanitize a value for a ZPL ^FD field: strip ZPL control prefixes (^ ~), the
 // field-escape char (\), and CR/LF/control chars, collapse whitespace, cap length.
 // Hyphens/dots are preserved (part numbers like EB-BRN / 620.308.2211 need them).
+/** Product-brand for an ERPNext item group. Snap Pad products (current AND
+ *  future — any item in the group) get the SnapPad logo by default
+ *  (Simon 2026-07-03). */
+export function brandForItemGroup(itemGroup?: string | null): PalletLabel['brand'] {
+  return itemGroup === 'Snap Pad' ? 'snappad' : undefined
+}
+
 function z(value: string | undefined, max = 42): string {
   const stripped = (value ?? '')
     .split('')
@@ -167,14 +180,32 @@ export function buildPalletZpl(label: PalletLabel): string {
     x -= 44
   }
 
-  // Scan zone (reading right side): big ~2.5in QR + "SCAN PALLET" caption.
-  // qr.px is the full bitmap (pattern + quiet); keep it on the media.
-  const qrX = Math.max(20, Math.min(150, 812 - qr.px - 20))
+  // Scan zone (reading right side): big ~2.5in QR (SAME size with or without a
+  // brand logo — scannability is untouchable). With a brand logo the QR shifts
+  // toward the reading bottom to free ~0.9in above it for the logo, and the
+  // timestamp/printed-by move to the bottom of the LEFT text column.
+  const branded = label.brand === 'snappad'
+  const qrX = branded
+    ? Math.max(10, 812 - qr.px - SNAPPAD_LOGO_MEDIA_W - 20)
+    : Math.max(20, Math.min(150, 812 - qr.px - 20))
   const qrY = Math.min(610, 1218 - qr.px - 10)
   lines.push(`^FO${qrX},${qrY}${qr.field}^FS`)
-  // Generated date/time + who printed it, in the scan zone (where "SCAN PALLET" was).
-  if (generatedAt) lines.push(T(qrX - 44, qrY, 26, generatedAt))
-  if (printedBy) lines.push(T(qrX - 78, qrY, 24, `By: ${printedBy}`))
+  if (branded) {
+    // Logo above the QR (reading), horizontally centered over it.
+    const logoX = qrX + qr.px + 10
+    const logoY = Math.max(0, qrY + Math.round((qr.px - SNAPPAD_LOGO_MEDIA_H) / 2))
+    lines.push(`^FO${logoX},${logoY}${SNAPPAD_LOGO_GFA}^FS`)
+    // Timestamp + printed-by continue the left column's step-down.
+    if (generatedAt) {
+      lines.push(T(x, Y, 26, generatedAt))
+      x -= 38
+    }
+    if (printedBy) lines.push(T(x, Y, 24, `By: ${printedBy}`))
+  } else {
+    // Generated date/time + who printed it, in the scan zone (where "SCAN PALLET" was).
+    if (generatedAt) lines.push(T(qrX - 44, qrY, 26, generatedAt))
+    if (printedBy) lines.push(T(qrX - 78, qrY, 24, `By: ${printedBy}`))
+  }
 
   // Print N identical copies (one label per box for non-serialized packs). ^PQ must
   // precede ^XZ. Clamp to a sane ceiling (covers any realistic single receive) so a bad
