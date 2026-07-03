@@ -99,6 +99,9 @@ export interface FulfillmentOrder {
     signed: boolean
     driverName: string | null
   } | null
+  // pallets on the latest submitted DN (what actually shipped) — the staged
+  // `pallets` list empties once reservations are consumed
+  shippedPallets: { palletId: string; itemCode: string; qty: number }[]
 }
 
 /** Everything the Ship Order screen needs for one Sales Order, in two-plus-N
@@ -198,7 +201,15 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
       data: { name: string; custom_shipped?: number; custom_signed_at?: string | null; custom_driver_name?: string | null }[]
     }>(`/api/resource/Delivery Note?${dnQs}`)).data?.[0] ?? null
   let dnAttachments: string[] = []
+  let shippedPallets: { palletId: string; itemCode: string; qty: number }[] = []
   if (dnRow) {
+    const dnDoc = await erpnextGetDoc<{ items?: { batch_no?: string | null; item_code: string; qty: number }[] }>(
+      'Delivery Note',
+      dnRow.name
+    ).catch(() => null)
+    shippedPallets = (dnDoc?.items ?? [])
+      .filter((i) => i.batch_no)
+      .map((i) => ({ palletId: String(i.batch_no), itemCode: i.item_code, qty: Number(i.qty) || 0 }))
     const fq = [
       listParam('filters', [
         ['attached_to_doctype', '=', 'Delivery Note'],
@@ -232,6 +243,7 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
           driverName: dnRow.custom_driver_name ?? null,
         }
       : null,
+    shippedPallets,
   }
 }
 

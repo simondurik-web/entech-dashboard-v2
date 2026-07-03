@@ -26,6 +26,8 @@ interface AddBody {
   customer?: string
   ref?: string
   salesOrder?: string // optional ERPNext Sales Order to attach (printed on the label)
+  weightLb?: number // optional pallet weight (lb) — stored on the Batch + printed
+  dims?: string // optional pallet dimensions (LxWxH in) — stored + printed
   idempotencyKey?: string
 }
 
@@ -43,6 +45,12 @@ export async function POST(req: NextRequest) {
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
   const salesOrder = body.salesOrder?.trim() || undefined
   const qty = Number(body.qty)
+  // Optional pallet weight/dims (Simon 2026-07-03): loose validation, stored on
+  // the Batch and printed on the label (the ZPL template sanitizes further).
+  const weightLb = Number.isFinite(Number(body.weightLb)) && Number(body.weightLb) > 0
+    ? Math.min(99999, Math.round(Number(body.weightLb) * 10) / 10)
+    : undefined
+  const dims = body.dims?.trim().slice(0, 30) || undefined
   if (!itemCode || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY || !warehouse || !station || !idempotencyKey) {
     return NextResponse.json(
       { error: 'itemCode, qty (1..10M), warehouse, station, and idempotencyKey are required' },
@@ -153,7 +161,7 @@ export async function POST(req: NextRequest) {
     action: 'add',
     createdBy: userId,
     meta: { item_code: itemCode, qty, warehouse, station_id: station, batch, family: palletBase(batch) },
-    erp: () => addInventory({ itemCode, qty, warehouse, opKey: idempotencyKey, batch }),
+    erp: () => addInventory({ itemCode, qty, warehouse, opKey: idempotencyKey, batch, weightLb, dims }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
       return se ? { batch, stockEntry: se } : null
@@ -169,6 +177,8 @@ export async function POST(req: NextRequest) {
         customer,
         ref,
         salesOrder,
+        weight: weightLb ? `${weightLb} lb` : undefined,
+        dimensions: dims,
         generatedAt: labelTimestamp(),
         printedBy,
       })
