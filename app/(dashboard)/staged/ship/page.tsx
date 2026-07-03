@@ -74,7 +74,7 @@ interface FulfillmentOrder {
 interface LogEntry {
   id: number
   created_at: string
-  action: 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol' | 'print_document'
+  action: 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol' | 'print_document' | 'move_reservation'
   dn_number: string
   user_name: string | null
   detail: string | null
@@ -902,7 +902,9 @@ function ShipOrderContent() {
                                 ? 'fulfillment.logSign'
                                 : e.action === 'print_document'
                                   ? 'fulfillment.logPrint'
-                                  : 'fulfillment.logUpload'
+                                  : e.action === 'move_reservation'
+                                    ? 'fulfillment.logMove'
+                                    : 'fulfillment.logUpload'
                         )}{' '}
                         <span className="font-mono text-xs text-muted-foreground">{e.dn_number}</span>
                       </p>

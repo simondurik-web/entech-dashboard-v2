@@ -795,7 +795,11 @@ export default function InventoryOpsPage() {
   // ─── Prepare for staging (scan pallets → reserve them to an open Sales Order) ───
   // The queue is constrained to ONE item (you reserve pallets of a single part to an SO line),
   // so the open-orders lookup is filtered by that item. Mirrors the Transfer tab's scan-to-queue.
-  const [stageQueue, setStageQueue] = useState<PalletLookup[]>([])
+  // Queue items carry the pallet's EXISTING reservation (if any) so a pallet
+  // locked to another order can be MOVED — release + re-reserve on confirm
+  // (Simon 2026-07-03: emergency order needs a pallet staged for a later one).
+  type StageQueueItem = PalletLookup & { reservedTo?: { so: string; customer: string | null } }
+  const [stageQueue, setStageQueue] = useState<StageQueueItem[]>([])
   const [stageScanInput, setStageScanInput] = useState('')
   const [stageQueueBusy, setStageQueueBusy] = useState(false)
   const [stageScanOpen, setStageScanOpen] = useState(false)
@@ -868,7 +872,20 @@ export default function InventoryOpsPage() {
         showFlash('ok', `${p.batch} ${t('inventoryOps.transferAlreadyQueued')}`)
         return
       }
-      setStageQueue((q) => (q.some((x) => x.batch === p.batch) ? q : [...q, p]))
+      // Already reserved to an order? Queue it flagged for a MOVE (amber row +
+      // explicit confirmation at post time) instead of failing at ERPNext.
+      let reservedTo: { so: string; customer: string | null } | undefined
+      try {
+        const rr = await authedFetch(`/api/erpnext/inventory/reservations?batches=${encodeURIComponent(p.batch)}`)
+        if (rr.ok) {
+          const rd = await rr.json()
+          const res = rd.reservations?.[p.batch]
+          if (res) reservedTo = { so: res.so, customer: res.customer ?? null }
+        }
+      } catch {
+        /* reservation lookup is advisory — the server re-checks at post time */
+      }
+      setStageQueue((q) => (q.some((x) => x.batch === p.batch) ? q : [...q, { ...p, reservedTo }]))
       setStageScanInput('')
     } catch {
       showFlash('err', t('inventoryOps.error'))
@@ -879,6 +896,14 @@ export default function InventoryOpsPage() {
 
   const postStage = async () => {
     if (!selectedSo || stageQueue.length === 0 || staging || busyRef.current) return
+    // Moves need an explicit operator confirmation listing what leaves which order.
+    const moves = stageQueue.filter((p) => p.reservedTo && p.reservedTo.so !== selectedSo)
+    if (moves.length > 0) {
+      const list = moves
+        .map((m) => `${m.batch} — ${m.reservedTo!.so}${m.reservedTo!.customer ? ` (${m.reservedTo!.customer})` : ''}`)
+        .join('\n')
+      if (!window.confirm(`${t('inventoryOps.stageMoveConfirm')}\n\n${list}`)) return
+    }
     busyRef.current = true
     setStaging(true)
     const batches = stageQueue.map((p) => p.batch).sort()
@@ -889,6 +914,7 @@ export default function InventoryOpsPage() {
         body: JSON.stringify({
           soName: selectedSo,
           pallets: stageQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode, warehouse: p.warehouse, qty: p.qty })),
+          allowMove: moves.length > 0,
           idempotencyKey: key,
         }),
       })
@@ -2933,6 +2959,12 @@ export default function InventoryOpsPage() {
                       <div className="truncate text-xs text-muted-foreground">
                         {p.qty.toLocaleString()} {t('inventoryOps.stagePieces')} · {p.warehouse}
                       </div>
+                      {p.reservedTo && p.reservedTo.so !== selectedSo && (
+                        <div className="mt-0.5 inline-flex items-center rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-600">
+                          {t('inventoryOps.stageWillMove')} {p.reservedTo.so}
+                          {p.reservedTo.customer ? ` (${p.reservedTo.customer})` : ''}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => setStageQueue((q) => q.filter((x) => x.batch !== p.batch))}
