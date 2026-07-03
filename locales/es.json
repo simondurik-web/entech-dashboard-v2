@@ -727,6 +727,7 @@
   "fulfillment.back": "Volver a Listo para Enviar",
   "fulfillment.clearSignature": "Borrar firma",
   "fulfillment.driverName": "Nombre del chofer",
+  "fulfillment.linesReady": "{ready} de {total} líneas de esta orden están listas",
   "fulfillment.loadLog": "Historial de Carga",
   "fulfillment.logComplete": "Embarque completado",
   "fulfillment.logSign": "BOL firmado",
