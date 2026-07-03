@@ -1,4 +1,5 @@
 import { erpnextGet, erpnextGetDoc } from './client'
+import { reservationsForBatches } from './staging'
 
 // Read-only Sales Order fulfillment view for the dashboard "Ship Order" screen
 // (fulfillment wrapper, Phase 1). Server-side only.
@@ -164,6 +165,42 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
     stagedAt: doc.custom_staged_at ?? null,
     lines,
     pallets,
+  }
+}
+
+export interface PalletLookup {
+  palletId: string
+  itemCode: string | null // null -> no such pallet
+  disabled: boolean
+  onHandQty: number
+  reservedTo: { so: string; customer: string | null } | null
+}
+
+/** Diagnose a scanned/typed pallet that is NOT in the order's staged set, so the
+ *  floor sees WHY it's red: wrong product, staged to another order, unknown code,
+ *  or a disabled (superseded) label. Read-only; no prices. */
+export async function lookupPalletForFulfillment(palletId: string): Promise<PalletLookup> {
+  const batch = await erpnextGetDoc<{ item?: string; disabled?: number }>('Batch', palletId).catch(() => null)
+  if (!batch?.item) {
+    return { palletId, itemCode: null, disabled: false, onHandQty: 0, reservedTo: null }
+  }
+
+  const [qtyRes, resMap] = await Promise.all([
+    erpnextGet<{ message?: { warehouse: string; qty: number }[] | { warehouse: string; qty: number } }>(
+      `/api/method/erpnext.stock.doctype.batch.batch.get_batch_qty?${new URLSearchParams({ batch_no: palletId })}`
+    ).catch(() => ({ message: [] as { warehouse: string; qty: number }[] })),
+    reservationsForBatches([palletId]).catch(() => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>),
+  ])
+  const rows = Array.isArray(qtyRes.message) ? qtyRes.message : qtyRes.message ? [qtyRes.message] : []
+  const onHand = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0)
+  const reservation = resMap[palletId]
+
+  return {
+    palletId,
+    itemCode: batch.item,
+    disabled: !!batch.disabled,
+    onHandQty: onHand,
+    reservedTo: reservation ? { so: reservation.so, customer: reservation.customer } : null,
   }
 }
 

@@ -332,6 +332,7 @@ function StagedPageContent() {
             }}
             renderCard={(row, i) => {
               const order = row as unknown as Order
+              const soName = (order.ifNumber || '').split(' ')[0]
               return (
                 <OrderCard
                   order={order}
@@ -339,6 +340,19 @@ function StagedPageContent() {
                   isExpanded={expandedOrderKey === getOrderKey(order)}
                   onToggle={() => toggleExpanded(order)}
                   statusOverride="Staged"
+                  expandedAction={
+                    /^(SO|SAL-ORD)-/.test(soName) ? (
+                      <div className="mb-3">
+                        <Link
+                          href={`/staged/ship?so=${encodeURIComponent(soName)}`}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold hover:bg-primary/90 transition-colors"
+                        >
+                          <Truck className="size-4" />
+                          {t('fulfillment.shipOrder')}
+                        </Link>
+                      </div>
+                    ) : null
+                  }
                 />
               )
             }}
