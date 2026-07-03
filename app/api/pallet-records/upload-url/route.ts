@@ -20,6 +20,15 @@ function safePathSegment(value: string) {
   return SAFE_PATH_SEGMENT.test(value)
 }
 
+// Since the ERP cutover the IF column holds "SO-00023 (IF153070)" — spaces and
+// parens broke the storage-path check and pallet photos stopped saving for ERP
+// orders (Jaime, 2026-07-03). Use the first token (the SO/IF number itself) as
+// the storage folder; legacy "IF153070" values pass through unchanged.
+function storageKeyFromIfNumber(value: string): string | null {
+  const first = value.trim().split(/\s+/)[0] ?? ''
+  return first && SAFE_PATH_SEGMENT.test(first) ? first : null
+}
+
 function extensionFromMime(mimeType: string) {
   return EXT_BY_MIME[mimeType.toLowerCase()]
 }
@@ -33,7 +42,8 @@ export async function POST(request: NextRequest) {
     if (!if_number || !pallet_number || !content_type) {
       return NextResponse.json({ error: 'Missing if_number, pallet_number, or content_type' }, { status: 400 })
     }
-    if (!safePathSegment(if_number) || !safePathSegment(pallet_number)) {
+    const ifKey = storageKeyFromIfNumber(String(if_number))
+    if (!ifKey || !safePathSegment(pallet_number)) {
       return NextResponse.json({ error: 'Invalid if_number or pallet_number' }, { status: 400 })
     }
 
@@ -41,7 +51,7 @@ export async function POST(request: NextRequest) {
     if (!ext) {
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
     }
-    const path = `${if_number}/pallet-${pallet_number}/${Date.now()}.${ext}`
+    const path = `${ifKey}/pallet-${pallet_number}/${Date.now()}.${ext}`
 
     const { data, error } = await supabaseAdmin.storage
       .from(BUCKET)
