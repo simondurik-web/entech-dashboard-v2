@@ -56,6 +56,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'dims must be LxWxH numbers (e.g. 48x40x60)' }, { status: 400 })
   }
   const dims = dimsRaw
+  // Labels attached to a sales order are finished product headed to a customer:
+  // weight + dimensions are mandatory for them (Simon 2026-07-03). The client
+  // enforces this with a bilingual message; this is the server backstop.
+  if (salesOrder && (!weightLb || !dims)) {
+    return NextResponse.json(
+      { error: 'Finished product labels assigned to a sales order require pallet weight and dimensions.' },
+      { status: 400 }
+    )
+  }
   if (!itemCode || !Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY || !warehouse || !station || !idempotencyKey) {
     return NextResponse.json(
       { error: 'itemCode, qty (1..10M), warehouse, station, and idempotencyKey are required' },
