@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive } from '@/lib/erpnext/inventory'
-import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
+import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { reserveBatchesToSO } from '@/lib/erpnext/staging'
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   const printedBy = await resolveUserName(userId)
 
   // Serialized (pallet) vs non-serialized (quantity) item — decided by ERPNext's batch flag.
-  let itemInfo: { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }
+  let itemInfo: { itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number; itemGroup: string }
   try {
     itemInfo = await getItemInfo(itemCode)
   } catch (e) {
@@ -139,6 +139,7 @@ export async function POST(req: NextRequest) {
           customer,
           ref,
           salesOrder,
+          brand: brandForItemGroup(itemInfo.itemGroup),
           generatedAt: labelTimestamp(),
           printedBy,
         })
@@ -181,18 +182,18 @@ export async function POST(req: NextRequest) {
       return se ? { batch, stockEntry: se } : null
     },
     label: async (committed) => {
-      const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
       const zpl = buildPalletZpl({
         itemCode,
-        itemName: item.item_name ?? itemCode,
+        itemName: itemInfo.itemName,
         qty,
-        uom: item.stock_uom ?? 'pcs',
+        uom: itemInfo.uom,
         batch: committed.batch ?? batch,
         customer,
         ref,
         salesOrder,
         weight: weightLb ? `${weightLb} lb` : undefined,
         dimensions: dims,
+        brand: brandForItemGroup(itemInfo.itemGroup),
         generatedAt: labelTimestamp(),
         printedBy,
       })

@@ -739,13 +739,14 @@ export async function bulkTransfer(input: {
  *  Products where one box really holds N loose pieces (e.g. the 500s) set the field to N. */
 export async function getItemInfo(
   itemCode: string
-): Promise<{ itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number }> {
+): Promise<{ itemName: string; uom: string; hasBatch: boolean; piecesPerPack: number; itemGroup: string }> {
   const item = await erpnextGetDoc<{
     item_name?: string
     stock_uom?: string
     has_batch_no?: number
     is_stock_item?: number
     custom_pieces_per_pack?: number
+    item_group?: string
   }>('Item', itemCode)
   if (!item.is_stock_item) throw new Error(`Item ${itemCode} is not a stock item`)
   const fieldPack = Number(item.custom_pieces_per_pack)
@@ -753,6 +754,7 @@ export async function getItemInfo(
     itemName: item.item_name ?? itemCode,
     uom: item.stock_uom ?? 'pcs',
     hasBatch: !!item.has_batch_no,
+    itemGroup: item.item_group ?? '',
     piecesPerPack: fieldPack > 0 ? fieldPack : 1,
   }
 }

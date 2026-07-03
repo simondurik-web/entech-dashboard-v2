@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { getBatchLocation, assertBatchItem, reserveNextSerial, reissuePallet, verifyReissue, palletBase } from '@/lib/erpnext/inventory'
-import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
+import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -107,7 +107,10 @@ export async function POST(req: NextRequest) {
     reconcile: () => verifyReissue({ oldBatch: batch, newBatch, itemCode, targetQty: target }),
     label: async (committed) => {
       const printBatch = committed.batch ?? newBatch
-      const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
+      const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string; item_group?: string }>(
+        'Item',
+        itemCode
+      )
       const batchDoc = await erpnextGetDoc<{ custom_pallet_weight?: number; custom_pallet_dims?: string }>(
         'Batch',
         printBatch
@@ -120,6 +123,7 @@ export async function POST(req: NextRequest) {
         batch: printBatch,
         weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
         dimensions: batchDoc?.custom_pallet_dims || undefined,
+        brand: brandForItemGroup(item.item_group),
         generatedAt: labelTimestamp(),
         printedBy,
       })

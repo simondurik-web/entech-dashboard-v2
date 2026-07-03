@@ -30,6 +30,16 @@ any change here.
 - **Generated date/time** + **printed-by name** print in the scan zone (replaced the
   old "SCAN PALLET" caption). Stamped server-side at print time by the route (the
   user name is resolved from `user_profiles`).
+- **SnapPad brand logo (SHIPPED 2026-07-03, Simon-approved)**: labels for any item in the
+  ERPNext item group **Snap Pad** (current and future products automatically) print the SnapPad
+  logo above the QR. QR stays at its EXACT standard size; to make room the QR shifts toward the
+  reading bottom and the timestamp/printed-by lines move to the bottom of the left text column.
+  All other item groups are pixel-identical to before (the 2026-06-21 no-company-branding rule
+  still applies — this is the product's own brand). Logo bitmap: `lib/erpnext/snappad-logo.ts`
+  (^GFA, 180 reading-dots tall, rotated 90° CW for the landscape template, generated with PIL
+  from snappad-portal/public/logo.png; verified via Labelary render). Selection:
+  `brandForItemGroup()` in label.ts, fed by Item.item_group in the add / reprint / move-relabel
+  paths (serialized and generic labels both).
 - **Weight + Dimensions (SHIPPED 2026-07-03)**: optional inputs on the Add form
   (`Weight (lb)` number + `Dimensions (LxWxH in)` text). Stored on the Batch as
   `custom_pallet_weight` (Float) + `custom_pallet_dims` (Data) — ERPNext has no
