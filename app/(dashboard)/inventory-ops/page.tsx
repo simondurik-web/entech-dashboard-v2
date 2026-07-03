@@ -896,13 +896,25 @@ export default function InventoryOpsPage() {
 
   const postStage = async () => {
     if (!selectedSo || stageQueue.length === 0 || staging || busyRef.current) return
-    // Moves need an explicit operator confirmation listing what leaves which order.
+    // Moves need an explicit operator confirmation listing what leaves which
+    // order — and a printer, because a moved pallet is RELABELED (new code +
+    // fresh label with the new order; the old label stops scanning).
     const moves = stageQueue.filter((p) => p.reservedTo && p.reservedTo.so !== selectedSo)
     if (moves.length > 0) {
+      if (!addStation) {
+        showFlash('err', t('inventoryOps.stageMoveNeedsPrinter'))
+        return
+      }
+      const stationName = stations.find((s) => s.id === addStation)?.name ?? addStation
       const list = moves
         .map((m) => `${m.batch} — ${m.reservedTo!.so}${m.reservedTo!.customer ? ` (${m.reservedTo!.customer})` : ''}`)
         .join('\n')
-      if (!window.confirm(`${t('inventoryOps.stageMoveConfirm')}\n\n${list}`)) return
+      if (
+        !window.confirm(
+          `${t('inventoryOps.stageMoveConfirm')}\n\n${list}\n\n${t('inventoryOps.stageMoveRelabel').replace('{printer}', stationName)}`
+        )
+      )
+        return
     }
     busyRef.current = true
     setStaging(true)
@@ -915,6 +927,7 @@ export default function InventoryOpsPage() {
           soName: selectedSo,
           pallets: stageQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode, warehouse: p.warehouse, qty: p.qty })),
           allowMove: moves.length > 0,
+          station: moves.length > 0 ? addStation : undefined,
           idempotencyKey: key,
         }),
       })
@@ -922,11 +935,15 @@ export default function InventoryOpsPage() {
       if (!r.ok) throw new Error(d.error || 'staging failed')
       clearOpKey('stage-reserve', selectedSo, batches)
       const reserved = typeof d.reserved === 'number' ? d.reserved : stageQueue.length
+      const relabels = (d.relabels ?? []) as { oldBatch: string; newBatch: string }[]
+      const relabelNote = relabels.length
+        ? ` · ${t('inventoryOps.stageRelabeled')} ${relabels.map((x) => `${x.oldBatch}→${x.newBatch}`).join(', ')}`
+        : ''
       showFlash(
         'ok',
-        d.staged
+        (d.staged
           ? `${t('inventoryOps.stageStaged')} ${selectedSo}`
-          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selectedSo}`
+          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selectedSo}`) + relabelNote
       )
       // Clearing the queue hides the orders panel and (via the item effect) resets selection.
       setStageQueue([])
