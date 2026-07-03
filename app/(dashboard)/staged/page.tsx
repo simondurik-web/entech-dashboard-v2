@@ -64,8 +64,10 @@ export default function StagedPage() {
 function StagedPageContent() {
   const { t } = useI18n()
   const { profile } = useAuth()
-  const { canAccess } = usePermissions()
+  const { canAccess, canAccessExact } = usePermissions()
   const canEditPallets = canAccess('edit_pallet_records')
+  // "Ship Loads" action permission — page visibility alone doesn't ship
+  const canShipLoads = canAccessExact('ship_loads')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
@@ -301,7 +303,7 @@ function StagedPageContent() {
               // ERPNext SO name lives in ifNumber since the ERP cutover
               // ("SO-00043" or "SO-00043 (IF12345)"); legacy SAL-ORD names too.
               const soName = (order.ifNumber || '').split(' ')[0]
-              const canShip = /^(SO|SAL-ORD)-/.test(soName)
+              const canShip = canShipLoads && /^(SO|SAL-ORD)-/.test(soName)
               return (
                 <div>
                   {canShip && (
@@ -341,7 +343,7 @@ function StagedPageContent() {
                   onToggle={() => toggleExpanded(order)}
                   statusOverride="Staged"
                   expandedAction={
-                    /^(SO|SAL-ORD)-/.test(soName) ? (
+                    canShipLoads && /^(SO|SAL-ORD)-/.test(soName) ? (
                       <div className="mb-3">
                         <Link
                           href={`/staged/ship?so=${encodeURIComponent(soName)}`}

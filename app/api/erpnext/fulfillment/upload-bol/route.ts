@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextGetDoc, erpnextUploadFile } from '@/lib/erpnext/client'
+import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 
 // POST /api/erpnext/fulfillment/upload-bol  (multipart: dn, file)
 // Attaches a customer-provided BOL (outside trucker paperwork) to the shipped
@@ -17,7 +18,7 @@ const MAX_BYTES = 15 * 1024 * 1024
 const ALLOWED_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/webp'])
 
 export async function POST(req: NextRequest) {
-  const guard = await requireMenuAccess(req, '/staged')
+  const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
   let form: FormData
@@ -39,8 +40,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const doc = await erpnextGetDoc<{ docstatus: number }>('Delivery Note', dn)
-    if (doc.docstatus !== 1) {
+    const doc = await erpnextGetDoc<{ docstatus: number; custom_ship_against_so?: string | null; customer?: string }>(
+      'Delivery Note',
+      dn
+    )
+    if (doc.docstatus !== 1 || !doc.custom_ship_against_so) {
       return NextResponse.json({ error: 'Shipment not found' }, { status: 404 })
     }
     const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : ''
@@ -52,6 +56,14 @@ export async function POST(req: NextRequest) {
       attachedToDoctype: 'Delivery Note',
       attachedToName: dn,
       contentType: file.type,
+    })
+    logFulfillment({
+      action: 'upload_customer_bol',
+      so: doc.custom_ship_against_so,
+      dn,
+      customer: doc.customer,
+      userId: guard.userId,
+      detail: fileName,
     })
     return NextResponse.json({ fileName }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

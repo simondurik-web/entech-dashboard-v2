@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
+import { usePermissions } from '@/lib/use-permissions'
 
 // Ship Order — fulfillment wrapper, Phases 1+2.
 // Phase 1: read-only order view (lines, staged pallets). Phase 2: scan/type each
@@ -60,7 +61,99 @@ interface FulfillmentOrder {
   stagedAt: string | null
   lines: FulfillmentLine[]
   pallets: StagedPallet[]
-  deliveryNote: { name: string; shipped: boolean; attachments: string[] } | null
+  deliveryNote: {
+    name: string
+    shipped: boolean
+    attachments: string[]
+    signed: boolean
+    driverName: string | null
+  } | null
+}
+
+interface LogEntry {
+  id: number
+  created_at: string
+  action: 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol'
+  dn_number: string
+  user_name: string | null
+  detail: string | null
+}
+
+// Finger/mouse signature pad. Draws black strokes on a transparent canvas and
+// returns a PNG data URL — the same shape ERPNext's own Signature field stores,
+// so the BOL print format renders it without changes.
+function SignaturePad({
+  onChange,
+  clearLabel,
+}: {
+  onChange: (dataUrl: string | null) => void
+  clearLabel: string
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const hasInk = useRef(false)
+
+  const pos = (e: React.PointerEvent) => {
+    const c = canvasRef.current!
+    const r = c.getBoundingClientRect()
+    return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height }
+  }
+  const start = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const c = canvasRef.current
+    if (!c) return
+    c.setPointerCapture(e.pointerId)
+    drawing.current = true
+    const ctx = c.getContext('2d')!
+    const p = pos(e)
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#111'
+    ctx.beginPath()
+    ctx.moveTo(p.x, p.y)
+  }
+  const move = (e: React.PointerEvent) => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const c = canvasRef.current!
+    const ctx = c.getContext('2d')!
+    const p = pos(e)
+    ctx.lineTo(p.x, p.y)
+    ctx.stroke()
+    hasInk.current = true
+  }
+  const end = () => {
+    if (!drawing.current) return
+    drawing.current = false
+    if (hasInk.current && canvasRef.current) onChange(canvasRef.current.toDataURL('image/png'))
+  }
+  const clear = () => {
+    const c = canvasRef.current
+    if (!c) return
+    c.getContext('2d')!.clearRect(0, 0, c.width, c.height)
+    hasInk.current = false
+    onChange(null)
+  }
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={200}
+        className="w-full h-40 rounded-lg border border-border bg-white touch-none"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onPointerLeave={end}
+      />
+      <button onClick={clear} className="mt-1 text-xs text-muted-foreground underline underline-offset-2">
+        {clearLabel}
+      </button>
+    </div>
+  )
 }
 
 interface PalletLookup {
@@ -86,6 +179,8 @@ export default function ShipOrderPage() {
 
 function ShipOrderContent() {
   const { t } = useI18n()
+  const { canAccessExact } = usePermissions()
+  const canShip = canAccessExact('ship_loads')
   const searchParams = useSearchParams()
   const so = (searchParams.get('so') ?? '').trim()
 
@@ -112,6 +207,12 @@ function ShipOrderContent() {
   const [justShipped, setJustShipped] = useState<{ dn: string; docsOk: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadedBols, setUploadedBols] = useState<string[]>([])
+  // BOL signature step
+  const [signature, setSignature] = useState<string | null>(null)
+  const [driverName, setDriverName] = useState('')
+  const [signing, setSigning] = useState(false)
+  const [signSkipped, setSignSkipped] = useState(false)
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -337,6 +438,44 @@ function ShipOrderContent() {
     }
   }
 
+  const fetchLog = useCallback(async () => {
+    try {
+      const res = await authedFetch(`/api/erpnext/fulfillment/log?so=${encodeURIComponent(so)}`)
+      if (res.ok) {
+        const body = await res.json()
+        setLogEntries((body.entries ?? []) as LogEntry[])
+      }
+    } catch {
+      // log display is best-effort
+    }
+  }, [so, authedFetch])
+
+  useEffect(() => {
+    if (so) fetchLog()
+  }, [so, fetchLog, justShipped, undoing])
+
+  const doSignBol = async (dn: string) => {
+    if (!signature || signing) return
+    setSigning(true)
+    setShipError(null)
+    try {
+      const res = await authedPost('/api/erpnext/fulfillment/sign-bol', {
+        dn,
+        driverName,
+        signature,
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || t('fulfillment.signFailed'))
+      setSignature(null)
+      await fetchOrder()
+      fetchLog()
+    } catch (err) {
+      setShipError(err instanceof Error ? err.message : t('fulfillment.signFailed'))
+    } finally {
+      setSigning(false)
+    }
+  }
+
   const doUploadBol = async (dn: string, file: File) => {
     setUploading(true)
     setShipError(null)
@@ -378,6 +517,10 @@ function ShipOrderContent() {
   // The shipped state: either we just completed it, or the order came back shipped.
   const shippedDn = justShipped?.dn ?? (order?.deliveryNote?.shipped ? order.deliveryNote.name : null)
   const isShipped = !!shippedDn || order?.stagingStatus === 'Shipped'
+  // BOL signature step: sign (or skip) before the documents are offered.
+  const dnSigned = order?.deliveryNote?.signed ?? false
+  const showSignStep = canShip && !!shippedDn && !dnSigned && !signSkipped
+  const showDocs = !!shippedDn && (dnSigned || signSkipped || !canShip)
 
   return (
     <div className="p-4 pb-44 max-w-3xl mx-auto">
@@ -516,7 +659,48 @@ function ShipOrderContent() {
               {justShipped && !justShipped.docsOk && (
                 <p className="text-xs text-amber-600 mb-3">{t('fulfillment.docsPartial')}</p>
               )}
-              {shippedDn && (
+
+              {/* Sign the BOL before the documents are offered (skippable) */}
+              {showSignStep && shippedDn && (
+                <div className="rounded-xl border border-border bg-card p-4 mb-3">
+                  <p className="font-semibold mb-1">{t('fulfillment.signBolTitle')}</p>
+                  <p className="text-xs text-muted-foreground mb-3">{t('fulfillment.signBolHint')}</p>
+                  <input
+                    type="text"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
+                    placeholder={t('fulfillment.driverName')}
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 mb-2"
+                  />
+                  <SignaturePad onChange={setSignature} clearLabel={t('fulfillment.clearSignature')} />
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setSignSkipped(true)}
+                      disabled={signing}
+                      className="flex-1 rounded-xl border border-border py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {t('fulfillment.skipSignature')}
+                    </button>
+                    <button
+                      onClick={() => doSignBol(shippedDn)}
+                      disabled={!signature || signing}
+                      className="flex-1 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {signing && <RefreshCw className="size-4 animate-spin" />}
+                      {signing ? t('fulfillment.signSaving') : t('fulfillment.saveSignature')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {dnSigned && (
+                <p className="text-xs text-emerald-700 mb-3">
+                  {t('fulfillment.signedNote').replace('{name}', order?.deliveryNote?.driverName || '-')}
+                </p>
+              )}
+
+              {showDocs && shippedDn && (
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => openDocument(shippedDn, 'bol')}
@@ -535,7 +719,7 @@ function ShipOrderContent() {
                 </div>
               )}
               {/* Customer-provided BOL (outside trucker paperwork) */}
-              {shippedDn && (
+              {shippedDn && canShip && (
                 <div className="mt-4 border-t border-emerald-500/20 pt-4">
                   <p className="text-sm font-semibold mb-1">{t('fulfillment.customerBolTitle')}</p>
                   <p className="text-xs text-muted-foreground mb-2">{t('fulfillment.customerBolHint')}</p>
@@ -564,7 +748,7 @@ function ShipOrderContent() {
                   </label>
                 </div>
               )}
-              {shippedDn && (
+              {shippedDn && canShip && (
                 <button
                   onClick={() => doUndo(shippedDn)}
                   disabled={undoing}
@@ -576,8 +760,51 @@ function ShipOrderContent() {
             </div>
           )}
 
+          {/* Load log — every complete / undo / sign / upload with who + when */}
+          {logEntries.length > 0 && (
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {t('fulfillment.loadLog')}
+              </h2>
+              <div className="rounded-xl border border-border bg-card divide-y divide-border">
+                {logEntries.map((e) => (
+                  <div key={e.id} className="flex items-start justify-between gap-3 p-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-semibold">
+                        {t(
+                          e.action === 'complete'
+                            ? 'fulfillment.logComplete'
+                            : e.action === 'undo'
+                              ? 'fulfillment.logUndo'
+                              : e.action === 'sign_bol'
+                                ? 'fulfillment.logSign'
+                                : 'fulfillment.logUpload'
+                        )}{' '}
+                        <span className="font-mono text-xs text-muted-foreground">{e.dn_number}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {e.user_name || '-'}
+                        {e.detail ? ` · ${e.detail}` : ''}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(e.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* View-only note for users without the Ship Loads permission */}
+          {!isShipped && !canShip && (
+            <div className="rounded-xl border border-border bg-card p-4 mb-4 text-sm text-muted-foreground">
+              {t('fulfillment.viewOnly')}
+            </div>
+          )}
+
           {/* Scan progress */}
-          {!isShipped && (
+          {!isShipped && canShip && (
           <div
             className={`rounded-xl border p-4 mb-4 ${
               allMatch
@@ -688,6 +915,7 @@ function ShipOrderContent() {
           )}
 
           {/* Complete Shipment (enabled by the green light) */}
+          {canShip && (
           <button
             disabled={!allMatch}
             onClick={() => setConfirmOpen(true)}
@@ -695,13 +923,14 @@ function ShipOrderContent() {
           >
             {t('fulfillment.completeShipment')}
           </button>
+          )}
           </>
           )}
         </>
       )}
 
       {/* Sticky scan bar */}
-      {!loading && !error && order && !isShipped && order.pallets.length > 0 && (
+      {!loading && !error && order && !isShipped && canShip && order.pallets.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto space-y-2">
             {feedback && (

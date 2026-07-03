@@ -92,7 +92,13 @@ export interface FulfillmentOrder {
   lines: FulfillmentLine[]
   pallets: StagedPallet[]
   // latest submitted Delivery Note tied to this SO (wrapper or manual scan flow)
-  deliveryNote: { name: string; shipped: boolean; attachments: string[] } | null
+  deliveryNote: {
+    name: string
+    shipped: boolean
+    attachments: string[]
+    signed: boolean
+    driverName: string | null
+  } | null
 }
 
 /** Everything the Ship Order screen needs for one Sales Order, in two-plus-N
@@ -183,14 +189,14 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
       ['custom_ship_against_so', '=', soName],
       ['docstatus', '=', 1],
     ]),
-    listParam('fields', ['name', 'custom_shipped']),
+    listParam('fields', ['name', 'custom_shipped', 'custom_signed_at', 'custom_driver_name']),
     'order_by=creation desc',
     'limit_page_length=1',
   ].join('&')
   const dnRow =
-    (await erpnextGet<{ data: { name: string; custom_shipped?: number }[] }>(
-      `/api/resource/Delivery Note?${dnQs}`
-    )).data?.[0] ?? null
+    (await erpnextGet<{
+      data: { name: string; custom_shipped?: number; custom_signed_at?: string | null; custom_driver_name?: string | null }[]
+    }>(`/api/resource/Delivery Note?${dnQs}`)).data?.[0] ?? null
   let dnAttachments: string[] = []
   if (dnRow) {
     const fq = [
@@ -218,7 +224,13 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
     lines,
     pallets,
     deliveryNote: dnRow
-      ? { name: dnRow.name, shipped: !!dnRow.custom_shipped, attachments: dnAttachments }
+      ? {
+          name: dnRow.name,
+          shipped: !!dnRow.custom_shipped,
+          attachments: dnAttachments,
+          signed: !!dnRow.custom_signed_at,
+          driverName: dnRow.custom_driver_name ?? null,
+        }
       : null,
   }
 }
