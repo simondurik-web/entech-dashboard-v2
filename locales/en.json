@@ -727,6 +727,7 @@
   "fulfillment.back": "Back to Ready to Ship",
   "fulfillment.clearSignature": "Clear signature",
   "fulfillment.driverName": "Driver's name",
+  "fulfillment.linesReady": "{ready} of {total} lines of this order are ready",
   "fulfillment.loadLog": "Load Log",
   "fulfillment.logComplete": "Shipment completed",
   "fulfillment.logSign": "BOL signed",
