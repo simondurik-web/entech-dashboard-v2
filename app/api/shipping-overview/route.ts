@@ -341,6 +341,21 @@ const buildOverview = unstable_cache(
     const shippedCutoff = new Date(now)
     shippedCutoff.setDate(shippedCutoff.getDate() - LOOKBACK_DAYS)
 
+    // Per-SO line stats (multi-line orders): "1 of 3 lines ready" context on
+    // each card. Grouped by the ERP SO name (first token of the IF column);
+    // Fusion-era rows keep their whole IF as the key which groups fine too.
+    const soStats = new Map<string, { total: number; ready: number; shipped: number }>()
+    for (const order of orders) {
+      const key = (order.ifNumber || '').split(' ')[0]
+      if (!key) continue
+      const s = soStats.get(key) ?? { total: 0, ready: 0, shipped: 0 }
+      s.total += 1
+      const st = normalizeStatus(order.internalStatus, order.ifStatus)
+      if (st === 'staged') s.ready += 1
+      else if (st === 'shipped') s.shipped += 1
+      soStats.set(key, s)
+    }
+
     const staged: ShippingOverviewOrder[] = []
     const shipped: ShippingOverviewOrder[] = []
 
@@ -367,7 +382,10 @@ const buildOverview = unstable_cache(
       const palletLength = dims[1] || 40
       const palletWeightEach = firstPallet?.weight || 0
 
+      const soKey = (order.ifNumber || '').split(' ')[0]
+      const sib = soKey ? soStats.get(soKey) : undefined
       const overviewOrder: ShippingOverviewOrder = {
+        siblingLines: sib && sib.total > 1 ? sib : undefined,
         line: order.line,
         ifNumber: order.ifNumber,
         poNumber: order.poNumber,

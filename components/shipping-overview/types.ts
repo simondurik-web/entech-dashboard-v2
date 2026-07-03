@@ -56,6 +56,10 @@ export interface ShippingOverviewOrder {
   palletWidth?: number
   palletLength?: number
   palletWeightEach?: number
+  // Multi-line order context: how many of the parent order's lines are ready
+  // vs total (a line can be "waiting for the other lines" — Simon 2026-07-03).
+  // Absent for single-line orders.
+  siblingLines?: { total: number; ready: number; shipped: number }
 }
 
 export interface ShippingOverviewResponse {

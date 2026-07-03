@@ -121,6 +121,19 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
                 {order.shipping.carrier}
               </span>
             )}
+            {/* Multi-line order context: this line may be waiting on siblings */}
+            {order.siblingLines && (
+              <span
+                title={`${order.siblingLines.ready} staged · ${order.siblingLines.shipped} shipped · ${order.siblingLines.total} lines on this order`}
+                className={
+                  order.siblingLines.ready + order.siblingLines.shipped >= order.siblingLines.total
+                    ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                }
+              >
+                {order.siblingLines.ready + order.siblingLines.shipped} of {order.siblingLines.total} lines ready
+              </span>
+            )}
           </div>
           <div className="mt-1 font-mono text-xs text-muted-foreground">
             {order.partNumber} • IF#: {order.ifNumber || '-'} • Line: {order.line || '-'} • PO: {order.poNumber || '-'}
