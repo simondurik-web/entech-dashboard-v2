@@ -14,6 +14,7 @@ import {
   Package,
   RefreshCw,
   Truck,
+  Upload,
   X,
   XCircle,
 } from 'lucide-react'
@@ -59,7 +60,7 @@ interface FulfillmentOrder {
   stagedAt: string | null
   lines: FulfillmentLine[]
   pallets: StagedPallet[]
-  deliveryNote: { name: string; shipped: boolean } | null
+  deliveryNote: { name: string; shipped: boolean; attachments: string[] } | null
 }
 
 interface PalletLookup {
@@ -110,6 +111,8 @@ function ShipOrderContent() {
   // Set right after a successful completion (before the re-fetch lands) so the
   // shipped view shows instantly; on later visits order.deliveryNote drives it.
   const [justShipped, setJustShipped] = useState<{ dn: string; docsOk: boolean } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadedBols, setUploadedBols] = useState<string[]>([])
   const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -335,6 +338,30 @@ function ShipOrderContent() {
     }
   }
 
+  const doUploadBol = async (dn: string, file: File) => {
+    setUploading(true)
+    setShipError(null)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      const form = new FormData()
+      form.set('dn', dn)
+      form.set('file', file)
+      const res = await fetch('/api/erpnext/fulfillment/upload-bol', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || t('fulfillment.uploadFailed'))
+      setUploadedBols((prev) => [...prev, body.fileName as string])
+    } catch (err) {
+      setShipError(err instanceof Error ? err.message : t('fulfillment.uploadFailed'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   // Open a PDF (BOL / packing slip) — fetched with auth, shown via a blob URL
   // so it works from Safari on iPhone/iPad (AirPrint from the viewer).
   const openDocument = async (dn: string, type: 'bol' | 'packing') => {
@@ -506,6 +533,36 @@ function ShipOrderContent() {
                     <FileText className="size-4" />
                     {t('fulfillment.viewPackingSlip')}
                   </button>
+                </div>
+              )}
+              {/* Customer-provided BOL (outside trucker paperwork) */}
+              {shippedDn && (
+                <div className="mt-4 border-t border-emerald-500/20 pt-4">
+                  <p className="text-sm font-semibold mb-1">{t('fulfillment.customerBolTitle')}</p>
+                  <p className="text-xs text-muted-foreground mb-2">{t('fulfillment.customerBolHint')}</p>
+                  {(order.deliveryNote?.attachments ?? [])
+                    .filter((f) => f.startsWith('CustomerBOL-'))
+                    .map((f) => (
+                      <p key={f} className="text-xs text-emerald-700 font-mono mb-1">✓ {f}</p>
+                    ))}
+                  {uploadedBols.map((f) => (
+                    <p key={f} className="text-xs text-emerald-700 font-mono mb-1">✓ {f}</p>
+                  ))}
+                  <label className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-semibold cursor-pointer hover:bg-muted transition-colors">
+                    <Upload className="size-4" />
+                    {uploading ? t('fulfillment.uploading') : t('fulfillment.uploadCustomerBol')}
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      className="hidden"
+                      disabled={uploading}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        e.target.value = ''
+                        if (f) doUploadBol(shippedDn, f)
+                      }}
+                    />
+                  </label>
                 </div>
               )}
               {shippedDn && (
