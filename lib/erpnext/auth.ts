@@ -24,6 +24,13 @@ function bearer(req: NextRequest): string | null {
 }
 
 export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
+  return requireMenuAccess(req, INVENTORY_OPS_PATH)
+}
+
+/** Same hardened guard, gated on any role_permissions menu path. The fulfillment
+ *  (Ship Order) routes use '/staged' — access to the Ready to Ship page is what
+ *  grants the shipping flow (admin + the shipping roles). */
+export async function requireMenuAccess(req: NextRequest, menuPath: string): Promise<Guard> {
   const token = bearer(req)
   if (!token) {
     return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
@@ -65,7 +72,7 @@ export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
     .eq('role', role)
     .single()
   const menu = (perm?.menu_access ?? {}) as Record<string, boolean>
-  if (menu[INVENTORY_OPS_PATH] === true) return { ok: true, role, userId, email }
+  if (menu[menuPath] === true) return { ok: true, role, userId, email }
 
   return { ok: false, res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
 }
