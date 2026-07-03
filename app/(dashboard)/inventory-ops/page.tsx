@@ -1275,6 +1275,12 @@ export default function InventoryOpsPage() {
       return
     }
     const dims = dimsFilled === 3 ? dimVals.map((v) => String(Number(v))).join('x') : undefined
+    // Labels attached to a sales order are finished product going to a customer:
+    // weight + dimensions are REQUIRED for them (Simon 2026-07-03).
+    if (salesOrder && (!(Number(addWeight) > 0) || !dims)) {
+      showFlash('err', t('inventoryOps.weightDimsRequired'))
+      return
+    }
     if (busyRef.current) return
     busyRef.current = true
     if (!addKeyRef.current) addKeyRef.current = uuid() // reused across retries
@@ -2259,19 +2265,25 @@ export default function InventoryOpsPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletWeight')}</label>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {salesOrder ? t('inventoryOps.palletWeightReq') : t('inventoryOps.palletWeight')}
+                {salesOrder && <span className="text-red-500"> *</span>}
+              </label>
               <input
                 type="number"
                 min="0"
                 step="0.1"
                 value={addWeight}
                 onChange={(e) => setAddWeight(e.target.value)}
-                placeholder={t('inventoryOps.optional')}
+                placeholder={salesOrder ? undefined : t('inventoryOps.optional')}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">{t('inventoryOps.palletDims')}</label>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {salesOrder ? t('inventoryOps.palletDimsReq') : t('inventoryOps.palletDims')}
+                {salesOrder && <span className="text-red-500"> *</span>}
+              </label>
               <div className="grid grid-cols-3 gap-1.5">
                 <input
                   type="number"
