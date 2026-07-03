@@ -38,6 +38,7 @@ const ALL_MENU_PATHS = [
   'labels:generate',
   'labels:print',
   'labels:settings',
+  'ship_loads',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -81,6 +82,21 @@ const PATH_LABELS: Record<string, string> = {
   'labels:generate': '🏷️ Generate Labels',
   'labels:print': '🖨️ Print Labels',
   'labels:settings': '⚙️ Label Settings',
+  'ship_loads': '🚚 Ship Loads',
+}
+
+// Optional one-line explanations shown under the permission name (Simon
+// 2026-07-03: with this many features we need descriptions; add more over time).
+const PATH_DESCRIPTIONS: Record<string, string> = {
+  'ship_loads':
+    'Complete shipments from Ready to Ship: scan pallets, submit the load to ERPNext, sign/print BOL + packing slip, upload customer BOL, undo a shipment.',
+  'edit_pallet_records': 'Create and edit pallet photo records.',
+  'manage_priority': 'Change order priority levels and urgent flags.',
+  'assign_orders': 'Assign orders to production people.',
+  'view_inventory_values': 'See dollar values in inventory reports.',
+  'labels:generate': 'Create new pallet labels (receive inventory).',
+  'labels:print': 'Send labels to the Zebra printers.',
+  'labels:settings': 'Change label templates and printer settings.',
 }
 
 export default function AdminPermissionsPage() {
@@ -216,7 +232,12 @@ export default function AdminPermissionsPage() {
             {ALL_MENU_PATHS.map((path) => (
               <tr key={path} className="border-b hover:bg-muted/30">
                 <td className="sticky left-0 z-10 bg-background px-4 py-2 font-medium">
-                  {PATH_LABELS[path] ?? path}
+                  <div>{PATH_LABELS[path] ?? path}</div>
+                  {PATH_DESCRIPTIONS[path] && (
+                    <div className="max-w-xs text-xs font-normal text-muted-foreground">
+                      {PATH_DESCRIPTIONS[path]}
+                    </div>
+                  )}
                 </td>
                 {roles.map((r) => {
                   const checked = draft[r.role]?.includes(path) ?? false

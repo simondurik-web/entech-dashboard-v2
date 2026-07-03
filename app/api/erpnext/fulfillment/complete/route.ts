@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { completeShipment, getFulfillmentOrder, ShipmentRejectedError } from '@/lib/erpnext/fulfillment'
 import { resolveUserName } from '@/lib/erpnext/operation'
+import { logFulfillment, flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/fulfillment/complete  { so, pallets: string[] }
@@ -39,7 +40,9 @@ async function customerPartNosFor(customer: string, itemCodes: string[]): Promis
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireMenuAccess(req, '/staged')
+  // ship_loads: the action permission Simon grants per role ("Ship Loads") —
+  // page visibility (/staged) alone does NOT allow completing shipments
+  const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
   let body: { so?: string; pallets?: unknown }
@@ -69,6 +72,17 @@ export async function POST(req: NextRequest) {
       userName: userName || guard.email,
       customerPartNos,
     })
+    // audit + instant section hop (best-effort; the 5-min sync self-heals)
+    logFulfillment({
+      action: 'complete',
+      so,
+      dn: result.dn,
+      customer: order.customer,
+      pallets,
+      userId: guard.userId,
+      userName: userName || guard.email,
+    })
+    flipDashboardStatus(so, 'shipped')
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (error instanceof ShipmentRejectedError) {
