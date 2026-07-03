@@ -12,6 +12,7 @@ import {
   FileText,
   Keyboard,
   Package,
+  Printer,
   RefreshCw,
   Truck,
   Upload,
@@ -73,7 +74,7 @@ interface FulfillmentOrder {
 interface LogEntry {
   id: number
   created_at: string
-  action: 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol'
+  action: 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol' | 'print_document'
   dn_number: string
   user_name: string | null
   detail: string | null
@@ -207,6 +208,11 @@ function ShipOrderContent() {
   const [justShipped, setJustShipped] = useState<{ dn: string; docsOk: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadedBols, setUploadedBols] = useState<string[]>([])
+  // Letter-printer stations (print relay) for physical BOL/packing-slip printing
+  const [printStations, setPrintStations] = useState<{ id: string; name: string }[]>([])
+  const [printStation, setPrintStation] = useState('')
+  const [printing, setPrinting] = useState<string | null>(null)
+  const [printQueuedMsg, setPrintQueuedMsg] = useState<string | null>(null)
   // BOL signature step
   const [signature, setSignature] = useState<string | null>(null)
   const [driverName, setDriverName] = useState('')
@@ -476,6 +482,51 @@ function ShipOrderContent() {
     }
   }
 
+  // Load letter-printer stations once a shipment exists (Ship Loads users only)
+  useEffect(() => {
+    if (!canShip) return
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await authedFetch('/api/erpnext/fulfillment/print-document')
+        if (!res.ok) return
+        const body = await res.json()
+        if (!mounted) return
+        const stations = (body.stations ?? []) as { id: string; name: string }[]
+        setPrintStations(stations)
+        setPrintStation((s) => s || stations[0]?.id || '')
+      } catch {
+        /* no relay printing available */
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [canShip, authedFetch])
+
+  const doPrintDocument = async (dn: string, type: 'bol' | 'packing') => {
+    if (!printStation || printing) return
+    setPrinting(type)
+    setShipError(null)
+    setPrintQueuedMsg(null)
+    try {
+      const res = await authedPost('/api/erpnext/fulfillment/print-document', {
+        dn,
+        type,
+        station: printStation,
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || t('fulfillment.printFailed'))
+      setPrintQueuedMsg(t('fulfillment.printQueued'))
+      fetchLog()
+      setTimeout(() => setPrintQueuedMsg(null), 5000)
+    } catch (err) {
+      setShipError(err instanceof Error ? err.message : t('fulfillment.printFailed'))
+    } finally {
+      setPrinting(null)
+    }
+  }
+
   const doUploadBol = async (dn: string, file: File) => {
     setUploading(true)
     setShipError(null)
@@ -500,14 +551,36 @@ function ShipOrderContent() {
     }
   }
 
-  // Open a PDF (BOL / packing slip) — fetched with auth, shown via a blob URL
-  // so it works from Safari on iPhone/iPad (AirPrint from the viewer).
+  // Open a PDF (BOL / packing slip), fetched with auth. In the installed PWA
+  // (standalone Safari) window.open is a no-op, so on devices that support file
+  // sharing we hand the PDF to the iOS share sheet instead — which includes
+  // Print (AirPrint) and Save to Files. Desktop keeps the new-tab viewer.
   const openDocument = async (dn: string, type: 'bol' | 'packing') => {
     try {
       const res = await authedFetch(`/api/erpnext/fulfillment/document?dn=${encodeURIComponent(dn)}&type=${type}`)
       if (!res.ok) throw new Error()
-      const url = URL.createObjectURL(await res.blob())
-      window.open(url, '_blank')
+      const blob = await res.blob()
+      const fileName = `${type === 'bol' ? 'BOL' : 'PackingSlip'}-${dn}.pdf`
+      const file = new File([blob], fileName, { type: 'application/pdf' })
+      const standalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as unknown as { standalone?: boolean }).standalone === true
+      if (standalone && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] })
+          return
+        } catch (e) {
+          if ((e as Error).name === 'AbortError') return // user closed the sheet
+          // fall through to the blob URL path
+        }
+      }
+      const url = URL.createObjectURL(blob)
+      const win = window.open(url, '_blank')
+      if (!win) {
+        // popup blocked / standalone without share support: navigate in place
+        // (Safari renders the PDF; back returns to the app)
+        window.location.assign(url)
+      }
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch {
       setShipError(t('fulfillment.documentFailed'))
@@ -701,6 +774,7 @@ function ShipOrderContent() {
               )}
 
               {showDocs && shippedDn && (
+                <>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => openDocument(shippedDn, 'bol')}
@@ -717,6 +791,54 @@ function ShipOrderContent() {
                     {t('fulfillment.viewPackingSlip')}
                   </button>
                 </div>
+
+                {/* Physical printing through the station relay (letter paper) */}
+                {canShip && printStations.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-border bg-card/60 p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        {t('fulfillment.printOnPaper')}
+                      </p>
+                      {printStations.length > 1 ? (
+                        <select
+                          value={printStation}
+                          onChange={(e) => setPrintStation(e.target.value)}
+                          className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
+                        >
+                          {printStations.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{printStations[0].name}</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => doPrintDocument(shippedDn, 'bol')}
+                        disabled={!!printing}
+                        className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        {printing === 'bol' ? <RefreshCw className="size-4 animate-spin" /> : <Printer className="size-4" />}
+                        {t('fulfillment.printBol')}
+                      </button>
+                      <button
+                        onClick={() => doPrintDocument(shippedDn, 'packing')}
+                        disabled={!!printing}
+                        className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        {printing === 'packing' ? <RefreshCw className="size-4 animate-spin" /> : <Printer className="size-4" />}
+                        {t('fulfillment.printPackingSlip')}
+                      </button>
+                    </div>
+                    {printQueuedMsg && (
+                      <p className="mt-2 text-xs font-semibold text-emerald-600">{printQueuedMsg}</p>
+                    )}
+                  </div>
+                )}
+                </>
               )}
               {/* Customer-provided BOL (outside trucker paperwork) */}
               {shippedDn && canShip && (
@@ -778,7 +900,9 @@ function ShipOrderContent() {
                               ? 'fulfillment.logUndo'
                               : e.action === 'sign_bol'
                                 ? 'fulfillment.logSign'
-                                : 'fulfillment.logUpload'
+                                : e.action === 'print_document'
+                                  ? 'fulfillment.logPrint'
+                                  : 'fulfillment.logUpload'
                         )}{' '}
                         <span className="font-mono text-xs text-muted-foreground">{e.dn_number}</span>
                       </p>

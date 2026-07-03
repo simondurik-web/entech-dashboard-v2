@@ -7,7 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 // flip failure must never fail the shipment action itself (the sync remains
 // the source of truth and self-heals the row within minutes).
 
-export type FulfillmentAction = 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol'
+export type FulfillmentAction = 'complete' | 'undo' | 'sign_bol' | 'upload_customer_bol' | 'print_document'
 
 export interface FulfillmentLogEntry {
   action: FulfillmentAction
