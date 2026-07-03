@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
+import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveBatchesToSO, reservationsForBatches, releaseBatchReservation } from '@/lib/erpnext/staging'
+import { reserveNextSerial, reissuePallet } from '@/lib/erpnext/inventory'
+import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
+import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/staging/assign
 // Reserve a set of scanned pallets (batches) to an open Sales Order in ERPNext.
@@ -27,6 +32,10 @@ interface AssignBody {
   // re-reserve). Without it, such pallets 409 with the conflict list so the UI
   // can ask the operator to confirm the move (Simon 2026-07-03).
   allowMove?: boolean
+  // Printer station for the fresh labels moves require: a moved pallet is
+  // REISSUED (new code, old label rejected natively) so the physical label
+  // can never show the old order's info (Simon 2026-07-03).
+  station?: string
   idempotencyKey?: string
 }
 
@@ -71,23 +80,76 @@ export async function POST(req: NextRequest) {
   // Pallets reserved to a DIFFERENT order: hard-stop unless the operator
   // explicitly confirmed the move (allowMove). Same-order reservations are
   // filtered out (already staged — nothing to do for them).
-  const existing = await reservationsForBatches(pallets.map((p) => p.batch))
-  const moves = pallets
-    .map((p) => existing[p.batch])
-    .filter((r): r is NonNullable<typeof r> => !!r && r.so !== soName)
-  if (moves.length > 0 && !body.allowMove) {
-    return NextResponse.json(
-      {
-        error: 'Some pallets are reserved to another order',
-        moves: moves.map((m) => ({ batch: m.batch, so: m.so, customer: m.customer })),
-      },
-      { status: 409 }
-    )
+  // Retry of a partially-committed request: reuse the PLAN stored with the op
+  // row (moves + pinned new serials) instead of recomputing — after a partial
+  // run the old reservations are gone and recomputation would both miss the
+  // moves and mint fresh serials (phantom reissues). New request -> plan now.
+  type MovePlan = { oldBatch: string; newBatch: string; fromSo: string; customer: string | null; itemCode: string; qty: number }
+  const { data: priorOp } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('item_code')
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle()
+  let moves: MovePlan[]
+  if (priorOp?.item_code) {
+    try {
+      moves = (JSON.parse(priorOp.item_code).relabels ?? []) as MovePlan[]
+    } catch {
+      moves = []
+    }
+  } else {
+    const existing = await reservationsForBatches(pallets.map((p) => p.batch))
+    const conflicts = pallets
+      .map((p) => ({ p, r: existing[p.batch] }))
+      .filter((x): x is { p: (typeof pallets)[number]; r: NonNullable<(typeof existing)[string]> } => !!x.r && x.r.so !== soName)
+    if (conflicts.length > 0 && !body.allowMove) {
+      return NextResponse.json(
+        {
+          error: 'Some pallets are reserved to another order',
+          moves: conflicts.map(({ r }) => ({ batch: r.batch, so: r.so, customer: r.customer })),
+        },
+        { status: 409 }
+      )
+    }
+    // Pin each move's new serial NOW so a retry can never mint a second one.
+    moves = []
+    for (const { p, r } of conflicts) {
+      moves.push({
+        oldBatch: p.batch,
+        newBatch: await reserveNextSerial(p.batch),
+        fromSo: r.so,
+        customer: r.customer,
+        itemCode: p.itemCode,
+        qty: p.qty,
+      })
+    }
   }
 
-  // Bind the op identity to SO + the exact (sorted, de-duped) pallet set, so reusing the key
-  // with a different SO/pallet set is rejected rather than run against the wrong reservation.
-  const fingerprint = JSON.stringify({ so: soName, batches: [...new Set(pallets.map((p) => p.batch))].sort() })
+  // Moves reissue the pallet + print a fresh label, so they need a printer.
+  const station = body.station?.trim()
+  if (moves.length > 0) {
+    if (!station) {
+      return NextResponse.json({ error: 'A printer station is required to move pallets (new labels print)' }, { status: 400 })
+    }
+    const { data: stationRow } = await supabaseAdmin
+      .from('print_stations')
+      .select('id')
+      .eq('id', station)
+      .eq('enabled', true)
+      .single()
+    if (!stationRow) return NextResponse.json({ error: `Unknown or disabled printer station: ${station}` }, { status: 400 })
+    if (!(await userCanPrintTo(guard.userId, guard.role, station))) {
+      return NextResponse.json({ error: `Not allowed to print to this printer station: ${station}` }, { status: 403 })
+    }
+  }
+
+  // Bind the op identity to SO + the exact (sorted, de-duped) pallet set — and the move
+  // plan, so a retry replays the SAME releases/reissues instead of recomputing them.
+  const fingerprint = JSON.stringify({
+    so: soName,
+    batches: [...new Set(pallets.map((p) => p.batch))].sort(),
+    relabels: moves,
+  })
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -96,24 +158,82 @@ export async function POST(req: NextRequest) {
     // family null: spans many pallets, no Stock Entry, so it sits outside the per-pallet lock.
     meta: { warehouse: soName, qty: pallets.length, item_code: fingerprint, batch: null, family: null },
     erp: async () => {
-      // Release first (idempotent: a retry finds no reservation and skips).
+      // Moved pallets: release the old reservation, REISSUE the pallet to its
+      // PINNED new code (ERPNext rejects the old label natively, so the stale
+      // physical label can never ship the wrong order — Simon 2026-07-03).
+      // Every step is idempotent against the pinned plan: release no-ops when
+      // already released, reissuePallet is resumable toward the same target.
+      const printedBy = await resolveUserName(userId)
       for (const m of moves) {
-        const rel = await releaseBatchReservation(m.batch)
+        const entry = pallets.find((p) => p.batch === m.oldBatch)
+        const rel = await releaseBatchReservation(m.oldBatch)
+        await reissuePallet({
+          oldBatch: m.oldBatch,
+          newBatch: m.newBatch,
+          itemCode: m.itemCode,
+          targetQty: m.qty,
+          opKey: `${idempotencyKey}-mv-${m.oldBatch}`,
+        })
+        if (entry) entry.batch = m.newBatch // the reservation below targets the new code
         if (rel.released) {
-          const userName = await resolveUserName(userId)
           logFulfillment({
             action: 'move_reservation',
             so: soName,
             dn: '-',
             customer: m.customer,
-            pallets: [m.batch],
+            pallets: [m.oldBatch],
             userId,
-            userName,
-            detail: `moved ${m.batch} from ${m.so}`,
+            userName: printedBy,
+            detail: `moved ${m.oldBatch} from ${m.fromSo}; relabeled as ${m.newBatch}`,
           })
         }
       }
-      return reserveBatchesToSO({ soName, items: pallets })
+
+      const committed = await reserveBatchesToSO({ soName, items: pallets })
+
+      // Fresh labels for the moved pallets, printed with the NEW order on them.
+      for (const r of moves) {
+        try {
+          const [item, batchDoc] = await Promise.all([
+            erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', r.itemCode),
+            erpnextGetDoc<{ custom_pallet_weight?: number; custom_pallet_dims?: string }>('Batch', r.newBatch),
+          ])
+          const zpl = buildPalletZpl({
+            itemCode: r.itemCode,
+            itemName: item.item_name ?? r.itemCode,
+            qty: r.qty,
+            uom: item.stock_uom ?? 'pcs',
+            batch: r.newBatch,
+            salesOrder: soName,
+            weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
+            dimensions: batchDoc?.custom_pallet_dims || undefined,
+            generatedAt: labelTimestamp(),
+            printedBy,
+          })
+          await supabaseAdmin.from('print_jobs').upsert(
+            {
+              station_id: station,
+              zpl,
+              item_code: r.itemCode,
+              batch: r.newBatch,
+              created_by: userId,
+              idempotency_key: `print-${idempotencyKey}-mv-${r.oldBatch}`,
+              status: 'pending',
+            },
+            { onConflict: 'idempotency_key', ignoreDuplicates: true }
+          )
+        } catch (e) {
+          console.error(`move relabel print failed for ${r.newBatch}:`, e)
+        }
+      }
+
+      return {
+        ...committed,
+        extra: {
+          ...committed.extra,
+          relabels: moves.map((m) => ({ oldBatch: m.oldBatch, newBatch: m.newBatch })),
+        },
+      }
     },
   })
 
