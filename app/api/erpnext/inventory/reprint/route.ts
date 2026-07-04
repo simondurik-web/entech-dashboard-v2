@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { getBatchLocation, assertBatchItem, reserveNextSerial, reissuePallet, verifyReissue, palletBase } from '@/lib/erpnext/inventory'
+import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } from '@/lib/erpnext/staging'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -100,7 +101,31 @@ export async function POST(req: NextRequest) {
     action: 'reprint',
     createdBy: userId,
     meta: { item_code: itemCode, qty: target, station_id: station, batch, family: palletBase(batch), result_batch: newBatch },
-    erp: () => reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey }),
+    erp: async () => {
+      // A staged (reserved) pallet keeps its reservation ACROSS a reprint: the
+      // reservation moves to the new serial, so the order never shows a phantom
+      // old code (Simon's SO-00013 report, 2026-07-03). Look up BEFORE the
+      // reissue (afterwards the old batch is empty); transfer best-effort after
+      // — a failed re-reserve just means the pallet needs re-staging, which the
+      // release already made visible by recomputing the SO's staging status.
+      const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
+      const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
+      if (reservation) {
+        try {
+          await releaseBatchReservation(batch)
+          const loc = await getBatchLocation(newBatch, itemCode)
+          if (loc && loc.qty > 0) {
+            await reserveBatchesToSO({
+              soName: reservation.so,
+              items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
+            })
+          }
+        } catch (e) {
+          console.error(`reprint: reservation transfer ${batch} -> ${newBatch} failed:`, e)
+        }
+      }
+      return committed
+    },
     // reconcile is READ-ONLY: it only reports done if the reissue already completed, so it
     // is safe to call while a peer request may still be mutating. Incomplete -> null, and
     // the state machine re-runs erp() (reissuePallet) under its CAS claim.
