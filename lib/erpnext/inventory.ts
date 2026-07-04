@@ -210,7 +210,7 @@ export async function getBatchLocation(batch: string, itemCode: string): Promise
   // always wants PHYSICAL qty here; reservations are shown as their own badge.
   const r = await erpnextCallGet<{ message?: { warehouse: string; qty: number }[] }>(
     'erpnext.stock.doctype.batch.batch.get_batch_qty',
-    { batch_no: batch, item_code: itemCode, ignore_reserved_stock: 1 }
+    { batch_no: batch, item_code: itemCode, ignore_reserved_stock: '1' }
   )
   const positive = (r.message ?? []).filter((x) => x.qty > 0)
   if (positive.length === 0) return null
@@ -310,7 +310,7 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
           'erpnext.stock.doctype.batch.batch.get_batch_qty',
           // ignore_reserved_stock: physical qty, not net-of-reservations (see
           // getBatchLocation — same WPH1-02 "33 of 352" lie in every pallet list).
-          { batch_no: b.name, item_code: b.item, ignore_reserved_stock: 1 }
+          { batch_no: b.name, item_code: b.item, ignore_reserved_stock: '1' }
         )
         return (r.message ?? [])
           .filter((x) => x.qty > 0)
