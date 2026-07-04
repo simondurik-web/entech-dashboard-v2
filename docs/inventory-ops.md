@@ -6,6 +6,34 @@ rule (2026-06-21): **be super consistent; never lose the label templates or thes
 decisions across dashboard/ERPNext updates.** Update this doc in the same commit as
 any change here.
 
+## Reservation lifecycle (HARD RULES, bug-hunt 2026-07-04)
+
+A pallet's Stock Reservation must FOLLOW the pallet through every mutation, or the
+sales order keeps phantoms / loses coverage:
+
+| Pallet mutation | Reservation behavior | Where |
+|---|---|---|
+| Delete (trash) | RELEASED (+ SO staging recomputed) | remove route erp() |
+| Adjust to 0 (office-only) | RELEASED — same as delete | adjust route qty-0 branch |
+| Adjust to new qty | TRANSFERRED to the new serial, capped at new qty; failure → `warning: reservation_transfer_failed` | adjust route erp() |
+| Reprint | TRANSFERRED to the new serial at full qty | reprint route erp() |
+| Move between orders | Released from old SO + re-reserved to new (pinned relabel plan) | staging/assign route |
+| Ship (DN submit) | Consumed natively via so_detail linkage | ERPNext |
+| Undo shipment | Restored natively (DN cancel) + staging recomputed in stock UoM | fulfillment.ts |
+
+Other invariants from the same hunt:
+- **Physical vs available qty**: `get_batch_qty` SUBTRACTS reservations whenever
+  `item_code` is passed. Dashboard lookups always pass `ignore_reserved_stock: '1'`
+  (string!). Reservations render as their own badge, never baked into qty.
+- **Complete Shipment is per-SO mutually exclusive** via an ops-log advisory row
+  (`family = SHIP-<so>`, existing partial unique index). Loser gets 409.
+- **Staging allocation is delivered-aware**: line remaining = ordered −
+  max(reserved, delivered), so manually-shipped lines can't take new pallets.
+- **Case**: pallet ids canonicalize to UPPERCASE at every comparison boundary
+  (search resolvers, ship-screen scan set, server complete).
+- **OPEN policy question (Simon)**: partial-pallet reservations (319 of a 352
+  pallet) ship only the reserved qty while the physical pallet leaves whole.
+
 ## Pallet ID scheme
 - Short **Crockford base32** codes (`0-9 A-Z` minus `I L O U`), generated in
   `lib/erpnext/inventory.ts` → `generatePalletId()`.
