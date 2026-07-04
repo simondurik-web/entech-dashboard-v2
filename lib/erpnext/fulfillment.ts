@@ -181,10 +181,40 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
         soDetail: s.voucher_detail_no ?? null,
       }))
   })
-  // One pallet can appear in only one active reservation for this SO; dedupe defensively.
-  const pallets = Array.from(
-    new Map(palletLists.flat().map((p) => [p.palletId, p])).values()
-  ).sort((a, b) => a.palletId.localeCompare(b.palletId))
+  // A pallet can be sliced across SEVERAL reservations (ERPNext's old FIFO
+  // auto-pick split batches 319+33 across consecutive SREs on SO-00013) — SUM
+  // the slices per pallet. The old dedupe kept only the first slice, so the
+  // order showed "33 pcs" for a 352-pc pallet (Simon, 2026-07-03).
+  const byId = new Map<string, (typeof palletLists)[number][number]>()
+  for (const p of palletLists.flat()) {
+    const cur = byId.get(p.palletId)
+    if (cur) cur.qty += p.qty
+    else byId.set(p.palletId, { ...p })
+  }
+  const allReserved = Array.from(byId.values()).sort((a, b) => a.palletId.localeCompare(b.palletId))
+  // Drop reservation entries whose batch no longer holds ANY stock — a pallet
+  // deleted / superseded after staging left a phantom on the order list with a
+  // stale qty (Simon's SO-00013 report, 2026-07-03). The delete/reprint flows
+  // now release/transfer reservations, so this guards legacy data and
+  // ERPNext-side edits. Fail OPEN per pallet (keep it) on a lookup error —
+  // hiding a REAL staged pallet from the ship screen is the worse failure.
+  const stockChecks = await mapLimit(allReserved, SRE_FETCH_CONCURRENCY, async (p) => {
+    try {
+      const res = await erpnextGet<{ message?: { qty?: number }[] | Record<string, number> }>(
+        `/api/method/erpnext.stock.doctype.batch.batch.get_batch_qty?${new URLSearchParams({ batch_no: p.palletId })}`
+      )
+      const msg = res.message
+      const total = Array.isArray(msg)
+        ? msg.reduce((s, r) => s + (Number(r.qty) || 0), 0)
+        : typeof msg === 'object' && msg
+          ? Object.values(msg).reduce((s, v) => s + (Number(v) || 0), 0)
+          : 0
+      return total > 1e-6
+    } catch {
+      return true
+    }
+  })
+  const pallets = allReserved.filter((_, i) => stockChecks[i])
 
   // Latest submitted DN on this SO (drives the shipped view / reprint / undo).
   const dnQs = [

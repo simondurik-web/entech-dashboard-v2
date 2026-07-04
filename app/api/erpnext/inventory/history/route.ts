@@ -67,5 +67,38 @@ export async function GET(req: NextRequest) {
     station: r.station_id ?? null,
   }))
 
+  // Merge in shipping events from the fulfillment log so a pallet's timeline
+  // tells the WHOLE story — including the system zeroing it by shipping it
+  // (Simon 2026-07-03). pallets is jsonb; contains() per family serial.
+  const serials = [...new Set([fam, ...(rows ?? []).map((r) => r.batch).filter(Boolean)])] as string[]
+  const shipRows = (
+    await Promise.all(
+      serials.map(async (s) => {
+        const { data } = await supabaseAdmin
+          .from('fulfillment_log')
+          .select('action, dn_number, so_number, user_name, created_at')
+          .in('action', ['complete', 'undo'])
+          .contains('pallets', JSON.stringify([s]))
+        return data ?? []
+      })
+    )
+  ).flat()
+  const seenShip = new Set<string>()
+  for (const s of shipRows) {
+    const key = `${s.action}-${s.dn_number}-${s.created_at}`
+    if (seenShip.has(key)) continue
+    seenShip.add(key)
+    events.push({
+      action: s.action === 'complete' ? 'shipped' : 'unshipped',
+      at: s.created_at,
+      by: s.user_name ?? '',
+      qty: null,
+      // Reuses the warehouse display slot to carry "DN · SO" context.
+      warehouse: [s.dn_number, s.so_number].filter(Boolean).join(' · ') || null,
+      station: null,
+    })
+  }
+  events.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
+
   return NextResponse.json({ events }, { headers: { 'Cache-Control': 'no-store' } })
 }

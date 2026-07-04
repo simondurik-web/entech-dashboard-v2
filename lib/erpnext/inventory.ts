@@ -1117,7 +1117,11 @@ export async function verifyReissue(input: {
  *  never strand the user on null). The per-candidate stock check is bounded — a family
  *  has at most a handful of serials over its life. */
 export async function resolveCurrentSerial(scanned: string): Promise<{ current: string | null; superseded: boolean }> {
-  const base = palletBase(scanned)
+  // Uppercase: pallet codes are Crockford base32, but a TYPED search arrives
+  // as-typed ("9By7"). MariaDB matched anyway; the JS family filter below did
+  // not, so a lowercase search resolved to "no active serial" for a pallet
+  // that had full stock (Simon's SO-00013 report, 2026-07-03).
+  const base = palletBase(scanned).toUpperCase()
   const qs = [
     listParam('or_filters', [['name', '=', base], ['name', 'like', `${base}-%`]]),
     listParam('filters', [['disabled', '=', 0]]),
@@ -1162,6 +1166,7 @@ export interface RemovedPalletInfo {
   labelQty: number // custom_pallet_qty — the qty that was printed on the label
   lastWarehouse: string | null // last bin it was in (from the stock ledger) — restore target
   uom: string
+  family: string[] // every serial in the family — lets the caller match logs
 }
 
 /** Most recent warehouse a batch was in, from the Stock Ledger Entry (the bin it was issued
@@ -1184,7 +1189,11 @@ async function lastWarehouseForBatch(batch: string): Promise<string | null> {
 export async function lookupRemovedPallet(code: string): Promise<RemovedPalletInfo | null> {
   const trimmed = code.trim()
   if (!trimmed) return null
-  const base = palletBase(trimmed)
+  // Pallet codes are uppercase Crockford base32 but the scanned string arrives
+  // as-typed. MariaDB matches case-insensitively; the JS family filter below
+  // does NOT — a lowercase search ("9By7") returned null and the UI showed a
+  // bare one-liner instead of the zero-stock card (Simon, 2026-07-03).
+  const base = palletBase(trimmed).toUpperCase()
   const qs = [
     listParam('or_filters', [['name', '=', base], ['name', 'like', `${base}-%`]]),
     listParam('fields', ['name', 'item', 'disabled', 'custom_pallet_qty']),
@@ -1209,6 +1218,7 @@ export async function lookupRemovedPallet(code: string): Promise<RemovedPalletIn
     labelQty: Number(latest.custom_pallet_qty) || 0,
     lastWarehouse: await lastWarehouseForBatch(latest.name),
     uom: item?.stock_uom ?? 'pcs',
+    family: fam.map((r) => r.name),
   }
 }
 
