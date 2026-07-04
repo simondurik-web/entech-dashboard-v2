@@ -258,7 +258,7 @@ function StagedPageContent() {
           onClick={() => fetchData(true)}
           disabled={refreshing}
           className="p-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
-          aria-label="Refresh"
+          aria-label={t('ui.refresh')}
         >
           <RefreshCw className={`size-5 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
