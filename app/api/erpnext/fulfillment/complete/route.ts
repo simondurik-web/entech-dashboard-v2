@@ -57,6 +57,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
+  // Per-SO mutual exclusion for the single most destructive tap: two stations
+  // completing the same order in the same second both passed findExistingDn
+  // (a read) and raced the DN create (bug-hunt 2026-07-04). Reuses the ops-log
+  // partial unique index on `family` (in-flight statuses): the loser gets 409.
+  // The row is released in finally; sequential retries stay idempotent via
+  // findExistingDn as before.
+  const lockKey = `ship-${so}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const { error: lockErr } = await supabaseAdmin.from('inventory_ops_log').insert({
+    idempotency_key: lockKey,
+    action: 'ship-complete',
+    status: 'pending',
+    created_by: guard.userId,
+    warehouse: so,
+    family: `SHIP-${so}`,
+  })
+  if (lockErr) {
+    if (lockErr.code === '23505') {
+      return NextResponse.json(
+        { error: 'This order is already being completed on another device. Give it a few seconds, then refresh.' },
+        { status: 409 }
+      )
+    }
+    console.error('ship lock insert failed:', lockErr)
+    return NextResponse.json({ error: 'Could not start the shipment. Try again.' }, { status: 502 })
+  }
+  let lockDone = false
+
   try {
     // customer + items come from the live order inside completeShipment; the
     // mapping query needs them too, so read the customer from ERPNext once here.
@@ -72,6 +99,7 @@ export async function POST(req: NextRequest) {
       userName: userName || guard.email,
       customerPartNos,
     })
+    lockDone = true
     // audit + instant section hop (best-effort; the 5-min sync self-heals)
     logFulfillment({
       action: 'complete',
@@ -94,5 +122,11 @@ export async function POST(req: NextRequest) {
     }
     console.error('complete shipment failed:', error)
     return NextResponse.json({ error: 'Shipment failed — nothing was submitted. Try again.' }, { status: 502 })
+  } finally {
+    await supabaseAdmin
+      .from('inventory_ops_log')
+      .update({ status: lockDone ? 'done' : 'failed' })
+      .eq('idempotency_key', lockKey)
+      .then(undefined, (e) => console.error('ship lock release failed:', e))
   }
 }

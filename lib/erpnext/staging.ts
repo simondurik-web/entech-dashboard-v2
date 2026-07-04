@@ -359,7 +359,12 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
   // the hard over-reserve guard (Simon 2026-07-03): nothing can be reserved
   // past what the order still needs, including across a multi-pallet queue.
   const runningReserved = new Map<string, number>()
-  const remainingOf = (l: SOItemRow) => orderedOf(l) - (runningReserved.get(l.name) ?? reservedOf(l))
+  // Per line, consumed = the LARGER of reserved and delivered (a line shipped
+  // manually in ERPNext has delivered > 0 with no reservation — without this,
+  // the auto-finder pinned pallets to already-shipped lines; bug-hunt
+  // 2026-07-04). Matches listOpenSalesOrdersForItem's remaining math.
+  const remainingOf = (l: SOItemRow) =>
+    orderedOf(l) - Math.max(runningReserved.get(l.name) ?? reservedOf(l), Number(l.delivered_qty) || 0)
   const allocations = new Map<string, string>() // batch -> SO Item name
   for (const p of items) {
     let line: SOItemRow | undefined
@@ -386,7 +391,12 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
             : `${soName} only needs ${totalRemaining.toLocaleString()} more of ${p.itemCode}; pallet ${p.batch} holds ${p.qty.toLocaleString()}`
       )
     }
-    runningReserved.set(line.name, (runningReserved.get(line.name) ?? reservedOf(line)) + p.qty)
+    // Seed from max(reserved, delivered) so a partially-delivered line's
+    // remaining stays right across a multi-pallet queue.
+    runningReserved.set(
+      line.name,
+      (runningReserved.get(line.name) ?? Math.max(reservedOf(line), Number(line.delivered_qty) || 0)) + p.qty
+    )
     allocations.set(p.batch, line.name)
   }
 

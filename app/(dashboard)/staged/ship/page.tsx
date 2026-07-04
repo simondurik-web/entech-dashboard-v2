@@ -264,6 +264,17 @@ function ShipOrderContent() {
     }
   }, [so, fetchOrder, t])
 
+  // The page stays mounted across a ?so= change — without this reset, a just-
+  // shipped order's DN banner and scan set bled into the NEXT order opened
+  // from the same tab (bug-hunt 2026-07-04).
+  useEffect(() => {
+    setScannedOk(new Set())
+    setMismatches([])
+    setJustShipped(null)
+    setUploadedBols([])
+    setSignSkipped(false)
+  }, [so])
+
   // Item pictures: the ERP files host is behind Cloudflare Access, so images are
   // proxied through an authed API route and rendered from blob URLs.
   useEffect(() => {
@@ -298,14 +309,17 @@ function ShipOrderContent() {
     }
   }, [])
 
-  const stagedIds = useMemo(() => new Set((order?.pallets ?? []).map((p) => p.palletId)), [order])
+  // Uppercased: scans are canonicalized to uppercase, and the server compares
+  // case-insensitively — a lowercase pallet id could otherwise never match its
+  // own scan (bug-hunt 2026-07-04).
+  const stagedIds = useMemo(() => new Set((order?.pallets ?? []).map((p) => p.palletId.toUpperCase())), [order])
   const lineItemCodes = useMemo(() => new Set((order?.lines ?? []).map((l) => l.itemCode)), [order])
 
   const stagedQtyFor = (itemCode: string) =>
     (order?.pallets ?? []).filter((p) => p.itemCode === itemCode).reduce((s, p) => s + p.qty, 0)
   const scannedQtyFor = (itemCode: string) =>
     (order?.pallets ?? [])
-      .filter((p) => p.itemCode === itemCode && scannedOk.has(p.palletId))
+      .filter((p) => p.itemCode === itemCode && scannedOk.has(p.palletId.toUpperCase()))
       .reduce((s, p) => s + p.qty, 0)
 
   const totalStaged = order?.pallets.length ?? 0
@@ -531,16 +545,25 @@ function ShipOrderContent() {
     setUploading(true)
     setShipError(null)
     try {
-      const { data } = await supabase.auth.getSession()
-      const token = data.session?.access_token
       const form = new FormData()
       form.set('dn', dn)
       form.set('file', file)
-      const res = await fetch('/api/erpnext/fulfillment/upload-bol', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      })
+      const post = async () => {
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token
+        return fetch('/api/erpnext/fulfillment/upload-bol', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+        })
+      }
+      let res = await post()
+      // Same 401 -> refresh -> retry the rest of the page's calls get; an
+      // expired token mid-upload failed outright before (bug-hunt 2026-07-04).
+      if (res.status === 401) {
+        await supabase.auth.refreshSession()
+        res = await post()
+      }
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || t('fulfillment.uploadFailed'))
       setUploadedBols((prev) => [...prev, body.fileName as string])
@@ -974,7 +997,7 @@ function ShipOrderContent() {
           ) : (
             <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
               {order.pallets.map((p) => {
-                const ok = scannedOk.has(p.palletId)
+                const ok = scannedOk.has(p.palletId.toUpperCase())
                 return (
                   <div
                     key={p.palletId}
@@ -1161,7 +1184,7 @@ function ShipOrderContent() {
             </p>
             <div className="rounded-lg bg-muted/50 divide-y divide-border mb-4 max-h-48 overflow-y-auto">
               {order.pallets
-                .filter((p) => scannedOk.has(p.palletId))
+                .filter((p) => scannedOk.has(p.palletId.toUpperCase()))
                 .map((p) => (
                   <div key={p.palletId} className="flex justify-between px-3 py-2 text-sm">
                     <span className="font-mono font-semibold">{p.palletId}</span>
