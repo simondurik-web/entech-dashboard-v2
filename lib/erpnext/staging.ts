@@ -425,6 +425,24 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
       ],
       notify: false,
     })
+    // WHOLE-PALLET RULE (Simon 2026-07-04, option a): the reservation must
+    // cover the pallet's FULL quantity — ERPNext caps a reservation at the
+    // available/unreserved qty under a race, which would ship short on paper
+    // while the physical pallet leaves whole. Verify what actually bound; on
+    // shortfall, release it and stop with an actionable message.
+    // NOTE: Stock Settings allow_partial_reservation must stay ON — ERPNext's
+    // "partial" means partial-vs-the-LINE (per-pallet staging always is);
+    // turning it off makes ERPNext silently SKIP every per-pallet reservation
+    // (verified live 2026-07-04). The whole-pallet rule is enforced HERE.
+    const bound = (await reservationsForBatches([p.batch]).catch(() => ({} as Record<string, BatchReservation>)))[p.batch]
+    const boundQty = Number(bound?.reservedQty ?? 0)
+    if (boundQty + 1e-6 < p.qty) {
+      await releaseBatchReservation(p.batch).catch(() => undefined)
+      throw new Error(
+        `Pallet ${p.batch} could only be reserved for ${boundQty} of its ${p.qty} pcs — the order can't take the whole pallet. ` +
+          `Whole pallets only: use a pallet that fits, or adjust/split the pallet to the needed quantity first.`
+      )
+    }
   }
 
   const after = await reservationNamesForSO(soName)
