@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { removeInventory, reconcileStockEntry, palletBase, assertBatchItem, getBatchLocation } from '@/lib/erpnext/inventory'
+import { releaseBatchReservation } from '@/lib/erpnext/staging'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
     createdBy: userId,
     meta: { item_code: itemCode, batch, family: palletBase(batch) },
     erp: async () => {
+      // A staged pallet's reservation must die WITH the pallet — otherwise the
+      // sales order keeps listing a phantom pallet and its coverage math stays
+      // inflated (Simon found SO-00013 showing deleted pallets, 2026-07-03).
+      // releaseBatchReservation no-ops when there is none, and recomputes the
+      // source SO's staging status when there is; retry-safe either way.
+      await releaseBatchReservation(batch)
       const r = await removeInventory({ batch, itemCode, reason, opKey: idempotencyKey })
       return { batch: r.batch, stockEntry: r.stockEntry }
     },

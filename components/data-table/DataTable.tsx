@@ -126,7 +126,14 @@ function TableRow<T extends Record<string, unknown>>({ row, index: i, visibleCol
                   transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
                   className="overflow-hidden"
                 >
-                  <div className="bg-muted/25 px-3 py-3">
+                  {/* sticky-left + viewport-bound width: the td spans the FULL
+                      table width, which on a narrow screen (phone landscape,
+                      squeezed viewport) pushed the detail panel past the right
+                      edge of the scroll container — it looked cut in half
+                      (Simon's iPhone report, 2026-07-03). Pinning the inner
+                      panel to the visible area keeps it readable regardless of
+                      how wide the table behind it scrolls. */}
+                  <div className="sticky left-0 max-w-[calc(100vw-2rem)] bg-muted/25 px-3 py-3">
                     {renderExpandedContent(row, i)}
                   </div>
                 </motion.div>
@@ -265,8 +272,12 @@ export function DataTable<T extends Record<string, unknown>>({
     // rotating a phone didn't switch views). The per-page custom `renderCard`
     // is what makes the phone card usable; the breakpoint stays at <640+portrait.
     const check = () => {
-      const portrait = window.innerHeight >= window.innerWidth
-      setIsMobile(window.innerWidth < 640 && portrait)
+      // A device whose SHORT side is phone-sized is a phone in EITHER
+      // orientation — landscape iPhones (852x393) got the desktop table and
+      // its expanded panel was unusable (Simon 2026-07-03). iPad portrait
+      // (768+ short side) keeps the table.
+      const shortSide = Math.min(window.innerWidth, window.innerHeight)
+      setIsMobile(window.innerWidth < 640 || shortSide < 500)
     }
     check()
     window.addEventListener('resize', check)

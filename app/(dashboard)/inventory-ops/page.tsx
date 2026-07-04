@@ -114,6 +114,16 @@ interface RemovedPallet {
   labelQty: number // the quantity that was printed on the label
   lastWarehouse: string | null
   uom: string
+  // What ended the pallet (best-effort from the logs): shipped on a DN,
+  // removed by a person, or just zeroed.
+  terminal?: {
+    kind: 'shipped' | 'removed' | 'zeroed'
+    at: string | null
+    by: string | null
+    dn?: string | null
+    so?: string | null
+    customer?: string | null
+  }
 }
 interface RecentLabel {
   batch: string | null
@@ -197,6 +207,16 @@ function describeEvents(events: HistEvent[], t: (k: string) => string) {
         break
       case 'restore':
         text = `${t('inventoryOps.histRestored')}${e.qty != null ? ` · ${e.qty} ${t('inventoryOps.units')}` : ''}${e.warehouse ? ` · ${e.warehouse}` : ''}`
+        break
+      // From the fulfillment log — the "warehouse" slot carries "DN · SO".
+      case 'shipped':
+        text = `${t('inventoryOps.histShipped')}${e.warehouse ? ` · ${e.warehouse}` : ''}`
+        break
+      case 'unshipped':
+        text = `${t('inventoryOps.histUnshipped')}${e.warehouse ? ` · ${e.warehouse}` : ''}`
+        break
+      case 'stage-reserve':
+        text = `${t('inventoryOps.histStaged')}${e.warehouse ? ` · ${e.warehouse}` : ''}`
         break
       default:
         text = e.action
@@ -2529,9 +2549,15 @@ export default function InventoryOpsPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span className="font-mono text-sm font-semibold">{removedPallet.batch}</span>
-                <span className="rounded bg-amber-200 px-1.5 py-0.5 text-xs font-medium text-amber-900">
-                  {t('inventoryOps.removedZero')}
-                </span>
+                {removedPallet.terminal?.kind === 'shipped' ? (
+                  <span className="rounded bg-blue-200 px-1.5 py-0.5 text-xs font-medium text-blue-900">
+                    {t('inventoryOps.removedShipped')}
+                  </span>
+                ) : (
+                  <span className="rounded bg-amber-200 px-1.5 py-0.5 text-xs font-medium text-amber-900">
+                    {t('inventoryOps.removedZero')}
+                  </span>
+                )}
               </div>
               <div className="mt-1 font-mono text-xs text-muted-foreground">{removedPallet.itemCode}</div>
               <div className="mt-1 text-sm text-amber-900">
@@ -2540,6 +2566,15 @@ export default function InventoryOpsPage() {
                   <> · {t('inventoryOps.removedLastBin')}: <span className="font-medium">{removedPallet.lastWarehouse}</span></>
                 )}
               </div>
+              {removedPallet.terminal && removedPallet.terminal.kind !== 'zeroed' && (
+                <div className="mt-1 text-xs text-amber-900">
+                  {removedPallet.terminal.kind === 'shipped'
+                    ? `${t('inventoryOps.terminalShipped')}${removedPallet.terminal.dn ? ` · ${removedPallet.terminal.dn}` : ''}${removedPallet.terminal.so ? ` · ${removedPallet.terminal.so}` : ''}${removedPallet.terminal.customer ? ` · ${removedPallet.terminal.customer}` : ''}`
+                    : t('inventoryOps.terminalRemoved')}
+                  {removedPallet.terminal.by ? ` · ${removedPallet.terminal.by}` : ''}
+                  {removedPallet.terminal.at ? ` · ${new Date(removedPallet.terminal.at).toLocaleString()}` : ''}
+                </div>
+              )}
               <button
                 onClick={() => toggleHistory(removedPallet.batch)}
                 className={`mt-1 inline-flex items-center gap-1 text-xs hover:text-foreground ${historyOpen === removedPallet.batch ? 'text-primary' : 'text-muted-foreground'}`}
@@ -2547,7 +2582,7 @@ export default function InventoryOpsPage() {
                 <Clock className="h-3.5 w-3.5" /> {t('inventoryOps.history')}
               </button>
 
-              {isOffice && (
+              {isOffice && removedPallet.terminal?.kind !== 'shipped' && (
                 <div className="mt-3 rounded-lg border border-amber-300 bg-background p-3">
                   <div className="mb-2 text-sm font-medium">{t('inventoryOps.restoreTitle')}</div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
