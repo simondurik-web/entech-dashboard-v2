@@ -62,16 +62,26 @@ export async function POST(req: NextRequest) {
       partsPerPackage = custom_parts_per_package[orderLine]
     }
 
-    // Check customer_part_mappings if parts_per_package is still missing
-    if (partsPerPackage <= 0) {
-      const { data: mapping } = await supabaseAdmin
-        .from('customer_part_mappings')
-        .select('parts_per_package')
-        .eq('part_number', partNumber)
-        .single()
-
-      if (mapping?.parts_per_package) {
-        partsPerPackage = Number(mapping.parts_per_package)
+    // Fallback: pull the standard pack qty from the customer's part mapping.
+    // customer_part_mappings is keyed by (customer_id, internal_part_number) and the
+    // quantity lives in package_quantity — NOT part_number/parts_per_package, so the
+    // previous lookup never matched (and .single() threw on 0/many rows).
+    if (partsPerPackage <= 0 && customerName && partNumber) {
+      const { data: cust } = await supabaseAdmin
+        .from('customers')
+        .select('id')
+        .ilike('name', customerName.trim())
+        .maybeSingle()
+      if (cust?.id) {
+        const { data: mapping } = await supabaseAdmin
+          .from('customer_part_mappings')
+          .select('package_quantity')
+          .eq('customer_id', cust.id)
+          .eq('internal_part_number', partNumber)
+          .maybeSingle()
+        if (mapping?.package_quantity) {
+          partsPerPackage = Number(mapping.package_quantity)
+        }
       }
     }
 
