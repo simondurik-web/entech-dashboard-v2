@@ -508,7 +508,11 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     ).map((f) => f.file_name)
   )
   const attach = async (format: string, fileName: string): Promise<boolean> => {
-    if (alreadyAttached.has(fileName)) return true
+    // Prefix match, not exact: Frappe auto-suffixes name collisions
+    // ("BOL-DN-0001-1.pdf"), so an exact check re-attached a duplicate on
+    // retry (bug-hunt 2026-07-04).
+    const stem = fileName.replace(/\.pdf$/i, '')
+    if ([...alreadyAttached].some((n) => n === fileName || n.startsWith(stem))) return true
     const pdf = await fetchDnPdf(dn, format)
     if (!pdf) return false
     try {
@@ -556,11 +560,13 @@ async function recomputeStagingAfterUndo(soName: string): Promise<string | null>
   const so = await erpnextGetDoc<{
     custom_staging_status?: string | null
     custom_staged_pallets?: number | null
-    items: { item_code: string; qty: number }[]
+    items: { item_code: string; qty: number; stock_qty?: number | null }[]
   }>('Sales Order', soName)
 
   const ordered: Record<string, number> = {}
-  for (const it of so.items ?? []) ordered[it.item_code] = (ordered[it.item_code] ?? 0) + (Number(it.qty) || 0)
+  // stock_qty, not qty: DN quantities are in STOCK units; a sales-UoM item
+  // (e.g. sold by the case) would mix units here (bug-hunt 2026-07-04).
+  for (const it of so.items ?? []) ordered[it.item_code] = (ordered[it.item_code] ?? 0) + (Number(it.stock_qty ?? it.qty) || 0)
 
   const qs = [
     listParam('filters', [

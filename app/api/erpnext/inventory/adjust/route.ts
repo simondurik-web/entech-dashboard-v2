@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveNextSerial, reissuePallet, verifyReissue, removeInventory, reconcileStockEntry, assertBatchItem, getBatchLocation, palletBase } from '@/lib/erpnext/inventory'
+import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } from '@/lib/erpnext/staging'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -17,6 +18,10 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const MAX_QTY = 10_000_000
+// Adjust-to-0 IS a removal — same office-only policy as the remove route
+// (bug-hunt 2026-07-04: the pencil is visible to all inventory users, so a
+// qty of 0 bypassed the office gate the trash button enforces).
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user'])
 
 interface AdjustBody {
   batch?: string
@@ -114,12 +119,20 @@ export async function POST(req: NextRequest) {
   // target (not the raw request) so a same-key retry can't divert an adjust-to-50 into a
   // remove just because a buggy retry sent newQty:0.
   if (target === 0) {
+    if (!OFFICE_ROLES.has(guard.role)) {
+      return NextResponse.json({ error: 'Setting a pallet to 0 removes it — office-only. Ask a supervisor.' }, { status: 403 })
+    }
     const result = await runInventoryOp({
       key: idempotencyKey,
       action: 'remove',
       createdBy: userId,
       meta: { item_code: itemCode, qty: 0, station_id: station, batch, family: palletBase(batch) },
-      erp: () => removeInventory({ batch, itemCode, reason: 'adjusted to 0', opKey: idempotencyKey }),
+      erp: async () => {
+        // Same rule as the remove route: a staged pallet's reservation dies
+        // WITH the pallet, or the order keeps a phantom (bug-hunt 2026-07-04).
+        await releaseBatchReservation(batch)
+        return removeInventory({ batch, itemCode, reason: 'adjusted to 0', opKey: idempotencyKey })
+      },
       reconcile: async () => {
         const se = await reconcileStockEntry(idempotencyKey)
         return se ? { batch, stockEntry: se } : null
@@ -136,7 +149,30 @@ export async function POST(req: NextRequest) {
     action: 'adjust',
     createdBy: userId,
     meta: { item_code: itemCode, qty: target, station_id: station, batch, family: palletBase(batch), result_batch: newBatch },
-    erp: () => reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey }),
+    erp: async () => {
+      // A staged pallet's reservation moves to the new serial across a qty
+      // change, capped at the NEW qty — same rule as the reprint route
+      // (bug-hunt 2026-07-04: adjust reissued via the identical engine but
+      // stranded the reservation on the drained old serial).
+      const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
+      const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
+      if (reservation) {
+        try {
+          await releaseBatchReservation(batch)
+          const loc = await getBatchLocation(newBatch, itemCode)
+          if (loc && loc.qty > 0) {
+            await reserveBatchesToSO({
+              soName: reservation.so,
+              items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
+            })
+          }
+        } catch (e) {
+          console.error(`adjust: reservation transfer ${batch} -> ${newBatch} failed:`, e)
+          return { ...committed, extra: { ...committed.extra, warning: 'reservation_transfer_failed' } }
+        }
+      }
+      return committed
+    },
     // reconcile is READ-ONLY (see reprint route): reports done only if already complete,
     // else null and the state machine re-runs erp() (reissuePallet) under its CAS claim.
     reconcile: () => verifyReissue({ oldBatch: batch, newBatch, itemCode, targetQty: target }),
