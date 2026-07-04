@@ -1,47 +1,62 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { updateAssignedTo } from '@/lib/google-sheets-write'
 import { getAutoAssignee } from '@/lib/auto-assign-rules'
 import type { Order } from '@/lib/supabase-data'
 
 /**
- * Check all orders and auto-assign unassigned ones based on customer rules.
- * Updates both Supabase (immediate) and Google Sheets (source of truth).
- * Runs as fire-and-forget on each /api/sheets fetch.
+ * Auto-assign unassigned orders based on customer rules (e.g. Origen RV
+ * Accessories / Technoflex -> Joseles).
+ *
+ * Persists to Supabase `dashboard_orders`, the live source of truth after the
+ * 2026-06-30 ERPNext cutover. The ERPNext->dashboard sync
+ * (sync_erpnext_to_dashboard.py) preserves assigned_to and only inserts NEW
+ * lines as unassigned, so once we set it here it sticks across sync cycles.
+ *
+ * IMPORTANT: this mutates each matched order's `assignedTo` in place so the
+ * SAME /api/sheets response reflects the assignment. Previously it only wrote
+ * to the DB fire-and-forget, so the assignment never showed on the current
+ * load (needed a second refresh) and — worse — the write ran AFTER the
+ * serverless response returned, where Vercel can freeze the function before it
+ * completes. That made auto-assign flaky post-migration (Simon, 2026-07-04).
+ *
+ * The old Google Sheets write was removed 2026-07-04: the sheet->db sync
+ * (sync_sheets_to_db.py) has been disabled since the ERPNext cutover, so the
+ * sheet is no longer read by anything and writing to it was dead weight (an
+ * extra serialized Google Sheets API call + failure surface on every fetch).
+ *
+ * Callers should `await` this before returning so the writes reliably land.
  */
 export async function applyAutoAssignRules(orders: Order[]): Promise<void> {
-  const toAssign: { line: string; assignee: string }[] = []
+  // Group the lines that need assigning by assignee so we do one UPDATE each.
+  const linesByAssignee = new Map<string, string[]>()
 
   for (const order of orders) {
     // Only auto-assign if currently unassigned
     if (order.assignedTo && order.assignedTo.trim() !== '') continue
 
     const assignee = getAutoAssignee(order.customer)
-    if (assignee) {
-      toAssign.push({ line: order.line, assignee })
-    }
+    if (!assignee) continue
+
+    // Reflect immediately in the response we're about to return.
+    order.assignedTo = assignee
+
+    const lines = linesByAssignee.get(assignee) ?? []
+    lines.push(order.line)
+    linesByAssignee.set(assignee, lines)
   }
 
-  if (toAssign.length === 0) return
+  if (linesByAssignee.size === 0) return
 
-  console.log(`[auto-assign] Assigning ${toAssign.length} orders based on customer rules`)
+  const total = [...linesByAssignee.values()].reduce((n, l) => n + l.length, 0)
+  console.log(`[auto-assign] Assigning ${total} orders based on customer rules`)
 
-  // Batch update Supabase
-  for (const { line, assignee } of toAssign) {
-    await supabaseAdmin
+  // Persist to Supabase (live source of truth) — one batched update per assignee.
+  for (const [assignee, lines] of linesByAssignee) {
+    const { error } = await supabaseAdmin
       .from('dashboard_orders')
       .update({ assigned_to: assignee })
-      .eq('line', line)
-      .then(({ error }) => {
-        if (error) console.warn(`[auto-assign] Supabase update failed for line ${line}:`, error.message)
-      })
-  }
-
-  // Update Google Sheets (source of truth) — serialize to avoid rate limits
-  for (const { line, assignee } of toAssign) {
-    try {
-      await updateAssignedTo(line, assignee)
-    } catch (err) {
-      console.warn(`[auto-assign] Sheets update failed for line ${line}:`, err)
+      .in('line', lines)
+    if (error) {
+      console.warn(`[auto-assign] Supabase update failed for ${assignee} (${lines.length} lines):`, error.message)
     }
   }
 }
