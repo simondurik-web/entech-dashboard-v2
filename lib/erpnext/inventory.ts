@@ -203,9 +203,14 @@ interface BatchLocation {
 /** Current on-hand for a pallet/batch: total qty, primary warehouse, and whether
  *  it is split across bins (adjust/remove refuse split pallets to avoid guessing). */
 export async function getBatchLocation(batch: string, itemCode: string): Promise<BatchLocation | null> {
+  // ignore_reserved_stock: with item_code present, get_batch_qty silently
+  // subtracts Stock-Reservation qty — a 352-pc pallet staged for 319 reported
+  // "33", which lied on the search card AND would have made a reprint/remove
+  // target the wrong qty (Simon's WPH1-02 report, 2026-07-03). The dashboard
+  // always wants PHYSICAL qty here; reservations are shown as their own badge.
   const r = await erpnextCallGet<{ message?: { warehouse: string; qty: number }[] }>(
     'erpnext.stock.doctype.batch.batch.get_batch_qty',
-    { batch_no: batch, item_code: itemCode }
+    { batch_no: batch, item_code: itemCode, ignore_reserved_stock: 1 }
   )
   const positive = (r.message ?? []).filter((x) => x.qty > 0)
   if (positive.length === 0) return null
@@ -303,7 +308,9 @@ async function enumeratePallets(itemCodes: string[]): Promise<PalletLoc[]> {
       try {
         const r = await erpnextCallGet<{ message?: { warehouse: string; qty: number }[] }>(
           'erpnext.stock.doctype.batch.batch.get_batch_qty',
-          { batch_no: b.name, item_code: b.item }
+          // ignore_reserved_stock: physical qty, not net-of-reservations (see
+          // getBatchLocation — same WPH1-02 "33 of 352" lie in every pallet list).
+          { batch_no: b.name, item_code: b.item, ignore_reserved_stock: 1 }
         )
         return (r.message ?? [])
           .filter((x) => x.qty > 0)
