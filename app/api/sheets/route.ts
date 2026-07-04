@@ -15,8 +15,15 @@ export async function GET(req: NextRequest) {
     try {
       const orders = await fetchOrdersFromDB()
       mergePriorityOverrides(orders, overrides)
-      // Auto-assign unassigned orders based on customer rules (fire-and-forget)
-      applyAutoAssignRules(orders).catch(err => console.warn('Auto-assign error:', err))
+      // Auto-assign unassigned orders based on customer rules. Awaited so the
+      // response reflects the assignment on THIS load and the DB write reliably
+      // completes (serverless can freeze after the response returns). Never let
+      // an auto-assign failure break the orders response.
+      try {
+        await applyAutoAssignRules(orders)
+      } catch (err) {
+        console.warn('Auto-assign error:', err)
+      }
       return NextResponse.json(orders)
     } catch (dbError) {
       console.warn('Supabase failed, falling back to Google Sheets:', dbError)
