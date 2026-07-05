@@ -31,25 +31,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'line is required' }, { status: 400 })
   }
 
-  // 1. Update Google Sheets (source of truth)
-  const sheetsResult = await updateAssignedTo(line, assigned_to || '')
-  if (!sheetsResult.success) {
-    return NextResponse.json(
-      { error: `Sheets update failed: ${sheetsResult.error}` },
-      { status: 500 }
-    )
-  }
-
-  // 2. Update Supabase (immediate effect on dashboard)
+  // 1. Update Supabase (source of truth the dashboard reads)
   const { error: dbError } = await supabaseAdmin
     .from('dashboard_orders')
     .update({ assigned_to: assigned_to || null })
     .eq('line', line)
 
   if (dbError) {
-    // Sheets succeeded but Supabase failed — next sync will fix it
-    console.warn('Supabase update failed (Sheets succeeded, will sync):', dbError.message)
+    return NextResponse.json({ error: dbError.message }, { status: 500 })
   }
+
+  // 2. Mirror to the legacy Google Sheet best-effort. Post-ERPNext-cutover the sheet is no longer the
+  //    data source, so a missing/legacy line (or absent creds) must NOT block assignment. This matches
+  //    PUT/DELETE below and the PR #200 fix; the old hard 500-gate here silently blocked every
+  //    assignment on ERPNext-synced lines that don't exist in the retired sheet.
+  updateAssignedTo(line, assigned_to || '').catch(() => {})
 
   return NextResponse.json({ ok: true, line, assigned_to })
 }
