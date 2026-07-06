@@ -6,6 +6,7 @@ import {
   erpnextRunDocMethod,
   erpnextCancel,
 } from './client'
+import { erpNow } from './erp-time'
 import type { Committed } from './operation'
 
 // "Prepare for staging" — reserve specific pallets (batches) to an open Sales Order in
@@ -480,7 +481,7 @@ export async function reserveBatchesToSO(
 
 /** ERPNext-friendly "now" (YYYY-MM-DD HH:MM:SS, local server tz per Frappe convention). */
 function nowStamp(): string {
-  return new Date().toISOString().slice(0, 19).replace('T', ' ')
+  return erpNow()
 }
 
 export interface StagedOrder {

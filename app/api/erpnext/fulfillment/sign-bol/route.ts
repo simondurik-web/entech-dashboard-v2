@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { erpNow } from '@/lib/erpnext/erp-time'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextGetDoc, erpnextUpdate } from '@/lib/erpnext/client'
 import { resolveUserName } from '@/lib/erpnext/operation'
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Shipment not found' }, { status: 404 })
     }
     const now = new Date()
-    const stamp = now.toISOString().slice(0, 19).replace('T', ' ')
+    const stamp = erpNow(now)
     await erpnextUpdate('Delivery Note', dn, {
       custom_driver_name: driverName || null,
       received_by_name: driverName || null,
