@@ -6,6 +6,7 @@ import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { reserveBatchesToSO } from '@/lib/erpnext/staging'
+import { flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/add
@@ -240,6 +241,12 @@ export async function POST(req: NextRequest) {
         items: [{ itemCode, warehouse, batch: committedBatch, qty }],
       })
       result.body.staging = { reserved: r.reserved, staged: r.staged }
+      // Instant status flip for the lines this pallet fully covered — the
+      // 5-min sync reaches the same answer, this just kills the lag window
+      // (SO-00077 release 2 read Pending for minutes after staging, 2026-07-06).
+      if (r.fullyReservedSoItems.length > 0) {
+        flipDashboardStatus(salesOrder, 'staged', r.fullyReservedSoItems)
+      }
     } catch (e) {
       result.body.staging = { reserved: 0, staged: false, warning: (e as Error).message }
     }
