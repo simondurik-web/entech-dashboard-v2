@@ -58,6 +58,33 @@ export async function POST(request: NextRequest) {
     const recordedByName = actorName(actor)
     const customer = await getCustomerByLine(line_number)
 
+    // Idempotency guard: a double-tap / offline-retry on the floor was inserting
+    // the SAME pallet twice, inflating the pallet count (Simon 2026-07-06 — one
+    // photo recorded as two pallets). If a record for this line already exists
+    // with the same pallet_number AND the same photo set, return it instead of
+    // creating a duplicate. Distinct photos (a genuine re-shoot) still create a
+    // new record, so real pallets are never blocked.
+    const incomingPhotos = Array.isArray(photo_urls) ? [...photo_urls].sort() : []
+    const { data: existingForLine } = await supabaseAdmin
+      .from('pallet_records')
+      .select('*')
+      .eq('line_number', line_number)
+      .eq('pallet_number', pallet_number)
+    const dupe = (existingForLine ?? []).find((r) => {
+      const have = Array.isArray(r.photo_urls) ? [...r.photo_urls].sort() : []
+      const samePhotos =
+        have.length === incomingPhotos.length && have.every((u, i) => u === incomingPhotos[i])
+      // same pallet# + identical photos = the reported double-submit; also catch
+      // the rapid empty-photo double-tap (same pallet# created <60s ago).
+      const rapidRepeat =
+        incomingPhotos.length === 0 &&
+        Date.now() - new Date(r.created_at).getTime() < 60_000
+      return samePhotos || rapidRepeat
+    })
+    if (dupe) {
+      return NextResponse.json(dupe, { headers: { 'X-Deduped': '1' } })
+    }
+
     const { data, error } = await supabaseAdmin
       .from('pallet_records')
       .insert({
