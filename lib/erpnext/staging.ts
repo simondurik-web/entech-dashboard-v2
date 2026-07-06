@@ -340,9 +340,12 @@ export interface ReserveInput {
  *  marked Staged (custom_staging_status + custom_staged_at + custom_staged_pallets). Partial
  *  coverage is allowed and leaves the order Open. Returns how many new reservations were created
  *  and whether the order auto-staged. */
-export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed & { reserved: number; staged: boolean }> {
+export async function reserveBatchesToSO(
+  input: ReserveInput
+): Promise<Committed & { reserved: number; staged: boolean; fullyReservedSoItems: string[] }> {
   const { soName, items } = input
-  if (items.length === 0) return { stockEntry: null, reserved: 0, staged: false, extra: { reserved: 0, staged: false } }
+  if (items.length === 0)
+    return { stockEntry: null, reserved: 0, staged: false, fullyReservedSoItems: [], extra: { reserved: 0, staged: false } }
 
   const so = await erpnextGetDoc<SODoc>('Sales Order', soName)
   if (so.docstatus !== 1 || OPEN_SO_EXCLUDE.includes(so.status)) {
@@ -448,6 +451,14 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
   const after = await reservationNamesForSO(soName)
   const reserved = after.filter((n) => !before.has(n)).length
 
+  // SO item rows this call filled to their FULL ordered qty — the instant
+  // dashboard status flip is scoped to these (a partially-covered line must
+  // stay Pending until the sync's reserved>=ordered check agrees).
+  const fullyReservedSoItems = [...new Set(allocations.values())].filter((name) => {
+    const line = (so.items ?? []).find((l) => l.name === name)
+    return !!line && (runningReserved.get(name) ?? 0) + 1e-6 >= orderedOf(line)
+  })
+
   // Auto-mark Staged when the whole SO is fully covered.
   const progress = await getStagingProgress(soName)
   let staged = false
@@ -464,7 +475,7 @@ export async function reserveBatchesToSO(input: ReserveInput): Promise<Committed
     staged = true
   }
 
-  return { stockEntry: null, reserved, staged, extra: { reserved, staged } }
+  return { stockEntry: null, reserved, staged, fullyReservedSoItems, extra: { reserved, staged } }
 }
 
 /** ERPNext-friendly "now" (YYYY-MM-DD HH:MM:SS, local server tz per Frappe convention). */

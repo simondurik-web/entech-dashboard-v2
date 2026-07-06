@@ -6,7 +6,7 @@ import { reserveNextSerial, reissuePallet } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
-import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
+import { logFulfillment, flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/staging/assign
@@ -190,6 +190,13 @@ export async function POST(req: NextRequest) {
       }
 
       const committed = await reserveBatchesToSO({ soName, items: pallets })
+
+      // Instant status flip for the lines these pallets fully covered — the
+      // 5-min sync reaches the same answer, this just kills the lag window
+      // (SO-00077 release 2 read Pending for minutes after staging, 2026-07-06).
+      if (committed.fullyReservedSoItems.length > 0) {
+        flipDashboardStatus(soName, 'staged', committed.fullyReservedSoItems)
+      }
 
       // Fresh labels for the moved pallets, printed with the NEW order on them.
       for (const r of moves) {
