@@ -15,7 +15,10 @@ export const runtime = 'nodejs'
 const DN_NAME = /^[A-Za-z0-9-]{1,40}$/
 
 export async function GET(req: NextRequest) {
-  const guard = await requireMenuAccess(req, '/staged')
+  // Ship flow ('/staged'), Shipping Overview / Shipped views, or PO Automation.
+  let guard = await requireMenuAccess(req, '/staged')
+  if (!guard.ok) guard = await requireMenuAccess(req, '/shipping-overview')
+  if (!guard.ok) guard = await requireMenuAccess(req, '/po-automation')
   if (!guard.ok) return guard.res
 
   const dn = req.nextUrl.searchParams.get('dn')?.trim() ?? ''
@@ -24,13 +27,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
   try {
-    // only serve documents for real, submitted, fulfillment-flow DNs (tied to
-    // an SO) — not arbitrary guessed Delivery Notes
-    const doc = await erpnextGetDoc<{ docstatus: number; custom_ship_against_so?: string | null }>(
-      'Delivery Note',
-      dn
-    )
-    if (doc.docstatus !== 1 || !doc.custom_ship_against_so) {
+    // only serve documents for real, submitted DNs tied to a Sales Order — not
+    // arbitrary guessed Delivery Notes. DNs scanned natively in ERPNext carry
+    // the SO link on their items (against_sales_order), not the wrapper's
+    // custom_ship_against_so field — both count (Simon 2026-07-06: every
+    // shipped order's BOL/packing slip must be downloadable).
+    const doc = await erpnextGetDoc<{
+      docstatus: number
+      custom_ship_against_so?: string | null
+      items?: { against_sales_order?: string | null }[]
+    }>('Delivery Note', dn)
+    const soLinked =
+      !!doc.custom_ship_against_so || (doc.items ?? []).some((i) => !!i.against_sales_order)
+    if (doc.docstatus !== 1 || !soLinked) {
       return NextResponse.json({ error: 'Not available' }, { status: 404 })
     }
 

@@ -217,6 +217,7 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
                     shipped={shipped}
                     canManage={canManageBol}
                     showPoEntry={canSeePoData}
+                    soName={(order.ifNumber || '').split(' ')[0]}
                   />
                 </div>
               )}
