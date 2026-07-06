@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Inbox } from 'lucide-react'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { ErpShippingDocs } from '@/components/po-automation/ErpShippingDocs'
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
 import { authHeaders } from '@/lib/session-token'
@@ -26,6 +27,7 @@ export function OrderPoBolSection({
   shipped = false,
   canManage = false,
   showPoEntry = true,
+  soName = '',
 }: {
   customer: string
   poNumber: string
@@ -37,6 +39,8 @@ export function OrderPoBolSection({
   /** Show the PO Fusion-entry block (needs PO-Automation access). Hidden for
    *  shipping managers who can manage the BOL but can't see PO data. */
   showPoEntry?: boolean
+  /** ERPNext Sales Order name — enables the generated BOL/packing-slip list. */
+  soName?: string
 }) {
   const { t } = useI18n()
   const [match, setMatch] = useState<PoMatch | null>(null)
@@ -111,6 +115,10 @@ export function OrderPoBolSection({
         shipped={shipped}
         canManage={canManage}
       />
+
+      {/* Generated documents (BOL + packing slip) streamed from ERPNext per
+          Delivery Note — self-hides when the order has no submitted DNs. */}
+      {soName && <ErpShippingDocs key={`erpdocs|${soName}`} soName={soName} />}
     </div>
   )
 }
