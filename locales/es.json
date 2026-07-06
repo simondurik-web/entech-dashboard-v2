@@ -1477,5 +1477,8 @@
   "login.verifying": "Verificando…",
   "login.differentEmail": "Usar otro correo",
   "login.enterCode": "Ingresa el código de tu correo",
-  "login.codeInvalid": "Ese código no es válido o expiró."
+  "login.codeInvalid": "Ese código no es válido o expiró.",
+  "shippingDocs.title": "Documentos de envío (generados)",
+  "shippingDocs.bol": "Conocimiento de embarque (BOL)",
+  "shippingDocs.packingSlip": "Lista de empaque"
 }

@@ -7,6 +7,7 @@ import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/
 import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
+import { ErpShippingDocs } from '@/components/po-automation/ErpShippingDocs'
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
@@ -633,6 +634,12 @@ export function OrderDetail({
                 variant="card"
                 canManage
               />
+            )}
+
+            {/* ── Generated shipping documents (BOL + packing slip) streamed from
+                ERPNext per Delivery Note — self-hides when there are none ── */}
+            {showPoSection && !!ifNumber && (
+              <ErpShippingDocs key={`erpdocs|${ifNumber}`} soName={(ifNumber || '').split(' ')[0]} />
             )}
 
             {/* ── Pallet Records — compact collapsible table ── */}

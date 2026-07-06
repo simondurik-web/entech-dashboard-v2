@@ -1477,5 +1477,8 @@
   "login.verifying": "Verifying…",
   "login.differentEmail": "Use a different email",
   "login.enterCode": "Enter the code from your email",
-  "login.codeInvalid": "That code is invalid or expired."
+  "login.codeInvalid": "That code is invalid or expired.",
+  "shippingDocs.title": "Shipping documents (generated)",
+  "shippingDocs.bol": "Bill of Lading",
+  "shippingDocs.packingSlip": "Packing slip"
 }
