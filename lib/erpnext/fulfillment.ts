@@ -10,6 +10,7 @@ import {
   parseErpErrorMessage,
 } from './client'
 import { reservationsForBatches } from './staging'
+import { erpNow } from './erp-time'
 
 // Read-only Sales Order fulfillment view for the dashboard "Ship Order" screen
 // (fulfillment wrapper, Phase 1). Server-side only.
@@ -487,7 +488,7 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
   try {
     await erpnextUpdate('Delivery Note', dn, {
       custom_shipped: 1,
-      custom_shipped_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      custom_shipped_at: erpNow(),
       custom_shipped_by: userName || 'dashboard',
     })
   } catch (e) {
