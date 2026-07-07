@@ -27,7 +27,7 @@ export const runtime = 'nodejs'
 
 const MAX_QTY = 10_000_000
 // Restoring stock (re-receipting a removed pallet) is office-only, like removal.
-const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user'])
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user', 'shipping_team'])
 
 interface RestoreBody {
   batch?: string

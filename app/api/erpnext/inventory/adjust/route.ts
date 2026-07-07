@@ -21,7 +21,7 @@ const MAX_QTY = 10_000_000
 // Adjust-to-0 IS a removal — same office-only policy as the remove route
 // (bug-hunt 2026-07-04: the pencil is visible to all inventory users, so a
 // qty of 0 bypassed the office gate the trash button enforces).
-const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user'])
+const OFFICE_ROLES = new Set(['admin', 'super_admin', 'manager', 'shipping_manager', 'advanced_user', 'shipping_team'])
 
 interface AdjustBody {
   batch?: string
