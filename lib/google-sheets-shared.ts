@@ -59,6 +59,8 @@ export interface Order {
   priorityChangedAt: string | null
   // Computed priority (set after fetch)
   computedPriority?: string | null
+  // Ship-to shipping address (optional column; from dashboard_orders.ship_to_address)
+  shipToAddress?: string
   // Pallet calculator enrichment (from pallet records)
   palletWidth?: number
   palletLength?: number
