@@ -4,8 +4,22 @@ import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { appendShippingRecord, markShippingDeletedInSheet } from '@/lib/pallets/google'
 import { getStagingGates, isReadyForShipping } from '@/lib/pallets/staging-gate'
+import { normalizeStatus } from '@/lib/google-sheets-shared'
 
 export const dynamic = 'force-dynamic'
+
+// A shipped load stays on the Shipping photo list (pinned on top) until its
+// shipment pictures are taken, but we bound the look-back so the list doesn't
+// fill up with old shipments that will never get photos.
+const SHIPPED_NEEDS_PHOTOS_WINDOW_DAYS = 14
+
+function shippedWithinWindow(shippedDate: string | null | undefined): boolean {
+  const raw = (shippedDate || '').toString().trim()
+  if (!raw) return false
+  const t = new Date(raw).getTime()
+  if (Number.isNaN(t)) return false
+  return t >= Date.now() - SHIPPED_NEEDS_PHOTOS_WINDOW_DAYS * 86400000
+}
 
 type ShippingRecord = {
   id: string
@@ -32,32 +46,59 @@ async function getStagedOrders() {
   // internal work_order_status is set to 'staged' (populated by the staging feature).
   const { data, error } = await supabaseAdmin
     .from('dashboard_orders')
-    .select('line,category,if_number,work_order_status,po_number,customer,order_qty,number_of_packages')
+    .select('line,category,if_number,work_order_status,if_status_fusion,shipped_date,po_number,customer,order_qty,number_of_packages')
   if (error) throw error
 
-  const staged = (data || [])
-    .filter((r) =>
-      (r.work_order_status || '').toString().trim().toLowerCase() === 'staged' &&
-      (r.if_number || '').toString().trim()
-    )
-    .map((r, idx) => ({
-      id: `staged-${idx}`,
-      line_number: String(r.line ?? ''),
-      category: r.category || '',
-      if_number: r.if_number || '',
-      status: 'staged',
-      po_number: r.po_number || '',
-      customer: r.customer || '',
-      order_qty: parseInt(String(r.order_qty ?? ''), 10) || 0,
-      num_pallets: parseInt(String(r.number_of_packages ?? ''), 10) || 0,
-    }))
+  const rows = (data || []).filter((r) => (r.if_number || '').toString().trim())
+  const mapRow = (r: (typeof rows)[number], idx: number, status: string) => ({
+    id: `${status}-${idx}`,
+    line_number: String(r.line ?? ''),
+    category: r.category || '',
+    if_number: r.if_number || '',
+    status,
+    po_number: r.po_number || '',
+    customer: r.customer || '',
+    order_qty: parseInt(String(r.order_qty ?? ''), 10) || 0,
+    num_pallets: parseInt(String(r.number_of_packages ?? ''), 10) || 0,
+  })
+
+  const staged = rows
+    .filter((r) => (r.work_order_status || '').toString().trim().toLowerCase() === 'staged')
+    .map((r, idx) => mapRow(r, idx, 'staged'))
 
   // Pallet-photo gate: a Staged order only shows in Shipping once every
   // expected pallet has a valid photo (or an admin forced it). Until then it
   // stays in Production so the pallets can be photographed. Mirrors the
   // inverse filter in /api/pallet-records/orders.
   const gates = staged.length ? await getStagingGates(staged.map((o) => o.line_number)) : {}
-  return staged.filter((o) => isReadyForShipping(o.num_pallets, gates[o.line_number]))
+  const readyStaged = staged.filter((o) => isReadyForShipping(o.num_pallets, gates[o.line_number]))
+
+  // Shipped loads that still need their shipment pictures. When a load ships it
+  // flips out of 'staged', which used to drop it off this list before anyone
+  // could photograph it. Keep those here (pinned on top) until a shipping record
+  // with shipment photos exists for the order, then they fall off automatically.
+  const shippedCandidates = rows
+    .filter((r) => normalizeStatus(r.work_order_status || '', r.if_status_fusion || '') === 'shipped')
+    .filter((r) => shippedWithinWindow(r.shipped_date))
+    .map((r, idx) => mapRow(r, idx, 'shipped_needs_photos'))
+
+  let withShipmentPhotos = new Set<string>()
+  if (shippedCandidates.length) {
+    const ifs = [...new Set(shippedCandidates.map((o) => o.if_number))]
+    const { data: recs } = await supabaseAdmin
+      .from('shipping_records')
+      .select('if_number,shipment_photos,paperwork_photos')
+      .in('if_number', ifs)
+    for (const rec of recs || []) {
+      const done = ((rec.shipment_photos as string[] | null)?.length || 0) > 0 ||
+        ((rec.paperwork_photos as string[] | null)?.length || 0) > 0
+      if (done && rec.if_number) withShipmentPhotos.add(rec.if_number)
+    }
+  }
+  const shippedNeedsPhotos = shippedCandidates.filter((o) => !withShipmentPhotos.has(o.if_number))
+
+  // Shipped-needs-photos pinned first, then the normal staged queue.
+  return [...shippedNeedsPhotos, ...readyStaged]
 }
 
 function shippingSheetArgs(record: ShippingRecord, now: string) {
