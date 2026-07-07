@@ -752,6 +752,11 @@ function ShipOrderContent() {
                   {shippedDn && <p className="text-sm text-muted-foreground">{shippedDn}</p>}
                 </div>
               </div>
+              {/* Reminder to capture the shipment pictures right after the load ships. */}
+              <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 mb-3 flex items-start gap-2">
+                <span className="text-lg leading-none">📷</span>
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">{t('fulfillment.photoReminder')}</p>
+              </div>
               {justShipped && !justShipped.docsOk && (
                 <p className="text-xs text-amber-600 mb-3">{t('fulfillment.docsPartial')}</p>
               )}

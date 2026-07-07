@@ -654,12 +654,16 @@ export default function ShippingPage() {
           </div>
         )}
 
-        {/* Staged Orders */}
+        {/* Staged Orders (shipped-needs-photos pinned on top by the API) */}
         <div className="space-y-3">
-          {filteredOrders.map((order) => (
+          {filteredOrders.map((order) => {
+            const needsShipmentPhotos = order.status === 'shipped_needs_photos'
+            return (
             <div
               key={order.id}
-              className="w-full text-left bg-card rounded-xl shadow-sm p-4 hover:shadow-md transition-all"
+              className={`w-full text-left bg-card rounded-xl shadow-sm p-4 hover:shadow-md transition-all${
+                needsShipmentPhotos ? ' ring-2 ring-red-400 dark:ring-red-500/60' : ''
+              }`}
             >
               <div onClick={() => openForm(order)} className="cursor-pointer active:bg-muted">
                 <div className="flex justify-between items-start">
@@ -668,10 +672,17 @@ export default function ShippingPage() {
                     <p className="text-muted-foreground font-medium">{order.customer}</p>
                     <p className="text-muted-foreground text-sm">PO: {order.po_number} · Line: {order.line_number}</p>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
-                    {t('ship.staged')}
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    needsShipmentPhotos ? 'bg-red-100 text-red-800' : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {needsShipmentPhotos ? t('ship.missingPhotos') : t('ship.staged')}
                   </span>
                 </div>
+                {needsShipmentPhotos && (
+                  <p className="mt-2 text-sm font-medium text-red-600 dark:text-red-400">
+                    📷 {t('ship.missingPhotosHint')}
+                  </p>
+                )}
                 <div className="mt-2 text-sm text-muted-foreground">
                   <span>{t('prod.qty')}: <strong>{order.order_qty}</strong></span>
                   <span className="ml-4">{t('prod.pallets')}: <strong>{order.num_pallets}</strong></span>
@@ -688,7 +699,8 @@ export default function ShippingPage() {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Recent Shipping Records */}
