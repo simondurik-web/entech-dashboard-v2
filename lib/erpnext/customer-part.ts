@@ -37,3 +37,12 @@ export async function resolveCustomerPartNo(
     .maybeSingle()
   return mapping?.customer_part_number?.trim() || null
 }
+
+/** The customer's PO number for a Sales Order (its `po_no`), for the label's
+ *  "Cust PO" line. Returns null when the SO has none. */
+export async function resolveSalesOrderPoNo(salesOrder: string): Promise<string | null> {
+  if (!salesOrder) return null
+  return erpnextGetDoc<{ po_no?: string }>('Sales Order', salesOrder)
+    .then((so) => so.po_no?.trim() || null)
+    .catch(() => null)
+}

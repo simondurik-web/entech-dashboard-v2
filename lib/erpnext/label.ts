@@ -39,6 +39,7 @@ export interface PalletLabel {
   batch: string // QR payload + printed pallet id
   customer?: string
   customerPartNo?: string // the customer's own part number (from customer_part_mappings); printed when an SO is attached
+  customerPo?: string // the customer's PO number (the SO's po_no); printed when an SO is attached
   salesOrder?: string // printed when the pallet is attached to a sales order
   weight?: string // optional, captured at print time
   dimensions?: string // optional, captured at print time
@@ -126,6 +127,7 @@ export function buildPalletZpl(label: PalletLabel): string {
   const itemName = z(label.itemName, 30)
   const customer = z(label.customer, 44)
   const customerPartNo = z(label.customerPartNo, 24)
+  const customerPo = z(label.customerPo, 28)
   const salesOrder = z(label.salesOrder, 34)
   const weight = z(label.weight, 24)
   const dimensions = z(label.dimensions, 30)
@@ -187,6 +189,12 @@ export function buildPalletZpl(label: PalletLabel): string {
   if (customerPartNo) {
     lines.push(T(x, Y, 38, `Cust P/N: ${customerPartNo}`))
     x -= 50
+  }
+  // Customer PO — the "why" the receiving dock needs (Simon 2026-07-06). Prints
+  // with the SO context, right under the customer part number.
+  if (customerPo) {
+    lines.push(T(x, Y, 32, `Cust PO: ${customerPo}`))
+    x -= 44
   }
   if (customer) {
     lines.push(T(x, Y, 32, `Customer: ${customer}`))
