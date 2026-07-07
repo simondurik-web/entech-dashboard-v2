@@ -115,6 +115,7 @@ interface PlacedPallet {
   weightEach: number
   numParts: number
   partName: string
+  custPartName: string
 }
 
 interface PackResult {
@@ -148,7 +149,7 @@ function defaultPalletType(index: number): PalletType {
 }
 
 // ── Packing Algorithm ──────────────────────────────────────
-function packPallets(types: PalletType[], trailer: { length: number; width: number }, typeInfo: Map<string, { numParts: number; partName: string }>): PackResult {
+function packPallets(types: PalletType[], trailer: { length: number; width: number }, typeInfo: Map<string, { numParts: number; partName: string; custPartName: string }>): PackResult {
   interface Spot {
     across: number
     along: number
@@ -160,6 +161,7 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
     weightEach: number
     numParts: number
     partName: string
+    custPartName: string
   }
 
   const spots: Spot[] = []
@@ -204,6 +206,7 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
         weightEach: t.weightEach,
         numParts: info?.numParts ?? 0,
         partName: info?.partName ?? '',
+        custPartName: info?.custPartName ?? '',
       })
     }
   }
@@ -239,6 +242,7 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
           weightEach: s.weightEach,
           numParts: s.numParts,
           partName: s.partName,
+          custPartName: s.custPartName,
         })
         cursorX += s.across
         rowH = Math.max(rowH, s.along)
@@ -299,13 +303,14 @@ export default function PalletLoadCalculator({
   }, [allOrders])
 
   const typeInfo = useMemo(() => {
-    const m = new Map<string, { numParts: number; partName: string }>()
+    const m = new Map<string, { numParts: number; partName: string; custPartName: string }>()
     palletTypes.forEach(pt => {
       const linkedOrders = pt.linkedOrderKeys.map(k => orderMap.get(k)).filter(Boolean) as Order[]
       const partNames = [...new Set(linkedOrders.map(o => o.partNumber).filter(Boolean))]
+      const custPartNames = [...new Set(linkedOrders.map(o => o.customerPartNumber).filter(Boolean) as string[])]
       const totalParts = linkedOrders.reduce((sum, o) => sum + (o.orderQty || 0), 0)
       const partsPerPallet = pt.qty > 0 ? Math.round(totalParts / pt.qty) : totalParts
-      m.set(pt.id, { numParts: partsPerPallet, partName: partNames.join(', ') })
+      m.set(pt.id, { numParts: partsPerPallet, partName: partNames.join(', '), custPartName: custPartNames.join(', ') })
     })
     return m
   }, [palletTypes, orderMap])
@@ -926,6 +931,18 @@ export default function PalletLoadCalculator({
                     {p.partName.length > pw / 4.5 ? p.partName.slice(0, Math.floor(pw / 4.5)) : p.partName}
                   </text>
                 )}
+                {/* Customer part number (reference for the receiving dock) */}
+                {pw > 25 && ph > 50 && p.custPartName && (
+                  <text
+                    x={px + pw / 2}
+                    y={py + ph / 2 + 32}
+                    textAnchor="middle"
+                    fill="rgba(147,197,253,0.85)"
+                    fontSize={Math.min(5, pw / 11)}
+                  >
+                    {p.custPartName.length > pw / 4.5 ? p.custPartName.slice(0, Math.floor(pw / 4.5)) : p.custPartName}
+                  </text>
+                )}
                 {/* W×L dimension arrows on every pallet */}
                 {pw > 30 && ph > 22 && (
                   <g opacity={0.7}>
@@ -1083,8 +1100,9 @@ export default function PalletLoadCalculator({
         <td style="text-align:right;">${p.weightEach.toLocaleString()} lbs</td>
         <td style="text-align:center;">${p.numParts > 0 ? p.numParts + ' pcs' : '—'}</td>
         <td>${p.partName || '—'}</td>
+        <td>${p.custPartName || '—'}</td>
       </tr>`).join('')
-      const tableHead = `<thead><tr><th>#</th><th>Customer</th><th>Dims</th><th>Weight</th><th>Parts</th><th>Part #</th></tr></thead>`
+      const tableHead = `<thead><tr><th>#</th><th>Customer</th><th>Dims</th><th>Weight</th><th>Parts</th><th>Part #</th><th>Cust Part #</th></tr></thead>`
       return `<div class="two-tables">
         <div><table>${tableHead}<tbody>${renderRows(left, 0)}</tbody></table></div>
         <div><table>${tableHead}<tbody>${renderRows(right, mid)}</tbody></table></div>
