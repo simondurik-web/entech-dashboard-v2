@@ -533,6 +533,9 @@ function NeedToPackagePageContent() {
           page="need-to-package"
           initialView={initialView}
           autoExport={autoExport}
+          /* OrderCard already shows PO# and the status badge — keep the phone
+             extra-fields strip from duplicating them when toggled on. */
+          mobileCardShownKeys={['poNumber', 'ifStatus']}
           getRowKey={(row) => getOrderKey(row as unknown as Order)}
           expandedRowKey={expandedOrderKey}
           onRowClick={(row) => toggleExpanded(row as unknown as Order)}

@@ -21,6 +21,9 @@ export interface DataTableProps<T extends Record<string, unknown>> {
   data: T[]
   renderCard?: (row: T, index: number) => React.ReactNode
   cardClassName?: (row: T) => string
+  /** Column keys the custom renderCard already displays — excluded from the
+   *  phone "extra fields" strip so toggling them on doesn't duplicate them. */
+  mobileCardShownKeys?: string[]
   exportFilename?: string
   noun?: string
   getRowKey?: (row: T, index: number) => string
@@ -151,6 +154,7 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   renderCard,
   cardClassName,
+  mobileCardShownKeys,
   exportFilename,
   noun = 'row',
   getRowKey,
@@ -424,16 +428,38 @@ export function DataTable<T extends Record<string, unknown>>({
       <div className="space-y-3">
         {visibleRows.map((row, i) => {
           const absoluteIndex = pageStart + i
+          // Custom per-page cards have a fixed layout, so a column the user
+          // toggles on via the Columns picker never appeared on phones (Simon's
+          // iPhone report, 2026-07-07). "Additional columns" (defaultHidden)
+          // are by definition not part of any card's built-in layout — when one
+          // is toggled visible, append it under the card so phone users see
+          // exactly what they asked for. DefaultCard pages already honor
+          // visibleColumns and need no extras.
+          const extraCols = renderCard
+            ? visibleColumns.filter((c) => c.defaultHidden && !mobileCardShownKeys?.includes(c.key))
+            : []
+          const cardContent = renderCard ? (
+            extraCols.length > 0 ? (
+              <div className="space-y-1">
+                {renderCard(row, absoluteIndex)}
+                <MobileExtraFields row={row} columns={extraCols} />
+              </div>
+            ) : (
+              renderCard(row, absoluteIndex)
+            )
+          ) : (
+            <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />
+          )
           return (
           <CardErrorBoundary key={getRowKey?.(row, absoluteIndex) ?? absoluteIndex}>
             {/* Phones get no table rows, so without this tap handler an
                 onRowClick feature (e.g. edit-inspection) would be desktop-only. */}
             {onRowClick ? (
               <div role="button" tabIndex={0} className="cursor-pointer active:opacity-75" onClick={() => onRowClick(row, absoluteIndex)}>
-                {renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />}
+                {cardContent}
               </div>
             ) : (
-              renderCard ? renderCard(row, absoluteIndex) : <DefaultCard row={row} columns={visibleColumns} className={cardClassName?.(row)} />
+              cardContent
             )}
           </CardErrorBoundary>
           )
@@ -494,6 +520,32 @@ function DefaultCard<T extends Record<string, unknown>>({ row, columns, classNam
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Toggled-on "Additional columns" appended under a custom renderCard on phones.
+ * Same per-cell error isolation as DefaultCard — one bad render() must not take
+ * down the card. Visually a slim continuation strip, not a second full card.
+ */
+function MobileExtraFields<T extends Record<string, unknown>>({ row, columns }: { row: T; columns: ColumnDef<T>[] }) {
+  const renderCell = (col: ColumnDef<T>): React.ReactNode => {
+    try {
+      return col.render ? safeCellRender(col.render(row[col.key], row)) : formatCellValue(row[col.key])
+    } catch (err) {
+      console.error(`Error rendering column "${col.key}":`, err, 'row:', row, 'value:', row[col.key])
+      return <span className="text-destructive">Error</span>
+    }
+  }
+  return (
+    <div className="rounded-md border bg-muted/30 px-4 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+      {columns.map((col) => (
+        <div key={col.key} className="min-w-0">
+          <span className="text-xs text-muted-foreground">{col.label}</span>
+          <p className="font-medium break-words whitespace-pre-line">{renderCell(col)}</p>
+        </div>
+      ))}
+    </div>
   )
 }
 

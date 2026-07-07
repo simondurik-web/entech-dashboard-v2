@@ -1483,5 +1483,6 @@
   "login.codeInvalid": "Ese código no es válido o expiró.",
   "shippingDocs.title": "Documentos de envío (generados)",
   "shippingDocs.bol": "Conocimiento de embarque (BOL)",
-  "shippingDocs.packingSlip": "Lista de empaque"
+  "shippingDocs.packingSlip": "Lista de empaque",
+  "views.shareWithEveryone": "Compartir con todos"
 }

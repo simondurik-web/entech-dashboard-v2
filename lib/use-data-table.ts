@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { authHeaders } from '@/lib/session-token'
 
 export type SortDir = 'asc' | 'desc' | null
 
@@ -139,6 +140,77 @@ export function useDataTable<T extends Record<string, unknown>>({
     }
   }, [columnOrder, storageKey])
 
+  // ---- Per-user server sync (Simon 2026-07-07) ----
+  // localStorage is per-browser: a column added on desktop never appeared on the
+  // user's iPhone, and on a shared floor Mac everyone inherited the last person's
+  // layout. The server copy (user_table_prefs, keyed by user + storageKey) makes
+  // hidden columns + order follow the LOGIN. localStorage stays as the instant
+  // first paint + the fallback for floor devices (no Supabase user session — the
+  // API 401s and we silently stay local).
+  //
+  // prefsDirtyRef gates writes: only explicit user actions (toggle/move/reset)
+  // persist. Mount-time reconciliation or applying a shared view never silently
+  // overwrites the user's saved layout.
+  const prefsLoadedRef = useRef(false)
+  const prefsDirtyRef = useRef(false)
+  // Bumped when the initial GET finishes with user changes already pending, so
+  // the PUT effect re-runs — without it a toggle made during the load window
+  // would never persist (the effect only re-fires on state changes).
+  const [prefsSyncTick, setPrefsSyncTick] = useState(0)
+
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/table-prefs?key=${encodeURIComponent(storageKey)}`, {
+          headers: authHeaders(),
+        })
+        if (!res.ok) return // logged out / floor device / server hiccup → local only
+        const data: { prefs: { hidden_columns?: unknown; column_order?: unknown } | null } = await res.json()
+        // If the user already started rearranging before the fetch landed,
+        // their in-flight changes win over the stored copy.
+        if (cancelled || prefsDirtyRef.current || !data?.prefs) return
+        if (Array.isArray(data.prefs.hidden_columns)) {
+          setHiddenColumns(new Set(data.prefs.hidden_columns.filter((k): k is string => typeof k === 'string')))
+        }
+        if (Array.isArray(data.prefs.column_order) && data.prefs.column_order.length > 0) {
+          setColumnOrder(data.prefs.column_order.filter((k): k is string => typeof k === 'string'))
+        }
+      } catch {
+        /* offline → local only */
+      } finally {
+        if (!cancelled) {
+          prefsLoadedRef.current = true
+          if (prefsDirtyRef.current) setPrefsSyncTick((t) => t + 1)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [storageKey])
+
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return
+    if (!prefsLoadedRef.current || !prefsDirtyRef.current) return
+    const id = setTimeout(() => {
+      fetch('/api/table-prefs', {
+        method: 'PUT',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ key: storageKey, hiddenColumns: [...hiddenColumns], columnOrder }),
+      })
+        .then((res) => {
+          // Server now matches local — clear dirty so later non-user state
+          // changes (e.g. applying a shared view) don't inherit the flag and
+          // silently overwrite these saved prefs.
+          if (res.ok) prefsDirtyRef.current = false
+        })
+        .catch(() => {})
+    }, 800)
+    return () => clearTimeout(id)
+  }, [hiddenColumns, columnOrder, storageKey, prefsSyncTick])
+
   const toggleSort = useCallback((key: string) => {
     setSortKey((prevKey) => {
       if (prevKey !== key) {
@@ -183,6 +255,7 @@ export function useDataTable<T extends Record<string, unknown>>({
   }, [setSearch])
 
   const toggleColumn = useCallback((key: string) => {
+    prefsDirtyRef.current = true
     setHiddenColumns((prev) => {
       const next = new Set(prev)
       if (next.has(key)) {
@@ -195,6 +268,7 @@ export function useDataTable<T extends Record<string, unknown>>({
   }, [])
 
   const moveColumn = useCallback((fromIndex: number, toIndex: number) => {
+    prefsDirtyRef.current = true
     setColumnOrder((prev) => {
       const next = [...prev]
       const [moved] = next.splice(fromIndex, 1)
@@ -213,10 +287,22 @@ export function useDataTable<T extends Record<string, unknown>>({
     if (storageKey && typeof window !== 'undefined') {
       localStorage.removeItem(`dt-hidden-${storageKey}`)
       localStorage.removeItem(`dt-order-${storageKey}`)
+      // Reset means "back to defaults everywhere" — drop the server copy too,
+      // and stop the debounced PUT from re-saving the defaults as a preference.
+      prefsDirtyRef.current = false
+      fetch('/api/table-prefs', {
+        method: 'DELETE',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ key: storageKey }),
+      }).catch(() => {})
     }
   }, [columns, storageKey, setSearch])
 
   const applyView = useCallback((config: DataTableViewConfig) => {
+    // Applying a view (shared or own) is a session action, not an edit of the
+    // user's personal column prefs — clear dirty so the debounced PUT doesn't
+    // persist the view's layout over their saved preferences.
+    prefsDirtyRef.current = false
     if (config.columnOrder && config.columnOrder.length > 0) {
       setColumnOrder(config.columnOrder)
     }

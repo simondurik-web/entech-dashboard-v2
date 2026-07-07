@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react'
 import { Bookmark, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 import { authHeaders } from '@/lib/session-token'
 import type { DataTableViewConfig } from '@/lib/use-data-table'
 
@@ -26,6 +28,7 @@ interface ViewsMenuProps {
 }
 
 export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProps) {
+  const { t } = useI18n()
   const { user, profile } = useAuth()
   const userId = profile?.email || user?.email || null
   const [open, setOpen] = useState(false)
@@ -33,6 +36,10 @@ export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProp
   const [newName, setNewName] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Views used to be force-shared (shared: true hardcoded) — every view anyone
+  // saved appeared for the whole company, which read as "my column setup is
+  // global" (Simon 2026-07-07). Private is now the default; sharing is opt-in.
+  const [shareAll, setShareAll] = useState(false)
 
   async function loadViews() {
     try {
@@ -55,7 +62,7 @@ export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProp
       const res = await fetch('/api/views', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ page, name: newName.trim(), config: getCurrentConfig(), shared: true }),
+        body: JSON.stringify({ page, name: newName.trim(), config: getCurrentConfig(), shared: shareAll }),
       })
       if (res.ok) {
         setNewName('')
@@ -90,6 +97,10 @@ export function ViewsMenu({ page, getCurrentConfig, onApplyView }: ViewsMenuProp
                 {saved ? <Check className="size-3.5" /> : 'Save'}
               </Button>
             </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox checked={shareAll} onCheckedChange={(v) => setShareAll(v === true)} />
+              <span>{t('views.shareWithEveryone')}</span>
+            </label>
             {saved && <p className="text-xs text-green-500">✓ Saved! Find it in Reports.</p>}
           </div>
         ) : (
