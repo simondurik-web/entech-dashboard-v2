@@ -35,6 +35,7 @@ export interface ShippingOverviewOrder {
   customer: string
   category: string
   partNumber: string
+  customerPartNumber?: string
   status: 'staged' | 'shipped'
   orderQty: number
   revenue: number

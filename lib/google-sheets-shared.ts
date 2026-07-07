@@ -63,6 +63,9 @@ export interface Order {
   palletWidth?: number
   palletLength?: number
   palletWeightEach?: number
+  // Customer's own part number for this line (from customer_part_mappings,
+  // keyed by customer + internal partNumber). Shown on the pallet load report.
+  customerPartNumber?: string
   // True when this row comes from the pre-ERPNext Google-Sheet archive
   // (dashboard_orders_fusion_archive), surfaced read-only in Orders Data search.
   archived?: boolean
