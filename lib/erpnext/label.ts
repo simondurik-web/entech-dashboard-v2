@@ -38,6 +38,7 @@ export interface PalletLabel {
   uom?: string
   batch: string // QR payload + printed pallet id
   customer?: string
+  customerPartNo?: string // the customer's own part number (from customer_part_mappings); printed when an SO is attached
   salesOrder?: string // printed when the pallet is attached to a sales order
   weight?: string // optional, captured at print time
   dimensions?: string // optional, captured at print time
@@ -124,6 +125,7 @@ export function buildPalletZpl(label: PalletLabel): string {
   const itemCode = z(label.itemCode, 20)
   const itemName = z(label.itemName, 30)
   const customer = z(label.customer, 44)
+  const customerPartNo = z(label.customerPartNo, 24)
   const salesOrder = z(label.salesOrder, 34)
   const weight = z(label.weight, 24)
   const dimensions = z(label.dimensions, 30)
@@ -177,6 +179,14 @@ export function buildPalletZpl(label: PalletLabel): string {
   if (salesOrder) {
     lines.push(T(x, Y, 32, `Sales Order: ${salesOrder}`))
     x -= 44
+  }
+  // Customer's own part number (from the SO's customer mapping). Secondary to OUR
+  // internal P/N — the prominent number stays the item_code (hard rule). Prints
+  // only when an SO is selected at label time (Simon 2026-07-06). A touch larger
+  // than the other rows so the receiving dock spots it.
+  if (customerPartNo) {
+    lines.push(T(x, Y, 38, `Cust P/N: ${customerPartNo}`))
+    x -= 50
   }
   if (customer) {
     lines.push(T(x, Y, 32, `Customer: ${customer}`))
