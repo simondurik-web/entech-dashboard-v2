@@ -157,6 +157,7 @@ function mapRowToOrder(row: Record<string, unknown>): Order {
     priorityOverride: row.priority_override ? str(row.priority_override) : null,
     priorityChangedBy: row.priority_changed_by ? str(row.priority_changed_by) : null,
     priorityChangedAt: row.priority_changed_at ? str(row.priority_changed_at) : null,
+    shipToAddress: str(row.ship_to_address),
   }
 }
 
