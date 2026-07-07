@@ -115,6 +115,31 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))]
 }
 
+/** Fill order.customerPartNumber from customer_part_mappings, keyed by the
+ *  order's customer + internal partNumber (NOT the Fusion IF number — that
+ *  legacy dependency is gone). Best-effort: a lookup miss just leaves it blank. */
+async function enrichCustomerPartNumbers(orders: OrderWithShippingFields[]): Promise<void> {
+  const custNames = uniqueStrings(orders.map((o) => o.customer))
+  if (custNames.length === 0) return
+  const { data: custRows } = await supabaseAdmin.from('customers').select('id, name')
+  const idByName = new Map<string, string>()
+  for (const c of custRows ?? []) if (c.name) idByName.set(c.name.trim().toLowerCase(), c.id)
+  const custIds = uniqueStrings(custNames.map((n) => idByName.get(n.trim().toLowerCase()) || ''))
+  if (custIds.length === 0) return
+  const { data: maps } = await supabaseAdmin
+    .from('customer_part_mappings')
+    .select('customer_id, internal_part_number, customer_part_number')
+    .in('customer_id', custIds)
+  const cpByKey = new Map<string, string>()
+  for (const m of maps ?? []) {
+    if (m.customer_part_number) cpByKey.set(`${m.customer_id}||${m.internal_part_number}`, m.customer_part_number)
+  }
+  for (const o of orders) {
+    const cid = idByName.get(o.customer.trim().toLowerCase())
+    if (cid) o.customerPartNumber = cpByKey.get(`${cid}||${o.partNumber}`) || undefined
+  }
+}
+
 async function fetchDashboardOrders(): Promise<OrderWithShippingFields[]> {
   try {
     const pageSize = 1000
@@ -248,7 +273,7 @@ const buildOverview = unstable_cache(
   async (): Promise<BuiltOverview> => {
     const cutoffIso = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
-    const [orders, dbPalletResult, dbShippingResult] = await Promise.all([
+    const [ordersRaw, dbPalletResult, dbShippingResult] = await Promise.all([
       fetchDashboardOrders(),
       supabaseAdmin
         .from('pallet_records')
@@ -263,6 +288,11 @@ const buildOverview = unstable_cache(
         .order('created_at', { ascending: false })
         .limit(5000),
     ])
+
+    const orders = ordersRaw
+    await enrichCustomerPartNumbers(orders).catch((e) =>
+      console.warn('shipping-overview: customer part-number enrichment failed', e)
+    )
 
     const dbPallets: PalletRecord[] = (dbPalletResult.data ?? []).map((record) => {
       const dimensions = record.length && record.width && record.height ? `${record.length}x${record.width}x${record.height}` : ''
@@ -392,6 +422,7 @@ const buildOverview = unstable_cache(
         customer: order.customer,
         category: order.category,
         partNumber: order.partNumber,
+        customerPartNumber: order.customerPartNumber,
         status: status === 'shipped' ? 'shipped' : 'staged',
         orderQty: order.orderQty,
         revenue: num(order.revenue),

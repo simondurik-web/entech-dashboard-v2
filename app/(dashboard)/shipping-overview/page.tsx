@@ -178,6 +178,7 @@ function ShippingOverviewPageContent() {
       poNumber: o.poNumber,
       customer: o.customer,
       partNumber: o.partNumber,
+      customerPartNumber: o.customerPartNumber,
       orderQty: o.orderQty,
       packaging: '',
       partsPerPackage: 0,
@@ -204,6 +205,62 @@ function ShippingOverviewPageContent() {
       palletWeightEach: 0,
     } as Order, palletEnrichment))
   }, [data?.staged, palletEnrichment])
+
+  // Shipped orders as a "completed" reference source for the calculator — lets
+  // you pull up an already-shipped load (e.g. to re-plan or reference its
+  // customer part numbers) from the Shipping Overview, matching the staged
+  // page's calculator (Simon 2026-07-06: same functionality from shipped too).
+  const shippedPalletEnrichment = useMemo(() => {
+    const records: NormalizedPalletRecord[] = []
+    for (const order of data?.shipped ?? []) {
+      const key = (order.line || '').toString().trim()
+      if (!key) continue
+      for (const p of order.pallets ?? []) {
+        records.push({ line: key, dimensions: p.dimensions || '', weight: p.weight || 0 })
+      }
+    }
+    return buildPalletEnrichmentByLine(records)
+  }, [data?.shipped])
+
+  const completedOrdersForCalc = useMemo(() => {
+    const shipped = data?.shipped ?? []
+    return shipped.map(o => applyPalletEnrichment({
+      line: o.line,
+      category: o.category,
+      dateOfRequest: '',
+      priorityLevel: 0,
+      urgentOverride: false,
+      ifNumber: o.ifNumber,
+      ifStatus: '',
+      internalStatus: 'shipped',
+      poNumber: o.poNumber,
+      customer: o.customer,
+      partNumber: o.partNumber,
+      customerPartNumber: o.customerPartNumber,
+      orderQty: o.orderQty,
+      packaging: '',
+      partsPerPackage: 0,
+      numPackages: o.palletCount > 0 ? o.palletCount : 0,
+      fusionInventory: 0,
+      hubMold: '',
+      tire: '',
+      hasTire: false,
+      hub: '',
+      hasHub: false,
+      bearings: '',
+      requestedDate: o.requestedDate,
+      daysUntilDue: o.daysUntilDue ?? 0,
+      assignedTo: '',
+      shippedDate: o.shippedDate,
+      dailyCapacity: 0,
+      priorityOverride: null,
+      priorityChangedBy: null,
+      priorityChangedAt: null,
+      palletWidth: 0,
+      palletLength: 0,
+      palletWeightEach: 0,
+    } as Order, shippedPalletEnrichment))
+  }, [data?.shipped, shippedPalletEnrichment])
 
   // ── Conditional classes ──────────────────────────────────
   const pageBg = isLight
@@ -438,7 +495,7 @@ function ShippingOverviewPageContent() {
             <DialogTitle>📦 Pallet Load Calculator</DialogTitle>
           </DialogHeader>
           <div data-lenis-prevent className="flex-1 min-h-0 overflow-y-auto p-6">
-            <PalletLoadCalculator stagedOrders={stagedOrdersForCalc} />
+            <PalletLoadCalculator stagedOrders={stagedOrdersForCalc} completedOrders={completedOrdersForCalc} />
           </div>
         </DialogContent>
       </Dialog>
