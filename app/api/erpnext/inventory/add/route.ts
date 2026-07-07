@@ -3,6 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
+import { resolveCustomerPartNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { reserveBatchesToSO } from '@/lib/erpnext/staging'
@@ -45,6 +46,8 @@ export async function POST(req: NextRequest) {
 
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
   const salesOrder = body.salesOrder?.trim() || undefined
+  // Customer part number for the label — only when an SO is attached (Simon 2026-07-06).
+  const customerPartNoP = salesOrder && itemCode ? resolveCustomerPartNo(itemCode, { customer, salesOrder }) : Promise.resolve(null)
   const qty = Number(body.qty)
   // Optional pallet weight/dims (Simon 2026-07-03): stored on the Batch and
   // printed on the label. Dims must be the normalized NxNxN the three-box UI
@@ -140,6 +143,7 @@ export async function POST(req: NextRequest) {
           customer,
           ref,
           salesOrder,
+          customerPartNo: (await customerPartNoP) ?? undefined,
           brand: brandForItemGroup(itemInfo.itemGroup),
           generatedAt: labelTimestamp(),
           printedBy,
@@ -192,6 +196,7 @@ export async function POST(req: NextRequest) {
         customer,
         ref,
         salesOrder,
+        customerPartNo: (await customerPartNoP) ?? undefined,
         weight: weightLb ? `${weightLb} lb` : undefined,
         dimensions: dims,
         brand: brandForItemGroup(itemInfo.itemGroup),
