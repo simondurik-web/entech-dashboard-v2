@@ -7,7 +7,8 @@ import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets-shared'
-import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
+import { cacheGetJson, fetchJsonAndCache, cacheDeleteKey } from '@/lib/data-cache'
+import { invalidateInventoryPopoverCache } from '@/components/InventoryPopover'
 import Link from 'next/link'
 import { usePermissions } from '@/lib/use-permissions'
 import { authHeaders } from '@/lib/session-token'
@@ -1034,6 +1035,10 @@ function InventoryPageContent() {
     setItems(prev => prev.map(i =>
       i.partNumber.toUpperCase() === partNumber.toUpperCase() ? { ...i, minimum } : i
     ))
+    // Drop the stale copies other readers would paint: the device cache
+    // (page revisits) and the popover's shared 60s module cache.
+    void cacheDeleteKey('/api/inventory')
+    invalidateInventoryPopoverCache()
   }, [])
 
   const columns = useMemo(

@@ -100,6 +100,18 @@ export async function fetchJsonAndCache<T>(
   }
 }
 
+/** Drop one cached payload (e.g. after a mutation makes it stale) so the next
+ *  cacheGetJson misses and the page refetches. Best-effort. */
+export async function cacheDeleteKey(key: string): Promise<void> {
+  const cache = await openCache()
+  if (!cache) return
+  try {
+    await cache.delete(key)
+  } catch {
+    // best-effort
+  }
+}
+
 /**
  * Stamp the cache with its owner. If a different user's data is on the
  * device (login switch without a clean sign-out), wipe it before any page

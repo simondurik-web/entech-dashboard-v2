@@ -13,7 +13,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order, InventoryItem } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
-import { computeComponentAvailability, type ComponentAvailabilityMap } from '@/lib/component-availability'
+import { computeComponentAvailability, componentOk, type ComponentAvailabilityMap } from '@/lib/component-availability'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
 import { authHeaders } from '@/lib/session-token'
@@ -168,8 +168,11 @@ function OrdersPageContent() {
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
   // Tire/Hub red-green: open-order demand vs live stock + minimums (replaces
-  // the retired Google-Sheet have_tire/have_hub booleans).
+  // the retired Google-Sheet have_tire/have_hub booleans). invByPart doubles as
+  // the "inventory actually loaded" flag — while null (fetch failed/pending) the
+  // cells stay uncolored instead of painting everything red off an empty map.
   const [compAvail, setCompAvail] = useState<ComponentAvailabilityMap>(new Map())
+  const [invByPart, setInvByPart] = useState<Map<string, InventoryItem> | null>(null)
   // Pre-ERPNext order archive (read-only), loaded in the background and merged
   // into the table only while searching (see tableData). Search is controlled at
   // the page level so we can widen the dataset when a query is active.
@@ -384,7 +387,11 @@ function OrdersPageContent() {
         if (!val || val === '-') return <span className="text-muted-foreground">-</span>
         const active = isActiveStatus(order)
         const avail = compAvail.get(val.toUpperCase())
-        const colorClass = active ? (avail?.ok ? 'text-green-500' : 'text-red-400 font-bold') : ''
+        // componentOk falls back to a direct stock-vs-minimum check for rows
+        // outside the demand window (e.g. completed), so they don't false-red.
+        const colorClass = active && invByPart
+          ? (componentOk(compAvail, val, order.orderQty, invByPart) ? 'text-green-500' : 'text-red-400 font-bold')
+          : ''
         return (
           <span className="inline-flex items-center gap-1">
             <span className={colorClass}>{val}</span>
@@ -406,7 +413,9 @@ function OrdersPageContent() {
         if (!val || val === '-') return <span className="text-muted-foreground">-</span>
         const active = isActiveStatus(order)
         const avail = compAvail.get(val.toUpperCase())
-        const colorClass = active ? (avail?.ok ? 'text-green-500' : 'text-red-400 font-bold') : ''
+        const colorClass = active && invByPart
+          ? (componentOk(compAvail, val, order.orderQty, invByPart) ? 'text-green-500' : 'text-red-400 font-bold')
+          : ''
         return (
           <span className="inline-flex items-center gap-1">
             <span className={colorClass}>{val}</span>
@@ -483,7 +492,10 @@ function OrdersPageContent() {
     const applyOrders = (data: Order[], inventory: InventoryItem[] | null) => {
       const enriched = data.map(o => ({ ...o, effectivePriority: getEffectivePriority(o) || '-' }))
       setOrders(enriched as Order[])
-      if (inventory) setCompAvail(computeComponentAvailability(data, inventory))
+      if (inventory) {
+        setCompAvail(computeComponentAvailability(data, inventory))
+        setInvByPart(new Map(inventory.map(i => [i.partNumber.trim().toUpperCase(), i])))
+      }
     }
 
     // Paint instantly from the device cache; the network fetch below
