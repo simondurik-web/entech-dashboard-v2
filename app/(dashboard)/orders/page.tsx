@@ -11,8 +11,9 @@ import { OrderCard } from '@/components/cards/OrderCard'
 import { PageSkeleton } from '@/components/ui/skeleton-loader'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
-import type { Order } from '@/lib/google-sheets-shared'
+import type { Order, InventoryItem } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
+import { computeComponentAvailability, componentOk, type ComponentAvailabilityMap } from '@/lib/component-availability'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
 import { authHeaders } from '@/lib/session-token'
@@ -166,6 +167,12 @@ function OrdersPageContent() {
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
+  // Tire/Hub red-green: open-order demand vs live stock + minimums (replaces
+  // the retired Google-Sheet have_tire/have_hub booleans). invByPart doubles as
+  // the "inventory actually loaded" flag — while null (fetch failed/pending) the
+  // cells stay uncolored instead of painting everything red off an empty map.
+  const [compAvail, setCompAvail] = useState<ComponentAvailabilityMap>(new Map())
+  const [invByPart, setInvByPart] = useState<Map<string, InventoryItem> | null>(null)
   // Pre-ERPNext order archive (read-only), loaded in the background and merged
   // into the table only while searching (see tableData). Search is controlled at
   // the page level so we can widen the dataset when a query is active.
@@ -379,11 +386,16 @@ function OrdersPageContent() {
         const val = String(v || '')
         if (!val || val === '-') return <span className="text-muted-foreground">-</span>
         const active = isActiveStatus(order)
-        const colorClass = active ? (order.hasTire ? 'text-green-500' : 'text-red-400 font-bold') : ''
+        const avail = compAvail.get(val.toUpperCase())
+        // componentOk falls back to a direct stock-vs-minimum check for rows
+        // outside the demand window (e.g. completed), so they don't false-red.
+        const colorClass = active && invByPart
+          ? (componentOk(compAvail, val, order.orderQty, invByPart) ? 'text-green-500' : 'text-red-400 font-bold')
+          : ''
         return (
           <span className="inline-flex items-center gap-1">
             <span className={colorClass}>{val}</span>
-            <InventoryPopover partNumber={val} partType="tire" />
+            <InventoryPopover partNumber={val} partType="tire" needed={avail?.demand} />
           </span>
         )
       },
@@ -400,11 +412,14 @@ function OrdersPageContent() {
         const val = String(v || '')
         if (!val || val === '-') return <span className="text-muted-foreground">-</span>
         const active = isActiveStatus(order)
-        const colorClass = active ? (order.hasHub ? 'text-green-500' : 'text-red-400 font-bold') : ''
+        const avail = compAvail.get(val.toUpperCase())
+        const colorClass = active && invByPart
+          ? (componentOk(compAvail, val, order.orderQty, invByPart) ? 'text-green-500' : 'text-red-400 font-bold')
+          : ''
         return (
           <span className="inline-flex items-center gap-1">
             <span className={colorClass}>{val}</span>
-            <InventoryPopover partNumber={val} partType="hub" />
+            <InventoryPopover partNumber={val} partType="hub" needed={avail?.demand} />
           </span>
         )
       },
@@ -466,7 +481,7 @@ function OrdersPageContent() {
     }] as ColumnDef<OrderRow>[] : []),
     // Extra columns — hidden by default, available via Columns picker
     ...getExtraOrderColumns<OrderRow>(defaultColumnKeys),
-  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick, printedLines])
+  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick, printedLines, compAvail])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -474,24 +489,34 @@ function OrdersPageContent() {
     setError(null)
 
     // Add effectivePriority for filtering/display
-    const applyOrders = (data: Order[]) => {
+    const applyOrders = (data: Order[], inventory: InventoryItem[] | null) => {
       const enriched = data.map(o => ({ ...o, effectivePriority: getEffectivePriority(o) || '-' }))
       setOrders(enriched as Order[])
+      if (inventory) {
+        setCompAvail(computeComponentAvailability(data, inventory))
+        setInvByPart(new Map(inventory.map(i => [i.partNumber.trim().toUpperCase(), i])))
+      }
     }
 
     // Paint instantly from the device cache; the network fetch below
     // revalidates and overwrites within ~1s. Skipped on explicit Refresh.
     if (!isRefresh) {
-      const cached = await cacheGetJson<Order[]>('/api/sheets')
+      const [cached, cachedInv] = await Promise.all([
+        cacheGetJson<Order[]>('/api/sheets'),
+        cacheGetJson<InventoryItem[]>('/api/inventory'),
+      ])
       if (cached) {
-        applyOrders(cached)
+        applyOrders(cached, cachedInv)
         setLoading(false)
       }
     }
 
     try {
-      const data = await fetchJsonAndCache<Order[]>('/api/sheets')
-      applyOrders(data)
+      const [data, inv] = await Promise.all([
+        fetchJsonAndCache<Order[]>('/api/sheets'),
+        fetchJsonAndCache<InventoryItem[]>('/api/inventory').catch(() => null),
+      ])
+      applyOrders(data, inv)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch')
     } finally {

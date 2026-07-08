@@ -85,8 +85,10 @@ export function InventoryCard({ item, index }: InventoryCardProps) {
             <p className="font-semibold">{item.minimum.toLocaleString()}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Target</span>
-            <p className="font-semibold">{item.target > 0 ? item.target.toLocaleString() : '-'}</p>
+            <span className="text-muted-foreground">Needed</span>
+            <p className={`font-semibold ${item.minimum - item.inStock > 0 ? 'text-red-400' : ''}`}>
+              {Math.max(0, item.minimum - item.inStock).toLocaleString()}
+            </p>
           </div>
         </div>
 
