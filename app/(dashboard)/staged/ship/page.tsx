@@ -50,6 +50,9 @@ interface StagedPallet {
   qty: number
   warehouse: string
   status: string
+  // the SO Item row this reservation targets — attributes staged/scanned qty
+  // to the RIGHT release line when the same item repeats (multi-release SOs)
+  soDetail?: string | null
 }
 
 interface FulfillmentOrder {
@@ -69,6 +72,7 @@ interface FulfillmentOrder {
     signed: boolean
     driverName: string | null
   } | null
+  previousShipments: { name: string; signed: boolean; driverName: string | null }[]
 }
 
 interface LogEntry {
@@ -315,11 +319,16 @@ function ShipOrderContent() {
   const stagedIds = useMemo(() => new Set((order?.pallets ?? []).map((p) => p.palletId.toUpperCase())), [order])
   const lineItemCodes = useMemo(() => new Set((order?.lines ?? []).map((l) => l.itemCode)), [order])
 
-  const stagedQtyFor = (itemCode: string) =>
-    (order?.pallets ?? []).filter((p) => p.itemCode === itemCode).reduce((s, p) => s + p.qty, 0)
-  const scannedQtyFor = (itemCode: string) =>
+  // Attribute a pallet to a line by the reservation's SO Item row when known —
+  // a multi-release SO repeats the same item on several lines, and itemCode
+  // matching alone painted EVERY line with the one staged release's qty.
+  const palletBelongsToLine = (p: StagedPallet, line: { soItem: string; itemCode: string }) =>
+    p.soDetail ? p.soDetail === line.soItem : p.itemCode === line.itemCode
+  const stagedQtyFor = (line: { soItem: string; itemCode: string }) =>
+    (order?.pallets ?? []).filter((p) => palletBelongsToLine(p, line)).reduce((s, p) => s + p.qty, 0)
+  const scannedQtyFor = (line: { soItem: string; itemCode: string }) =>
     (order?.pallets ?? [])
-      .filter((p) => p.itemCode === itemCode && scannedOk.has(p.palletId.toUpperCase()))
+      .filter((p) => palletBelongsToLine(p, line) && scannedOk.has(p.palletId.toUpperCase()))
       .reduce((s, p) => s + p.qty, 0)
 
   const totalStaged = order?.pallets.length ?? 0
@@ -610,9 +619,19 @@ function ShipOrderContent() {
     }
   }
 
-  // The shipped state: either we just completed it, or the order came back shipped.
-  const shippedDn = justShipped?.dn ?? (order?.deliveryNote?.shipped ? order.deliveryNote.name : null)
-  const isShipped = !!shippedDn || order?.stagingStatus === 'Shipped'
+  // Release-scoped shipped state (Simon 2026-07-08): a multi-release SO ships
+  // one DN per release, so a PAST shipped DN only drives the completed view
+  // while nothing is staged for the next release. The moment new pallets are
+  // staged, the scan flow returns and earlier DNs move to the "previous
+  // shipments" strip. The full-order banner is reserved for the SO actually
+  // being fully shipped (staging status rollup fires only when every line
+  // delivered in full).
+  const hasStaged = (order?.pallets?.length ?? 0) > 0
+  const soFullyShipped = order?.stagingStatus === 'Shipped'
+  const latestShippedDn = order?.deliveryNote?.shipped ? order.deliveryNote.name : null
+  const shippedDn = justShipped?.dn ?? (soFullyShipped || !hasStaged ? latestShippedDn : null)
+  const isShipped = !!shippedDn || soFullyShipped
+  const prevShipments = (order?.previousShipments ?? []).filter((d) => d.name !== shippedDn)
   // BOL signature step: sign (or skip) before the documents are offered.
   const dnSigned = order?.deliveryNote?.signed ?? false
   const showSignStep = canShip && !!shippedDn && !dnSigned && !signSkipped
@@ -714,19 +733,23 @@ function ShipOrderContent() {
                       <span className="font-semibold">{line.orderedQty.toLocaleString()}</span>
                     </span>
                     <span>
+                      <span className="text-muted-foreground">{t('fulfillment.delivered')}: </span>
+                      <span className="font-semibold">{line.deliveredQty.toLocaleString()}</span>
+                    </span>
+                    <span>
                       <span className="text-muted-foreground">{t('fulfillment.staged')}: </span>
-                      <span className="font-semibold">{stagedQtyFor(line.itemCode).toLocaleString()}</span>
+                      <span className="font-semibold">{stagedQtyFor(line).toLocaleString()}</span>
                     </span>
                     <span>
                       <span className="text-muted-foreground">{t('fulfillment.scannedQty')}: </span>
                       <span
                         className={`font-semibold ${
-                          scannedQtyFor(line.itemCode) >= stagedQtyFor(line.itemCode) && stagedQtyFor(line.itemCode) > 0
+                          scannedQtyFor(line) >= stagedQtyFor(line) && stagedQtyFor(line) > 0
                             ? 'text-emerald-600'
                             : ''
                         }`}
                       >
-                        {scannedQtyFor(line.itemCode).toLocaleString()}
+                        {scannedQtyFor(line).toLocaleString()}
                       </span>
                     </span>
                   </div>
@@ -734,6 +757,44 @@ function ShipOrderContent() {
               </div>
             ))}
           </div>
+
+          {/* Previous releases already shipped on this SO — each keeps its own
+              documents; the current view stays focused on the ACTIVE release. */}
+          {prevShipments.length > 0 && (
+            <div className="rounded-xl border border-border bg-card p-3 mb-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                {t('fulfillment.previousShipments')}
+              </h3>
+              <div className="divide-y divide-border">
+                {prevShipments.map((d) => (
+                  <div key={d.name} className="flex items-center justify-between gap-2 py-2 text-sm">
+                    <div className="min-w-0">
+                      <span className="font-mono text-xs font-semibold">{d.name}</span>
+                      {d.signed && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-600">
+                          {t('fulfillment.signedBadge')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={() => openDocument(d.name, 'bol')}
+                        className="px-2.5 py-1 rounded-lg bg-muted hover:bg-muted/80 text-xs font-semibold transition-colors"
+                      >
+                        BOL
+                      </button>
+                      <button
+                        onClick={() => openDocument(d.name, 'packing')}
+                        className="px-2.5 py-1 rounded-lg bg-muted hover:bg-muted/80 text-xs font-semibold transition-colors"
+                      >
+                        {t('fulfillment.packingShort')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Ship error (gate rejection etc.) */}
           {shipError && (
@@ -748,10 +809,17 @@ function ShipOrderContent() {
               <div className="flex items-center gap-3 mb-4">
                 <CheckCircle2 className="size-10 text-emerald-600 shrink-0" />
                 <div>
-                  <p className="text-lg font-bold text-emerald-600">{t('fulfillment.shippedTitle')}</p>
+                  <p className="text-lg font-bold text-emerald-600">
+                    {soFullyShipped ? t('fulfillment.shippedTitle') : t('fulfillment.releaseShippedTitle')}
+                  </p>
                   {shippedDn && <p className="text-sm text-muted-foreground">{shippedDn}</p>}
                 </div>
               </div>
+              {!soFullyShipped && (
+                <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-3 mb-3 text-sm text-blue-600">
+                  {t('fulfillment.moreReleasesNote')}
+                </div>
+              )}
               {/* Reminder to capture the shipment pictures right after the load ships. */}
               <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 mb-3 flex items-start gap-2">
                 <span className="text-lg leading-none">📷</span>

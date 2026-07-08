@@ -100,9 +100,15 @@ export interface FulfillmentOrder {
     signed: boolean
     driverName: string | null
   } | null
-  // pallets on the latest submitted DN (what actually shipped) — the staged
-  // `pallets` list empties once reservations are consumed
+  // pallets across ALL shipped DNs (what actually shipped) — the staged
+  // `pallets` list empties once reservations are consumed. A multi-release
+  // order accumulates one DN per release, so this is a UNION, not just the
+  // latest DN (Simon 2026-07-08).
   shippedPallets: { palletId: string; itemCode: string; qty: number }[]
+  // every shipped DN on this SO, newest first — one per completed release.
+  // The ship screen shows these as "previous shipments" instead of branding
+  // the whole order shipped after the first release.
+  previousShipments: { name: string; signed: boolean; driverName: string | null }[]
 }
 
 /** Everything the Ship Order screen needs for one Sales Order, in two-plus-N
@@ -218,6 +224,9 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
   const pallets = allReserved.filter((_, i) => stockChecks[i])
 
   // Latest submitted DN on this SO (drives the shipped view / reprint / undo).
+  // ALL submitted DNs on this SO, newest first — a multi-release order ships
+  // one DN per release, so the whole set matters, not just the latest
+  // (Simon 2026-07-08: release 2 looked "already shipped" after release 1).
   const dnQs = [
     listParam('filters', [
       ['custom_ship_against_so', '=', soName],
@@ -225,20 +234,26 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
     ]),
     listParam('fields', ['name', 'custom_shipped', 'custom_signed_at', 'custom_driver_name']),
     'order_by=creation desc',
-    'limit_page_length=1',
+    'limit_page_length=50',
   ].join('&')
-  const dnRow =
+  const dnRows =
     (await erpnextGet<{
       data: { name: string; custom_shipped?: number; custom_signed_at?: string | null; custom_driver_name?: string | null }[]
-    }>(`/api/resource/Delivery Note?${dnQs}`)).data?.[0] ?? null
+    }>(`/api/resource/Delivery Note?${dnQs}`)).data ?? []
+  const dnRow = dnRows[0] ?? null
+  const shippedRows = dnRows.filter((d) => !!d.custom_shipped)
   let dnAttachments: string[] = []
   let shippedPallets: { palletId: string; itemCode: string; qty: number }[] = []
   if (dnRow) {
-    const dnDoc = await erpnextGetDoc<{ items?: { batch_no?: string | null; item_code: string; qty: number }[] }>(
-      'Delivery Note',
-      dnRow.name
-    ).catch(() => null)
-    shippedPallets = (dnDoc?.items ?? [])
+    // shipped pallets = union across every SHIPPED DN (one per release)
+    const dnDocs = await mapLimit(shippedRows, SRE_FETCH_CONCURRENCY, (d) =>
+      erpnextGetDoc<{ items?: { batch_no?: string | null; item_code: string; qty: number }[] }>(
+        'Delivery Note',
+        d.name
+      ).catch(() => null)
+    )
+    shippedPallets = dnDocs
+      .flatMap((doc2) => doc2?.items ?? [])
       .filter((i) => i.batch_no)
       .map((i) => ({ palletId: String(i.batch_no), itemCode: i.item_code, qty: Number(i.qty) || 0 }))
     const fq = [
@@ -275,6 +290,11 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
         }
       : null,
     shippedPallets,
+    previousShipments: shippedRows.map((d) => ({
+      name: d.name,
+      signed: !!d.custom_signed_at,
+      driverName: d.custom_driver_name ?? null,
+    })),
   }
 }
 
