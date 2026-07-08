@@ -147,6 +147,14 @@ scan-to-ship), so a stale label can't be used.
   or a lasting ERP fault) keeps its family locked; an admin clears it by setting that
   `inventory_ops_log` row's `status` to `done` (if ERP state is actually correct) or
   `cancelled` after reconciling stock in ERPNext. A future admin UI button can wrap this.
+  Since 2026-07-08 the 409 message names the holder (action + stored error) when the
+  blocker is a `failed_pre_erp` row, so the floor doesn't read a dead lock as "in
+  progress" (Abel / 5TJQ incident; that row was cleared via this escape hatch).
+- **Reserved pallets:** reprint RELEASES the pallet's SO reservation BEFORE the reissue
+  and re-reserves the new serial after (best-effort) — ERPNext v15 refuses to move
+  reserved stock (NegativeStockError), which is exactly how the 5TJQ reprint died.
+  Remove has always released before issuing out. A failed re-reserve surfaces as the
+  order needing re-staging, never as phantom stock.
 - **Serial reservation:** `reserveNextSerial` creates the next Batch atomically (the unique
   Batch name is the lock); persisted to `result_batch` so a retry reuses it.
 - **`resolveCurrentSerial`:** maps any scanned serial to the current one = highest active

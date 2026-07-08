@@ -84,13 +84,20 @@ export async function POST(req: NextRequest) {
     // reject if any serial in this pallet's family already has an active op.
     const { data: inflight } = await supabaseAdmin
       .from('inventory_ops_log')
-      .select('idempotency_key')
+      .select('idempotency_key, status, action, error')
       .eq('family', palletBase(batch))
       .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
       .neq('idempotency_key', idempotencyKey)
       .limit(1)
     if (inflight && inflight.length) {
-      return NextResponse.json({ error: 'Another operation is in progress for this pallet; try again shortly.' }, { status: 409 })
+      // Say WHY the pallet is held: a lingering FAILED op reads very differently
+      // from a genuinely concurrent one (Abel's 5TJQ, 2026-07-08 — a failed
+      // reprint held the family and every retry just said "in progress").
+      const held = inflight[0]
+      const msg = held.status === 'failed_pre_erp'
+        ? `A previous ${held.action} on this pallet failed and is holding it (${(held.error ?? 'unknown error').slice(0, 160)}). Ask an admin to clear it from the ops log.`
+        : 'Another operation is in progress for this pallet; try again shortly.'
+      return NextResponse.json({ error: msg }, { status: 409 })
     }
     target = loc.qty
     newBatch = await reserveNextSerial(batch)
@@ -104,15 +111,19 @@ export async function POST(req: NextRequest) {
     erp: async () => {
       // A staged (reserved) pallet keeps its reservation ACROSS a reprint: the
       // reservation moves to the new serial, so the order never shows a phantom
-      // old code (Simon's SO-00013 report, 2026-07-03). Look up BEFORE the
-      // reissue (afterwards the old batch is empty); transfer best-effort after
-      // — a failed re-reserve just means the pallet needs re-staging, which the
-      // release already made visible by recomputing the SO's staging status.
+      // old code (Simon's SO-00013 report, 2026-07-03). Look up AND RELEASE
+      // BEFORE the reissue — ERPNext v15 refuses to move reserved stock
+      // (NegativeStockError; Abel's 5TJQ, 2026-07-08) — then re-reserve the new
+      // serial best-effort after. A failed re-reserve just means the pallet
+      // needs re-staging, which the release already made visible by recomputing
+      // the SO's staging status.
       const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
+      if (reservation) {
+        await releaseBatchReservation(batch)
+      }
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
       if (reservation) {
         try {
-          await releaseBatchReservation(batch)
           const loc = await getBatchLocation(newBatch, itemCode)
           if (loc && loc.qty > 0) {
             await reserveBatchesToSO({
