@@ -1,12 +1,14 @@
 'use client'
 
-import { Suspense, useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { ProductionMakeItem } from '@/lib/google-sheets-shared'
 import { InventoryPopover } from '@/components/InventoryPopover'
+import { EditableMinimum } from '@/components/EditableMinimum'
+import { usePermissions } from '@/lib/use-permissions'
 import { useI18n } from '@/lib/i18n'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp } from '@/lib/use-count-up'
@@ -67,12 +69,24 @@ export default function NeedToMakePage() {
 
 function NeedToMakePageContent() {
   const { t } = useI18n()
+  const { canAccess } = usePermissions()
+  const canEditMinimums = canAccess('edit_minimums')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [items, setItems] = useState<ProductionMakeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
+
+  // Inline minimum edit (manager/shipping_manager/admin) — recompute this
+  // row's Parts to Make with the same rule the API uses.
+  const onMinimumSaved = useCallback((partNumber: string, minimum: number) => {
+    setItems(prev => prev.map(i => {
+      if (i.partNumber.toUpperCase() !== partNumber.toUpperCase()) return i
+      const partsToBeMade = Math.max(0, Math.max(minimum, i.neededOpenOrders) - i.fusionInventory)
+      return { ...i, minimums: minimum, partsToBeMade }
+    }))
+  }, [])
 
   const columns: ColumnDef<ProductionRow>[] = useMemo(() => [
     { key: 'product', label: t('table.product'), sortable: true, filterable: true },
@@ -96,7 +110,9 @@ function NeedToMakePageContent() {
       key: 'minimums',
       label: t('table.minimums'),
       sortable: true,
-      render: (v) => (v as number).toLocaleString(),
+      render: (v, row) => canEditMinimums
+        ? <EditableMinimum partNumber={String(row.partNumber)} value={v as number} onSaved={onMinimumSaved} />
+        : (v as number).toLocaleString(),
     },
     {
       key: 'neededOpenOrders',
@@ -121,7 +137,7 @@ function NeedToMakePageContent() {
         return <span className="text-green-500">0</span>
       },
     },
-  ], [t])
+  ], [t, canEditMinimums, onMinimumSaved])
 
   useEffect(() => {
     fetch('/api/production-make')
