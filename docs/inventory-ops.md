@@ -150,6 +150,11 @@ scan-to-ship), so a stale label can't be used.
   Since 2026-07-08 the 409 message names the holder (action + stored error) when the
   blocker is a `failed_pre_erp` row, so the floor doesn't read a dead lock as "in
   progress" (Abel / 5TJQ incident; that row was cleared via this escape hatch).
+- **Scanned-code parsing:** `lib/pallet-code.ts` (`extractPalletCode`, unit-tested in
+  `lib/pallet-code.test.ts` — `node --test lib/pallet-code.test.ts`) is the ONLY place a
+  raw scan/QR payload becomes a pallet id. Every scanner section — camera (`PalletScanner`)
+  or future hardware-wedge inputs — must call it; a private regex is how the 2026-07-08
+  truncated-reprint-suffix bug happened (33R5-02 scanned as the retired 33R5).
 - **Reserved pallets:** reprint RELEASES the pallet's SO reservation BEFORE the reissue
   and re-reserves the new serial after (best-effort) — ERPNext v15 refuses to move
   reserved stock (NegativeStockError), which is exactly how the 5TJQ reprint died.
