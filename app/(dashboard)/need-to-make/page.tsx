@@ -78,10 +78,10 @@ function NeedToMakePageContent() {
     { key: 'product', label: t('table.product'), sortable: true, filterable: true },
     {
       key: 'partNumber', label: t('table.partNumber'), sortable: true, filterable: true,
-      render: (v) => (
+      render: (v, row) => (
         <span className="inline-flex items-center gap-1">
           <span className="font-bold">{String(v)}</span>
-          <InventoryPopover partNumber={String(v)} partType="part" />
+          <InventoryPopover partNumber={String(v)} partType="part" needed={row.neededOpenOrders as number} />
         </span>
       ),
     },
@@ -97,6 +97,17 @@ function NeedToMakePageContent() {
       label: t('table.minimums'),
       sortable: true,
       render: (v) => (v as number).toLocaleString(),
+    },
+    {
+      key: 'neededOpenOrders',
+      label: t('table.neededOpenOrders'),
+      sortable: true,
+      render: (v, row) => {
+        const val = (v as number) ?? 0
+        if (val === 0) return <span className="text-muted-foreground">0</span>
+        const short = val > (row.fusionInventory as number)
+        return <span className={short ? 'text-red-400 font-semibold' : ''}>{val.toLocaleString()}</span>
+      },
     },
     {
       key: 'partsToBeMade',

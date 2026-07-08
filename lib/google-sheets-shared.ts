@@ -107,6 +107,8 @@ export interface ProductionMakeItem {
   moldType: string
   fusionInventory: number
   minimums: number
+  /** Total qty required by open (pending/WIP, unshipped) orders using this part. */
+  neededOpenOrders: number
   partsToBeMade: number
   drawingUrl: string
 }

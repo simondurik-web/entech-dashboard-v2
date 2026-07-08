@@ -433,15 +433,42 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
 // ─── Production Make ───
 
 export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]> {
-  const [inventoryData, productionData] = await Promise.all([
+  const [inventoryData, productionData, ordersData] = await Promise.all([
     fetchAllRows('inventory'),
     fetchAllRows('production_totals'),
+    fetchAllRows('dashboard_orders'),
   ])
 
+  // Live ERPNext feed (5-min sync): stock + minimums (Item.safety_stock).
+  // production_totals only supplies the part list/metadata and a minimums
+  // fallback for items that don't exist in ERPNext — its own quantity_needed /
+  // parts_to_be_made columns froze at the 2026-06-30 sheet cutover.
   const fusionMap = new Map<string, number>()
+  const minimumMap = new Map<string, number>()
   for (const row of inventoryData) {
     const part = str(row.item_number).trim()
-    if (part) fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+    if (!part) continue
+    fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+    if (row.minimum !== null && row.minimum !== undefined && row.minimum !== '') {
+      minimumMap.set(part.toUpperCase(), num(row.minimum))
+    }
+  }
+
+  // Open-order demand (pending/WIP, unshipped): each wheel order consumes its
+  // finished part AND one tire + one hub per unit. Same demand window as the
+  // tire/hub colors on Orders Data / Need to Package (component-availability).
+  const demand = new Map<string, number>()
+  for (const row of ordersData) {
+    if (str(row.shipped_date)) continue
+    const status = normalizeStatus(str(row.work_order_status), str(row.if_status_fusion))
+    if (status !== 'pending' && status !== 'wip') continue
+    const qty = num(row.order_qty)
+    if (!qty) continue
+    for (const raw of [str(row.part_number), str(row.tire), str(row.hub)]) {
+      const key = raw.trim().toUpperCase()
+      if (!key || key === '-') continue
+      demand.set(key, (demand.get(key) ?? 0) + qty)
+    }
   }
 
   const items: ProductionMakeItem[] = []
@@ -449,8 +476,8 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
     const partNumber = str(row.part_number).trim()
     if (!partNumber) continue
 
-    const minimums = num(row.minimums) || num(row.quantity_needed)
     const key = partNumber.toUpperCase()
+    const minimums = minimumMap.get(key) ?? (num(row.minimums) || num(row.quantity_needed))
     let fusionInventory = fusionMap.get(key)
     if (fusionInventory === undefined) {
       for (const [fusionKey, qty] of fusionMap) {
@@ -462,15 +489,19 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
     }
     fusionInventory = fusionInventory ?? 0
 
-    const partsToBeMade = Math.max(0, minimums - fusionInventory)
+    // Make enough to cover open orders AND land back at the minimum buffer —
+    // the amount that turns the part green everywhere on the dashboard.
+    const neededOpenOrders = demand.get(key) ?? 0
+    const partsToBeMade = Math.max(0, Math.max(minimums, neededOpenOrders) - fusionInventory)
 
-    if (partsToBeMade > 0 || minimums > 0) {
+    if (partsToBeMade > 0 || minimums > 0 || neededOpenOrders > 0) {
       items.push({
         partNumber,
         product: str(row.product).trim(),
         moldType: str(row.mold_type),
         fusionInventory,
         minimums,
+        neededOpenOrders,
         partsToBeMade,
         drawingUrl: '',
       })
