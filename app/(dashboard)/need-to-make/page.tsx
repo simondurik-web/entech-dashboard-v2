@@ -101,10 +101,27 @@ function NeedToMakePageContent() {
     },
     { key: 'moldType', label: t('table.moldType'), sortable: true, filterable: true },
     {
+      key: 'onHand',
+      label: t('table.onHand'),
+      sortable: true,
+      render: (v) => ((v as number) ?? 0).toLocaleString(),
+    },
+    {
+      key: 'committed',
+      label: t('table.committed'),
+      sortable: true,
+      render: (v) => {
+        const n = (v as number) ?? 0
+        return n > 0
+          ? <span className="text-amber-400 font-semibold">{n.toLocaleString()}</span>
+          : <span className="text-muted-foreground">—</span>
+      },
+    },
+    {
       key: 'fusionInventory',
       label: t('table.fusionInv'),
       sortable: true,
-      render: (v) => (v as number).toLocaleString(),
+      render: (v) => <span className="font-semibold">{(v as number).toLocaleString()}</span>,
     },
     {
       key: 'minimums',

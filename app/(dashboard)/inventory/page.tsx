@@ -24,6 +24,8 @@ interface InventoryRow extends Record<string, unknown> {
   product: string
   partNumber: string
   fusionQty: number
+  onHand: number
+  committed: number
   minimum: number
   qtyNeeded: number
   partsToBeMade: number
@@ -252,6 +254,19 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
         if (n === 0) return <span className="text-muted-foreground text-xs">—</span>
         const color = n >= 0 ? 'text-green-400' : 'text-red-400'
         return <span className={`${color} font-medium text-xs`}>{n >= 0 ? '↑' : '↓'} {Math.abs(n).toLocaleString()}</span>
+      },
+    },
+    {
+      key: 'onHand', label: t('inventory.colOnHand'), sortable: true,
+      render: (v) => <span className="text-xs">{Number(v).toLocaleString()}</span>,
+    },
+    {
+      key: 'committed', label: t('inventory.colCommitted'), sortable: true,
+      render: (v) => {
+        const n = Number(v)
+        return n > 0
+          ? <span className="text-xs font-semibold text-amber-400">{n.toLocaleString()}</span>
+          : <span className="text-xs text-muted-foreground">—</span>
       },
     },
     { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs font-semibold">{Number(v).toLocaleString()}</span> },
@@ -780,6 +795,8 @@ function InventoryPageContent() {
         product: item.product,
         partNumber: item.partNumber,
         fusionQty,
+        onHand: item.onHand,
+        committed: item.committed,
         minimum: item.minimum,
         qtyNeeded,
         partsToBeMade,

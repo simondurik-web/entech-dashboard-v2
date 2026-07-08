@@ -427,6 +427,8 @@ export default function InventoryHistoryPage() {
         change,
         changePct,
         inStock: inv?.inStock ?? current,
+        onHand: inv?.onHand ?? current,
+        committed: inv?.committed ?? 0,
         minimum: inv?.minimum ?? 0,
         unitCost: uc,
         totalValue: uc != null ? current * uc : null,
@@ -730,6 +732,20 @@ export default function InventoryHistoryPage() {
                 </div>
                 <p className="text-[10px] text-muted-foreground mb-1.5">{t('inventoryHistory.overPeriod')}</p>
                 <div className="border-t border-border/40 pt-1.5 space-y-0.5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">{t('table.onHand')}</span>
+                    <span className="font-medium">{item.onHand.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">{t('table.committed')}</span>
+                    <span className={`font-medium ${item.committed > 0 ? 'text-amber-400' : ''}`}>
+                      {item.committed > 0 ? item.committed.toLocaleString() : '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">{t('table.fusionInv')}</span>
+                    <span className="font-medium">{item.inStock.toLocaleString()}</span>
+                  </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-muted-foreground">{t('table.minimum')}</span>
                     <span className={`font-medium ${item.minimum > 0 && item.inStock < item.minimum ? 'text-red-400' : ''}`}>
