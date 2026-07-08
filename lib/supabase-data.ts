@@ -319,11 +319,19 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
     fetchAllRows('inventory_reference'),
   ])
 
-  // Build Fusion map: partNumber -> qty
+  // Build Fusion map: partNumber -> qty. Minimums ride the same ERPNext-fed
+  // `inventory` rows (Item.safety_stock, synced every 5 min) — the sheet-era
+  // production_totals.minimums froze at the 2026-06-30 cutover and is only a
+  // fallback for items that don't exist in ERPNext.
   const fusionMap = new Map<string, number>()
+  const minimumMap = new Map<string, number>()
   for (const row of inventoryData) {
     const part = str(row.item_number).trim()
-    if (part) fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+    if (!part) continue
+    fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+    if (row.minimum !== null && row.minimum !== undefined && row.minimum !== '') {
+      minimumMap.set(part.toUpperCase(), num(row.minimum))
+    }
   }
 
   // Build department map from inventory_reference (department is non-sensitive;
@@ -353,12 +361,13 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
 
     seenParts.add(partNumber.toUpperCase())
     const product = str(row.product).trim()
-    const minimum = num(row.minimums) || num(row.quantity_needed)
-    const target = num(row.manual_target)
     const moldType = str(row.mold_type)
 
     // Look up stock from Fusion
     const key = partNumber.toUpperCase()
+    // ERPNext safety_stock is authoritative when the item exists there
+    // (minimumMap has an entry, even a 0); sheet minimums only for legacy items.
+    const minimum = minimumMap.get(key) ?? (num(row.minimums) || num(row.quantity_needed))
     let inStock = fusionMap.get(key)
     if (inStock === undefined) {
       for (const [fusionKey, qty] of fusionMap) {
@@ -391,7 +400,7 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
 
     const { department, subDepartment } = lookupDept(partNumber)
     items.push({
-      partNumber, product, inStock: stock, minimum, target, moldType, lastUpdate: '',
+      partNumber, product, inStock: stock, minimum, moldType, lastUpdate: '',
       itemType, isManufactured,
       projectionRate: dailyUsage,
       usage7: null, usage30: null,
@@ -409,7 +418,7 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
     const stock = num(row.real_number_value)
     const { department, subDepartment } = lookupDept(partNumber)
     items.push({
-      partNumber, product: '', inStock: stock, minimum: 0, target: 0, moldType: '', lastUpdate: '',
+      partNumber, product: '', inStock: stock, minimum: minimumMap.get(partNumber.toUpperCase()) ?? 0, moldType: '', lastUpdate: '',
       itemType: '', isManufactured: false,
       projectionRate: null,
       usage7: null, usage30: null,

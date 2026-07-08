@@ -48,6 +48,23 @@ export async function erpnextGet<T = unknown>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** Low-level PUT against the ERPNext REST API — partial doc update; `body` is
+ *  just the fields to set. Same 8s bound as erpnextGet. */
+export async function erpnextPut<T = unknown>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`ERPNext PUT ${path} -> ${res.status} ${text.slice(0, 200)}`)
+  }
+  return res.json() as Promise<T>
+}
+
 /** Raw GET (non-JSON) against ERPNext — used to stream binary assets (item
  *  pictures, PDFs) that sit behind the Cloudflare Access gate. Returns the raw
  *  Response; the caller checks res.ok and forwards body + content-type. */
