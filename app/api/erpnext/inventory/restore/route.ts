@@ -94,13 +94,20 @@ export async function POST(req: NextRequest) {
     // Same-pallet concurrency guard (the partial unique index on `family` is the atomic one).
     const { data: inflight } = await supabaseAdmin
       .from('inventory_ops_log')
-      .select('idempotency_key')
+      .select('idempotency_key, status, action, error')
       .eq('family', palletBase(batch))
       .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
       .neq('idempotency_key', idempotencyKey)
       .limit(1)
     if (inflight && inflight.length) {
-      return NextResponse.json({ error: 'Another operation is in progress for this pallet; try again shortly.' }, { status: 409 })
+      // Say WHY the pallet is held: a lingering FAILED op reads very differently
+      // from a genuinely concurrent one (Abel's 5TJQ, 2026-07-08 — a failed
+      // reprint held the family and every retry just said "in progress").
+      const held = inflight[0]
+      const msg = held.status === 'failed_pre_erp'
+        ? `A previous ${held.action} on this pallet failed and is holding it (${(held.error ?? 'unknown error').slice(0, 160)}). Ask an admin to clear it from the ops log.`
+        : 'Another operation is in progress for this pallet; try again shortly.'
+      return NextResponse.json({ error: msg }, { status: 409 })
     }
 
     if (willReissue) newBatch = await reserveNextSerial(batch)
