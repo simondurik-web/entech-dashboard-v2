@@ -148,10 +148,12 @@ export function buildPalletZpl(label: PalletLabel): string {
     `^FO${x},${y}^A0R,${h},${h}^FD${text}^FS`
 
   const Y = 36 // left margin (reading)
-  // ^PR2: print at 2 in/s (ZT411 default is 6). Slower head speed = noticeably
-  // crisper text/QR/logo edges on thermal media; Simon 2026-07-03 explicitly
-  // traded speed for quality. Applies to every label this template prints.
-  const lines: string[] = ['^XA', '^PR2', '^PW812', '^LL1218', '^CI28', '^LH0,0']
+  // ^PR3: print at 3 in/s (ZT411 default is 6). Slower head speed = crisper
+  // text/QR/logo edges (Simon 2026-07-03 traded speed for quality) — but 2 in/s
+  // put so much heat dwell into the dense QR blocks that the ribbon welded to
+  // the label and voided the code (shipping printer, Simon 2026-07-08). 3 in/s
+  // keeps most of the crispness at roughly two-thirds the heat per dot.
+  const lines: string[] = ['^XA', '^PR3', '^PW812', '^LL1218', '^CI28', '^LH0,0']
 
   // Header block (reading top -> down): part number, qty, then the pallet id
   // directly under the qty (Simon 2026-06-21). Fonts are sized so the longest
