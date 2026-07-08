@@ -88,7 +88,6 @@ export interface InventoryItem {
   product: string
   inStock: number
   minimum: number
-  target: number
   moldType: string
   lastUpdate: string
   itemType: string          // "Manufactured" | "Purchased" | "COM" | ""

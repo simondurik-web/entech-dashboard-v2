@@ -428,7 +428,6 @@ export default function InventoryHistoryPage() {
         changePct,
         inStock: inv?.inStock ?? current,
         minimum: inv?.minimum ?? 0,
-        target: inv?.target ?? 0,
         unitCost: uc,
         totalValue: uc != null ? current * uc : null,
       }
@@ -736,10 +735,6 @@ export default function InventoryHistoryPage() {
                     <span className={`font-medium ${item.minimum > 0 && item.inStock < item.minimum ? 'text-red-400' : ''}`}>
                       {item.minimum > 0 ? item.minimum.toLocaleString() : '—'}
                     </span>
-                  </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-muted-foreground">{t('inventoryHistory.manualTarget')}</span>
-                    <span className="font-medium">{item.target > 0 ? item.target.toLocaleString() : '—'}</span>
                   </div>
                   {showCosts && item.totalValue != null && (
                     <div className="flex justify-between text-[10px]">

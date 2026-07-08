@@ -40,24 +40,26 @@ function findPart(items: InventoryItem[], partNumber: string): InventoryItem | n
 
 // ─── Status helpers ───
 
-function stockStatus(item: InventoryItem, t: (key: string) => string): { label: string; color: string; bgColor: string; icon: React.ReactNode } {
-  const { inStock, minimum, target } = item
-  const effectiveTarget = target > 0 ? target : minimum
+// `needed` = total qty required by open orders (tire/hub demand). The status
+// mirrors the table's red/green rule: green only when stock covers open demand
+// AND the minimum. (Manual Target retired with the Google Sheet, 2026-07-07.)
+function stockStatus(item: InventoryItem, needed: number | undefined, t: (key: string) => string): { label: string; color: string; bgColor: string; icon: React.ReactNode } {
+  const { inStock, minimum } = item
 
   if (inStock <= 0) {
     return { label: t('inventoryPopover.outOfStock'), color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <AlertTriangle className="size-3" /> }
   }
+  if (needed !== undefined && needed > 0 && inStock < needed) {
+    return { label: t('inventoryPopover.needToMake'), color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <TrendingDown className="size-3" /> }
+  }
   if (minimum > 0 && inStock < minimum) {
     return { label: t('inventoryPopover.belowMin'), color: 'text-red-400', bgColor: 'bg-red-500/15', icon: <TrendingDown className="size-3" /> }
-  }
-  if (effectiveTarget > 0 && inStock < effectiveTarget) {
-    return { label: t('inventoryPopover.lowStock'), color: 'text-amber-400', bgColor: 'bg-amber-500/15', icon: <TrendingDown className="size-3" /> }
   }
   return { label: t('inventoryPopover.ok'), color: 'text-emerald-400', bgColor: 'bg-emerald-500/15', icon: <TrendingUp className="size-3" /> }
 }
 
-function stockPercentage(item: InventoryItem): number | null {
-  const target = item.target > 0 ? item.target : item.minimum
+function stockPercentage(item: InventoryItem, needed: number | undefined): number | null {
+  const target = Math.max(needed ?? 0, item.minimum)
   if (target <= 0) return null
   return Math.min(100, Math.round((item.inStock / target) * 100))
 }
@@ -86,9 +88,12 @@ interface InventoryPopoverProps {
   partNumber: string
   /** What type of part this is (for display) */
   partType?: 'part' | 'tire' | 'hub'
+  /** Total qty required by open orders (tire/hub cumulative demand). When set,
+   *  the status pill and progress bar use it so the card explains the cell color. */
+  needed?: number
 }
 
-export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPopoverProps) {
+export function InventoryPopover({ partNumber, partType = 'part', needed }: InventoryPopoverProps) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [item, setItem] = useState<InventoryItem | null>(null)
@@ -170,8 +175,8 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
           )}
 
           {!loading && !error && item && (() => {
-            const status = stockStatus(item, t)
-            const pct = stockPercentage(item)
+            const status = stockStatus(item, needed, t)
+            const pct = stockPercentage(item, needed)
 
             return (
               <div className="space-y-2">
@@ -198,7 +203,13 @@ export function InventoryPopover({ partNumber, partType = 'part' }: InventoryPop
                 <div className="divide-y divide-border/30">
                   <Stat label={t('inventoryPopover.inStock')} value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
                   <Stat label={t('inventoryPopover.minimums')} value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
-                  <Stat label={t('inventoryPopover.manualTarget')} value={item.target > 0 ? item.target.toLocaleString() : '—'} />
+                  {needed !== undefined && (
+                    <Stat
+                      label={t('inventoryPopover.neededOpenOrders')}
+                      value={needed.toLocaleString()}
+                      accent={needed > item.inStock ? 'text-red-400' : 'text-emerald-400'}
+                    />
+                  )}
                   {item.moldType && <Stat label={t('inventoryPopover.mold')} value={item.moldType} />}
                   {item.daysToMin !== null && item.daysToMin >= 0 && (
                     <Stat

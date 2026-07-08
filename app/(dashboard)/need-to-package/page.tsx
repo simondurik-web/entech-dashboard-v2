@@ -15,6 +15,7 @@ import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
+import { computeComponentAvailability, type ComponentAvailabilityMap } from '@/lib/component-availability'
 import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 import { usePermissions } from '@/lib/use-permissions'
@@ -32,8 +33,6 @@ type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 interface PackageOrder extends Order {
   availableStock: number
   canPackage: boolean
-  hasTire: boolean
-  hasHub: boolean
 }
 
 type PackageRow = PackageOrder & Record<string, unknown>
@@ -67,7 +66,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void, printedLines?: Set<string>): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, compAvail: ComponentAvailabilityMap, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void, printedLines?: Set<string>): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -163,10 +162,11 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
         if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
         const tire = String(v || '')
         if (!tire || tire === '-') return <span className="text-muted-foreground">-</span>
+        const avail = compAvail.get(tire.toUpperCase())
         return (
           <span className="inline-flex items-center gap-1">
-            <span className={order.hasTire ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
-            <InventoryPopover partNumber={tire} partType="tire" />
+            <span className={avail?.ok ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
+            <InventoryPopover partNumber={tire} partType="tire" needed={avail?.demand} />
           </span>
         )
       },
@@ -181,10 +181,11 @@ function getColumns(t: (key: string) => string, onPriorityUpdate?: (line: string
         if (!isRollTech(order.category)) return <span className="text-muted-foreground">-</span>
         const hub = String(v || '')
         if (!hub || hub === '-') return <span className="text-muted-foreground">-</span>
+        const avail = compAvail.get(hub.toUpperCase())
         return (
           <span className="inline-flex items-center gap-1">
-            <span className={order.hasHub ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
-            <InventoryPopover partNumber={hub} partType="hub" />
+            <span className={avail?.ok ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
+            <InventoryPopover partNumber={hub} partType="hub" needed={avail?.demand} />
           </span>
         )
       },
@@ -282,6 +283,7 @@ function NeedToPackagePageContent() {
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<PackageOrder[]>([])
+  const [compAvail, setCompAvail] = useState<ComponentAvailabilityMap>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
@@ -362,7 +364,7 @@ function NeedToPackagePageContent() {
 
   const showLabels = canAccess('/labels')
   const canAssign = canAccess('assign_orders')
-  const columns = useMemo(() => getColumns(t, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined, printedLines), [t, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate, printedLines])
+  const columns = useMemo(() => getColumns(t, compAvail, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined, printedLines), [t, compAvail, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate, printedLines])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -389,6 +391,10 @@ function NeedToPackagePageContent() {
         inventoryData.forEach((item) => {
           stockMap.set(item.partNumber.toUpperCase(), item.inStock)
         })
+
+        // Tire/Hub colors: total open-order demand vs live stock + minimums
+        // (computed over ALL open orders, not just this page's rows).
+        setCompAvail(computeComponentAvailability(ordersData, inventoryData))
 
         const needToPackage = ordersData
           .filter((o) => {

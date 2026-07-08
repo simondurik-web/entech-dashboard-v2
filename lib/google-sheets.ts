@@ -350,7 +350,6 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
 
     const product = cellValue(row, PROD_COLS.product).trim()
     const minimum = cellNumber(row, PROD_COLS.minimums) || cellNumber(row, PROD_COLS.quantityNeeded)
-    const target = cellNumber(row, PROD_COLS.manualTarget)
     const moldType = cellValue(row, PROD_COLS.moldType)
 
     // Look up stock from Fusion: exact match, then startsWith
@@ -386,7 +385,7 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
     const daysToZero = dailyUsage && dailyUsage > 0 ? Math.round(stock / dailyUsage) : null
 
     items.push({
-      partNumber, product, inStock: stock, minimum, target, moldType, lastUpdate: '',
+      partNumber, product, inStock: stock, minimum, moldType, lastUpdate: '',
       itemType, isManufactured,
       projectionRate: dailyUsage,
       usage7: null, usage30: null,

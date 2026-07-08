@@ -10,6 +10,7 @@ import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets-sh
 import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
 import Link from 'next/link'
 import { usePermissions } from '@/lib/use-permissions'
+import { authHeaders } from '@/lib/session-token'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp, useCountUpDecimal } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -23,7 +24,6 @@ interface InventoryRow extends Record<string, unknown> {
   partNumber: string
   fusionQty: number
   minimum: number
-  manualTarget: number
   qtyNeeded: number
   partsToBeMade: number
   moldType: string
@@ -189,7 +189,77 @@ const TYPE_FILTERS: { key: TypeFilterKey; labelKey: string; emoji: string }[] = 
 
 // ─── Column Definitions ───
 
-function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean): ColumnDef<InventoryRow>[] {
+// ─── Editable Minimum cell ───
+// Click-to-edit; saves to ERPNext Item.safety_stock through /api/erpnext/inventory/minimum
+// (the same value is editable on the ERPNext Item form — the 5-min sync keeps both in step).
+function EditableMinimumCell({ partNumber, value, onSave, t }: {
+  partNumber: string
+  value: number
+  onSave: (partNumber: string, minimum: number) => Promise<void>
+  t: (key: string) => string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const cancelledRef = useRef(false)
+
+  const start = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    cancelledRef.current = false
+    setDraft(String(value || ''))
+    setEditing(true)
+  }
+
+  const commit = async () => {
+    if (cancelledRef.current) { setEditing(false); return }
+    const n = Math.round(Number(draft))
+    if (draft.trim() === '' || !Number.isFinite(n) || n < 0 || n === value) {
+      setEditing(false)
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(partNumber, n)
+      setEditing(false)
+    } catch {
+      alert(t('inventory.minimumSaveFailed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={start}
+        title={t('inventory.editMinimum')}
+        className="group inline-flex items-center gap-1 rounded px-1 -mx-1 hover:bg-primary/10 transition-colors cursor-text"
+      >
+        <span>{value.toLocaleString()}</span>
+        <span className="opacity-0 group-hover:opacity-60 text-[10px]">✎</span>
+      </button>
+    )
+  }
+  return (
+    <input
+      autoFocus
+      type="number"
+      min={0}
+      value={draft}
+      disabled={saving}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+        if (e.key === 'Escape') { cancelledRef.current = true; setEditing(false) }
+      }}
+      className="w-20 rounded border border-primary/50 bg-background px-1 py-0.5 text-xs disabled:opacity-50"
+    />
+  )
+}
+
+function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean, minEdit?: { onSave: (partNumber: string, minimum: number) => Promise<void> }): ColumnDef<InventoryRow>[] {
   const cols: ColumnDef<InventoryRow>[] = [
     { key: 'department', label: 'Dept', sortable: true, filterable: true, render: (v) => <span className="text-[11px] text-muted-foreground">{String(v)}</span> },
     { key: 'subDepartment', label: 'Sub Dept', sortable: true, filterable: true, render: (v) => <span className="text-[11px] text-muted-foreground">{String(v)}</span> },
@@ -254,8 +324,12 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
       },
     },
     { key: 'fusionQty', label: t('inventory.colFusionQty'), sortable: true, render: (v) => <span className="text-xs font-semibold">{Number(v).toLocaleString()}</span> },
-    { key: 'minimum', label: t('inventory.colMinimum'), sortable: true, render: (v) => Number(v).toLocaleString() },
-    { key: 'manualTarget', label: t('inventory.colManualTarget'), sortable: true, render: (v) => Number(v).toLocaleString() },
+    {
+      key: 'minimum', label: t('inventory.colMinimum'), sortable: true,
+      render: (v, row) => minEdit
+        ? <EditableMinimumCell partNumber={row.partNumber} value={Number(v)} onSave={minEdit.onSave} t={t} />
+        : Number(v).toLocaleString(),
+    },
     // Single "Qty Needed" column for both make and buy: shortfall to minimum for ALL
     // items (max(0, minimum - fusionQty)), with the red highlight when > 0. Replaces
     // the old "Parts to Make" column (which was 0 for purchased items). partsToBeMade
@@ -335,14 +409,12 @@ function HistoryModal({
   itemType,
   currentQty,
   minimum,
-  target,
   onClose,
 }: {
   partNumber: string
   itemType: string
   currentQty: number
   minimum: number
-  target: number
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -384,13 +456,13 @@ function HistoryModal({
     const avg = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
 
     if (isMfg) {
-      const { prod7, prod30, daysToTarget, trend, trendLabel, trendColor } = calculateProductionStats(currentQty, target || minimum, historyData.dates, historyData.dataByDate)
+      const { prod7, prod30, daysToTarget, trend, trendLabel, trendColor } = calculateProductionStats(currentQty, minimum, historyData.dates, historyData.dataByDate)
       return { max, avg, prod7, prod30, daysToTarget, trend, trendLabel, trendColor, isMfg: true }
     } else {
       const { usage7, usage30, projectionRate, daysToZero, daysToMin, trend, trendLabel, trendColor } = calculateUsageStats(currentQty, minimum, historyData.dates, historyData.dataByDate)
       return { max, avg, usage7, usage30, projectionRate, daysToZero, daysToMin, trend, trendLabel, trendColor, isMfg: false }
     }
-  }, [historyData, currentQty, minimum, target, isMfg])
+  }, [historyData, currentQty, minimum, isMfg])
 
   // Chart rendering
   useEffect(() => {
@@ -752,7 +824,7 @@ function InventoryPageContent() {
       let daysToZero: number | null = item.daysToZero
 
       if (item.isManufactured) {
-        const stats = calculateProductionStats(fusionQty, item.target || item.minimum, dates, dataByDate)
+        const stats = calculateProductionStats(fusionQty, item.minimum, dates, dataByDate)
         avgUsage = stats.prod30 ?? stats.prod7
         trend = `${stats.trend}${stats.trendLabel}`
         trendColor = stats.trendColor
@@ -778,7 +850,6 @@ function InventoryPageContent() {
         partNumber: item.partNumber,
         fusionQty,
         minimum: item.minimum,
-        manualTarget: item.target,
         qtyNeeded,
         partsToBeMade,
         moldType: item.moldType,
@@ -950,7 +1021,25 @@ function InventoryPageContent() {
   const animAdequateStock = useCountUp(adequateStock)
   const animInventoryValue = useCountUpDecimal(totalInventoryValue)
 
-  const columns = useMemo(() => makeColumns(setHistoryPart, t, showCosts), [t, showCosts])
+  // Minimum edits ride the inventory-ops permission (same gate as the other
+  // ERPNext inventory mutations) and write to Item.safety_stock in ERPNext.
+  const canEditMinimums = canAccess('/inventory-ops')
+  const saveMinimum = useCallback(async (partNumber: string, minimum: number) => {
+    const res = await fetch('/api/erpnext/inventory/minimum', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ partNumber, minimum }),
+    })
+    if (!res.ok) throw new Error(`minimum save failed (${res.status})`)
+    setItems(prev => prev.map(i =>
+      i.partNumber.toUpperCase() === partNumber.toUpperCase() ? { ...i, minimum } : i
+    ))
+  }, [])
+
+  const columns = useMemo(
+    () => makeColumns(setHistoryPart, t, showCosts, canEditMinimums ? { onSave: saveMinimum } : undefined),
+    [t, showCosts, canEditMinimums, saveMinimum]
+  )
 
   const table = useDataTable({
     data: filtered,
@@ -1280,7 +1369,6 @@ function InventoryPageContent() {
           itemType={selectedRow.itemType}
           currentQty={selectedRow.fusionQty}
           minimum={selectedRow.minimum}
-          target={selectedRow.manualTarget}
           onClose={() => setHistoryPart(null)}
         />
       )}
