@@ -15,13 +15,21 @@ import { useI18n } from '@/lib/i18n'
 // Effective zoom = hardware zoom (to its max) x digital crop, so a small QR can be
 // filled from a distance and the decoder sees it magnified.
 
-const BASE32 = /[0-9A-HJKMNP-TV-Z]{3,12}/ // Crockford base32 (no I/L/O/U)
+// Pallet code = Crockford base32 (no I/L/O/U) with an OPTIONAL reprint suffix
+// (33R5 -> 33R5-02). The suffix alternative is tried FIRST and only wins when
+// the digits end the run (lookahead), so a part-number scan like CURB-36PK
+// still extracts the same base token it always did. Without the suffix branch
+// the scanner silently dropped "-02" and the ship flow rejected every
+// reprinted label as "old/replaced" (Simon 2026-07-08 — floor had to hand-type
+// every reprinted pallet on SO-00044).
+const PALLET_CODE =
+  /[0-9A-HJKMNP-TV-Z]{3,12}-\d{2,3}(?![0-9A-Z])|[0-9A-HJKMNP-TV-Z]{3,12}/
 const DIGITAL_MAX = 4 // digital zoom multiplier allowed on top of the hardware zoom
 const MAX_CANVAS = 1000 // decode the crop near its native resolution (avoid upscale blur)
 
 function extractPalletCode(raw: string): string {
   const tail = raw.includes(',') ? raw.slice(raw.lastIndexOf(',') + 1) : raw
-  const m = tail.toUpperCase().match(BASE32)
+  const m = tail.toUpperCase().match(PALLET_CODE)
   return m ? m[0] : tail.trim().toUpperCase()
 }
 

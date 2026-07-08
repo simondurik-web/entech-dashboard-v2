@@ -75,9 +75,13 @@ interface OrderCardProps {
   extraFields?: React.ReactNode
   /** Rendered at the top of the expanded area, above OrderDetail (e.g. Ship Order) */
   expandedAction?: React.ReactNode
+  /** Desktop-parity spec grid (tire/hub/stock...) shown first in the expanded area */
+  expandedFields?: React.ReactNode
+  /** Availability color for the part number (matches the desktop table cell) */
+  partClassName?: string
 }
 
-export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields, expandedAction }: OrderCardProps) {
+export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields, expandedAction, expandedFields, partClassName }: OrderCardProps) {
   const style = categoryStyle(order.category)
 
   return (
@@ -97,7 +101,7 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
           <div className="min-w-0 flex-1">
             <CardTitle className="text-base leading-tight truncate">{order.customer}</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {order.partNumber} <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${style.badge}`}>{style.label}</span>
+              <span className={partClassName || ''}>{order.partNumber}</span> <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${style.badge}`}>{style.label}</span>
             </p>
           </div>
           {statusOverride ? (
@@ -142,6 +146,7 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
           className={`grid transition-all duration-300 ease-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
         >
           <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {isExpanded && expandedFields}
             {isExpanded && expandedAction}
             {isExpanded && (
               <OrderDetail
