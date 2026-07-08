@@ -32,6 +32,10 @@ type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
 interface PackageOrder extends Order {
   availableStock: number
+  /** Physical on-hand total from ERPNext. */
+  onHandStock: number
+  /** Stock reserved to sales orders (ERPNext) — shown beside Available. */
+  committedStock: number
   canPackage: boolean
 }
 
@@ -143,13 +147,29 @@ function getColumns(t: (key: string) => string, compAvail: ComponentAvailability
     },
     { key: 'orderQty', label: t('table.qty'), sortable: true, render: (v) => (v as number).toLocaleString() },
     {
+      key: 'onHandStock',
+      label: t('table.onHand'),
+      sortable: true,
+      render: (v) => ((v as number) ?? 0).toLocaleString(),
+    },
+    {
+      key: 'committedStock',
+      label: t('table.committed'),
+      sortable: true,
+      render: (v) => {
+        const n = (v as number) ?? 0
+        return n > 0
+          ? <span className="text-amber-400 font-semibold">{n.toLocaleString()}</span>
+          : <span className="text-muted-foreground">—</span>
+      },
+    },
+    {
       key: 'fusionInventory',
       label: t('table.fusionInv'),
       sortable: true,
       render: (v) => {
         const n = v as number
-        // Always white/default -- no color coding on this column
-        return <span>{n > 0 ? n.toLocaleString() : '0'}</span>
+        return <span className="font-semibold">{n > 0 ? n.toLocaleString() : '0'}</span>
       },
     },
     {
@@ -253,7 +273,7 @@ function getColumns(t: (key: string) => string, compAvail: ComponentAvailability
     ...getExtraOrderColumns<PackageRow>(new Set([
       'category', 'requestedDate', 'effectivePriority', 'line', 'customer', 'ifNumber',
       'partNumber', 'numPackages', 'packaging', 'partsPerPackage', 'orderQty',
-      'fusionInventory', 'tire', 'hub', 'hubMold', 'bearings', 'assignedTo',
+      'onHandStock', 'committedStock', 'fusionInventory', 'tire', 'hub', 'hubMold', 'bearings', 'assignedTo',
       'internalStatus', 'daysUntilDue',
     ])),
   ]
@@ -388,8 +408,12 @@ function NeedToPackagePageContent() {
   useEffect(() => {
     const applyData = ([ordersData, inventoryData]: [Order[], InventoryItem[]]) => {
         const stockMap = new Map<string, number>()
+        const committedMap = new Map<string, number>()
+        const onHandMap = new Map<string, number>()
         inventoryData.forEach((item) => {
           stockMap.set(item.partNumber.toUpperCase(), item.inStock)
+          committedMap.set(item.partNumber.toUpperCase(), item.committed)
+          onHandMap.set(item.partNumber.toUpperCase(), item.onHand)
         })
 
         // Tire/Hub colors: total open-order demand vs live stock + minimums
@@ -402,10 +426,14 @@ function NeedToPackagePageContent() {
             return (status === 'pending' || status === 'wip') && !o.shippedDate
           })
           .map((o): PackageOrder => {
+            // AVAILABLE stock (on hand minus committed-to-SO): inventory already
+            // reserved to another order can never make this one look ready.
             const stock = stockMap.get(o.partNumber.toUpperCase()) ?? 0
             return {
               ...o,
               availableStock: stock,
+              onHandStock: onHandMap.get(o.partNumber.toUpperCase()) ?? stock,
+              committedStock: committedMap.get(o.partNumber.toUpperCase()) ?? 0,
               canPackage: stock >= o.orderQty,
             }
           })
@@ -586,12 +614,20 @@ function NeedToPackagePageContent() {
                 onToggle={() => toggleExpanded(order)}
                 statusOverride={order.canPackage ? `✓ ${t('needToPackage.ready')}` : `✗ ${t('needToPackage.missing')}`}
                 extraFields={
-                  <div>
-                    <span className="text-muted-foreground">{t('needToPackage.stock')}</span>
-                    <p className={`font-semibold ${order.availableStock >= order.orderQty ? 'text-green-600' : 'text-red-500'}`}>
-                      {order.availableStock.toLocaleString()}
-                    </p>
-                  </div>
+                  <>
+                    <div>
+                      <span className="text-muted-foreground">{t('needToPackage.stock')}</span>
+                      <p className={`font-semibold ${order.availableStock >= order.orderQty ? 'text-green-600' : 'text-red-500'}`}>
+                        {order.availableStock.toLocaleString()}
+                      </p>
+                    </div>
+                    {order.committedStock > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">{t('table.committed')}</span>
+                        <p className="font-semibold text-amber-500">{order.committedStock.toLocaleString()}</p>
+                      </div>
+                    )}
+                  </>
                 }
               />
             )

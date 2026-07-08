@@ -178,9 +178,15 @@ export function InventoryPopover({ partNumber, partType = 'part', needed }: Inve
                   </div>
                 )}
 
-                {/* Stats */}
+                {/* Stats — on hand / committed-to-SO / available (the planning number) */}
                 <div className="divide-y divide-border/30">
-                  <Stat label={t('inventoryPopover.inStock')} value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
+                  <Stat label={t('inventoryPopover.onHand')} value={item.onHand.toLocaleString()} />
+                  <Stat
+                    label={t('inventoryPopover.committed')}
+                    value={item.committed > 0 ? item.committed.toLocaleString() : '—'}
+                    accent={item.committed > 0 ? 'text-amber-400' : ''}
+                  />
+                  <Stat label={t('inventoryPopover.available')} value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
                   {canEditMinimums ? (
                     <div className="flex items-center justify-between py-[3px]">
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">{t('inventoryPopover.minimums')}</span>

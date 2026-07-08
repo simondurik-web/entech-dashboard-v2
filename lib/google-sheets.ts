@@ -385,7 +385,7 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
     const daysToZero = dailyUsage && dailyUsage > 0 ? Math.round(stock / dailyUsage) : null
 
     items.push({
-      partNumber, product, inStock: stock, minimum, moldType, lastUpdate: '',
+      partNumber, product, inStock: stock, onHand: stock, committed: 0, minimum, moldType, lastUpdate: '',
       itemType, isManufactured,
       projectionRate: dailyUsage,
       usage7: null, usage30: null,
@@ -447,6 +447,8 @@ export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
         product,
         moldType,
         fusionInventory,
+        onHand: fusionInventory,
+        committed: 0, // legacy sheet fallback has no reservation feed
         minimums,
         neededOpenOrders: 0, // legacy sheet fallback has no live order feed
         partsToBeMade,

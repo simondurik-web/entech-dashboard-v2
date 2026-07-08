@@ -325,10 +325,16 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
   // fallback for items that don't exist in ERPNext.
   const fusionMap = new Map<string, number>()
   const minimumMap = new Map<string, number>()
+  // on-hand / committed-to-SO split (ERPNext bins + stock reservations)
+  const stockSplitMap = new Map<string, { onHand: number; committed: number }>()
   for (const row of inventoryData) {
     const part = str(row.item_number).trim()
     if (!part) continue
     fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+    stockSplitMap.set(part.toUpperCase(), {
+      onHand: num(row.on_hand_total),
+      committed: num(row.reserved_staged),
+    })
     if (row.minimum !== null && row.minimum !== undefined && row.minimum !== '') {
       minimumMap.set(part.toUpperCase(), num(row.minimum))
     }
@@ -399,8 +405,10 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
     const daysToZero = dailyUsage && dailyUsage > 0 ? Math.round(stock / dailyUsage) : null
 
     const { department, subDepartment } = lookupDept(partNumber)
+    const split = stockSplitMap.get(key) ?? { onHand: stock, committed: 0 }
     items.push({
-      partNumber, product, inStock: stock, minimum, moldType, lastUpdate: '',
+      partNumber, product, inStock: stock, onHand: split.onHand, committed: split.committed,
+      minimum, moldType, lastUpdate: '',
       itemType, isManufactured,
       projectionRate: dailyUsage,
       usage7: null, usage30: null,
@@ -418,7 +426,9 @@ export async function fetchInventoryFromDB(): Promise<InventoryItem[]> {
     const stock = num(row.real_number_value)
     const { department, subDepartment } = lookupDept(partNumber)
     items.push({
-      partNumber, product: '', inStock: stock, minimum: minimumMap.get(partNumber.toUpperCase()) ?? 0, moldType: '', lastUpdate: '',
+      partNumber, product: '', inStock: stock,
+      onHand: num(row.on_hand_total), committed: num(row.reserved_staged),
+      minimum: minimumMap.get(partNumber.toUpperCase()) ?? 0, moldType: '', lastUpdate: '',
       itemType: '', isManufactured: false,
       projectionRate: null,
       usage7: null, usage30: null,
@@ -445,10 +455,14 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
   // parts_to_be_made columns froze at the 2026-06-30 sheet cutover.
   const fusionMap = new Map<string, number>()
   const minimumMap = new Map<string, number>()
+  const committedMap = new Map<string, number>()
+  const onHandMap = new Map<string, number>()
   for (const row of inventoryData) {
     const part = str(row.item_number).trim()
     if (!part) continue
     fusionMap.set(part.toUpperCase(), num(row.real_number_value))
+    committedMap.set(part.toUpperCase(), num(row.reserved_staged))
+    onHandMap.set(part.toUpperCase(), num(row.on_hand_total))
     if (row.minimum !== null && row.minimum !== undefined && row.minimum !== '') {
       minimumMap.set(part.toUpperCase(), num(row.minimum))
     }
@@ -500,6 +514,8 @@ export async function fetchProductionMakeFromDB(): Promise<ProductionMakeItem[]>
         product: str(row.product).trim(),
         moldType: str(row.mold_type),
         fusionInventory,
+        onHand: onHandMap.get(key) ?? fusionInventory,
+        committed: committedMap.get(key) ?? 0,
         minimums,
         neededOpenOrders,
         partsToBeMade,

@@ -22,7 +22,7 @@ export function getExtraOrderColumns<T extends Record<string, unknown>>(
     { key: 'packaging' as keyof T & string, label: 'Packaging', sortable: true, filterable: true },
     { key: 'partsPerPackage' as keyof T & string, label: 'Parts/Package', sortable: true, render: (v) => v ? (v as number).toLocaleString() : '-' },
     { key: 'numPackages' as keyof T & string, label: '# Packages', sortable: true, render: (v) => v ? (v as number).toLocaleString() : '-' },
-    { key: 'fusionInventory' as keyof T & string, label: 'Fusion Inventory', sortable: true, render: (v) => (v as number).toLocaleString() },
+    { key: 'fusionInventory' as keyof T & string, label: 'Available (ERP)', sortable: true, render: (v) => (v as number).toLocaleString() },
     { key: 'hubMold' as keyof T & string, label: 'Hub Mold', sortable: true, filterable: true },
     { key: 'tire' as keyof T & string, label: 'Tire', sortable: true, filterable: true },
     { key: 'hub' as keyof T & string, label: 'Hub', sortable: true, filterable: true },
