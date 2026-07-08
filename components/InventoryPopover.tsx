@@ -13,6 +13,13 @@ let inventoryPromise: Promise<InventoryItem[]> | null = null
 let cacheTimestamp = 0
 const CACHE_TTL = 60_000 // 1 minute
 
+/** Drop the shared popover cache (e.g. after editing a minimum) so the next
+ *  open refetches instead of showing the pre-edit value for up to a minute. */
+export function invalidateInventoryPopoverCache(): void {
+  inventoryCache = null
+  cacheTimestamp = 0
+}
+
 async function getInventory(): Promise<InventoryItem[]> {
   const now = Date.now()
   if (inventoryCache && now - cacheTimestamp < CACHE_TTL) return inventoryCache

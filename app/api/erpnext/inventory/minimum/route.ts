@@ -43,12 +43,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Best-effort immediate mirror; the 5-min sync would converge anyway.
+  // Best-effort immediate mirror; ERPNext is the source of truth and the 5-min
+  // sync converges regardless — a mirror failure is reported, not fatal.
   const { error: sbErr } = await supabaseAdmin
     .from('inventory')
     .update({ minimum })
     .ilike('item_number', partNumber)
   if (sbErr) console.error('minimum mirror update failed:', sbErr.message)
 
-  return NextResponse.json({ ok: true, partNumber, minimum, by: guard.email })
+  return NextResponse.json({ ok: true, partNumber, minimum, mirrored: !sbErr, by: guard.email })
 }
