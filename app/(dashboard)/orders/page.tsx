@@ -14,6 +14,7 @@ import { useI18n } from '@/lib/i18n'
 import type { Order, InventoryItem } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
 import { computeComponentAvailability, componentOk, type ComponentAvailabilityMap } from '@/lib/component-availability'
+import { OrderSpecsGrid } from '@/components/cards/OrderSpecsGrid'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
 import { authHeaders } from '@/lib/session-token'
@@ -775,12 +776,26 @@ function OrdersPageContent() {
           }}
           renderCard={(row, i) => {
             const order = row as unknown as Order
+            const cat = order.category.toLowerCase()
+            const active = isActiveStatus(order)
+            const inv = invByPart?.get(order.partNumber.trim().toUpperCase())
             return (
               <OrderCard
                 order={order}
                 index={i}
                 isExpanded={expandedOrderKey === getOrderKey(order)}
                 onToggle={() => toggleExpanded(order)}
+                // same availability color the desktop Part # cell uses
+                partClassName={active && (cat.includes('molding') || cat.includes('snap'))
+                  ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-bold')
+                  : ''}
+                expandedFields={
+                  <OrderSpecsGrid
+                    order={order}
+                    compAvail={compAvail}
+                    stock={inv ? { onHand: inv.onHand, committed: inv.committed, available: inv.inStock } : null}
+                  />
+                }
               />
             )
           }}
