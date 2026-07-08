@@ -86,7 +86,13 @@ export interface InventoryHistoryData {
 export interface InventoryItem {
   partNumber: string
   product: string
+  /** AVAILABLE stock (on hand minus committed) — the planning number every
+   *  calculation uses; committed stock never counts toward other orders. */
   inStock: number
+  /** Physical on-hand total from ERPNext. */
+  onHand: number
+  /** Reserved to sales orders (ERPNext stock reservations). */
+  committed: number
   minimum: number
   moldType: string
   lastUpdate: string
@@ -105,7 +111,12 @@ export interface ProductionMakeItem {
   partNumber: string
   product: string
   moldType: string
+  /** AVAILABLE stock (on hand minus committed-to-SO). */
   fusionInventory: number
+  /** Physical on-hand total from ERPNext. */
+  onHand: number
+  /** Reserved to sales orders (shown next to Available). */
+  committed: number
   minimums: number
   /** Total qty required by open (pending/WIP, unshipped) orders using this part. */
   neededOpenOrders: number
