@@ -16,6 +16,7 @@ import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
 import { computeComponentAvailability, type ComponentAvailabilityMap } from '@/lib/component-availability'
+import { OrderSpecsGrid } from '@/components/cards/OrderSpecsGrid'
 import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 import { usePermissions } from '@/lib/use-permissions'
@@ -606,6 +607,7 @@ function NeedToPackagePageContent() {
           }}
           renderCard={(row, i) => {
             const order = row as unknown as PackageOrder
+            const isRollTech = order.category.toLowerCase().includes('roll')
             return (
               <OrderCard
                 order={order}
@@ -613,6 +615,15 @@ function NeedToPackagePageContent() {
                 isExpanded={expandedOrderKey === getOrderKey(order)}
                 onToggle={() => toggleExpanded(order)}
                 statusOverride={order.canPackage ? `✓ ${t('needToPackage.ready')}` : `✗ ${t('needToPackage.missing')}`}
+                // same availability color the desktop Part # cell uses
+                partClassName={isRollTech ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')}
+                expandedFields={
+                  <OrderSpecsGrid
+                    order={order}
+                    compAvail={compAvail}
+                    stock={{ onHand: order.onHandStock, committed: order.committedStock, available: order.availableStock }}
+                  />
+                }
                 extraFields={
                   <>
                     <div>
@@ -625,6 +636,18 @@ function NeedToPackagePageContent() {
                       <div>
                         <span className="text-muted-foreground">{t('table.committed')}</span>
                         <p className="font-semibold text-amber-500">{order.committedStock.toLocaleString()}</p>
+                      </div>
+                    )}
+                    {isRollTech && order.tire && order.tire !== '-' && (
+                      <div>
+                        <span className="text-muted-foreground">{t('table.tire')}</span>
+                        <p className={`font-semibold ${compAvail.get(order.tire.toUpperCase())?.ok ? 'text-green-500' : 'text-red-400'}`}>{order.tire}</p>
+                      </div>
+                    )}
+                    {isRollTech && order.hub && order.hub !== '-' && (
+                      <div className="col-span-2 min-w-0">
+                        <span className="text-muted-foreground">{t('table.hub')}</span>
+                        <p className={`font-semibold truncate ${compAvail.get(order.hub.toUpperCase())?.ok ? 'text-green-500' : 'text-red-400'}`}>{order.hub}</p>
                       </div>
                     )}
                   </>

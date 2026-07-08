@@ -63,6 +63,107 @@ function borderColor(item: ProductionMakeItem): string {
   return 'border-l-green-500'
 }
 
+// Phone card: tap to expand the full desktop-table detail (Simon 2026-07-08 —
+// the collapsed card hid most columns). Part number carries the availability
+// color: green = stocked (nothing to make), red = production needed.
+function NeedToMakeCard({ item, t, canEditMinimums, onMinimumSaved }: {
+  item: ProductionMakeItem
+  t: (key: string) => string
+  canEditMinimums: boolean
+  onMinimumSaved: (partNumber: string, minimum: number) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const partColor = item.partsToBeMade > 0 ? 'text-red-400' : 'text-green-500'
+  const short = item.neededOpenOrders > item.fusionInventory
+
+  return (
+    <Card className={`border-l-4 cursor-pointer transition-colors ${borderColor(item)} ${expanded ? 'ring-1 ring-primary/20' : ''}`}
+      onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}>
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-start gap-2">
+          <div className="min-w-0">
+            <CardTitle className={`text-lg leading-tight ${partColor}`}>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="truncate">{item.partNumber}</span>
+                <span onClick={(e) => e.stopPropagation()}><InventoryPopover partNumber={item.partNumber} partType="part" needed={item.neededOpenOrders} /></span>
+              </span>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">{item.product}</p>
+          </div>
+          {item.partsToBeMade > 0 ? (
+            <span className="px-2 py-1 text-xs rounded bg-orange-500/20 text-orange-600 font-bold whitespace-nowrap">
+              {t('needToMake.make')} {item.partsToBeMade.toLocaleString()}
+            </span>
+          ) : (
+            <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600 whitespace-nowrap">
+              {t('needToMake.stocked')}
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <div>
+            <span className="text-muted-foreground">{t('table.fusionInv')}</span>
+            <p className={`font-semibold ${item.fusionInventory <= 0 ? 'text-red-400' : ''}`}>{item.fusionInventory.toLocaleString()}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">{t('table.minimum')}</span>
+            <p className="font-semibold">{item.minimums.toLocaleString()}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">{t('table.neededOpenOrders')}</span>
+            <p className={`font-semibold ${short ? 'text-red-400' : ''}`}>{item.neededOpenOrders.toLocaleString()}</p>
+          </div>
+        </div>
+        {/* Expanded: the rest of the desktop columns */}
+        <div className={`grid transition-all duration-300 ease-out ${expanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {expanded && (
+              <div className="grid grid-cols-3 gap-2 text-sm rounded-lg bg-muted/40 p-2.5">
+                <div>
+                  <span className="text-muted-foreground">{t('table.onHand')}</span>
+                  <p className="font-semibold">{item.onHand.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t('table.committed')}</span>
+                  <p className={`font-semibold ${item.committed > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                    {item.committed > 0 ? item.committed.toLocaleString() : '—'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t('table.fusionInv')}</span>
+                  <p className="font-semibold">{item.fusionInventory.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t('table.minimums')}</span>
+                  {canEditMinimums ? (
+                    <p className="font-semibold">
+                      <EditableMinimum partNumber={item.partNumber} value={item.minimums} onSaved={onMinimumSaved} />
+                    </p>
+                  ) : (
+                    <p className="font-semibold">{item.minimums.toLocaleString()}</p>
+                  )}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t('table.partsToMake')}</span>
+                  <p className={`font-semibold ${item.partsToBeMade > 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                    {item.partsToBeMade.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t('needToMake.mold')}</span>
+                  <p className="font-semibold text-xs">{item.moldType || '-'}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function NeedToMakePage() {
   return <Suspense><NeedToMakePageContent /></Suspense>
 }
@@ -258,41 +359,13 @@ function NeedToMakePageContent() {
           renderCard={(row, i) => {
             const item = row as unknown as ProductionMakeItem
             return (
-              <Card key={`${item.partNumber}-${i}`} className={`border-l-4 ${borderColor(item)}`}>
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{item.partNumber}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{item.product}</p>
-                    </div>
-                    {item.partsToBeMade > 0 ? (
-                      <span className="px-2 py-1 text-xs rounded bg-orange-500/20 text-orange-600 font-bold">
-                        {t('needToMake.make')} {item.partsToBeMade}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-600">
-                        {t('needToMake.stocked')}
-                      </span>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">{t('needToMake.inStock')}</span>
-                      <p className="font-semibold">{item.fusionInventory.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">{t('table.minimum')}</span>
-                      <p className="font-semibold">{item.minimums.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">{t('needToMake.mold')}</span>
-                      <p className="font-semibold text-xs">{item.moldType || '-'}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <NeedToMakeCard
+                key={`${item.partNumber}-${i}`}
+                item={item}
+                t={t}
+                canEditMinimums={canEditMinimums}
+                onMinimumSaved={onMinimumSaved}
+              />
             )
           }}
         />
