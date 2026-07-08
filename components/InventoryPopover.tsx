@@ -6,39 +6,9 @@ import { Search, Package, TrendingUp, TrendingDown, Minus, ExternalLink, X, Aler
 import type { InventoryItem } from '@/lib/google-sheets-shared'
 import { useI18n } from '@/lib/i18n'
 import Link from 'next/link'
-
-// ─── Shared inventory cache (singleton across all popovers) ───
-let inventoryCache: InventoryItem[] | null = null
-let inventoryPromise: Promise<InventoryItem[]> | null = null
-let cacheTimestamp = 0
-const CACHE_TTL = 60_000 // 1 minute
-
-/** Drop the shared popover cache (e.g. after editing a minimum) so the next
- *  open refetches instead of showing the pre-edit value for up to a minute. */
-export function invalidateInventoryPopoverCache(): void {
-  inventoryCache = null
-  cacheTimestamp = 0
-}
-
-async function getInventory(): Promise<InventoryItem[]> {
-  const now = Date.now()
-  if (inventoryCache && now - cacheTimestamp < CACHE_TTL) return inventoryCache
-  if (inventoryPromise) return inventoryPromise
-
-  inventoryPromise = fetch('/api/inventory')
-    .then((res) => res.json())
-    .then((data: InventoryItem[]) => {
-      inventoryCache = data
-      cacheTimestamp = Date.now()
-      inventoryPromise = null
-      return data
-    })
-    .catch((err) => {
-      inventoryPromise = null
-      throw err
-    })
-  return inventoryPromise
-}
+import { getSharedInventory } from '@/lib/inventory-cache'
+import { usePermissions } from '@/lib/use-permissions'
+import { EditableMinimum } from '@/components/EditableMinimum'
 
 function findPart(items: InventoryItem[], partNumber: string): InventoryItem | null {
   const normalized = partNumber.trim().toUpperCase()
@@ -102,6 +72,8 @@ interface InventoryPopoverProps {
 
 export function InventoryPopover({ partNumber, partType = 'part', needed }: InventoryPopoverProps) {
   const { t } = useI18n()
+  const { canAccess } = usePermissions()
+  const canEditMinimums = canAccess('edit_minimums')
   const [open, setOpen] = useState(false)
   const [item, setItem] = useState<InventoryItem | null>(null)
   const [loading, setLoading] = useState(false)
@@ -112,7 +84,7 @@ export function InventoryPopover({ partNumber, partType = 'part', needed }: Inve
     setLoading(true)
     setError(false)
     try {
-      const items = await getInventory()
+      const items = await getSharedInventory()
       setItem(findPart(items, partNumber))
     } catch {
       setError(true)
@@ -209,7 +181,19 @@ export function InventoryPopover({ partNumber, partType = 'part', needed }: Inve
                 {/* Stats */}
                 <div className="divide-y divide-border/30">
                   <Stat label={t('inventoryPopover.inStock')} value={item.inStock.toLocaleString()} accent={item.inStock <= 0 ? 'text-red-400' : item.minimum > 0 && item.inStock < item.minimum ? 'text-amber-400' : 'text-emerald-400'} />
-                  <Stat label={t('inventoryPopover.minimums')} value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
+                  {canEditMinimums ? (
+                    <div className="flex items-center justify-between py-[3px]">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">{t('inventoryPopover.minimums')}</span>
+                      <EditableMinimum
+                        partNumber={item.partNumber}
+                        value={item.minimum}
+                        onSaved={(_pn, minimum) => setItem({ ...item, minimum })}
+                        className="text-xs font-semibold tabular-nums"
+                      />
+                    </div>
+                  ) : (
+                    <Stat label={t('inventoryPopover.minimums')} value={item.minimum > 0 ? item.minimum.toLocaleString() : '—'} />
+                  )}
                   {needed !== undefined && (
                     <Stat
                       label={t('inventoryPopover.neededOpenOrders')}

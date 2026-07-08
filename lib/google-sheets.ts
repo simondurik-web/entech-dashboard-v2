@@ -448,6 +448,7 @@ export async function fetchProductionMake(): Promise<ProductionMakeItem[]> {
         moldType,
         fusionInventory,
         minimums,
+        neededOpenOrders: 0, // legacy sheet fallback has no live order feed
         partsToBeMade,
         drawingUrl: '', // Will come from Drawings tab when connected
       })

@@ -7,11 +7,11 @@ import { useI18n } from '@/lib/i18n'
 import { DataTable } from '@/components/data-table/DataTable'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import type { InventoryItem, InventoryHistoryData } from '@/lib/google-sheets-shared'
-import { cacheGetJson, fetchJsonAndCache, cacheDeleteKey } from '@/lib/data-cache'
-import { invalidateInventoryPopoverCache } from '@/components/InventoryPopover'
+import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
+import { EditableMinimum } from '@/components/EditableMinimum'
+import { MinimumChangeLogModal } from '@/components/MinimumChangeLog'
 import Link from 'next/link'
 import { usePermissions } from '@/lib/use-permissions'
-import { authHeaders } from '@/lib/session-token'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { useCountUp, useCountUpDecimal } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
@@ -190,77 +190,7 @@ const TYPE_FILTERS: { key: TypeFilterKey; labelKey: string; emoji: string }[] = 
 
 // ─── Column Definitions ───
 
-// ─── Editable Minimum cell ───
-// Click-to-edit; saves to ERPNext Item.safety_stock through /api/erpnext/inventory/minimum
-// (the same value is editable on the ERPNext Item form — the 5-min sync keeps both in step).
-function EditableMinimumCell({ partNumber, value, onSave, t }: {
-  partNumber: string
-  value: number
-  onSave: (partNumber: string, minimum: number) => Promise<void>
-  t: (key: string) => string
-}) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  const cancelledRef = useRef(false)
-
-  const start = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    cancelledRef.current = false
-    setDraft(String(value || ''))
-    setEditing(true)
-  }
-
-  const commit = async () => {
-    if (cancelledRef.current) { setEditing(false); return }
-    const n = Math.round(Number(draft))
-    if (draft.trim() === '' || !Number.isFinite(n) || n < 0 || n === value) {
-      setEditing(false)
-      return
-    }
-    setSaving(true)
-    try {
-      await onSave(partNumber, n)
-      setEditing(false)
-    } catch {
-      alert(t('inventory.minimumSaveFailed'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (!editing) {
-    return (
-      <button
-        onClick={start}
-        title={t('inventory.editMinimum')}
-        className="group inline-flex items-center gap-1 rounded px-1 -mx-1 hover:bg-primary/10 transition-colors cursor-text"
-      >
-        <span>{value.toLocaleString()}</span>
-        <span className="opacity-0 group-hover:opacity-60 text-[10px]">✎</span>
-      </button>
-    )
-  }
-  return (
-    <input
-      autoFocus
-      type="number"
-      min={0}
-      value={draft}
-      disabled={saving}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-        if (e.key === 'Escape') { cancelledRef.current = true; setEditing(false) }
-      }}
-      className="w-20 rounded border border-primary/50 bg-background px-1 py-0.5 text-xs disabled:opacity-50"
-    />
-  )
-}
-
-function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean, minEdit?: { onSave: (partNumber: string, minimum: number) => Promise<void> }): ColumnDef<InventoryRow>[] {
+function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: string) => string, showCosts: boolean, minEdit?: { onSaved: (partNumber: string, minimum: number) => void }): ColumnDef<InventoryRow>[] {
   const cols: ColumnDef<InventoryRow>[] = [
     { key: 'department', label: 'Dept', sortable: true, filterable: true, render: (v) => <span className="text-[11px] text-muted-foreground">{String(v)}</span> },
     { key: 'subDepartment', label: 'Sub Dept', sortable: true, filterable: true, render: (v) => <span className="text-[11px] text-muted-foreground">{String(v)}</span> },
@@ -328,7 +258,7 @@ function makeColumns(onHistoryClick: (partNumber: string) => void, t: (key: stri
     {
       key: 'minimum', label: t('inventory.colMinimum'), sortable: true,
       render: (v, row) => minEdit
-        ? <EditableMinimumCell partNumber={row.partNumber} value={Number(v)} onSave={minEdit.onSave} t={t} />
+        ? <EditableMinimum partNumber={row.partNumber} value={Number(v)} onSaved={minEdit.onSaved} />
         : Number(v).toLocaleString(),
     },
     // Single "Qty Needed" column for both make and buy: shortfall to minimum for ALL
@@ -1022,28 +952,19 @@ function InventoryPageContent() {
   const animAdequateStock = useCountUp(adequateStock)
   const animInventoryValue = useCountUpDecimal(totalInventoryValue)
 
-  // Minimum edits ride the inventory-ops permission (same gate as the other
-  // ERPNext inventory mutations) and write to Item.safety_stock in ERPNext.
-  const canEditMinimums = canAccess('/inventory-ops')
-  const saveMinimum = useCallback(async (partNumber: string, minimum: number) => {
-    const res = await fetch('/api/erpnext/inventory/minimum', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ partNumber, minimum }),
-    })
-    if (!res.ok) throw new Error(`minimum save failed (${res.status})`)
+  // Minimum edits: edit_minimums permission (manager / shipping_manager /
+  // admin) — enforced again server-side; every change lands in minimum_change_log.
+  const canEditMinimums = canAccess('edit_minimums')
+  const [showMinLog, setShowMinLog] = useState(false)
+  const onMinimumSaved = useCallback((partNumber: string, minimum: number) => {
     setItems(prev => prev.map(i =>
       i.partNumber.toUpperCase() === partNumber.toUpperCase() ? { ...i, minimum } : i
     ))
-    // Drop the stale copies other readers would paint: the device cache
-    // (page revisits) and the popover's shared 60s module cache.
-    void cacheDeleteKey('/api/inventory')
-    invalidateInventoryPopoverCache()
   }, [])
 
   const columns = useMemo(
-    () => makeColumns(setHistoryPart, t, showCosts, canEditMinimums ? { onSave: saveMinimum } : undefined),
-    [t, showCosts, canEditMinimums, saveMinimum]
+    () => makeColumns(setHistoryPart, t, showCosts, canEditMinimums ? { onSaved: onMinimumSaved } : undefined),
+    [t, showCosts, canEditMinimums, onMinimumSaved]
   )
 
   const table = useDataTable({
@@ -1334,6 +1255,14 @@ function InventoryPageContent() {
           >
             <ExternalLink className="size-3" /> {t('inventory.materialRequirements')}
           </Link>
+          {canEditMinimums && (
+            <button
+              onClick={() => setShowMinLog(true)}
+              className="px-3 py-1 rounded-full text-sm bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 whitespace-nowrap"
+            >
+              {t('inventory.minimumChangeLog')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1366,6 +1295,8 @@ function InventoryPageContent() {
         />
         </div>
       )}
+
+      {showMinLog && <MinimumChangeLogModal onClose={() => setShowMinLog(false)} />}
 
       {/* History Modal */}
       {historyPart && selectedRow && (
