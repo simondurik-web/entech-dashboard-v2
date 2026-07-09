@@ -1557,5 +1557,12 @@
   "truckload.line": "Línea",
   "truckload.column": "Carga",
   "truckload.palletIds": "IDs de Tarimas",
-  "fulfillment.tlPickHint": "Toca cualquier otra orden para escanearla primero — el progreso de cada una se guarda."
+  "fulfillment.tlPickHint": "Toca cualquier otra orden para escanearla primero — el progreso de cada una se guarda.",
+  "fulfillment.printAllDocs": "Imprimir todo ({count} documentos)",
+  "fulfillment.printAllProgress": "Enviando {done}/{total} a la impresora...",
+  "fulfillment.printAllQueued": "Todas las listas de empaque y BOLs se enviaron a la impresora.",
+  "fulfillment.printAllFailed": "Estos documentos no se imprimieron: {docs}. Usa los botones de abajo para reintentarlos.",
+  "fulfillment.printAllHint": "{orders} órdenes - lista de empaque + BOL cada una, x{copies} copias",
+  "truckload.openShip": "Cargar / Escanear",
+  "truckload.openDocs": "Firmar / Documentos"
 }
