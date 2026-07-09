@@ -79,13 +79,14 @@ function ShippingOverviewPageContent() {
     fetchTruckloads()
   }, [fetchTruckloads])
 
+  // line-first matching; no SO-number fallback (one truckload entry = one line)
   const tlByOrderKey = useMemo(() => {
     const m = new Map<string, Truckload>()
     for (const tl of truckloads) {
       for (const o of tl.truckload_orders) {
         if (o.status !== 'pending') continue
+        if (o.line != null) m.set(`L${o.line}`, tl)
         m.set(o.order_key, tl)
-        m.set(o.so_number, tl)
       }
     }
     return m
@@ -468,8 +469,7 @@ function ShippingOverviewPageContent() {
                 onToggle={(key) => setExpandedKey((c) => (c === key ? null : key))}
                 emptyMessage="No staged orders match the current filter."
                 renderBanner={(order) => {
-                  const soName = (order.ifNumber || '').split(' ')[0]
-                  const tl = tlByOrderKey.get(`${order.ifNumber}||${order.partNumber}`) ?? tlByOrderKey.get(soName)
+                  const tl = tlByOrderKey.get(`L${order.line}`) ?? tlByOrderKey.get(`${order.ifNumber}||${order.partNumber}`)
                   if (!tl) return null
                   return (
                     <button
@@ -617,9 +617,10 @@ function OrderList({
     <div className="space-y-3">
       {orders.map((order) => {
         const key = `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
+        const banner = renderBanner?.(order)
         return (
-          <div key={key}>
-            {renderBanner?.(order)}
+          <div key={key} className={banner ? 'rounded-2xl ring-2 ring-violet-500/60 p-1' : undefined}>
+            {banner}
             <ShippingOverviewCard
               order={order}
               expanded={expandedKey === key}

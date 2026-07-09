@@ -103,6 +103,8 @@ interface TruckloadOrderInfo {
   customer: string | null
   part_number: string | null
   position: number
+  line: number | null
+  so_item?: string | null
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
 }
@@ -234,7 +236,9 @@ function ShipOrderContent() {
   // current pending member in truckload mode
   const [activeSo, setActiveSo] = useState<string>(tlId ? '' : soParam)
   const so = activeSo
-  const [tlCompleted, setTlCompleted] = useState<{ so: string; dn: string }[]>([])
+  const [tlCompleted, setTlCompleted] = useState<{ so: string; dn: string; orderKey?: string }[]>([])
+  // the CURRENT member entry — one dashboard line, not the whole SO
+  const [tlMember, setTlMember] = useState<TruckloadOrderInfo | null>(null)
   const [tlSignDone, setTlSignDone] = useState(false)
   const [tlSigning, setTlSigning] = useState(false)
   const [overrideOpen, setOverrideOpen] = useState(false)
@@ -252,6 +256,9 @@ function ShipOrderContent() {
   const scannedBySoRef = useRef<Record<string, SessionScanState>>({})
   const hydratedForSo = useRef<string | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // scan-state bucket: per member line in truckload mode, per SO otherwise
+  const scanBucket = tlId ? (tlMember?.order_key ?? '') : soParam
 
   const [order, setOrder] = useState<FulfillmentOrder | null>(null)
   const [loading, setLoading] = useState(true)
@@ -356,11 +363,15 @@ function ShipOrderContent() {
     if (tlId) fetchTruckload()
   }, [tlId, fetchTruckload])
 
-  // current order = first pending member not yet completed this session
+  // current member = first pending LINE not yet completed this session (an SO
+  // can appear twice with different lines — track by order_key, not SO)
   useEffect(() => {
     if (!tlId || !truckload) return
-    const done = new Set(tlCompleted.map((c) => c.so))
-    const next = truckload.truckload_orders.find((o) => o.status === 'pending' && !done.has(o.so_number))
+    const doneKeys = new Set(tlCompleted.map((c) => c.orderKey ?? c.so))
+    const next = truckload.truckload_orders.find(
+      (o) => o.status === 'pending' && !doneKeys.has(o.order_key) && !doneKeys.has(o.so_number)
+    )
+    setTlMember(next ?? null)
     setActiveSo((prev) => {
       const target = next ? next.so_number : ''
       return prev === target ? prev : target
@@ -425,10 +436,10 @@ function ShipOrderContent() {
   // apply the restored scans to the CURRENT order once it loads (stale scans
   // for pallets no longer staged are dropped; red mismatches are kept)
   useEffect(() => {
-    if (!order || !sessionReady || !so) return
-    if (hydratedForSo.current === so) return
-    hydratedForSo.current = so
-    const data = scannedBySoRef.current[so]
+    if (!order || !sessionReady || !scanBucket) return
+    if (hydratedForSo.current === scanBucket) return
+    hydratedForSo.current = scanBucket
+    const data = scannedBySoRef.current[scanBucket]
     if (data && (data.ok.length || data.mismatches.length)) {
       const staged = new Set(order.pallets.map((p) => p.palletId.toUpperCase()))
       const ok = (data.ok ?? []).filter((c) => staged.has(c))
@@ -436,7 +447,7 @@ function ShipOrderContent() {
       setMismatches(data.mismatches ?? [])
       if (ok.length) setSessionRestored(true)
     }
-  }, [order, sessionReady, so])
+  }, [order, sessionReady, scanBucket])
 
   const saveSession = useCallback(
     async (completedOverride?: { so: string; dn: string }[]) => {
@@ -473,9 +484,9 @@ function ShipOrderContent() {
   // just-restored server state with the initial empty scan set (found in the
   // 2026-07-08 refresh test).
   useEffect(() => {
-    if (!sessionReady || !so) return
-    if (hydratedForSo.current !== so) return
-    scannedBySoRef.current[so] = { ok: [...scannedOk], mismatches }
+    if (!sessionReady || !scanBucket) return
+    if (hydratedForSo.current !== scanBucket) return
+    scannedBySoRef.current[scanBucket] = { ok: [...scannedOk], mismatches }
     const hasAny =
       tlCompleted.length > 0 ||
       Object.values(scannedBySoRef.current).some((v) => v.ok.length > 0 || v.mismatches.length > 0)
@@ -488,7 +499,7 @@ function ShipOrderContent() {
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scannedOk, mismatches, driverName, sessionReady, so])
+  }, [scannedOk, mismatches, driverName, sessionReady, scanBucket])
 
   // The page stays mounted across a ?so= change — without this reset, a just-
   // shipped order's DN banner and scan set bled into the NEXT order opened
@@ -499,7 +510,8 @@ function ShipOrderContent() {
     setJustShipped(null)
     setUploadedBols([])
     setSignSkipped(false)
-  }, [so])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [so, scanBucket])
 
   // Item pictures: the ERP files host is behind Cloudflare Access, so images are
   // proxied through an authed API route and rendered from blob URLs.
@@ -538,7 +550,15 @@ function ShipOrderContent() {
   // Uppercased: scans are canonicalized to uppercase, and the server compares
   // case-insensitively — a lowercase pallet id could otherwise never match its
   // own scan (bug-hunt 2026-07-04).
-  const stagedIds = useMemo(() => new Set((order?.pallets ?? []).map((p) => p.palletId.toUpperCase())), [order])
+  // Line scope (Simon 2026-07-09): in truckload mode only the CURRENT member
+  // line's pallets count — sibling lines keep their pallets for later loads.
+  const scopedPallets = useMemo(() => {
+    const all = order?.pallets ?? []
+    if (!tlId || !tlMember?.so_item) return all
+    return all.filter((p) => p.soDetail === tlMember.so_item)
+  }, [order, tlId, tlMember])
+
+  const stagedIds = useMemo(() => new Set(scopedPallets.map((p) => p.palletId.toUpperCase())), [scopedPallets])
   const lineItemCodes = useMemo(() => new Set((order?.lines ?? []).map((l) => l.itemCode)), [order])
 
   // Attribute a pallet to a line by the reservation's SO Item row when known —
@@ -553,7 +573,7 @@ function ShipOrderContent() {
       .filter((p) => palletBelongsToLine(p, line) && scannedOk.has(p.palletId.toUpperCase()))
       .reduce((s, p) => s + p.qty, 0)
 
-  const totalStaged = order?.pallets.length ?? 0
+  const totalStaged = scopedPallets.length
   const totalScanned = scannedOk.size
   const allMatch = totalStaged > 0 && totalScanned === totalStaged && mismatches.length === 0
 
@@ -653,6 +673,7 @@ function ShipOrderContent() {
         so: order.so,
         pallets: [...scannedOk],
         truckloadId: tlId ?? undefined,
+        orderKey: tlId ? tlMember?.order_key : undefined,
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || t('fulfillment.shipFailed'))
@@ -661,8 +682,8 @@ function ShipOrderContent() {
       if (tlId) {
         // chained flow: log the DN, clear this order's scans, advance to the
         // next member — the ONE signature comes after the last order
-        delete scannedBySoRef.current[order.so]
-        const nextCompleted = [...tlCompleted, { so: order.so, dn }]
+        delete scannedBySoRef.current[scanBucket]
+        const nextCompleted = [...tlCompleted, { so: order.so, dn, orderKey: tlMember?.order_key }]
         setTlCompleted(nextCompleted)
         setScannedOk(new Set())
         setMismatches([])
@@ -1136,8 +1157,10 @@ function ShipOrderContent() {
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {tlActiveOrders.map((o) => {
-                  const done = o.status === 'shipped' || tlCompleted.some((c) => c.so === o.so_number)
-                  const current = o.so_number === so
+                  const done =
+                    o.status === 'shipped' ||
+                    tlCompleted.some((c) => (c.orderKey ? c.orderKey === o.order_key : c.so === o.so_number))
+                  const current = o.order_key === tlMember?.order_key
                   return (
                     <span
                       key={o.order_key}
@@ -1150,6 +1173,7 @@ function ShipOrderContent() {
                       }`}
                     >
                       {o.so_number}
+                      {o.line ? ` · L${o.line}` : ''}
                     </span>
                   )
                 })}
@@ -1227,7 +1251,10 @@ function ShipOrderContent() {
             {t('fulfillment.products')}
           </h2>
           <div className="space-y-2 mb-6">
-            {order.lines.map((line) => (
+            {(tlId && tlMember?.so_item
+              ? order.lines.filter((l) => l.soItem === tlMember.so_item)
+              : order.lines
+            ).map((line) => (
               <div key={line.soItem} className="rounded-xl border border-border bg-card p-3 flex gap-3 items-center">
                 {images[line.itemCode] ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -1337,6 +1364,7 @@ function ShipOrderContent() {
                     <div className="min-w-0">
                       <span className={`font-mono font-bold ${o.so_number === soParam ? 'text-violet-600' : ''}`}>
                         {o.so_number}
+                        {o.line ? ` · L${o.line}` : ''}
                       </span>
                       <span className="ml-2 text-xs text-muted-foreground">{o.customer}</span>
                     </div>
@@ -1702,13 +1730,13 @@ function ShipOrderContent() {
           {!isShipped && !tlBlocked && (
           <>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            {t('fulfillment.stagedPallets')} ({order.pallets.length})
+            {t('fulfillment.stagedPallets')} ({scopedPallets.length})
           </h2>
-          {order.pallets.length === 0 ? (
+          {scopedPallets.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">{t('fulfillment.noPallets')}</p>
           ) : (
             <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-              {order.pallets.map((p) => {
+              {scopedPallets.map((p) => {
                 const ok = scannedOk.has(p.palletId.toUpperCase())
                 return (
                   <div
@@ -1791,7 +1819,7 @@ function ShipOrderContent() {
       )}
 
       {/* Sticky scan bar */}
-      {!loading && !error && order && !isShipped && canShip && !tlBlocked && order.pallets.length > 0 && (
+      {!loading && !error && order && !isShipped && canShip && !tlBlocked && scopedPallets.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto space-y-2">
             {feedback && (
@@ -1895,7 +1923,7 @@ function ShipOrderContent() {
                 .replace('{customer}', order.customer)}
             </p>
             <div className="rounded-lg bg-muted/50 divide-y divide-border mb-4 max-h-48 overflow-y-auto">
-              {order.pallets
+              {scopedPallets
                 .filter((p) => scannedOk.has(p.palletId.toUpperCase()))
                 .map((p) => (
                   <div key={p.palletId} className="flex justify-between px-3 py-2 text-sm">

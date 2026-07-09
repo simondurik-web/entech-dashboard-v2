@@ -392,6 +392,7 @@ export default function PalletLoadCalculator({
               : c.order.numPackages > 0
                 ? Math.ceil(c.order.numPackages)
                 : undefined
+          const lineNo = parseInt(String(c.order.line), 10)
           return {
             soNumber: c.soNumber,
             orderKey: c.orderKey,
@@ -399,6 +400,7 @@ export default function PalletLoadCalculator({
             customer: c.order.customer,
             partNumber: c.order.partNumber,
             palletCount,
+            line: Number.isInteger(lineNo) && lineNo > 0 ? lineNo : undefined,
           }
         }),
       })

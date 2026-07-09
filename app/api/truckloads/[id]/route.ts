@@ -39,6 +39,7 @@ interface AddOrder {
   customer?: string
   partNumber?: string
   palletCount?: number
+  line?: number
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -112,6 +113,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         palletCount: Number.isFinite(Number(o.palletCount)) && Number(o.palletCount) > 0
           ? Math.min(999, Math.round(Number(o.palletCount)))
           : null,
+        line: Number.isInteger(Number(o.line)) && Number(o.line) > 0 ? Number(o.line) : null,
       }))
       .filter((o) => o.orderKey && SO_NAME.test(o.soNumber))
       .filter((o) => !tl.truckload_orders.some((ex) => ex.order_key === o.orderKey))
@@ -132,6 +134,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           part_number: o.partNumber,
           position: basePos + i,
           pallet_count: o.palletCount,
+          line: o.line,
         }))
       )
       if (error) throw new Error(error.message)
