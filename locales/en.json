@@ -1556,5 +1556,6 @@
   "truckload.palletsTotal": "Total pallets on this truck",
   "truckload.line": "Line",
   "truckload.column": "Truckload",
-  "truckload.palletIds": "Pallet IDs"
+  "truckload.palletIds": "Pallet IDs",
+  "fulfillment.tlPickHint": "Tap any other order to scan that one first — progress on each is saved."
 }
