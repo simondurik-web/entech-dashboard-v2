@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import type { Order } from '@/lib/google-sheets-shared'
+import { authedJson } from '@/lib/authed-fetch'
 
 // ── Constants ──────────────────────────────────────────────
 const PLC_TRAILERS = {
@@ -55,6 +56,16 @@ const LABELS = {
     linkedTo: 'Pallet',
     partNo: 'P/N',
     due: 'Due',
+    createTruckload: 'Create Truckload',
+    truckloadHint: 'Lock these orders together — the shipping team must load all of them on the same truck.',
+    truckloadOrders: 'Orders on this truck',
+    truckloadNotes: 'Notes for the shipping team (optional)',
+    truckloadExcluded: 'Not included (no ERP sales order):',
+    truckloadNeedTwo: 'Link at least 2 orders (from different sales orders) to create a truckload.',
+    truckloadCreate: 'Lock Truckload',
+    truckloadCreating: 'Creating...',
+    truckloadCreated: 'Truckload created:',
+    truckloadCancel: 'Cancel',
   },
   es: {
     title: 'Calculadora de Carga de Tarimas',
@@ -85,6 +96,16 @@ const LABELS = {
     linkedTo: 'Tarima',
     partNo: 'N/P',
     due: 'Vence',
+    createTruckload: 'Crear Carga de Camión',
+    truckloadHint: 'Bloquea estas órdenes juntas — el equipo de embarques debe cargar todas en el mismo camión.',
+    truckloadOrders: 'Órdenes en este camión',
+    truckloadNotes: 'Notas para el equipo de embarques (opcional)',
+    truckloadExcluded: 'No incluidas (sin orden de venta en el ERP):',
+    truckloadNeedTwo: 'Vincula al menos 2 órdenes (de diferentes órdenes de venta) para crear una carga.',
+    truckloadCreate: 'Bloquear Carga',
+    truckloadCreating: 'Creando...',
+    truckloadCreated: 'Carga creada:',
+    truckloadCancel: 'Cancelar',
   },
 }
 
@@ -269,11 +290,16 @@ export default function PalletLoadCalculator({
   completedOrders = [],
   needToPackageOrders = [],
   lang = 'en',
+  canCreateTruckload = false,
+  onTruckloadCreated,
 }: {
   stagedOrders?: Order[]
   completedOrders?: Order[]
   needToPackageOrders?: Order[]
   lang?: 'en' | 'es'
+  /** manage_truckloads permission — shows the Create Truckload button */
+  canCreateTruckload?: boolean
+  onTruckloadCreated?: (loadNumber: string) => void
 }) {
   const t = LABELS[lang]
 
@@ -282,6 +308,12 @@ export default function PalletLoadCalculator({
   const [palletTypes, setPalletTypes] = useState<PalletType[]>([defaultPalletType(0)])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [linkSearch, setLinkSearch] = useState('')
+  // Create Truckload panel (Simon 2026-07-08: lock the linked orders together)
+  const [tlOpen, setTlOpen] = useState(false)
+  const [tlNotes, setTlNotes] = useState('')
+  const [tlSaving, setTlSaving] = useState(false)
+  const [tlError, setTlError] = useState<string | null>(null)
+  const [tlCreated, setTlCreated] = useState<string | null>(null)
 
   const trailer = PLC_TRAILERS[trailerKey]
 
@@ -316,6 +348,61 @@ export default function PalletLoadCalculator({
   }, [palletTypes, orderMap])
 
   const packResult = useMemo(() => packPallets(palletTypes, trailer, typeInfo), [palletTypes, trailer, typeInfo])
+
+  // Truckload candidates: every linked order that maps to a real ERP sales
+  // order. Orders without an SO (legacy IF-only rows) can't be locked — they
+  // are listed as excluded so nothing silently disappears.
+  const tlCandidates = useMemo(() => {
+    const seen = new Set<string>()
+    const included: { orderKey: string; soNumber: string; order: Order }[] = []
+    const excluded: Order[] = []
+    for (const pt of palletTypes) {
+      for (const key of pt.linkedOrderKeys) {
+        if (seen.has(key)) continue
+        seen.add(key)
+        const order = orderMap.get(key)
+        if (!order) continue
+        const soNumber = (order.ifNumber || '').split(' ')[0]
+        if (/^(SO|SAL-ORD)-/.test(soNumber)) included.push({ orderKey: key, soNumber, order })
+        else excluded.push(order)
+      }
+    }
+    return { included, excluded }
+  }, [palletTypes, orderMap])
+  const tlDistinctSos = useMemo(() => new Set(tlCandidates.included.map((c) => c.soNumber)).size, [tlCandidates])
+
+  const createTruckload = async () => {
+    if (tlSaving || tlCandidates.included.length < 2) return
+    setTlSaving(true)
+    setTlError(null)
+    try {
+      // The rendered trailer diagram is snapshotted with the truckload so the
+      // load sheet can print it later without re-mounting the calculator.
+      const svgMarkup = document.getElementById('plc-export-area')?.querySelector('svg')?.outerHTML ?? null
+      const res = await authedJson('/api/truckloads', 'POST', {
+        notes: tlNotes.trim() || undefined,
+        calculatorState: { trailerKey, maxPayload, palletTypes, svgMarkup },
+        orders: tlCandidates.included.map((c) => ({
+          soNumber: c.soNumber,
+          orderKey: c.orderKey,
+          ifNumber: c.order.ifNumber,
+          customer: c.order.customer,
+          partNumber: c.order.partNumber,
+        })),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Failed')
+      const loadNumber = body.truckload.loadNumber as string
+      setTlCreated(loadNumber)
+      setTlOpen(false)
+      setTlNotes('')
+      onTruckloadCreated?.(loadNumber)
+    } catch (err) {
+      setTlError(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setTlSaving(false)
+    }
+  }
 
   const totalPallets = palletTypes.reduce((s, p) => s + p.qty, 0)
   const totalWeight = palletTypes.reduce((s, p) => s + p.qty * p.weightEach, 0)
@@ -1003,15 +1090,91 @@ export default function PalletLoadCalculator({
       </div>
       </div>{/* end plc-export-area */}
 
-      {/* Export button */}
-      <div className="flex gap-2">
+      {/* Export + Create Truckload */}
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={() => exportLoadPDF()}
           className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           📄 {lang === 'es' ? 'Exportar PDF' : 'Export Load Report (PDF)'}
         </button>
+        {canCreateTruckload && (
+          <button
+            onClick={() => {
+              setTlCreated(null)
+              setTlError(null)
+              setTlOpen((v) => !v)
+            }}
+            className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors"
+          >
+            🚛 {t.createTruckload}
+          </button>
+        )}
       </div>
+
+      {tlCreated && (
+        <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600">
+          ✓ {t.truckloadCreated} <span className="font-mono">{tlCreated}</span>
+        </div>
+      )}
+
+      {/* Create Truckload confirm panel */}
+      {tlOpen && canCreateTruckload && (
+        <div className="rounded-xl border border-violet-500/40 bg-violet-500/5 p-4 space-y-3">
+          <p className="text-sm font-semibold">🚛 {t.createTruckload}</p>
+          <p className="text-xs text-muted-foreground">{t.truckloadHint}</p>
+          {tlCandidates.included.length < 2 || tlDistinctSos < 2 ? (
+            <p className="text-sm text-amber-600 bg-amber-500/10 rounded px-3 py-2">{t.truckloadNeedTwo}</p>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  {t.truckloadOrders} ({tlCandidates.included.length})
+                </p>
+                <div className="rounded-lg border border-border divide-y divide-border bg-background/60">
+                  {tlCandidates.included.map((c) => (
+                    <div key={c.orderKey} className="px-3 py-1.5 text-xs flex flex-wrap gap-x-2">
+                      <span className="font-mono font-semibold">{c.soNumber}</span>
+                      <span className="truncate">{c.order.customer}</span>
+                      <span className="text-muted-foreground">{c.order.partNumber}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {tlCandidates.excluded.length > 0 && (
+                <p className="text-xs text-amber-600">
+                  {t.truckloadExcluded}{' '}
+                  {tlCandidates.excluded.map((o) => o.ifNumber || o.partNumber).join(', ')}
+                </p>
+              )}
+              <textarea
+                value={tlNotes}
+                onChange={(e) => setTlNotes(e.target.value)}
+                placeholder={t.truckloadNotes}
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
+              />
+              {tlError && <p className="text-sm text-red-600 font-semibold">{tlError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setTlOpen(false)}
+                  disabled={tlSaving}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {t.truckloadCancel}
+                </button>
+                <button
+                  onClick={createTruckload}
+                  disabled={tlSaving}
+                  className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-60"
+                >
+                  {tlSaving ? t.truckloadCreating : `🔒 ${t.truckloadCreate}`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 

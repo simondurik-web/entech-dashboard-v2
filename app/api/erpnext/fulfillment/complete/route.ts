@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { completeShipment, getFulfillmentOrder, ShipmentRejectedError } from '@/lib/erpnext/fulfillment'
+import { erpnextUpdate } from '@/lib/erpnext/client'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment, flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getTruckload, rollupTruckloadStatus } from '@/lib/truckloads'
 
 // POST /api/erpnext/fulfillment/complete  { so, pallets: string[] }
 // The "Complete Shipment" tap. The scanned pallet set is revalidated server-
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
   const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
-  let body: { so?: string; pallets?: unknown }
+  let body: { so?: string; pallets?: unknown; truckloadId?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -55,6 +57,28 @@ export async function POST(req: NextRequest) {
   const pallets = Array.isArray(body.pallets) ? body.pallets.map((p) => String(p).trim().toUpperCase()) : []
   if (!SO_NAME.test(so) || pallets.length === 0 || pallets.some((p) => !PALLET_ID.test(p))) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+
+  // Truckload context (chained flow): verify the SO really is a pending member
+  // BEFORE shipping, so the TL number stamped on the BOL can't be spoofed by
+  // the client and the truckload bookkeeping stays consistent.
+  const truckloadId = body.truckloadId ? String(body.truckloadId) : null
+  let truckloadNumber: string | null = null
+  if (truckloadId) {
+    if (!/^[0-9a-f-]{36}$/.test(truckloadId)) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+    }
+    try {
+      const tl = await getTruckload(truckloadId)
+      const member = tl?.truckload_orders.find((o) => o.so_number === so && o.status === 'pending')
+      if (!tl || !member || (tl.status !== 'planned' && tl.status !== 'loading')) {
+        return NextResponse.json({ error: 'This order is not a pending part of that truckload' }, { status: 409 })
+      }
+      truckloadNumber = tl.load_number
+    } catch (e) {
+      console.error('truckload check failed:', e)
+      return NextResponse.json({ error: 'Truckload lookup failed. Try again.' }, { status: 502 })
+    }
   }
 
   // Per-SO mutual exclusion for the single most destructive tap: two stations
@@ -100,6 +124,30 @@ export async function POST(req: NextRequest) {
       customerPartNos,
     })
     lockDone = true
+
+    // Truckload bookkeeping + BOL stamp (both best-effort; the shipment itself
+    // is already submitted and must never be failed retroactively).
+    if (truckloadId && truckloadNumber) {
+      try {
+        await supabaseAdmin
+          .from('truckload_orders')
+          .update({ status: 'shipped', dn_number: result.dn })
+          .eq('truckload_id', truckloadId)
+          .eq('so_number', so)
+          .eq('status', 'pending')
+        await rollupTruckloadStatus(truckloadId)
+      } catch (e) {
+        console.error('truckload bookkeeping failed:', e)
+      }
+      try {
+        // allow_on_submit custom field; shows the TL number on the BOL +
+        // packing slip (decision 5, Simon 2026-07-08)
+        await erpnextUpdate('Delivery Note', result.dn, { custom_truckload_no: truckloadNumber })
+      } catch (e) {
+        console.error('truckload DN stamp failed (field missing?):', e)
+      }
+    }
+
     // audit + instant section hop (best-effort; the 5-min sync self-heals)
     logFulfillment({
       action: 'complete',
@@ -109,6 +157,7 @@ export async function POST(req: NextRequest) {
       pallets,
       userId: guard.userId,
       userName: userName || guard.email,
+      detail: truckloadNumber ? `truckload ${truckloadNumber}` : null,
     })
     flipDashboardStatus(
       so,

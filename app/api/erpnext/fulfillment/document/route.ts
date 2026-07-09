@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { PDFDocument } from 'pdf-lib'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextFetchRaw, erpnextGetDoc } from '@/lib/erpnext/client'
 import { BOL_FORMAT, PACKING_SLIP_FORMAT } from '@/lib/erpnext/fulfillment'
 
-// GET /api/erpnext/fulfillment/document?dn=<DN>&type=bol|packing
+// GET /api/erpnext/fulfillment/document?dn=<DN>&type=bol|packing&copies=2
 // Streams the BOL / packing slip PDF for a Delivery Note — used by the success
 // screen ("open PDF" for AirPrint/office printing, Simon's Q2 decision) and by
 // reprint from the shipped view. Regenerated from the print format on every
 // call, so it always reflects the document as ERPNext knows it.
+//
+// copies (1-5; default prints are queued with 2 per Simon 2026-07-08): pages
+// are duplicated INSIDE the returned PDF, so a single AirPrint job from an
+// iPhone yields every copy — no extra taps, no manual photocopying.
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -47,7 +52,23 @@ export async function GET(req: NextRequest) {
     const qs = new URLSearchParams({ doctype: 'Delivery Note', name: dn, format })
     const upstream = await erpnextFetchRaw(`/api/method/frappe.utils.print_format.download_pdf?${qs}`)
     if (!upstream.ok) return NextResponse.json({ error: 'Not available' }, { status: 502 })
-    const bytes = await upstream.arrayBuffer()
+    let bytes = await upstream.arrayBuffer()
+
+    const copies = Math.min(5, Math.max(1, parseInt(req.nextUrl.searchParams.get('copies') ?? '1', 10) || 1))
+    if (copies > 1) {
+      try {
+        const src = await PDFDocument.load(bytes)
+        const out = await PDFDocument.create()
+        for (let c = 0; c < copies; c++) {
+          const pages = await out.copyPages(src, src.getPageIndices())
+          pages.forEach((p) => out.addPage(p))
+        }
+        bytes = (await out.save()).buffer as ArrayBuffer
+      } catch (e) {
+        // a malformed PDF must still be viewable — fall back to a single copy
+        console.error('pdf copies duplication failed:', e)
+      }
+    }
     return new NextResponse(bytes, {
       headers: {
         'Content-Type': 'application/pdf',

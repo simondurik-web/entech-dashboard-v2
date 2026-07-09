@@ -8,9 +8,11 @@ import { OrderCard } from '@/components/cards/OrderCard'
 import { DataTable } from '@/components/data-table'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
+import TruckloadsPanel, { type Truckload } from '@/components/TruckloadsPanel'
 import { OrderDetail } from '@/components/OrderDetail'
 import { useAuth } from '@/lib/auth-context'
 import { usePermissions } from '@/lib/use-permissions'
+import { authedFetch } from '@/lib/authed-fetch'
 import type { Order } from '@/lib/google-sheets-shared'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
@@ -68,6 +70,8 @@ function StagedPageContent() {
   const canEditPallets = canAccess('edit_pallet_records')
   // "Ship Loads" action permission — page visibility alone doesn't ship
   const canShipLoads = canAccessExact('ship_loads')
+  // Truckloads: create/edit linked loads (admin + manager + shipping_manager)
+  const canManageTruckloads = canAccessExact('manage_truckloads')
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<Order[]>([])
@@ -82,6 +86,47 @@ function StagedPageContent() {
   const [showPLC, setShowPLC] = useState(false)
   // Multi-line order context ("2 of 3 lines ready") keyed by ERP SO name.
   const [soLineStats, setSoLineStats] = useState<Record<string, { total: number; ready: number; shipped: number }>>({})
+  // Truckloads (Simon 2026-07-08): active "ships together" groups -> banner on
+  // every member order + the Truckloads panel next to the calculator.
+  const [truckloads, setTruckloads] = useState<Truckload[]>([])
+  const [tlPanelOpen, setTlPanelOpen] = useState(false)
+  const [tlFocusId, setTlFocusId] = useState<string | null>(null)
+
+  const fetchTruckloads = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/truckloads?scope=active')
+      if (!res.ok) return // banner data is best-effort (e.g. role without /staged API grant)
+      const body = await res.json()
+      setTruckloads((body.truckloads ?? []) as Truckload[])
+    } catch {
+      /* banners are optional decoration; the ship flow enforces server-side */
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchTruckloads()
+  }, [fetchTruckloads])
+
+  // order_key ("IF||PART") and SO name -> its active truckload
+  const tlByOrderKey = useMemo(() => {
+    const m = new Map<string, Truckload>()
+    for (const tl of truckloads) {
+      for (const o of tl.truckload_orders) {
+        if (o.status !== 'pending') continue
+        m.set(o.order_key, tl)
+        m.set(o.so_number, tl)
+      }
+    }
+    return m
+  }, [truckloads])
+
+  const truckloadFor = useCallback(
+    (order: Order): Truckload | undefined => {
+      const soName = (order.ifNumber || '').split(' ')[0]
+      return tlByOrderKey.get(`${order.ifNumber}||${order.partNumber}`) ?? tlByOrderKey.get(soName)
+    },
+    [tlByOrderKey]
+  )
 
   const FILTERS = useMemo(() => [
     { key: 'all' as const, label: t('category.all') },
@@ -321,8 +366,25 @@ function StagedPageContent() {
               const soName = (order.ifNumber || '').split(' ')[0]
               const canShip = canShipLoads && /^(SO|SAL-ORD)-/.test(soName)
               const sib = soLineStats[soName]
+              const tl = truckloadFor(order)
               return (
                 <div>
+                  {tl && (
+                    <div className="px-3 pt-3">
+                      <button
+                        onClick={() => {
+                          setTlFocusId(tl.id)
+                          setTlPanelOpen(true)
+                        }}
+                        className="w-full rounded-lg border-2 border-violet-500 bg-violet-500/10 px-3 py-2 text-sm font-bold text-violet-600 text-left"
+                      >
+                        🚛{' '}
+                        {t('truckload.bannerShipsWith')
+                          .replace('{tl}', tl.load_number)
+                          .replace('{count}', String(tl.truckload_orders.filter((o) => o.status !== 'released').length))}
+                      </button>
+                    </div>
+                  )}
                   {canShip && (
                     <div className="px-3 pt-3 flex items-center gap-3">
                       <Link
@@ -359,6 +421,7 @@ function StagedPageContent() {
             renderCard={(row, i) => {
               const order = row as unknown as Order
               const soName = (order.ifNumber || '').split(' ')[0]
+              const tl = truckloadFor(order)
               return (
                 <OrderCard
                   order={order}
@@ -369,6 +432,23 @@ function StagedPageContent() {
                   expandedAction={
                     canShipLoads && /^(SO|SAL-ORD)-/.test(soName) ? (
                       <div className="mb-3">
+                        {tl && (
+                          <button
+                            onClick={() => {
+                              setTlFocusId(tl.id)
+                              setTlPanelOpen(true)
+                            }}
+                            className="mb-2 w-full rounded-lg border-2 border-violet-500 bg-violet-500/10 px-3 py-2 text-sm font-bold text-violet-600 text-left"
+                          >
+                            🚛{' '}
+                            {t('truckload.bannerShipsWith')
+                              .replace('{tl}', tl.load_number)
+                              .replace(
+                                '{count}',
+                                String(tl.truckload_orders.filter((o) => o.status !== 'released').length)
+                              )}
+                          </button>
+                        )}
                         <Link
                           href={`/staged/ship?so=${encodeURIComponent(soName)}`}
                           className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-3 text-sm font-semibold hover:bg-primary/90 transition-colors"
@@ -392,22 +472,53 @@ function StagedPageContent() {
           />
         </>
       )}
-      {/* Pallet Load Calculator */}
+      {/* Pallet Load Calculator + Truckloads */}
       {!loading && !error && (
         <div className="mt-6">
-          <button
-            onClick={() => setShowPLC((v) => !v)}
-            className="w-full py-3 rounded-lg bg-muted hover:bg-muted/80 text-sm font-medium transition-colors flex items-center justify-center gap-2"
-          >
-            {t('staged.palletLoadCalc')} {showPLC ? '▲' : '▼'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowPLC((v) => !v)}
+              className="flex-1 py-3 rounded-lg bg-muted hover:bg-muted/80 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {t('staged.palletLoadCalc')} {showPLC ? '▲' : '▼'}
+            </button>
+            <button
+              onClick={() => {
+                setTlFocusId(null)
+                setTlPanelOpen(true)
+              }}
+              className="px-4 py-3 rounded-lg bg-violet-600/15 text-violet-600 hover:bg-violet-600/25 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            >
+              🚛 {t('truckload.button')}
+              {truckloads.length > 0 && (
+                <span className="rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5 font-bold">
+                  {truckloads.length}
+                </span>
+              )}
+            </button>
+          </div>
           {showPLC && (
             <div className="mt-3">
-              <PalletLoadCalculator stagedOrders={orders} completedOrders={completedOrders} needToPackageOrders={needToPackageOrders} />
+              <PalletLoadCalculator
+                stagedOrders={orders}
+                completedOrders={completedOrders}
+                needToPackageOrders={needToPackageOrders}
+                canCreateTruckload={canManageTruckloads}
+                onTruckloadCreated={() => fetchTruckloads()}
+              />
             </div>
           )}
         </div>
       )}
+
+      <TruckloadsPanel
+        open={tlPanelOpen}
+        onClose={() => setTlPanelOpen(false)}
+        canManage={canManageTruckloads}
+        stagedOrders={orders}
+        focusId={tlFocusId}
+        onChanged={fetchTruckloads}
+      />
     </div>
   )
 }
