@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Moon, RefreshCw, Search, Ship, Sun } from 'lucide-react'
 import { TableSkeleton } from '@/components/ui/skeleton-loader'
 import { Input } from '@/components/ui/input'
@@ -9,10 +9,14 @@ import { ShippingOverviewCard } from '@/components/shipping-overview/ShippingOve
 import { ShippingStats } from '@/components/shipping-overview/ShippingStats'
 import { CategoryFilter, filterByCategory, DEFAULT_CATEGORIES } from '@/components/category-filter'
 import PalletLoadCalculator from '@/components/PalletLoadCalculator'
+import TruckloadsPanel, { type Truckload } from '@/components/TruckloadsPanel'
 import type { ShippingOverviewOrder, ShippingOverviewResponse } from '@/components/shipping-overview/types'
 import type { Order } from '@/lib/google-sheets-shared'
 import { buildPalletEnrichmentByLine, applyPalletEnrichment, type NormalizedPalletRecord } from '@/lib/pallet-enrichment'
 import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
+import { authedFetch } from '@/lib/authed-fetch'
+import { usePermissions } from '@/lib/use-permissions'
+import { useI18n } from '@/lib/i18n'
 
 const DAY_OPTIONS = [1, 7, 10, 14, 30, 60, 90]
 
@@ -46,10 +50,46 @@ export default function ShippingOverviewPage() {
 }
 
 function ShippingOverviewPageContent() {
+  const { t } = useI18n()
+  const { canAccessExact } = usePermissions()
+  const canManageTruckloads = canAccessExact('manage_truckloads')
   const [data, setData] = useState<ShippingOverviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Truckloads (Simon 2026-07-08): banner on every member order in Ready to
+  // Ship + the Truckloads button next to the Pallet Calculator.
+  const [truckloads, setTruckloads] = useState<Truckload[]>([])
+  const [tlPanelOpen, setTlPanelOpen] = useState(false)
+  const [tlFocusId, setTlFocusId] = useState<string | null>(null)
+
+  const fetchTruckloads = useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/truckloads?scope=active')
+      if (!res.ok) return
+      const body = await res.json()
+      setTruckloads((body.truckloads ?? []) as Truckload[])
+    } catch {
+      /* banners are decoration; the ship flow enforces server-side */
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchTruckloads()
+  }, [fetchTruckloads])
+
+  const tlByOrderKey = useMemo(() => {
+    const m = new Map<string, Truckload>()
+    for (const tl of truckloads) {
+      for (const o of tl.truckload_orders) {
+        if (o.status !== 'pending') continue
+        m.set(o.order_key, tl)
+        m.set(o.so_number, tl)
+      }
+    }
+    return m
+  }, [truckloads])
 
   // Per-section search and category filters
   const [stagedSearch, setStagedSearch] = useState('')
@@ -312,6 +352,20 @@ function ShippingOverviewPageContent() {
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setTlFocusId(null)
+                  setTlPanelOpen(true)
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur-sm transition hover:bg-white/15"
+              >
+                <span>🚛</span>
+                <span>{t('truckload.button')}</span>
+                {truckloads.length > 0 && (
+                  <span className="rounded-full bg-violet-500 px-1.5 py-0.5 text-xs font-bold">{truckloads.length}</span>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={toggleTheme}
                 className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur-sm transition hover:bg-white/15"
                 aria-label={isLight ? 'Switch to dark theme' : 'Switch to light theme'}
@@ -413,6 +467,25 @@ function ShippingOverviewPageContent() {
                 expandedKey={expandedKey}
                 onToggle={(key) => setExpandedKey((c) => (c === key ? null : key))}
                 emptyMessage="No staged orders match the current filter."
+                renderBanner={(order) => {
+                  const soName = (order.ifNumber || '').split(' ')[0]
+                  const tl = tlByOrderKey.get(`${order.ifNumber}||${order.partNumber}`) ?? tlByOrderKey.get(soName)
+                  if (!tl) return null
+                  return (
+                    <button
+                      onClick={() => {
+                        setTlFocusId(tl.id)
+                        setTlPanelOpen(true)
+                      }}
+                      className="mb-1 w-full rounded-lg border-2 border-violet-500 bg-violet-500/10 px-3 py-1.5 text-xs font-bold text-violet-600 text-left"
+                    >
+                      🚛{' '}
+                      {t('truckload.bannerShipsWith')
+                        .replace('{tl}', tl.load_number)
+                        .replace('{count}', String(tl.truckload_orders.filter((o) => o.status !== 'released').length))}
+                    </button>
+                  )
+                }}
               />
             </div>
           </div>
@@ -495,10 +568,24 @@ function ShippingOverviewPageContent() {
             <DialogTitle>📦 Pallet Load Calculator</DialogTitle>
           </DialogHeader>
           <div data-lenis-prevent className="flex-1 min-h-0 overflow-y-auto p-6">
-            <PalletLoadCalculator stagedOrders={stagedOrdersForCalc} completedOrders={completedOrdersForCalc} />
+            <PalletLoadCalculator
+              stagedOrders={stagedOrdersForCalc}
+              completedOrders={completedOrdersForCalc}
+              canCreateTruckload={canManageTruckloads}
+              onTruckloadCreated={() => fetchTruckloads()}
+            />
           </div>
         </DialogContent>
       </Dialog>
+
+      <TruckloadsPanel
+        open={tlPanelOpen}
+        onClose={() => setTlPanelOpen(false)}
+        canManage={canManageTruckloads}
+        stagedOrders={stagedOrdersForCalc}
+        focusId={tlFocusId}
+        onChanged={fetchTruckloads}
+      />
     </div>
   )
 }
@@ -508,11 +595,14 @@ function OrderList({
   expandedKey,
   onToggle,
   emptyMessage,
+  renderBanner,
 }: {
   orders: ShippingOverviewOrder[]
   expandedKey: string | null
   onToggle: (key: string) => void
   emptyMessage: string
+  /** truckload "ships together" strip above a card (Ready to Ship only) */
+  renderBanner?: (order: ShippingOverviewOrder) => ReactNode
 }) {
   if (orders.length === 0) {
     return (
@@ -528,12 +618,14 @@ function OrderList({
       {orders.map((order) => {
         const key = `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
         return (
-          <ShippingOverviewCard
-            key={key}
-            order={order}
-            expanded={expandedKey === key}
-            onToggle={() => onToggle(key)}
-          />
+          <div key={key}>
+            {renderBanner?.(order)}
+            <ShippingOverviewCard
+              order={order}
+              expanded={expandedKey === key}
+              onToggle={() => onToggle(key)}
+            />
+          </div>
         )
       })}
     </div>

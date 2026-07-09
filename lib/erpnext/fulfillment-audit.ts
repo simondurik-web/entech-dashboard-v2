@@ -14,6 +14,12 @@ export type FulfillmentAction =
   | 'upload_customer_bol'
   | 'print_document'
   | 'move_reservation'
+  // truckloads (Simon 2026-07-08): create/edit/cancel a linked load, and the
+  // manager override that releases one order to ship alone
+  | 'tl_create'
+  | 'tl_edit'
+  | 'tl_cancel'
+  | 'tl_release'
 
 export interface FulfillmentLogEntry {
   action: FulfillmentAction

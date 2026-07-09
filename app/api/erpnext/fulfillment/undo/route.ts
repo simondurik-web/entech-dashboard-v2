@@ -3,6 +3,8 @@ import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { undoShipment, ShipmentRejectedError } from '@/lib/erpnext/fulfillment'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment, flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { rollupTruckloadStatus } from '@/lib/truckloads'
 
 // POST /api/erpnext/fulfillment/undo  { dn }
 // Reverts a shipment completed by accident: cancels the Delivery Note, which
@@ -29,6 +31,30 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await undoShipment(dn)
+    // If this DN was shipped as part of a truckload, put the order back into
+    // the truck (pending) so the chained flow / banners stay truthful.
+    try {
+      const { data: tlRows } = await supabaseAdmin
+        .from('truckload_orders')
+        .select('id, truckload_id')
+        .eq('dn_number', dn)
+        .eq('status', 'shipped')
+      for (const row of tlRows ?? []) {
+        await supabaseAdmin
+          .from('truckload_orders')
+          .update({ status: 'pending', dn_number: null })
+          .eq('id', row.id)
+        // a shipped truckload reopens to loading when one of its DNs is undone
+        await supabaseAdmin
+          .from('truckloads')
+          .update({ status: 'loading', shipped_at: null, updated_at: new Date().toISOString() })
+          .eq('id', row.truckload_id)
+          .eq('status', 'shipped')
+        await rollupTruckloadStatus(row.truckload_id)
+      }
+    } catch (e) {
+      console.error('truckload undo bookkeeping failed:', e)
+    }
     const userName = await resolveUserName(guard.userId)
     if (result.so) {
       logFulfillment({
