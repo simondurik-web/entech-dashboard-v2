@@ -55,8 +55,13 @@ export function PhotoGallery({
     try {
       // Downscale phone photos client-side, then batch so no single request
       // body exceeds the ~4.5 MB serverless limit (multi-select can pick a
-      // dozen photos at once).
-      const compressed = await Promise.all(Array.from(files).map(compressImageForUpload))
+      // dozen photos at once). Compress sequentially: each 12 MP photo decodes
+      // to a ~46 MB bitmap, and a dozen in flight at once can crash a mobile
+      // Safari tab.
+      const compressed: File[] = []
+      for (const f of Array.from(files)) {
+        compressed.push(await compressImageForUpload(f))
+      }
       const MAX_BATCH_BYTES = 3_500_000
       const batches: File[][] = []
       let batch: File[] = []
@@ -82,13 +87,13 @@ export function PhotoGallery({
           throw new Error(d.error || `HTTP ${res.status}`)
         }
       }
-      onChange?.()
     } catch (e) {
       toast({ title: t('purchasing.photos.uploadFailed'), description: e instanceof Error ? e.message : undefined, type: 'error' })
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
       load() // always reflect actual stored state, even on partial failure
+      onChange?.() // earlier batches may have persisted even if a later one failed
     }
   }
 

@@ -48,7 +48,11 @@ async function loadDrawable(file: File): Promise<ImageBitmap | HTMLImageElement>
  */
 export async function compressImageForUpload(file: File): Promise<File> {
   try {
-    if (!file.type.startsWith('image/') || NON_COMPRESSIBLE.has(file.type)) return file
+    if (NON_COMPRESSIBLE.has(file.type)) return file
+    // iOS Files-app/AirDrop picks sometimes arrive with an empty type even
+    // for real photos — attempt compression anyway; loadDrawable throws on
+    // non-images and we fail open below.
+    if (file.type && !file.type.startsWith('image/')) return file
     if (file.size <= SKIP_BELOW_BYTES) return file
 
     const source = await loadDrawable(file)
