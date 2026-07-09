@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
-  let body: { dn?: string; type?: string; station?: string }
+  let body: { dn?: string; type?: string; station?: string; copies?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
   const dn = String(body.dn ?? '').trim()
   const type = String(body.type ?? '')
   const station = String(body.station ?? '').trim()
+  // Shipping needs two of everything (Simon 2026-07-08) — the UI defaults to 2,
+  // the relay honors 1-5. One print_jobs row per copy: zero station-agent changes.
+  const copies = Math.min(5, Math.max(1, Number(body.copies) || 1))
   if (!DN_NAME.test(dn) || !['bol', 'packing'].includes(type) || !station) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
@@ -86,16 +89,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not generate the PDF' }, { status: 502 })
     }
 
-    const { error } = await supabaseAdmin.from('print_jobs').insert({
-      station_id: station,
-      format: 'pdf',
-      zpl: Buffer.from(bytes).toString('base64'),
-      item_code: type === 'bol' ? 'BOL' : 'PACKING-SLIP',
-      batch: dn,
-      created_by: guard.userId,
-      idempotency_key: `doc-${dn}-${type}-${Date.now()}`, // reprints are intentional
-      status: 'pending',
-    })
+    const payload = Buffer.from(bytes).toString('base64')
+    const stamp = Date.now()
+    const { error } = await supabaseAdmin.from('print_jobs').insert(
+      Array.from({ length: copies }, (_, i) => ({
+        station_id: station,
+        format: 'pdf',
+        zpl: payload,
+        item_code: type === 'bol' ? 'BOL' : 'PACKING-SLIP',
+        batch: dn,
+        created_by: guard.userId,
+        idempotency_key: `doc-${dn}-${type}-${stamp}-${i + 1}`, // reprints are intentional
+        status: 'pending',
+      }))
+    )
     if (error) throw new Error(error.message)
 
     logFulfillment({
@@ -104,7 +111,7 @@ export async function POST(req: NextRequest) {
       dn,
       customer: doc.customer,
       userId: guard.userId,
-      detail: `${type} @ ${station}`,
+      detail: `${type} ×${copies} @ ${station}`,
     })
     return NextResponse.json({ queued: true }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
