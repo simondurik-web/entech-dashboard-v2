@@ -60,6 +60,7 @@ interface SODoc {
   docstatus: number
   custom_staging_status?: string | null
   custom_staged_at?: string | null
+  shipping_address_name?: string | null
   items: SOItemRow[]
 }
 
@@ -83,6 +84,10 @@ export interface StagedPallet {
 }
 
 export interface FulfillmentOrder {
+  /** the SO's ship-to Address docname — MUST be stamped on the DN at creation:
+   *  an unset DN address gets the CUSTOMER DEFAULT, not the SO's (2026-07-09,
+   *  wrong-dock BOL incident) */
+  shippingAddressName: string | null
   so: string
   customer: string
   poNo: string | null
@@ -273,6 +278,7 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
   return {
     so: doc.name,
     customer: doc.customer,
+    shippingAddressName: doc.shipping_address_name ?? null,
     poNo: doc.po_no ?? null,
     deliveryDate: doc.delivery_date ?? null,
     status: doc.status,
@@ -474,6 +480,7 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     dn = existing.name
     alreadySubmitted = existing.docstatus === 1
   } else {
+    const soShipTo = order.shippingAddressName
     const items = scopedPallets.map((p) => ({
       item_code: p.itemCode,
       qty: p.qty,
@@ -490,6 +497,9 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
       customer: order.customer,
       company: COMPANY,
       custom_ship_against_so: soName,
+      // inherit the SO's ship-to — without this ERPNext fills the customer
+      // DEFAULT and the BOL prints the wrong destination
+      ...(soShipTo ? { shipping_address_name: soShipTo } : {}),
       items,
     })
     dn = created.name
