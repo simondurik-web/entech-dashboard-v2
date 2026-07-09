@@ -473,7 +473,7 @@ function OrdersPageContent() {
           <button
             onClick={(e) => { e.stopPropagation(); handleLabelClick(order) }}
             className={`rounded p-1 hover:bg-muted transition-colors ${isPrinted ? 'text-green-500' : 'text-muted-foreground'}`}
-            title={isPrinted ? 'Printed ✓' : 'Print label'}
+            title={isPrinted ? 'Labels ready ✓' : 'Print label'}
           >
             <Tag className="size-4" />
           </button>
@@ -552,14 +552,23 @@ function OrdersPageContent() {
     }
   }, [])
 
-  // Fetch printed label statuses for icon visual
+  // Fetch label statuses for the icon — green once labels EXIST for the
+  // line (generated or printed): a custom split that never went through the
+  // preview-print PATCH left the icon gray (Simon 2026-07-09, SO-00102).
   useEffect(() => {
-    fetch('/api/labels?status=printed')
-      .then(res => res.json())
-      .then((labels: LabelData[]) => {
-        if (Array.isArray(labels)) {
-          setPrintedLines(new Set(labels.map(l => l.order_line)))
+    Promise.all(
+      ['printed', 'generated'].map((st) =>
+        fetch(`/api/labels?status=${st}`)
+          .then((res) => res.json())
+          .catch(() => [])
+      )
+    )
+      .then((lists) => {
+        const lines = new Set<string>()
+        for (const labels of lists as LabelData[][]) {
+          if (Array.isArray(labels)) for (const l of labels) lines.add(l.order_line)
         }
+        setPrintedLines(lines)
       })
       .catch(() => { /* non-critical */ })
   }, [])
