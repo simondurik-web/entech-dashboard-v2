@@ -143,6 +143,20 @@ function StagedPageContent() {
     { key: 'ifNumber', label: t('table.ifNumber'), sortable: true },
     { key: 'poNumber', label: t('table.po'), sortable: true },
     {
+      key: 'truckloadNumber' as keyof (Order & Record<string, unknown>) & string,
+      label: t('truckload.column'),
+      sortable: true,
+      filterable: true,
+      render: (v) =>
+        v ? (
+          <span className="px-2 py-0.5 text-xs rounded-full font-semibold bg-violet-500/15 text-violet-600">
+            {String(v)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
+    },
+    {
       key: 'effectivePriority' as keyof (Order & Record<string, unknown>) & string,
       label: t('table.priority'),
       sortable: true,
@@ -209,7 +223,7 @@ function StagedPageContent() {
     { key: 'bearings', label: t('table.bearings'), sortable: true, filterable: true },
     // Extra columns — hidden by default
     ...getExtraOrderColumns<Order & Record<string, unknown>>(new Set([
-      'line', 'ifNumber', 'poNumber', 'effectivePriority', 'daysUntilDue',
+      'line', 'ifNumber', 'poNumber', 'truckloadNumber', 'effectivePriority', 'daysUntilDue',
       'customer', 'partNumber', 'orderQty', 'tire', 'hub', 'bearings',
     ])),
   ], [t])
@@ -290,7 +304,10 @@ function StagedPageContent() {
     fetchData()
   }, [fetchData])
 
-  const filtered = filterOrders(orders, filter, search) as OrderRow[]
+  const filtered = (filterOrders(orders, filter, search) as OrderRow[]).map((row) => ({
+    ...row,
+    truckloadNumber: truckloadFor(row as unknown as Order)?.load_number ?? '',
+  }))
 
   const table = useDataTable({
     data: filtered,
