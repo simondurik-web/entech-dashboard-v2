@@ -1555,5 +1555,6 @@
   "truckload.pallets": "Pallets",
   "truckload.palletsTotal": "Total pallets on this truck",
   "truckload.line": "Line",
-  "truckload.column": "Truckload"
+  "truckload.column": "Truckload",
+  "truckload.palletIds": "Pallet IDs"
 }
