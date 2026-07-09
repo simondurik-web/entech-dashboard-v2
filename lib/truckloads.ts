@@ -13,6 +13,7 @@ export interface TruckloadOrderRow {
   customer: string | null
   part_number: string | null
   position: number
+  pallet_count: number | null
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
   released_by: string | null
@@ -35,7 +36,7 @@ export const ACTIVE_TL_STATUSES = ['planned', 'loading'] as const
 
 const LIST_COLUMNS =
   'id, load_number, status, notes, created_by_name, created_at, updated_at, shipped_at,' +
-  ' truckload_orders(id, so_number, order_key, if_number, customer, part_number, position, status, dn_number, released_by, released_at)'
+  ' truckload_orders(id, so_number, order_key, if_number, customer, part_number, position, pallet_count, status, dn_number, released_by, released_at)'
 
 export async function listTruckloads(scope: 'active' | 'all'): Promise<TruckloadRow[]> {
   let q = supabaseAdmin
