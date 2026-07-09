@@ -7,6 +7,7 @@ import { WatermarkedPreview } from '@/components/po-automation/WatermarkedPrevie
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
 import { authHeaders } from '@/lib/session-token'
+import { compressImageForUpload } from '@/lib/compress-image'
 import type { OrderDocument } from '@/lib/po-automation/documents'
 
 function isPdf(doc: OrderDocument): boolean {
@@ -103,7 +104,9 @@ export function BillOfLadingSection({
     setError(null)
     try {
       const fd = new FormData()
-      fd.append('file', file)
+      // Phone photos of a BOL can exceed the ~4.5 MB request cap; PDFs pass
+      // through compressImageForUpload untouched.
+      fd.append('file', await compressImageForUpload(file))
       fd.append('customer', customer)
       fd.append('po', poNumber)
       fd.append('doc_type', 'bol')
@@ -115,6 +118,7 @@ export function BillOfLadingSection({
         body: fd,
       })
       if (!res.ok) {
+        if (res.status === 413) throw new Error(t('photos.tooLarge'))
         const j = await res.json().catch(() => ({}))
         throw new Error(j?.error || `HTTP ${res.status}`)
       }
@@ -148,13 +152,14 @@ export function BillOfLadingSection({
         fd.append('doc_number', editNumber.trim())
         fd.append('notes', editNote.trim())
         const f = editFileRef.current?.files?.[0]
-        if (f) fd.append('file', f)
+        if (f) fd.append('file', await compressImageForUpload(f))
         const res = await fetch('/api/po-automation/documents', {
           method: 'PATCH',
           headers: authHeaders(),
           body: fd,
         })
         if (!res.ok) {
+          if (res.status === 413) throw new Error(t('photos.tooLarge'))
           const j = await res.json().catch(() => ({}))
           throw new Error(j?.error || `HTTP ${res.status}`)
         }

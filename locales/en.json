@@ -964,6 +964,7 @@
   "purchasing.photos.noDeleted": "No deleted photos.",
   "purchasing.photos.restore": "Restore",
   "purchasing.photos.uploadFailed": "Upload failed",
+  "photos.tooLarge": "Photo is too large to upload. Please try a smaller photo.",
   "purchasing.photos.deleteFailed": "Failed to delete photo",
   "purchasing.photos.restoreFailed": "Failed to restore photo",
   "purchasing.photos.itemTitle": "Item photos",

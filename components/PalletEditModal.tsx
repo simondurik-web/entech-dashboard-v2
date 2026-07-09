@@ -5,6 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Pencil, Trash2, Plus, Loader2, History } from 'lucide-react'
 import { authHeaders } from '@/lib/session-token'
+import { useI18n } from '@/lib/i18n'
+import { compressImageForUpload, readUploadError } from '@/lib/compress-image'
 
 interface AuditEntry {
   id: string
@@ -44,6 +46,7 @@ interface PalletEditModalProps {
 }
 
 export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName }: PalletEditModalProps) {
+  const { t } = useI18n()
   const [weight, setWeight] = useState('')
   const [length, setLength] = useState('')
   const [width, setWidth] = useState('')
@@ -114,8 +117,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to save')
+        throw new Error(await readUploadError(res, 'Failed to save'))
       }
       onSaved()
       onOpenChange(false)
@@ -131,8 +133,11 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     setUploadingCategory(category)
     setError(null)
     try {
+      // Phone photos are routinely 5–12 MB; the upload route rejects bodies
+      // over ~4.5 MB, so downscale before sending.
+      const file = await compressImageForUpload(e.target.files[0])
       const formData = new FormData()
-      formData.append('file', e.target.files[0])
+      formData.append('file', file)
       formData.append('uploaded_by_name', userName)
       formData.append('category', category)
       const res = await fetch(`/api/pallet-records/${pallet.id}/photos`, {
@@ -141,8 +146,8 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
         body: formData,
       })
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Upload failed')
+        if (res.status === 413) throw new Error(t('photos.tooLarge'))
+        throw new Error(await readUploadError(res, 'Upload failed'))
       }
       const data = await res.json()
       if (category === 'pallet') setPhotos(data.photo_urls)
@@ -168,8 +173,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
         body: JSON.stringify({ photo_url: photoUrl, deleted_by_name: userName, category }),
       })
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Delete failed')
+        throw new Error(await readUploadError(res, 'Delete failed'))
       }
       const data = await res.json()
       const columnName = category === 'shipment' ? 'shipment_photo_urls' : category === 'work_paper' ? 'work_paper_photo_urls' : 'photo_urls'

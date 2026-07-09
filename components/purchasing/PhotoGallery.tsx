@@ -5,6 +5,7 @@ import { Camera, Trash2, RotateCcw, Loader2, Image as ImageIcon } from 'lucide-r
 import { useI18n } from '@/lib/i18n'
 import { authHeaders } from '@/lib/session-token'
 import { toast } from '@/lib/use-toast'
+import { compressImageForUpload } from '@/lib/compress-image'
 import { Lightbox } from '@/components/ui/Lightbox'
 import type { PurchasingPhoto } from '@/lib/purchasing/photos'
 
@@ -52,18 +53,47 @@ export function PhotoGallery({
     if (!files || files.length === 0) return
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('kind', kind)
-      Array.from(files).forEach((f) => fd.append('files', f))
-      const res = await fetch(`/api/purchasing/${orderId}/photos`, { method: 'POST', headers: authHeaders(), body: fd })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `HTTP ${res.status}`) }
-      onChange?.()
+      // Downscale phone photos client-side, then batch so no single request
+      // body exceeds the ~4.5 MB serverless limit (multi-select can pick a
+      // dozen photos at once). Compress sequentially: each 12 MP photo decodes
+      // to a ~46 MB bitmap, and a dozen in flight at once can crash a mobile
+      // Safari tab.
+      const compressed: File[] = []
+      for (const f of Array.from(files)) {
+        compressed.push(await compressImageForUpload(f))
+      }
+      const MAX_BATCH_BYTES = 3_500_000
+      const batches: File[][] = []
+      let batch: File[] = []
+      let batchBytes = 0
+      for (const f of compressed) {
+        if (batch.length > 0 && batchBytes + f.size > MAX_BATCH_BYTES) {
+          batches.push(batch)
+          batch = []
+          batchBytes = 0
+        }
+        batch.push(f)
+        batchBytes += f.size
+      }
+      batches.push(batch)
+      for (const b of batches) {
+        const fd = new FormData()
+        fd.append('kind', kind)
+        b.forEach((f) => fd.append('files', f))
+        const res = await fetch(`/api/purchasing/${orderId}/photos`, { method: 'POST', headers: authHeaders(), body: fd })
+        if (!res.ok) {
+          if (res.status === 413) throw new Error(t('photos.tooLarge'))
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.error || `HTTP ${res.status}`)
+        }
+      }
     } catch (e) {
       toast({ title: t('purchasing.photos.uploadFailed'), description: e instanceof Error ? e.message : undefined, type: 'error' })
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
       load() // always reflect actual stored state, even on partial failure
+      onChange?.() // earlier batches may have persisted even if a later one failed
     }
   }
 
