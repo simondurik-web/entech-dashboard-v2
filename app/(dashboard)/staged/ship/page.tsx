@@ -244,6 +244,11 @@ function ShipOrderContent() {
   const [tlPickedKey, setTlPickedKey] = useState<string | null>(null)
   const [tlSignDone, setTlSignDone] = useState(false)
   const [tlSigning, setTlSigning] = useState(false)
+  // signed state per DN — lets a revisit (new session, tlCompleted empty) still
+  // offer the sign pad for unsigned BOLs. TL-0002 incident 2026-07-09: the crew
+  // left the completion screen before signing and there was no way back to it.
+  const [dnSignedMap, setDnSignedMap] = useState<Record<string, boolean>>({})
+  const [printingAll, setPrintingAll] = useState<{ done: number; total: number } | null>(null)
   const [overrideOpen, setOverrideOpen] = useState(false)
   const [mgrEmail, setMgrEmail] = useState('')
   const [mgrPass, setMgrPass] = useState('')
@@ -348,6 +353,10 @@ function ShipOrderContent() {
   }, [so, tlId, fetchOrder, t])
 
   // ─── Truckload mode: load the truckload, walk its pending orders ───
+  const truckloadRef = useRef<TruckloadInfo | null>(null)
+  useEffect(() => {
+    truckloadRef.current = truckload
+  }, [truckload])
   const fetchTruckload = useCallback(async () => {
     if (!tlId) return
     try {
@@ -356,7 +365,10 @@ function ShipOrderContent() {
       if (!res.ok) throw new Error(body?.error || 'failed')
       setTruckload(body.truckload as TruckloadInfo)
     } catch {
-      setError(t('fulfillment.loadError'))
+      // a transient refresh failure must not blank an in-progress flow — the
+      // completion panel after the LAST order was one fetch away from being
+      // hidden behind a fatal error (TL-0002 incident 2026-07-09)
+      if (!truckloadRef.current) setError(t('fulfillment.loadError'))
     } finally {
       setTlLoading(false)
     }
@@ -489,9 +501,16 @@ function ShipOrderContent() {
   // just-restored server state with the initial empty scan set (found in the
   // 2026-07-08 refresh test).
   useEffect(() => {
-    if (!sessionReady || !scanBucket) return
-    if (hydratedForSo.current !== scanBucket) return
-    scannedBySoRef.current[scanBucket] = { ok: [...scannedOk], mismatches }
+    if (!sessionReady) return
+    if (scanBucket) {
+      if (hydratedForSo.current !== scanBucket) return
+      scannedBySoRef.current[scanBucket] = { ok: [...scannedOk], mismatches }
+    } else if (!tlId || tlCompleted.length === 0) {
+      // no active bucket and nothing completed -> nothing worth saving. With
+      // completions, keep saving: the driver name typed on the sign screen
+      // (scanBucket is '' once every member is done) must survive a refresh.
+      return
+    }
     const hasAny =
       tlCompleted.length > 0 ||
       Object.values(scannedBySoRef.current).some((v) => v.ok.length > 0 || v.mismatches.length > 0)
@@ -515,7 +534,6 @@ function ShipOrderContent() {
     setJustShipped(null)
     setUploadedBols([])
     setSignSkipped(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [so, scanBucket])
 
   // Item pictures: the ERP files host is behind Cloudflare Access, so images are
@@ -713,16 +731,17 @@ function ShipOrderContent() {
     }
   }
 
-  // one signature + driver name -> every DN of the truckload (decision:
-  // the driver signs once, all BOLs carry it)
+  // one signature + driver name -> every still-unsigned DN of the truckload
+  // (decision: the driver signs once, all BOLs carry it). Iterates the
+  // unsigned set, not this session's completions, so a revisit can sign too.
   const doTlSignAll = async () => {
-    if (!signature || tlSigning || tlCompleted.length === 0) return
+    if (!signature || tlSigning || tlUnsignedDns.length === 0) return
     setTlSigning(true)
     setShipError(null)
     try {
-      for (const c of tlCompleted) {
+      for (const dn of tlUnsignedDns) {
         const res = await authedPost('/api/erpnext/fulfillment/sign-bol', {
-          dn: c.dn,
+          dn,
           driverName,
           signature,
         })
@@ -731,6 +750,11 @@ function ShipOrderContent() {
           throw new Error(b?.error || t('fulfillment.signFailed'))
         }
       }
+      setDnSignedMap((prev) => {
+        const next = { ...prev }
+        for (const dn of tlUnsignedDns) next[dn] = true
+        return next
+      })
       setTlSignDone(true)
       void closeSession()
       fetchLog()
@@ -971,10 +995,80 @@ function ShipOrderContent() {
       : (truckload?.truckload_orders ?? [])
           .filter((o) => o.status === 'shipped' && o.dn_number)
           .map((o) => ({ so: o.so_number, dn: o.dn_number as string }))
-  // revisit = nothing shipped in THIS session -> documents only, no sign pad
-  const tlRevisit = tlCompleted.length === 0 && tlDocsList.length > 0
   const tlAllDone = !!tlId && !!truckload && !tlLoading && so === '' && tlDocsList.length > 0
+  // DNs still needing the driver signature. Fresh completions are unsigned by
+  // definition; on a revisit the fetched signed map decides — so the sign pad
+  // comes back for an unsigned load instead of being locked to the original
+  // session (the TL-0002 miss).
+  const tlUnsignedDns = tlDocsList
+    .filter((c) => (dnSignedMap[c.dn] !== undefined ? !dnSignedMap[c.dn] : tlCompleted.length > 0))
+    .map((c) => c.dn)
   const tlPosition = Math.min(tlCompleted.length + 1, Math.max(tlActiveOrders.length, 1))
+
+  // fetch the signed state of every DN on the completion screen — powers the
+  // per-DN "Signed" badge and re-offers the sign pad for unsigned BOLs
+  const tlDnsKey = tlDocsList.map((c) => c.dn).join(',')
+  useEffect(() => {
+    if (!tlAllDone || !tlDnsKey) return
+    let cancelled = false
+    ;(async () => {
+      const map: Record<string, boolean> = {}
+      const sos = [...new Set(tlDocsList.map((c) => c.so))]
+      await Promise.all(
+        sos.map(async (soName) => {
+          try {
+            const res = await authedFetch(`/api/erpnext/fulfillment/order?so=${encodeURIComponent(soName)}`)
+            if (!res.ok) return
+            const body = await res.json()
+            const o = body.order as FulfillmentOrder
+            for (const d of [o.deliveryNote, ...(o.previousShipments ?? [])]) {
+              if (d) map[d.name] = !!d.signed
+            }
+          } catch {
+            /* unknown DNs fall back to the session heuristic */
+          }
+        })
+      )
+      if (!cancelled && Object.keys(map).length) setDnSignedMap((prev) => ({ ...prev, ...map }))
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tlAllDone, tlDnsKey, tlSignDone, authedFetch])
+
+  // ONE tap -> packing slip + BOL for EVERY order of the load, ×copies each
+  // (Simon 2026-07-09: no per-order printing at the end of a truckload)
+  const doPrintAllDocuments = async () => {
+    if (!printStation || printingAll || tlDocsList.length === 0) return
+    const jobs = tlDocsList.flatMap((c) => (['packing', 'bol'] as const).map((type) => ({ dn: c.dn, type })))
+    setPrintingAll({ done: 0, total: jobs.length })
+    setShipError(null)
+    setPrintQueuedMsg(null)
+    const failed: string[] = []
+    for (const [i, job] of jobs.entries()) {
+      try {
+        const res = await authedPost('/api/erpnext/fulfillment/print-document', {
+          dn: job.dn,
+          type: job.type,
+          station: printStation,
+          copies,
+        })
+        if (!res.ok) throw new Error()
+      } catch {
+        failed.push(`${job.dn} (${job.type === 'bol' ? 'BOL' : t('fulfillment.packingShort')})`)
+      }
+      setPrintingAll({ done: i + 1, total: jobs.length })
+    }
+    setPrintingAll(null)
+    if (failed.length) {
+      setShipError(t('fulfillment.printAllFailed').replace('{docs}', failed.join(', ')))
+    } else {
+      setPrintQueuedMsg(t('fulfillment.printAllQueued'))
+      setTimeout(() => setPrintQueuedMsg(null), 8000)
+    }
+    fetchLog()
+  }
 
   const hasStaged = (order?.pallets?.length ?? 0) > 0
   const soFullyShipped = order?.stagingStatus === 'Shipped'
@@ -1029,12 +1123,12 @@ function ShipOrderContent() {
             </div>
           )}
 
-          {/* ONE signature for the whole truck */}
-          {!tlSignDone && !signSkipped && !tlRevisit && canShip && (
+          {/* ONE signature for the whole truck — offered while ANY BOL is unsigned */}
+          {!tlSignDone && !signSkipped && canShip && tlUnsignedDns.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-4 mb-3">
               <p className="font-semibold mb-1">{t('fulfillment.signBolTitle')}</p>
               <p className="text-xs text-muted-foreground mb-3">
-                {t('fulfillment.tlSignHint').replace('{count}', String(tlCompleted.length))}
+                {t('fulfillment.tlSignHint').replace('{count}', String(tlUnsignedDns.length))}
               </p>
               <input
                 type="text"
@@ -1065,7 +1159,7 @@ function ShipOrderContent() {
             </div>
           )}
 
-          {(tlSignDone || signSkipped || tlRevisit || !canShip) && (
+          {(tlSignDone || signSkipped || !canShip || tlUnsignedDns.length === 0) && (
             <>
               {tlSignDone && (
                 <p className="text-xs text-emerald-700 mb-3">
@@ -1091,12 +1185,52 @@ function ShipOrderContent() {
                   </button>
                 </div>
               </div>
+              {/* ONE button: packing slip + BOL for every order, ×copies each */}
+              {canShip && printStations.length > 0 && (
+                <div className="mb-3">
+                  {printStations.length > 1 && (
+                    <select
+                      value={printStation}
+                      onChange={(e) => setPrintStation(e.target.value)}
+                      className="w-full mb-2 rounded-lg border border-border bg-background px-2 py-2 text-sm"
+                    >
+                      {printStations.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    onClick={doPrintAllDocuments}
+                    disabled={!!printingAll || !!printing}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white py-3.5 text-base font-bold hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                  >
+                    {printingAll ? <RefreshCw className="size-5 animate-spin" /> : <Printer className="size-5" />}
+                    {printingAll
+                      ? t('fulfillment.printAllProgress')
+                          .replace('{done}', String(printingAll.done))
+                          .replace('{total}', String(printingAll.total))
+                      : t('fulfillment.printAllDocs').replace('{count}', String(tlDocsList.length * 2))}
+                  </button>
+                  <p className="mt-1 text-center text-[11px] text-muted-foreground">
+                    {t('fulfillment.printAllHint')
+                      .replace('{orders}', String(tlDocsList.length))
+                      .replace('{copies}', String(copies))}
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 {tlDocsList.map((c) => (
                   <div key={c.dn} className="rounded-xl border border-border bg-card p-3">
                     <p className="text-xs text-muted-foreground mb-1.5">
                       <span className="font-mono font-bold text-foreground">{c.so}</span> ·{' '}
                       <span className="font-mono">{c.dn}</span>
+                      {dnSignedMap[c.dn] && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-600">
+                          {t('fulfillment.signedBadge')}
+                        </span>
+                      )}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <button

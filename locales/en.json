@@ -1557,5 +1557,12 @@
   "truckload.line": "Line",
   "truckload.column": "Truckload",
   "truckload.palletIds": "Pallet IDs",
-  "fulfillment.tlPickHint": "Tap any other order to scan that one first — progress on each is saved."
+  "fulfillment.tlPickHint": "Tap any other order to scan that one first — progress on each is saved.",
+  "fulfillment.printAllDocs": "Print everything ({count} documents)",
+  "fulfillment.printAllProgress": "Sending {done}/{total} to the printer...",
+  "fulfillment.printAllQueued": "All packing slips and BOLs were sent to the printer.",
+  "fulfillment.printAllFailed": "These documents did not print: {docs}. Use the buttons below to retry them.",
+  "fulfillment.printAllHint": "{orders} orders - packing slip + BOL each, x{copies} copies",
+  "truckload.openShip": "Load / Scan",
+  "truckload.openDocs": "Sign / Documents"
 }
