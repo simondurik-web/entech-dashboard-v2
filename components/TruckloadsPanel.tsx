@@ -22,6 +22,7 @@ export interface TruckloadOrder {
   position: number
   pallet_count: number | null
   line: number | null
+  pallet_ids?: string[]
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
   released_by: string | null
@@ -140,7 +141,7 @@ export default function TruckloadsPanel({
 
   const printLoadSheet = async (tl: Truckload) => {
     try {
-      const res = await authedFetch(`/api/truckloads/${tl.id}`)
+      const res = await authedFetch(`/api/truckloads/${tl.id}?pallets=1`)
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || 'Failed')
       const state = (body.truckload?.calculator_state ?? {}) as { svgMarkup?: string | null }
@@ -152,9 +153,9 @@ export default function TruckloadsPanel({
             <td style="text-align:center;">${i + 1}</td>
             <td style="font-family:monospace;font-weight:700;">${o.so_number}</td>
             <td style="text-align:center;">${o.line ?? '—'}</td>
-            <td>${o.if_number ?? ''}</td>
             <td>${o.customer ?? ''}</td>
             <td>${o.part_number ?? ''}</td>
+            <td style="font-family:monospace;font-size:10px;">${(o.pallet_ids ?? []).join(', ') || '—'}</td>
             <td style="text-align:center;font-weight:700;">${o.pallet_count ?? '—'}</td>
             <td style="text-align:center;">${
               o.status === 'shipped'
@@ -186,7 +187,7 @@ export default function TruckloadsPanel({
         <div class="meta">${new Date(tl.created_at).toLocaleString()} · ${tl.created_by_name ?? ''}</div>
         <div class="warn">${t('truckload.sheetWarn').replace('{count}', String(orders.length))}</div>
         ${tl.notes ? `<div class="notes"><b>${t('truckload.notes')}:</b> ${tl.notes}</div>` : ''}
-        <table><thead><tr><th>#</th><th>SO</th><th>${t('truckload.line')}</th><th>IF</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.pallets')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
+        <table><thead><tr><th>#</th><th>SO</th><th>${t('truckload.line')}</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.palletIds')}</th><th>${t('truckload.pallets')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
         <tbody>${rowsHtml}</tbody></table>
         ${state.svgMarkup ? `<div class="diagram">${state.svgMarkup}</div>` : ''}
         <div class="no-print" style="text-align:center;margin-top:16px;">

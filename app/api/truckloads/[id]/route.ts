@@ -4,6 +4,7 @@ import { resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { conflictingOrderKeys, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
+import { getFulfillmentOrder } from '@/lib/erpnext/fulfillment'
 
 // One truckload — GET full (incl. calculator snapshot for the load sheet /
 // re-opening in the calculator), PATCH edit (notes, snapshot, add/remove
@@ -25,6 +26,27 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   try {
     const truckload = await getTruckload(id)
     if (!truckload) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    // ?pallets=1 (load sheet): live staged pallet IDs per member line, from the
+    // reservations — scoped to the member's SO Item like the ship flow
+    if (req.nextUrl.searchParams.get('pallets') === '1') {
+      const soNames = [...new Set(truckload.truckload_orders.filter((o) => o.status === 'pending').map((o) => o.so_number))]
+      const bySo = new Map<string, Awaited<ReturnType<typeof getFulfillmentOrder>>>()
+      await Promise.all(
+        soNames.map(async (so) => {
+          try {
+            bySo.set(so, await getFulfillmentOrder(so))
+          } catch {
+            /* member SO unreadable -> its pallet list stays empty */
+          }
+        })
+      )
+      for (const o of truckload.truckload_orders) {
+        const pallets = bySo.get(o.so_number)?.pallets ?? []
+        ;(o as unknown as { pallet_ids?: string[] }).pallet_ids = o.so_item
+          ? pallets.filter((p) => p.soDetail === o.so_item).map((p) => p.palletId)
+          : pallets.map((p) => p.palletId)
+      }
+    }
     return NextResponse.json({ truckload }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('truckload get failed:', error)

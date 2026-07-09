@@ -1555,5 +1555,6 @@
   "truckload.pallets": "Tarimas",
   "truckload.palletsTotal": "Total de tarimas en este camión",
   "truckload.line": "Línea",
-  "truckload.column": "Carga"
+  "truckload.column": "Carga",
+  "truckload.palletIds": "IDs de Tarimas"
 }
