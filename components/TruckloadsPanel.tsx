@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, Truck, X } from 'lucide-react'
+import Link from 'next/link'
+import { FileText, RefreshCw, Truck, X } from 'lucide-react'
 import { authedFetch, authedJson } from '@/lib/authed-fetch'
 import { useI18n } from '@/lib/i18n'
 import type { Order } from '@/lib/google-sheets-shared'
@@ -259,6 +260,23 @@ export default function TruckloadsPanel({
                     {tl.created_by_name ?? ''} · {new Date(tl.created_at).toLocaleDateString()}
                   </span>
                   <div className="ml-auto flex gap-1.5">
+                    {/* Way back into the chained ship flow — for active loads
+                        (resume scanning) AND shipped ones (sign + documents).
+                        Before this, leaving the completion screen orphaned the
+                        signature + prints (TL-0002, 2026-07-09). */}
+                    {tl.status !== 'canceled' && (
+                      <Link
+                        href={`/staged/ship?tl=${encodeURIComponent(tl.id)}`}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 ${
+                          isActive
+                            ? 'bg-violet-600 text-white hover:bg-violet-700'
+                            : 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25'
+                        }`}
+                      >
+                        {isActive ? <Truck className="size-3.5" /> : <FileText className="size-3.5" />}
+                        {isActive ? t('truckload.openShip') : t('truckload.openDocs')}
+                      </Link>
+                    )}
                     <button
                       onClick={() => printLoadSheet(tl)}
                       className="px-2.5 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-xs font-semibold"
