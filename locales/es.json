@@ -964,6 +964,7 @@
   "purchasing.photos.noDeleted": "No hay fotos eliminadas.",
   "purchasing.photos.restore": "Restaurar",
   "purchasing.photos.uploadFailed": "Error al subir",
+  "photos.tooLarge": "La foto es demasiado grande para subir. Intenta con una foto más pequeña.",
   "purchasing.photos.deleteFailed": "Error al eliminar la foto",
   "purchasing.photos.restoreFailed": "Error al restaurar la foto",
   "purchasing.photos.itemTitle": "Fotos del artículo",
