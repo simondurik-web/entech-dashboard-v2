@@ -1556,5 +1556,6 @@
   "truckload.palletsTotal": "Total de tarimas en este camión",
   "truckload.line": "Línea",
   "truckload.column": "Carga",
-  "truckload.palletIds": "IDs de Tarimas"
+  "truckload.palletIds": "IDs de Tarimas",
+  "fulfillment.tlPickHint": "Toca cualquier otra orden para escanearla primero — el progreso de cada una se guarda."
 }

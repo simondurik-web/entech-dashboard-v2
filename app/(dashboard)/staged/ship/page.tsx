@@ -239,6 +239,9 @@ function ShipOrderContent() {
   const [tlCompleted, setTlCompleted] = useState<{ so: string; dn: string; orderKey?: string }[]>([])
   // the CURRENT member entry — one dashboard line, not the whole SO
   const [tlMember, setTlMember] = useState<TruckloadOrderInfo | null>(null)
+  // crew's explicit pick of which member to scan next (Simon 2026-07-09:
+  // don't force the queue order — the yard dictates what gets loaded first)
+  const [tlPickedKey, setTlPickedKey] = useState<string | null>(null)
   const [tlSignDone, setTlSignDone] = useState(false)
   const [tlSigning, setTlSigning] = useState(false)
   const [overrideOpen, setOverrideOpen] = useState(false)
@@ -368,15 +371,17 @@ function ShipOrderContent() {
   useEffect(() => {
     if (!tlId || !truckload) return
     const doneKeys = new Set(tlCompleted.map((c) => c.orderKey ?? c.so))
-    const next = truckload.truckload_orders.find(
+    const pending = truckload.truckload_orders.filter(
       (o) => o.status === 'pending' && !doneKeys.has(o.order_key) && !doneKeys.has(o.so_number)
     )
+    const picked = tlPickedKey ? pending.find((o) => o.order_key === tlPickedKey) : undefined
+    const next = picked ?? pending[0]
     setTlMember(next ?? null)
     setActiveSo((prev) => {
       const target = next ? next.so_number : ''
       return prev === target ? prev : target
     })
-  }, [tlId, truckload, tlCompleted])
+  }, [tlId, truckload, tlCompleted, tlPickedKey])
 
   // ─── Single-order mode: hard block when the SO belongs to a truckload ───
   useEffect(() => {
@@ -685,6 +690,7 @@ function ShipOrderContent() {
         delete scannedBySoRef.current[scanBucket]
         const nextCompleted = [...tlCompleted, { so: order.so, dn, orderKey: tlMember?.order_key }]
         setTlCompleted(nextCompleted)
+        setTlPickedKey(null)
         setScannedOk(new Set())
         setMismatches([])
         showFeedback(true, t('fulfillment.tlOrderDone').replace('{so}', order.so))
@@ -1161,23 +1167,37 @@ function ShipOrderContent() {
                     o.status === 'shipped' ||
                     tlCompleted.some((c) => (c.orderKey ? c.orderKey === o.order_key : c.so === o.so_number))
                   const current = o.order_key === tlMember?.order_key
+                  const label = `${o.so_number}${o.line ? ` · L${o.line}` : ''}`
+                  if (done || current) {
+                    return (
+                      <span
+                        key={o.order_key}
+                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          done ? 'bg-emerald-500/15 text-emerald-600 line-through' : 'bg-violet-600 text-white'
+                        }`}
+                      >
+                        {label}
+                      </span>
+                    )
+                  }
+                  // pending + not current -> tap to scan this one next
                   return (
-                    <span
+                    <button
                       key={o.order_key}
-                      className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        done
-                          ? 'bg-emerald-500/15 text-emerald-600 line-through'
-                          : current
-                            ? 'bg-violet-600 text-white'
-                            : 'bg-muted text-muted-foreground'
-                      }`}
+                      onClick={() => setTlPickedKey(o.order_key)}
+                      className="px-2 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-dashed border-violet-500/60 hover:bg-violet-500/10 hover:text-violet-600 transition-colors"
                     >
-                      {o.so_number}
-                      {o.line ? ` · L${o.line}` : ''}
-                    </span>
+                      {label}
+                    </button>
                   )
                 })}
               </div>
+              {tlActiveOrders.some(
+                (o) =>
+                  o.status === 'pending' &&
+                  o.order_key !== tlMember?.order_key &&
+                  !tlCompleted.some((c) => (c.orderKey ? c.orderKey === o.order_key : c.so === o.so_number))
+              ) && <p className="mt-1.5 text-[11px] text-violet-600/80">{t('fulfillment.tlPickHint')}</p>}
               {truckload.notes && (
                 <p className="mt-2 text-xs text-violet-700 dark:text-violet-300 whitespace-pre-wrap">
                   {truckload.notes}
