@@ -353,6 +353,9 @@ function scrubMoney(s: string): string {
 }
 
 export interface CompleteShipmentInput {
+  /** SO Item docname — line-scoped truckload shipping: scan + DN cover ONLY
+   *  this line's staged pallets (Simon 2026-07-09, TL-0002/SO-00020). */
+  soDetail?: string | null
   soName: string
   scannedPallets: string[] // what the floor scanned — revalidated against live ERPNext state
   userName: string // dashboard identity, recorded as custom_shipped_by
@@ -431,7 +434,9 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
   const scanned = new Set(input.scannedPallets.map((p) => p.trim().toUpperCase()).filter(Boolean))
 
   const order = await getFulfillmentOrder(soName)
-  const staged = new Map(order.pallets.map((p) => [p.palletId.toUpperCase(), p]))
+  const soDetail = input.soDetail ?? null
+  const scopedPallets = soDetail ? order.pallets.filter((p) => p.soDetail === soDetail) : order.pallets
+  const staged = new Map(scopedPallets.map((p) => [p.palletId.toUpperCase(), p]))
 
   // Idempotent retry FIRST: if a DN with this exact pallet set already exists
   // (double-tap, or a retry after the first attempt flipped the SO to Shipped),
@@ -445,7 +450,11 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     if (order.stagingStatus === 'Shipped') {
       throw new ShipmentRejectedError(`Order ${soName} is already shipped`)
     }
-    if (staged.size === 0) throw new ShipmentRejectedError(`Order ${soName} has no staged pallets`)
+    if (staged.size === 0) {
+      throw new ShipmentRejectedError(
+        soDetail ? `Order ${soName} has no staged pallets on this line` : `Order ${soName} has no staged pallets`
+      )
+    }
     const missing = [...staged.keys()].filter((p) => !scanned.has(p))
     const extra = [...scanned].filter((p) => !staged.has(p))
     if (missing.length || extra.length) {
@@ -465,7 +474,7 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     dn = existing.name
     alreadySubmitted = existing.docstatus === 1
   } else {
-    const items = order.pallets.map((p) => ({
+    const items = scopedPallets.map((p) => ({
       item_code: p.itemCode,
       qty: p.qty,
       batch_no: p.palletId,

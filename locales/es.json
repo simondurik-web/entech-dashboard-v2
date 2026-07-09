@@ -1553,5 +1553,6 @@
   "fulfillment.logRelease": "Liberada de la carga de camión",
   "fulfillment.sessionRestored": "Progreso restaurado del servidor — este embarque ya estaba en curso.",
   "truckload.pallets": "Tarimas",
-  "truckload.palletsTotal": "Total de tarimas en este camión"
+  "truckload.palletsTotal": "Total de tarimas en este camión",
+  "truckload.line": "Línea"
 }

@@ -14,6 +14,10 @@ export interface TruckloadOrderRow {
   part_number: string | null
   position: number
   pallet_count: number | null
+  /** dashboard line number — a truckload entry is ONE line/release, not the whole SO */
+  line: number | null
+  /** ERP SO Item docname for that line (joined from erp_order_line_map) — scopes the ship flow */
+  so_item?: string | null
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
   released_by: string | null
@@ -36,7 +40,7 @@ export const ACTIVE_TL_STATUSES = ['planned', 'loading'] as const
 
 const LIST_COLUMNS =
   'id, load_number, status, notes, created_by_name, created_at, updated_at, shipped_at,' +
-  ' truckload_orders(id, so_number, order_key, if_number, customer, part_number, position, pallet_count, status, dn_number, released_by, released_at)'
+  ' truckload_orders(id, so_number, order_key, if_number, customer, part_number, position, pallet_count, line, status, dn_number, released_by, released_at)'
 
 export async function listTruckloads(scope: 'active' | 'all'): Promise<TruckloadRow[]> {
   let q = supabaseAdmin
@@ -62,7 +66,21 @@ export async function getTruckload(id: string): Promise<(TruckloadRow & { calcul
   if (!data) return null
   const row = data as unknown as TruckloadRow & { calculator_state: unknown }
   row.truckload_orders.sort((a, b) => a.position - b.position)
+  await attachSoItems(row.truckload_orders)
   return row
+}
+
+/** Join each member line to its ERP SO Item (erp_order_line_map) — the ship
+ *  flow scopes scanning + the Delivery Note to exactly that line's pallets. */
+async function attachSoItems(orders: TruckloadOrderRow[]): Promise<void> {
+  const lines = orders.map((o) => o.line).filter((l): l is number => l != null)
+  if (!lines.length) return
+  const { data } = await supabaseAdmin
+    .from('erp_order_line_map')
+    .select('line, erp_so_item_name')
+    .in('line', lines)
+  const byLine = new Map((data ?? []).map((m) => [m.line as number, m.erp_so_item_name as string]))
+  for (const o of orders) o.so_item = o.line != null ? (byLine.get(o.line) ?? null) : null
 }
 
 /** Active truckload containing this SO with the order still pending — the ship

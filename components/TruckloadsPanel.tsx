@@ -21,6 +21,7 @@ export interface TruckloadOrder {
   part_number: string | null
   position: number
   pallet_count: number | null
+  line: number | null
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
   released_by: string | null
@@ -150,6 +151,7 @@ export default function TruckloadsPanel({
           (o, i) => `<tr>
             <td style="text-align:center;">${i + 1}</td>
             <td style="font-family:monospace;font-weight:700;">${o.so_number}</td>
+            <td style="text-align:center;">${o.line ?? '—'}</td>
             <td>${o.if_number ?? ''}</td>
             <td>${o.customer ?? ''}</td>
             <td>${o.part_number ?? ''}</td>
@@ -165,7 +167,7 @@ export default function TruckloadsPanel({
         )
         .join('') +
         `<tr style="background:#ede9fe;font-weight:700;">
-          <td colspan="5" style="text-align:right;">${t('truckload.palletsTotal')}</td>
+          <td colspan="6" style="text-align:right;">${t('truckload.palletsTotal')}</td>
           <td style="text-align:center;">${totalPallets || '—'}</td>
           <td></td>
         </tr>`
@@ -184,7 +186,7 @@ export default function TruckloadsPanel({
         <div class="meta">${new Date(tl.created_at).toLocaleString()} · ${tl.created_by_name ?? ''}</div>
         <div class="warn">${t('truckload.sheetWarn').replace('{count}', String(orders.length))}</div>
         ${tl.notes ? `<div class="notes"><b>${t('truckload.notes')}:</b> ${tl.notes}</div>` : ''}
-        <table><thead><tr><th>#</th><th>SO</th><th>IF</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.pallets')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
+        <table><thead><tr><th>#</th><th>SO</th><th>${t('truckload.line')}</th><th>IF</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.pallets')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
         <tbody>${rowsHtml}</tbody></table>
         ${state.svgMarkup ? `<div class="diagram">${state.svgMarkup}</div>` : ''}
         <div class="no-print" style="text-align:center;margin-top:16px;">
@@ -285,6 +287,7 @@ export default function TruckloadsPanel({
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
                           {o.customer} {o.part_number ? `· ${o.part_number}` : ''}
+                          {o.line ? ` · ${t('truckload.line')} ${o.line}` : ''}
                         </p>
                       </div>
                       <span
@@ -397,6 +400,10 @@ export default function TruckloadsPanel({
                                         : c.order.numPackages > 0
                                           ? Math.ceil(c.order.numPackages)
                                           : undefined,
+                                    line: (() => {
+                                      const n = parseInt(String(c.order.line), 10)
+                                      return Number.isInteger(n) && n > 0 ? n : undefined
+                                    })(),
                                   }
                                 })
                               setAddingTo(null)
