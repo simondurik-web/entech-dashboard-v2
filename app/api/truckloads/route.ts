@@ -23,6 +23,7 @@ interface OrderInput {
   customer?: string
   partNumber?: string
   palletCount?: number
+  line?: number
 }
 
 export async function GET(req: NextRequest) {
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       palletCount: Number.isFinite(Number(o.palletCount)) && Number(o.palletCount) > 0
         ? Math.min(999, Math.round(Number(o.palletCount)))
         : null,
+      line: Number.isInteger(Number(o.line)) && Number(o.line) > 0 ? Number(o.line) : null,
     }))
     .filter((o) => o.orderKey && SO_NAME.test(o.soNumber))
   const uniqueKeys = new Set(orders.map((o) => o.orderKey))
@@ -103,6 +105,7 @@ export async function POST(req: NextRequest) {
         part_number: o.partNumber,
         position: i,
         pallet_count: o.palletCount,
+        line: o.line,
       }))
     )
     if (ordersErr) {

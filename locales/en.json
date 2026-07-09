@@ -1553,5 +1553,6 @@
   "fulfillment.logRelease": "Released from truckload",
   "fulfillment.sessionRestored": "Progress restored from the server — this shipment was already in progress.",
   "truckload.pallets": "Pallets",
-  "truckload.palletsTotal": "Total pallets on this truck"
+  "truckload.palletsTotal": "Total pallets on this truck",
+  "truckload.line": "Line"
 }

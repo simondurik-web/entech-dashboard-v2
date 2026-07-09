@@ -107,14 +107,16 @@ function StagedPageContent() {
     fetchTruckloads()
   }, [fetchTruckloads])
 
-  // order_key ("IF||PART") and SO name -> its active truckload
+  // line number (primary) or order_key -> its active truckload. NO fallback to
+  // the SO number: a truckload entry is ONE line — matching the whole SO
+  // painted sibling lines as members (Simon 2026-07-09, TL-0002/SO-00020).
   const tlByOrderKey = useMemo(() => {
     const m = new Map<string, Truckload>()
     for (const tl of truckloads) {
       for (const o of tl.truckload_orders) {
         if (o.status !== 'pending') continue
+        if (o.line != null) m.set(`L${o.line}`, tl)
         m.set(o.order_key, tl)
-        m.set(o.so_number, tl)
       }
     }
     return m
@@ -122,8 +124,9 @@ function StagedPageContent() {
 
   const truckloadFor = useCallback(
     (order: Order): Truckload | undefined => {
-      const soName = (order.ifNumber || '').split(' ')[0]
-      return tlByOrderKey.get(`${order.ifNumber}||${order.partNumber}`) ?? tlByOrderKey.get(soName)
+      const byLine = tlByOrderKey.get(`L${order.line}`)
+      if (byLine) return byLine
+      return tlByOrderKey.get(`${order.ifNumber}||${order.partNumber}`)
     },
     [tlByOrderKey]
   )

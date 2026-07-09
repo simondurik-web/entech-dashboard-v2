@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
-  let body: { so?: string; pallets?: unknown; truckloadId?: unknown }
+  let body: { so?: string; pallets?: unknown; truckloadId?: unknown; orderKey?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -63,18 +63,26 @@ export async function POST(req: NextRequest) {
   // BEFORE shipping, so the TL number stamped on the BOL can't be spoofed by
   // the client and the truckload bookkeeping stays consistent.
   const truckloadId = body.truckloadId ? String(body.truckloadId) : null
+  const orderKey = typeof body.orderKey === 'string' && body.orderKey.trim() ? body.orderKey.trim() : null
   let truckloadNumber: string | null = null
+  // line scope: the member's SO Item — scan + DN cover only that line's pallets
+  let soDetail: string | null = null
+  let memberOrderKey: string | null = null
   if (truckloadId) {
     if (!/^[0-9a-f-]{36}$/.test(truckloadId)) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
     try {
       const tl = await getTruckload(truckloadId)
-      const member = tl?.truckload_orders.find((o) => o.so_number === so && o.status === 'pending')
-      if (!tl || !member || (tl.status !== 'planned' && tl.status !== 'loading')) {
+      const member = tl?.truckload_orders.find(
+        (o) => o.status === 'pending' && (orderKey ? o.order_key === orderKey : o.so_number === so)
+      )
+      if (!tl || !member || member.so_number !== so || (tl.status !== 'planned' && tl.status !== 'loading')) {
         return NextResponse.json({ error: 'This order is not a pending part of that truckload' }, { status: 409 })
       }
       truckloadNumber = tl.load_number
+      memberOrderKey = member.order_key
+      soDetail = member.so_item ?? null
     } catch (e) {
       console.error('truckload check failed:', e)
       return NextResponse.json({ error: 'Truckload lookup failed. Try again.' }, { status: 502 })
@@ -122,6 +130,7 @@ export async function POST(req: NextRequest) {
       scannedPallets: pallets,
       userName: userName || guard.email,
       customerPartNos,
+      soDetail,
     })
     lockDone = true
 
@@ -133,7 +142,7 @@ export async function POST(req: NextRequest) {
           .from('truckload_orders')
           .update({ status: 'shipped', dn_number: result.dn })
           .eq('truckload_id', truckloadId)
-          .eq('so_number', so)
+          .eq('order_key', memberOrderKey ?? '')
           .eq('status', 'pending')
         await rollupTruckloadStatus(truckloadId)
       } catch (e) {
@@ -162,7 +171,10 @@ export async function POST(req: NextRequest) {
     flipDashboardStatus(
       so,
       'shipped',
-      order.pallets.map((p) => p.soDetail).filter((s): s is string => !!s)
+      order.pallets
+        .filter((p) => !soDetail || p.soDetail === soDetail)
+        .map((p) => p.soDetail)
+        .filter((s): s is string => !!s)
     )
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
