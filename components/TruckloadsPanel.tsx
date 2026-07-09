@@ -20,6 +20,7 @@ export interface TruckloadOrder {
   customer: string | null
   part_number: string | null
   position: number
+  pallet_count: number | null
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
   released_by: string | null
@@ -143,6 +144,7 @@ export default function TruckloadsPanel({
       if (!res.ok) throw new Error(body?.error || 'Failed')
       const state = (body.truckload?.calculator_state ?? {}) as { svgMarkup?: string | null }
       const orders = (body.truckload?.truckload_orders ?? []) as TruckloadOrder[]
+      const totalPallets = orders.reduce((s, o) => s + (o.pallet_count ?? 0), 0)
       const rowsHtml = orders
         .map(
           (o, i) => `<tr>
@@ -151,6 +153,7 @@ export default function TruckloadsPanel({
             <td>${o.if_number ?? ''}</td>
             <td>${o.customer ?? ''}</td>
             <td>${o.part_number ?? ''}</td>
+            <td style="text-align:center;font-weight:700;">${o.pallet_count ?? '—'}</td>
             <td style="text-align:center;">${
               o.status === 'shipped'
                 ? `${t('truckload.chipShipped')}${o.dn_number ? ` (${o.dn_number})` : ''}`
@@ -160,7 +163,12 @@ export default function TruckloadsPanel({
             }</td>
           </tr>`
         )
-        .join('')
+        .join('') +
+        `<tr style="background:#ede9fe;font-weight:700;">
+          <td colspan="5" style="text-align:right;">${t('truckload.palletsTotal')}</td>
+          <td style="text-align:center;">${totalPallets || '—'}</td>
+          <td></td>
+        </tr>`
       const html = `<!DOCTYPE html><html><head><title>${tl.load_number}</title><style>
         body { font-family: Arial, sans-serif; margin: 16px; color: #1a1a2e; }
         h1 { font-size: 20px; margin: 0 0 2px; } .meta { color:#666; font-size: 11px; margin-bottom: 10px; }
@@ -176,7 +184,7 @@ export default function TruckloadsPanel({
         <div class="meta">${new Date(tl.created_at).toLocaleString()} · ${tl.created_by_name ?? ''}</div>
         <div class="warn">${t('truckload.sheetWarn').replace('{count}', String(orders.length))}</div>
         ${tl.notes ? `<div class="notes"><b>${t('truckload.notes')}:</b> ${tl.notes}</div>` : ''}
-        <table><thead><tr><th>#</th><th>SO</th><th>IF</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
+        <table><thead><tr><th>#</th><th>SO</th><th>IF</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.pallets')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
         <tbody>${rowsHtml}</tbody></table>
         ${state.svgMarkup ? `<div class="diagram">${state.svgMarkup}</div>` : ''}
         <div class="no-print" style="text-align:center;margin-top:16px;">
@@ -375,13 +383,22 @@ export default function TruckloadsPanel({
                             onClick={() => {
                               const adds = addCandidates
                                 .filter((c) => addSelection.has(c.orderKey))
-                                .map((c) => ({
-                                  soNumber: c.soNumber,
-                                  orderKey: c.orderKey,
-                                  ifNumber: c.order.ifNumber,
-                                  customer: c.order.customer,
-                                  partNumber: c.order.partNumber,
-                                }))
+                                .map((c) => {
+                                  const recs = (c.order as unknown as { pallets?: unknown[] }).pallets
+                                  return {
+                                    soNumber: c.soNumber,
+                                    orderKey: c.orderKey,
+                                    ifNumber: c.order.ifNumber,
+                                    customer: c.order.customer,
+                                    partNumber: c.order.partNumber,
+                                    palletCount:
+                                      Array.isArray(recs) && recs.length > 0
+                                        ? recs.length
+                                        : c.order.numPackages > 0
+                                          ? Math.ceil(c.order.numPackages)
+                                          : undefined,
+                                  }
+                                })
                               setAddingTo(null)
                               setAddSelection(new Set())
                               if (adds.length) patchTl(tl.id, { addOrders: adds })

@@ -382,13 +382,25 @@ export default function PalletLoadCalculator({
       const res = await authedJson('/api/truckloads', 'POST', {
         notes: tlNotes.trim() || undefined,
         calculatorState: { trailerKey, maxPayload, palletTypes, svgMarkup },
-        orders: tlCandidates.included.map((c) => ({
-          soNumber: c.soNumber,
-          orderKey: c.orderKey,
-          ifNumber: c.order.ifNumber,
-          customer: c.order.customer,
-          partNumber: c.order.partNumber,
-        })),
+        orders: tlCandidates.included.map((c) => {
+          // real pallet-record count when the order has records; the package
+          // estimate otherwise — printed on the load sheet (Simon 2026-07-09)
+          const recs = (c.order as unknown as { pallets?: unknown[] }).pallets
+          const palletCount =
+            Array.isArray(recs) && recs.length > 0
+              ? recs.length
+              : c.order.numPackages > 0
+                ? Math.ceil(c.order.numPackages)
+                : undefined
+          return {
+            soNumber: c.soNumber,
+            orderKey: c.orderKey,
+            ifNumber: c.order.ifNumber,
+            customer: c.order.customer,
+            partNumber: c.order.partNumber,
+            palletCount,
+          }
+        }),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || 'Failed')
