@@ -171,9 +171,16 @@ export async function POST(req: NextRequest) {
         created_by: userId || null,
       })
 
+      // The label split IS the packaging plan: write it back so the
+      // pallet-records flow expects one record+photo per package (Simon
+      // 2026-07-09, SO-00102: a 2-box split still expected 1 photo).
       await supabaseAdmin
         .from('dashboard_orders')
-        .update({ label_status: 'generated' })
+        .update({
+          label_status: 'generated',
+          number_of_packages: String(numPackages),
+          parts_per_package: String(partsPerPackage),
+        })
         .eq('line', orderLine)
     }
 
