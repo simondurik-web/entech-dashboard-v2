@@ -100,14 +100,20 @@ export default function TruckloadsPanel({
     }
   }, [open, focusId, rows])
 
-  // orders already locked in any active truckload can't be added to another
-  const lockedKeys = useMemo(() => {
-    const s = new Set<string>()
+  // orders already locked in any active truckload can't be added to another —
+  // by LINE first (order_key repeats across multi-release lines), key fallback
+  const locked = useMemo(() => {
+    const keys = new Set<string>()
+    const lines = new Set<string>()
     for (const tl of rows) {
       if (tl.status !== 'planned' && tl.status !== 'loading') continue
-      for (const o of tl.truckload_orders) if (o.status === 'pending') s.add(o.order_key)
+      for (const o of tl.truckload_orders) {
+        if (o.status !== 'pending') continue
+        keys.add(o.order_key)
+        if (o.line != null) lines.add(String(o.line).trim())
+      }
     }
-    return s
+    return { keys, lines }
   }, [rows])
 
   const addCandidates = useMemo(
@@ -118,9 +124,21 @@ export default function TruckloadsPanel({
           orderKey: `${o.ifNumber}||${o.partNumber}`,
           soNumber: (o.ifNumber || '').split(' ')[0],
         }))
-        .filter((c) => /^(SO|SAL-ORD)-/.test(c.soNumber) && !lockedKeys.has(c.orderKey)),
-    [stagedOrders, lockedKeys]
+        .filter(
+          (c) =>
+            /^(SO|SAL-ORD)-/.test(c.soNumber) &&
+            !locked.keys.has(c.orderKey) &&
+            !locked.lines.has(String(c.order.line ?? '').trim())
+        ),
+    [stagedOrders, locked]
   )
+
+  // one truckload ships ONE customer — the add picker narrows to the TL's
+  const candidatesFor = (tl: Truckload) => {
+    const tlCustomer = (tl.truckload_orders.find((o) => o.customer)?.customer || '').trim().toLowerCase()
+    if (!tlCustomer) return addCandidates
+    return addCandidates.filter((c) => (c.order.customer || '').trim().toLowerCase() === tlCustomer)
+  }
 
   const patchTl = async (id: string, body: Record<string, unknown>, confirmMsg?: string) => {
     if (busy) return
@@ -365,11 +383,14 @@ export default function TruckloadsPanel({
                     </div>
                     {addingTo === tl.id ? (
                       <div className="rounded-lg border border-border p-2 space-y-2">
+                        <p className="text-[11px] text-violet-600 bg-violet-500/10 border border-violet-500/40 px-2 py-1 rounded font-semibold">
+                          🚛 {t('truckload.oneCustomerNote')}
+                        </p>
                         <div data-lenis-prevent className="max-h-44 overflow-y-auto space-y-1">
-                          {addCandidates.length === 0 && (
+                          {candidatesFor(tl).length === 0 && (
                             <p className="text-xs text-muted-foreground px-1 py-2">{t('truckload.noCandidates')}</p>
                           )}
-                          {addCandidates.map((c) => (
+                          {candidatesFor(tl).map((c) => (
                             <label key={c.orderKey} className="flex items-start gap-2 text-xs cursor-pointer px-1">
                               <input
                                 type="checkbox"
@@ -403,7 +424,7 @@ export default function TruckloadsPanel({
                           </button>
                           <button
                             onClick={() => {
-                              const adds = addCandidates
+                              const adds = candidatesFor(tl)
                                 .filter((c) => addSelection.has(c.orderKey))
                                 .map((c) => {
                                   const recs = (c.order as unknown as { pallets?: unknown[] }).pallets

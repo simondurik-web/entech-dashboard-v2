@@ -125,6 +125,37 @@ export async function conflictingOrderKeys(orderKeys: string[], excludeTruckload
   return out
 }
 
+/** Dashboard lines already locked into some OTHER active truckload. The
+ *  order_key guard alone can't catch multi-release lines (same key, several
+ *  lines) — one LINE ships on exactly one truckload (Simon 2026-07-10). */
+export async function conflictingOrderLines(lines: number[], excludeTruckloadId?: string): Promise<Map<number, string>> {
+  if (!lines.length) return new Map()
+  let q = supabaseAdmin
+    .from('truckload_orders')
+    .select('line, truckload_id, truckloads!inner(status, load_number)')
+    .in('line', lines)
+    .eq('status', 'pending')
+    .in('truckloads.status', [...ACTIVE_TL_STATUSES])
+  if (excludeTruckloadId) q = q.neq('truckload_id', excludeTruckloadId)
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  const out = new Map<number, string>()
+  for (const r of (data ?? []) as unknown as { line: number | null; truckloads: { load_number: string } }[]) {
+    if (r.line != null) out.set(r.line, r.truckloads.load_number)
+  }
+  return out
+}
+
+/** One truckload ships ONE customer — distinct non-empty customers, normalized. */
+export function distinctCustomers(customers: (string | null | undefined)[]): string[] {
+  const seen = new Map<string, string>()
+  for (const c of customers) {
+    const raw = (c || '').trim()
+    if (raw) seen.set(raw.toLowerCase(), raw)
+  }
+  return [...seen.values()]
+}
+
 /** After a member order ships (or is released): keep the parent status honest.
  *  loading while any pending remain; shipped once none do. */
 export async function rollupTruckloadStatus(truckloadId: string): Promise<void> {

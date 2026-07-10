@@ -3,7 +3,7 @@ import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { conflictingOrderKeys, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
+import { conflictingOrderKeys, conflictingOrderLines, distinctCustomers, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
 import { getFulfillmentOrder } from '@/lib/erpnext/fulfillment'
 
 // One truckload — GET full (incl. calculator snapshot for the load sheet /
@@ -144,6 +144,33 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (conflicts.size > 0) {
         const [key, other] = [...conflicts.entries()][0]
         return NextResponse.json({ error: `Order ${key.split('||')[0]} is already in ${other}` }, { status: 409 })
+      }
+      // one LINE = one truckload (key guard misses multi-release lines)
+      const lineConflicts = await conflictingOrderLines(
+        addOrders.map((o) => o.line).filter((l): l is number => l != null),
+        id
+      )
+      if (lineConflicts.size > 0) {
+        const [line, other] = [...lineConflicts.entries()][0]
+        return NextResponse.json(
+          { error: `Line ${line} is already on ${other} — a line ships on exactly one truckload` },
+          { status: 409 }
+        )
+      }
+      // one truckload ships ONE customer — added orders must match the
+      // remaining members (removed keys no longer count)
+      const removedKeys = new Set(removeKeys)
+      const customers = distinctCustomers([
+        ...tl.truckload_orders
+          .filter((o) => !(o.status === 'pending' && removedKeys.has(o.order_key)))
+          .map((o) => o.customer),
+        ...addOrders.map((o) => o.customer),
+      ])
+      if (customers.length > 1) {
+        return NextResponse.json(
+          { error: `One truckload ships ONE customer — this change mixes ${customers.join(' + ')}` },
+          { status: 409 }
+        )
       }
       const basePos = Math.max(-1, ...tl.truckload_orders.map((o) => o.position)) + 1
       const { error } = await supabaseAdmin.from('truckload_orders').insert(
