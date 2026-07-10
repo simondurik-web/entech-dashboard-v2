@@ -614,6 +614,8 @@ function NeedToPackagePageContent() {
                 index={i}
                 isExpanded={expandedOrderKey === getOrderKey(order)}
                 onToggle={() => toggleExpanded(order)}
+                canEdit={canAccess('edit_pallet_records')}
+                userName={profile?.full_name || ''}
                 statusOverride={order.canPackage ? `✓ ${t('needToPackage.ready')}` : `✗ ${t('needToPackage.missing')}`}
                 // same availability color the desktop Part # cell uses
                 partClassName={isRollTech ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')}

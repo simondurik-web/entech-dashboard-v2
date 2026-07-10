@@ -492,6 +492,8 @@ function StagedPageContent() {
                   index={i}
                   isExpanded={expandedOrderKey === getOrderKey(order)}
                   onToggle={() => toggleExpanded(order)}
+                  canEdit={canEditPallets}
+                  userName={profile?.full_name || ''}
                   statusOverride="Staged"
                   expandedAction={
                     canShipLoads && /^(SO|SAL-ORD)-/.test(soName) ? (

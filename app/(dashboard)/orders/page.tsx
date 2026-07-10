@@ -794,6 +794,8 @@ function OrdersPageContent() {
                 index={i}
                 isExpanded={expandedOrderKey === getOrderKey(order)}
                 onToggle={() => toggleExpanded(order)}
+                canEdit={canEditPallets && !order.archived}
+                userName={profile?.full_name || ''}
                 // same availability color the desktop Part # cell uses
                 partClassName={active && (cat.includes('molding') || cat.includes('snap'))
                   ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-bold')

@@ -298,6 +298,8 @@ function ShippedPageContent() {
                 onToggle={() => toggleExpanded(order)}
                 statusOverride="Shipped"
                 showShipDate
+                canEdit={canEditPallets}
+                userName={profile?.full_name || ''}
                 expandedAction={
                   /^(SO|SAL-ORD)-/.test(soName) ? (
                     <div className="mb-3">

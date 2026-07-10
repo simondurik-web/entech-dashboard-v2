@@ -79,9 +79,15 @@ interface OrderCardProps {
   expandedFields?: React.ReactNode
   /** Availability color for the part number (matches the desktop table cell) */
   partClassName?: string
+  /** Pallet-record editing rights — MUST mirror the page's desktop OrderDetail
+      canEdit. This card is the MOBILE render path; omitting it silently made
+      pallet records read-only on every phone regardless of role (Simon 2026-07-10). */
+  canEdit?: boolean
+  /** Audit name for pallet-record writes (profile full_name) */
+  userName?: string
 }
 
-export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields, expandedAction, expandedFields, partClassName }: OrderCardProps) {
+export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields, expandedAction, expandedFields, partClassName, canEdit, userName }: OrderCardProps) {
   const style = categoryStyle(order.category)
 
   return (
@@ -159,6 +165,8 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
                 hubPartNum={order.hub}
                 customer={order.customer}
                 poNumber={order.poNumber}
+                canEdit={canEdit}
+                userName={userName}
                 onClose={onToggle}
               />
             )}
