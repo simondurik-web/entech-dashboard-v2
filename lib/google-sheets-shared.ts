@@ -153,6 +153,9 @@ export interface ShippingRecord {
   shipDate: string
   customer: string
   ifNumber: string
+  /** dashboard line the shipment covered — scopes photos to ONE release of a
+   *  multi-release SO (empty on legacy rows recorded before line capture) */
+  lineNumber?: string
   category: string
   carrier: string
   bol: string

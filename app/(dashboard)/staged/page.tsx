@@ -163,11 +163,14 @@ function StagedPageContent() {
       filterable: true,
       render: (v, row) => {
         const order = row as unknown as Order
-        const isUrgent = order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
+        // effectivePriority is already "P1".."P4" / "URGENT" / "-" — do NOT
+        // prefix another P (rendered "PP1" until 2026-07-09)
+        const raw = String(v ?? '').trim()
+        const isUrgent = raw === 'URGENT' || order.urgentOverride || (order.priorityLevel && order.priorityLevel >= 3)
         if (isUrgent) {
           return <span className="px-2 py-0.5 text-xs rounded font-bold bg-red-500 text-white">{t('priority.urgent')}</span>
         }
-        const priority = v ? `P${v}` : 'P-'
+        const priority = raw && raw !== '-' ? (raw.startsWith('P') ? raw : `P${raw}`) : 'P-'
         return <span className={`px-2 py-0.5 text-xs rounded font-semibold ${priorityColor(priority)}`}>{priority}</span>
       },
     },
@@ -355,6 +358,46 @@ function StagedPageContent() {
         ))}
       </div>
 
+      {/* Pallet Load Calculator + Truckloads — at the TOP so the shipping
+          team finds them without scrolling past the table (Simon 2026-07-09) */}
+      {!loading && !error && (
+        <div className="mb-4">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowPLC((v) => !v)}
+              className="flex-1 py-3 rounded-lg bg-muted hover:bg-muted/80 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {t('staged.palletLoadCalc')} {showPLC ? '▲' : '▼'}
+            </button>
+            <button
+              onClick={() => {
+                setTlFocusId(null)
+                setTlPanelOpen(true)
+              }}
+              className="px-4 py-3 rounded-lg bg-violet-600/15 text-violet-600 hover:bg-violet-600/25 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            >
+              🚛 {t('truckload.button')}
+              {truckloads.length > 0 && (
+                <span className="rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5 font-bold">
+                  {truckloads.length}
+                </span>
+              )}
+            </button>
+          </div>
+          {showPLC && (
+            <div className="mt-3">
+              <PalletLoadCalculator
+                stagedOrders={orders}
+                completedOrders={completedOrders}
+                needToPackageOrders={needToPackageOrders}
+                canCreateTruckload={canManageTruckloads}
+                onTruckloadCreated={() => fetchTruckloads()}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Loading */}
       {loading && (
         <TableSkeleton rows={8} />
@@ -492,45 +535,6 @@ function StagedPageContent() {
           />
         </>
       )}
-      {/* Pallet Load Calculator + Truckloads */}
-      {!loading && !error && (
-        <div className="mt-6">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowPLC((v) => !v)}
-              className="flex-1 py-3 rounded-lg bg-muted hover:bg-muted/80 text-sm font-medium transition-colors flex items-center justify-center gap-2"
-            >
-              {t('staged.palletLoadCalc')} {showPLC ? '▲' : '▼'}
-            </button>
-            <button
-              onClick={() => {
-                setTlFocusId(null)
-                setTlPanelOpen(true)
-              }}
-              className="px-4 py-3 rounded-lg bg-violet-600/15 text-violet-600 hover:bg-violet-600/25 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              🚛 {t('truckload.button')}
-              {truckloads.length > 0 && (
-                <span className="rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5 font-bold">
-                  {truckloads.length}
-                </span>
-              )}
-            </button>
-          </div>
-          {showPLC && (
-            <div className="mt-3">
-              <PalletLoadCalculator
-                stagedOrders={orders}
-                completedOrders={completedOrders}
-                needToPackageOrders={needToPackageOrders}
-                canCreateTruckload={canManageTruckloads}
-                onTruckloadCreated={() => fetchTruckloads()}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       <TruckloadsPanel
         open={tlPanelOpen}
         onClose={() => setTlPanelOpen(false)}
