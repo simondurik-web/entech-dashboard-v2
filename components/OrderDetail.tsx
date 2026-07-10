@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Ruler, Package, Truck, Search, ChevronDown, ChevronUp, Pencil, Trash2, Tag, Inbox, ImageOff } from 'lucide-react'
 import type { PalletRecord, ShippingRecord, StagedRecord, Drawing } from '@/lib/google-sheets-shared'
@@ -345,6 +345,80 @@ export function OrderDetail({
   const [showLabelPreview, setShowLabelPreview] = useState(false)
   const [labelLoading, setLabelLoading] = useState(false)
 
+  // ── Pallet-record actions, shared by the desktop table and the mobile cards ──
+  // Refetch uses the SAME strict line-scoped filter as the initial load: a record
+  // that carries its own line number must match THIS line (two order lines can share
+  // one IF#), and only line-less legacy/sheet records fall back to the IF# match.
+  // (The old inline refetches used a looser IF-or-line match that could pull a
+  // sibling line's pallets into this panel after an edit.)
+  // orderKeyRef guards against a stale response landing after the panel has moved
+  // to a different order — the slow fetch must not overwrite the new order's rows.
+  const orderKeyRef = useRef('')
+  orderKeyRef.current = `${normalizeIf(ifNumber)}|${normalize(line)}`
+  const refetchPallets = async () => {
+    const targetIf = normalizeIf(ifNumber)
+    const targetLine = normalize(line)
+    const requestKey = `${targetIf}|${targetLine}`
+    try {
+      const res = await fetch('/api/pallet-records')
+      if (!res.ok) return
+      const data = (await res.json()) as PalletRecord[]
+      if (orderKeyRef.current !== requestKey) return // panel moved on — drop stale result
+      setPallets(data.filter((r) => {
+        const rIf = normalizeIf(r.ifNumber)
+        const rLine = normalize(r.lineNumber)
+        if (rLine) return Boolean(targetLine) && rLine === targetLine
+        if (targetIf && rIf && rIf === targetIf) return true
+        return false
+      }))
+    } catch { /* keep whatever is on screen */ }
+  }
+
+  const addPalletRecord = async (palletNumber: number) => {
+    const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
+        pallet_number: palletNumber,
+        recorded_by_name: userName,
+      }),
+    })
+    if (res.ok) await refetchPallets()
+  }
+
+  const openPalletEdit = (p: PalletRecord, idx: number) => {
+    if (!p.id || p._source !== 'app') return
+    setEditPallet({
+      id: p.id,
+      palletNumber: p.palletNumber || idx + 1,
+      weight: p.weight,
+      length: p.length,
+      width: p.width,
+      height: p.height,
+      partsPerPallet: p.partsPerPallet,
+      photos: p.photos || [],
+      shipmentPhotos: p.shipmentPhotos || [],
+      workPaperPhotos: p.workPaperPhotos || [],
+      ifNumber: p.ifNumber,
+      order_id: p.order_id,
+      edited_by_name: p.edited_by_name,
+      edited_at: p.edited_at,
+    })
+    setShowEditModal(true)
+  }
+
+  const deletePalletRecord = async (p: PalletRecord, idx: number) => {
+    if (!p.id) return
+    if (!confirm(`Delete pallet #${p.palletNumber || idx + 1}? You can recover it from the audit trail.`)) return
+    const res = await fetch(`/api/pallet-records/${p.id}`, {
+      method: 'DELETE',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ deleted_by_name: userName }),
+    })
+    if (res.ok) await refetchPallets()
+  }
+
   useEffect(() => {
     let mounted = true
     async function run() {
@@ -642,39 +716,13 @@ export function OrderDetail({
               <ErpShippingDocs key={`erpdocs|${ifNumber}`} soName={(ifNumber || '').split(' ')[0]} />
             )}
 
-            {/* ── Pallet Records — compact collapsible table ── */}
+            {/* ── Pallet Records — desktop table + touch-friendly mobile cards ── */}
             {pallets.length === 0 && canEdit && (
-              <div className="rounded-md border bg-muted/20 p-3 flex items-center justify-between">
+              <div className="rounded-md border bg-muted/20 p-3 flex items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">No pallet records for this order</span>
                 <button
-                  onClick={async () => {
-                    const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
-                      method: 'POST',
-                      headers: authHeaders({ 'Content-Type': 'application/json' }),
-                      body: JSON.stringify({
-                        order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
-                        pallet_number: 1,
-                        recorded_by_name: userName,
-                      }),
-                    })
-                    if (res.ok) {
-                      // Refetch
-                      const pr = await fetch('/api/pallet-records')
-                      if (pr.ok) {
-                        const data = (await pr.json()) as PalletRecord[]
-                        const targetIf = normalizeIf(ifNumber)
-                        const targetLine = normalize(line)
-                        setPallets(data.filter((r) => {
-                          const rIf = normalizeIf(r.ifNumber)
-                          const rLine = normalize(r.lineNumber)
-                          if (targetIf && rIf && rIf === targetIf) return true
-                          if (targetLine && rLine && rLine === targetLine) return true
-                          return false
-                        }))
-                      }
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  onClick={() => addPalletRecord(1)}
+                  className="inline-flex items-center gap-1 px-3 py-2 sm:px-2 sm:py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 shrink-0"
                 >
                   <Package className="size-3" /> Add Pallet Record
                 </button>
@@ -683,38 +731,12 @@ export function OrderDetail({
             {pallets.length > 0 && (
               <div className="rounded-md border bg-background/60 overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <span className="text-xs font-semibold">Pallet Records ({pallets.length})</span>
                     {canEdit && (
                       <button
-                        onClick={async () => {
-                          const nextNum = pallets.length + 1
-                          const res = await fetch(`/api/pallet-records/${line || 'unknown'}`, {
-                            method: 'POST',
-                            headers: authHeaders({ 'Content-Type': 'application/json' }),
-                            body: JSON.stringify({
-                              order_id: ifNumber ? `IF${ifNumber.replace(/^IF/i, '')}` : null,
-                              pallet_number: nextNum,
-                              recorded_by_name: userName,
-                            }),
-                          })
-                          if (res.ok) {
-                            const pr = await fetch('/api/pallet-records')
-                            if (pr.ok) {
-                              const data = (await pr.json()) as PalletRecord[]
-                              const targetIf = normalizeIf(ifNumber)
-                              const targetLine = normalize(line)
-                              setPallets(data.filter((r) => {
-                                const rIf = normalizeIf(r.ifNumber)
-                                const rLine = normalize(r.lineNumber)
-                                if (targetIf && rIf && rIf === targetIf) return true
-                                if (targetLine && rLine && rLine === targetLine) return true
-                                return false
-                              }))
-                            }
-                          }
-                        }}
-                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                        onClick={() => addPalletRecord(pallets.length + 1)}
+                        className="text-[11px] text-primary flex items-center gap-0.5 hover:underline py-1.5 sm:py-0"
                         title="Add another pallet"
                       >
                         <Package className="size-3" /> + Add
@@ -724,14 +746,65 @@ export function OrderDetail({
                   {pallets.length > 3 && (
                     <button
                       onClick={() => setShowAllPallets(!showAllPallets)}
-                      className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                      className="text-[11px] text-primary flex items-center gap-0.5 hover:underline py-1.5 sm:py-0"
                     >
                       {showAllPallets ? 'Show less' : `Show all ${pallets.length}`}
                       {showAllPallets ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
                     </button>
                   )}
                 </div>
-                <div className={`overflow-y-auto transition-all duration-300 ${showAllPallets ? 'max-h-[500px]' : 'max-h-[120px]'}`}>
+
+                {/* Touch devices: one card per pallet — the whole card opens the editor,
+                    and the actions are real finger-sized buttons (the desktop table's 12px
+                    icons were unusable on the floor phones; Simon 2026-07-10). Split on
+                    HOVER CAPABILITY, not width — a landscape iPhone or an iPad is wider
+                    than any sm: breakpoint but still has fingers, not a mouse. */}
+                <div className={`hidden [@media(hover:none)]:block overflow-y-auto transition-all duration-300 ${showAllPallets ? 'max-h-[500px]' : 'max-h-[240px]'}`}>
+                  {pallets.map((p, idx) => {
+                    const editable = Boolean(p.id && p._source === 'app')
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => canEdit && editable && openPalletEdit(p, idx)}
+                        className={`flex items-center gap-3 px-3 py-2.5 border-b border-border/30 ${canEdit && editable ? 'active:bg-muted/30' : ''}`}
+                      >
+                        <div className="size-8 shrink-0 rounded-md bg-muted/40 flex items-center justify-center text-sm font-semibold">
+                          {p.palletNumber || idx + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm">
+                            {p.weight || '-'} lbs · {p.dimensions || '-'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {p.partsPerPallet || '-'} parts · {p.photos?.length || 0} 📷
+                            {!editable && ' · read-only'}
+                          </div>
+                        </div>
+                        {canEdit && editable && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openPalletEdit(p, idx) }}
+                              className="rounded-md p-3 bg-muted/40 text-primary active:bg-muted"
+                              aria-label={`Edit pallet ${p.palletNumber || idx + 1}`}
+                            >
+                              <Pencil className="size-5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deletePalletRecord(p, idx) }}
+                              className="rounded-md p-3 bg-muted/40 text-red-500 active:bg-muted"
+                              aria-label={`Delete pallet ${p.palletNumber || idx + 1}`}
+                            >
+                              <Trash2 className="size-5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Pointer devices: the compact table */}
+                <div className={`block [@media(hover:none)]:hidden overflow-y-auto transition-all duration-300 ${showAllPallets ? 'max-h-[500px]' : 'max-h-[120px]'}`}>
                   <table className="w-full text-[11px]">
                     <thead className="sticky top-0 bg-card z-10">
                       <tr className="border-b text-muted-foreground">
@@ -755,63 +828,20 @@ export function OrderDetail({
                             <td className="px-3 py-1">
                               {p.id && p._source === 'app' ? (
                                 <>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setEditPallet({
-                                      id: p.id!,
-                                      palletNumber: p.palletNumber || idx + 1,
-                                      weight: p.weight,
-                                      length: p.length,
-                                      width: p.width,
-                                      height: p.height,
-                                      partsPerPallet: p.partsPerPallet,
-                                      photos: p.photos || [],
-                                      shipmentPhotos: p.shipmentPhotos || [],
-                                      workPaperPhotos: p.workPaperPhotos || [],
-                                      ifNumber: p.ifNumber,
-                                      order_id: p.order_id,
-                                      edited_by_name: p.edited_by_name,
-                                      edited_at: p.edited_at,
-                                    })
-                                    setShowEditModal(true)
-                                  }}
-                                  className="rounded p-1 hover:bg-muted text-primary"
-                                  title="Edit pallet"
-                                >
-                                  <Pencil className="size-3" />
-                                </button>
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation()
-                                    if (!confirm(`Delete pallet #${p.palletNumber || idx + 1}? You can recover it from the audit trail.`)) return
-                                    const res = await fetch(`/api/pallet-records/${p.id}`, {
-                                      method: 'DELETE',
-                                      headers: authHeaders({ 'Content-Type': 'application/json' }),
-                                      body: JSON.stringify({ deleted_by_name: userName }),
-                                    })
-                                    if (res.ok) {
-                                      // Refetch
-                                      const pr = await fetch('/api/pallet-records')
-                                      if (pr.ok) {
-                                        const data = (await pr.json()) as PalletRecord[]
-                                        const targetIf = normalizeIf(ifNumber)
-                                        const targetLine = normalize(line)
-                                        setPallets(data.filter((r) => {
-                                          const rIf = normalizeIf(r.ifNumber)
-                                          const rLine = normalize(r.lineNumber)
-                                          if (targetIf && rIf && rIf === targetIf) return true
-                                          if (targetLine && rLine && rLine === targetLine) return true
-                                          return false
-                                        }))
-                                      }
-                                    }
-                                  }}
-                                  className="rounded p-1 hover:bg-muted text-red-500 hover:text-red-600"
-                                  title="Delete pallet"
-                                >
-                                  <Trash2 className="size-3" />
-                                </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openPalletEdit(p, idx) }}
+                                    className="rounded p-1 hover:bg-muted text-primary"
+                                    title="Edit pallet"
+                                  >
+                                    <Pencil className="size-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deletePalletRecord(p, idx) }}
+                                    className="rounded p-1 hover:bg-muted text-red-500 hover:text-red-600"
+                                    title="Delete pallet"
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </button>
                                 </>
                               ) : (
                                 <span className="text-muted-foreground text-[9px]" title="Sheet records are read-only">—</span>
@@ -848,24 +878,7 @@ export function OrderDetail({
         open={showEditModal}
         onOpenChange={setShowEditModal}
         userName={userName}
-        onSaved={async () => {
-          // Refetch pallet records
-          try {
-            const res = await fetch('/api/pallet-records')
-            if (res.ok) {
-              const data = (await res.json()) as PalletRecord[]
-              const targetIf = normalizeIf(ifNumber)
-              const targetLine = normalize(line)
-              setPallets(data.filter((r) => {
-                const rIf = normalizeIf(r.ifNumber)
-                const rLine = normalize(r.lineNumber)
-                if (targetIf && rIf && rIf === targetIf) return true
-                if (targetLine && rLine && rLine === targetLine) return true
-                return false
-              }))
-            }
-          } catch { /* ignore */ }
-        }}
+        onSaved={refetchPallets}
       />
     </>
   )

@@ -192,7 +192,9 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg">
+      {/* max-h + scroll: on a phone the modal is taller than the viewport and Save
+          was unreachable without it */}
+      <DialogContent className="max-w-lg max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Pencil className="size-4" />
@@ -271,7 +273,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-6 text-[10px] px-2"
+                  className="h-8 text-xs px-3 sm:h-6 sm:text-[10px] sm:px-2"
                   onClick={() => ref.current?.click()}
                   disabled={uploadingCategory === category}
                 >
@@ -287,18 +289,22 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
                 />
               </div>
               {catPhotos.length > 0 ? (
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {catPhotos.map((url, i) => (
                     <div key={i} className="relative group">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={url}
                         alt={`${label} ${i + 1}`}
-                        className="w-full h-16 object-cover rounded-md border"
+                        className="w-full h-20 sm:h-16 object-cover rounded-md border"
                         loading="lazy"
                       />
+                      {/* Always visible on touch — hover-reveal made photo delete
+                          impossible on iPhone/iPad (no hover). Gated on the device's
+                          hover capability, not screen width: an iPad is sm-wide but
+                          still can't hover. Pointer devices keep the tidy reveal. */}
                       <button
-                        className="absolute top-0.5 right-0.5 bg-red-500/90 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-0.5 right-0.5 bg-red-500/90 text-white rounded-full p-2.5 [@media(hover:hover)]:p-0.5 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
                         onClick={() => handlePhotoDelete(url, category)}
                         disabled={deletingPhoto === url}
                         title="Delete photo"
