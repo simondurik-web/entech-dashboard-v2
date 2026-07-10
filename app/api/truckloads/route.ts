@@ -3,7 +3,7 @@ import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { conflictingOrderKeys, listTruckloads } from '@/lib/truckloads'
+import { conflictingOrderKeys, conflictingOrderLines, distinctCustomers, listTruckloads } from '@/lib/truckloads'
 
 // Truckloads — GET list / POST create.
 //
@@ -72,12 +72,32 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // One truckload ships ONE customer (Simon 2026-07-10)
+  const customers = distinctCustomers(orders.map((o) => o.customer))
+  if (customers.length > 1) {
+    return NextResponse.json(
+      { error: `One truckload ships ONE customer — this one mixes ${customers.join(' + ')}` },
+      { status: 409 }
+    )
+  }
+
   try {
     const conflicts = await conflictingOrderKeys([...uniqueKeys])
     if (conflicts.size > 0) {
       const [key, tl] = [...conflicts.entries()][0]
       return NextResponse.json(
         { error: `Order ${key.split('||')[0]} is already in ${tl}`, conflicts: Object.fromEntries(conflicts) },
+        { status: 409 }
+      )
+    }
+    // one LINE = one truckload (the key guard misses multi-release lines)
+    const lineConflicts = await conflictingOrderLines(
+      orders.map((o) => o.line).filter((l): l is number => l != null)
+    )
+    if (lineConflicts.size > 0) {
+      const [line, tl] = [...lineConflicts.entries()][0]
+      return NextResponse.json(
+        { error: `Line ${line} is already on ${tl} — a line ships on exactly one truckload` },
         { status: 409 }
       )
     }

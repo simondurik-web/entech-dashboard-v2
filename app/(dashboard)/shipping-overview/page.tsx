@@ -573,6 +573,7 @@ function ShippingOverviewPageContent() {
               completedOrders={completedOrdersForCalc}
               canCreateTruckload={canManageTruckloads}
               onTruckloadCreated={() => fetchTruckloads()}
+              activeTruckloads={truckloads}
             />
           </div>
         </DialogContent>

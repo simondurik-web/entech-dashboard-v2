@@ -1565,5 +1565,6 @@
   "fulfillment.printAllFailed": "These documents did not print: {docs}. Use the buttons below to retry them.",
   "fulfillment.printAllHint": "{orders} orders - packing slip + BOL each, x{copies} copies",
   "truckload.openShip": "Load / Scan",
-  "truckload.openDocs": "Sign / Documents"
+  "truckload.openDocs": "Sign / Documents",
+  "truckload.oneCustomerNote": "One truck ships ONE customer — only this customer's orders can be added."
 }
