@@ -1566,5 +1566,7 @@
   "fulfillment.printAllHint": "{orders} órdenes - lista de empaque + BOL cada una, x{copies} copias",
   "truckload.openShip": "Cargar / Escanear",
   "truckload.openDocs": "Firmar / Documentos",
-  "truckload.oneCustomerNote": "Un camión envía UN solo cliente — solo se pueden agregar órdenes de este cliente."
+  "truckload.oneCustomerNote": "Un camión envía UN solo cliente — solo se pueden agregar órdenes de este cliente.",
+  "truckload.searchPlaceholder": "Buscar cargas — número TL, cliente, SO, parte...",
+  "truckload.noMatches": "Ninguna carga coincide con tu búsqueda."
 }

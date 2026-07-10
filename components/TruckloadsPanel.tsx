@@ -69,6 +69,7 @@ export default function TruckloadsPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showClosed, setShowClosed] = useState(false)
+  const [search, setSearch] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [addingTo, setAddingTo] = useState<string | null>(null)
   const [addSelection, setAddSelection] = useState<Set<string>>(new Set())
@@ -139,6 +140,30 @@ export default function TruckloadsPanel({
     if (!tlCustomer) return addCandidates
     return addCandidates.filter((c) => (c.order.customer || '').trim().toLowerCase() === tlCustomer)
   }
+
+  /** the truckload's customer — one truck ships one customer, so the first
+   *  member's customer names the whole load (shown on the card header) */
+  const customerOf = (tl: Truckload) => tl.truckload_orders.find((o) => o.customer)?.customer || ''
+
+  // search across load number, customer, SOs/IFs/POs? (parts + notes too) —
+  // the closed list grows forever, scrolling alone stops scaling (Simon 2026-07-10)
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((tl) => {
+      if (tl.load_number.toLowerCase().includes(q)) return true
+      if ((tl.notes || '').toLowerCase().includes(q)) return true
+      if ((tl.created_by_name || '').toLowerCase().includes(q)) return true
+      return tl.truckload_orders.some(
+        (o) =>
+          o.so_number.toLowerCase().includes(q) ||
+          (o.if_number || '').toLowerCase().includes(q) ||
+          (o.customer || '').toLowerCase().includes(q) ||
+          (o.part_number || '').toLowerCase().includes(q) ||
+          (o.dn_number || '').toLowerCase().includes(q)
+      )
+    })
+  }, [rows, search])
 
   const patchTl = async (id: string, body: Record<string, unknown>, confirmMsg?: string) => {
     if (busy) return
@@ -228,22 +253,34 @@ export default function TruckloadsPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4">
-      <div className="w-full sm:max-w-2xl max-h-[92vh] sm:max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-background border border-border">
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Truck className="size-5 text-violet-600" />
-            {t('truckload.title')}
-          </h2>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-              <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
-              {t('truckload.showClosed')}
-            </label>
-            <button onClick={onClose} aria-label={t('truckload.close')} className="rounded-full p-2 hover:bg-muted">
-              <X className="size-5" />
-            </button>
+      <div
+        data-lenis-prevent
+        className="w-full sm:max-w-2xl max-h-[92vh] sm:max-h-[85vh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl bg-background border border-border"
+      >
+        {/* Header + search stay pinned while the list scrolls */}
+        <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <Truck className="size-5 text-violet-600" />
+              {t('truckload.title')}
+            </h2>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
+                {t('truckload.showClosed')}
+              </label>
+              <button onClick={onClose} aria-label={t('truckload.close')} className="rounded-full p-2 hover:bg-muted">
+                <X className="size-5" />
+              </button>
+            </div>
           </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('truckload.searchPlaceholder')}
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm"
+          />
         </div>
 
         <div className="p-4 space-y-4">
@@ -256,8 +293,11 @@ export default function TruckloadsPanel({
           {!loading && rows.length === 0 && (
             <p className="text-sm text-muted-foreground py-8 text-center">{t('truckload.empty')}</p>
           )}
+          {!loading && rows.length > 0 && visibleRows.length === 0 && (
+            <p className="text-sm text-muted-foreground py-8 text-center">{t('truckload.noMatches')}</p>
+          )}
 
-          {rows.map((tl) => {
+          {visibleRows.map((tl) => {
             const pending = tl.truckload_orders.filter((o) => o.status === 'pending')
             const isActive = tl.status === 'planned' || tl.status === 'loading'
             const isFocus = tl.id === focusId
@@ -271,6 +311,11 @@ export default function TruckloadsPanel({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono font-bold text-base">{tl.load_number}</span>
+                  {customerOf(tl) && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500/15 text-blue-600 max-w-[14rem] truncate">
+                      {customerOf(tl)}
+                    </span>
+                  )}
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLE[tl.status]}`}>
                     {t(`truckload.status.${tl.status}`)}
                   </span>

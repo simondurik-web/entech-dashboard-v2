@@ -1566,5 +1566,7 @@
   "fulfillment.printAllHint": "{orders} orders - packing slip + BOL each, x{copies} copies",
   "truckload.openShip": "Load / Scan",
   "truckload.openDocs": "Sign / Documents",
-  "truckload.oneCustomerNote": "One truck ships ONE customer — only this customer's orders can be added."
+  "truckload.oneCustomerNote": "One truck ships ONE customer — only this customer's orders can be added.",
+  "truckload.searchPlaceholder": "Search truckloads — TL number, customer, SO, part...",
+  "truckload.noMatches": "No truckloads match your search."
 }
