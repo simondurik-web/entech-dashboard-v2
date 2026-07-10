@@ -283,7 +283,7 @@ const buildOverview = unstable_cache(
         .limit(5000),
       supabaseAdmin
         .from('shipping_records')
-        .select('id, created_at, customer, if_number, carrier, shipment_photos, paperwork_photos, closeup_photos')
+        .select('id, created_at, customer, if_number, line_number, carrier, shipment_photos, paperwork_photos, closeup_photos')
         .gte('created_at', cutoffIso)
         .order('created_at', { ascending: false })
         .limit(5000),
@@ -326,6 +326,7 @@ const buildOverview = unstable_cache(
       shipDate: record.created_at ? new Date(record.created_at).toLocaleDateString('en-US') : '',
       customer: record.customer || '',
       ifNumber: record.if_number || '',
+      lineNumber: str(record.line_number),
       category: '',
       carrier: record.carrier || '',
       bol: '',
@@ -352,17 +353,33 @@ const buildOverview = unstable_cache(
       palletsByLine.set(line, records.map(toOverviewPallet))
     }
 
+    // Shipping records are matched LINE-first (a multi-release SO ships one
+    // line at a time — line 3714's ship-day photos must not show on its still-
+    // staged sibling 3715, caught by Simon 2026-07-09). The IF-level map only
+    // backs up SHIPPED orders whose records predate line capture.
+    const shippingByLine = new Map<string, ShippingOverviewShippingRecord>()
     const shippingByIf = new Map<string, ShippingOverviewShippingRecord>()
-    const shippingGroups = new Map<string, ShippingRecord[]>()
+    const lineGroups = new Map<string, ShippingRecord[]>()
+    const ifGroups = new Map<string, ShippingRecord[]>()
     for (const record of dbShipping) {
+      const line = normalizeLine(record.lineNumber || '')
+      if (line) {
+        const group = lineGroups.get(line) ?? []
+        group.push(record)
+        lineGroups.set(line, group)
+      }
       const ifNumber = normalizeIfNumber(record.ifNumber || '')
       if (!ifNumber) continue
-      const group = shippingGroups.get(ifNumber) ?? []
+      const group = ifGroups.get(ifNumber) ?? []
       group.push(record)
-      shippingGroups.set(ifNumber, group)
+      ifGroups.set(ifNumber, group)
     }
 
-    for (const [ifNumber, records] of shippingGroups) {
+    for (const [line, records] of lineGroups) {
+      const merged = mergeShippingRecords(records)
+      if (merged) shippingByLine.set(line, merged)
+    }
+    for (const [ifNumber, records] of ifGroups) {
       const merged = mergeShippingRecords(records)
       if (merged) shippingByIf.set(ifNumber, merged)
     }
@@ -396,7 +413,10 @@ const buildOverview = unstable_cache(
       const line = normalizeLine(order.line)
       const ifNumber = normalizeIfNumber(order.ifNumber)
       const pallets = palletsByLine.get(line) ?? []
-      const shipping = shippingByIf.get(ifNumber) ?? null
+      // line-scoped record first; the IF-wide fallback is for SHIPPED orders
+      // only — a staged line has by definition not been photographed shipping
+      const shipping =
+        shippingByLine.get(line) ?? (status === 'shipped' ? (shippingByIf.get(ifNumber) ?? null) : null)
 
       const totalPalletWeight = pallets.reduce((sum, pallet) => sum + pallet.weight, 0)
       const dimensionsSummary = uniqueStrings(pallets.map((pallet) => pallet.dimensions)).join(', ')
