@@ -2,7 +2,6 @@
 
 import { Sidebar } from "@/components/layout/Sidebar"
 // Bottom nav removed — sidebar handles all navigation
-import { VersionBadge } from "@/components/layout/VersionBadge"
 import { AccessGuard } from "@/components/layout/AccessGuard"
 import { PageTransition } from "@/components/ui/page-transition"
 import { ToastProvider } from "@/components/ui/toast-provider"
@@ -86,6 +85,7 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
+  const [headerHidden, setHeaderHidden] = useState(false)
   const commandPaletteItems = useMemo(
     () => {
       const base = baseCommandPaletteItems.filter((item) => !item.href || canAccess(item.href))
@@ -139,6 +139,32 @@ export default function DashboardLayout({
     }
   }, [])
 
+  // Mobile header auto-hide: slide away while scrolling down, reveal on the first
+  // scroll up (Simon 2026-07-10 — the bar is noise while reading; the sidebar toggle
+  // is one small upward swipe away). Desktop is unaffected (header is lg:hidden).
+  useEffect(() => {
+    let lastY = window.scrollY
+    let frame = 0
+    const onScroll = () => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        const y = window.scrollY
+        // small dead-zone so tap-scroll jitter doesn't flicker the bar; skip on
+        // desktop entirely (header is lg:hidden — no point re-rendering the layout)
+        if (window.innerWidth < 1024 && Math.abs(y - lastY) > 8) {
+          setHeaderHidden(y > lastY && y > 56)
+        }
+        lastY = y
+        frame = 0
+      })
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -155,19 +181,22 @@ export default function DashboardLayout({
           }
         `}</style>
         
-        {/* Top header - mobile/tablet only (sidebar handles nav on desktop) */}
-        <header className="sticky top-0 z-30 border-b bg-background lg:hidden">
-          <div className="flex h-14 items-center gap-3 px-4">
+        {/* Top header - mobile/tablet only (sidebar handles nav on desktop).
+            Icon-only (no app-name text — wasted width on a phone) and it slides out
+            of the way while scrolling down, back in on scroll up. */}
+        <header
+          className={`sticky top-0 z-30 border-b bg-background lg:hidden transition-transform duration-200 ${
+            headerHidden ? "-translate-y-full" : "translate-y-0"
+          }`}
+        >
+          <div className="flex h-12 items-center gap-3 px-4">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="rounded-md p-2.5 -ml-2.5 text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label="Open sidebar"
             >
-              <PanelLeft className="size-5" />
+              <PanelLeft className="size-6" />
             </button>
-            <span className="text-lg font-semibold">
-              Entech Dashboard
-            </span>
             <div className="ml-auto">
               <NotificationBell />
             </div>
@@ -193,8 +222,8 @@ export default function DashboardLayout({
 
       <CommandPalette items={commandPaletteItems} />
       <ToastProvider />
-      {/* Bottom nav removed */}
-      <VersionBadge />
+      {/* Bottom nav removed; version badge removed (Simon 2026-07-10 — it was a
+          load-verification aid, not a feature) */}
     </div>
   )
 }
