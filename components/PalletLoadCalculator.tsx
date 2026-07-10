@@ -66,6 +66,8 @@ const LABELS = {
     truckloadCreating: 'Creating...',
     truckloadCreated: 'Truckload created:',
     truckloadCancel: 'Cancel',
+    alreadyOnTl: 'Already on',
+    oneCustomerNote: 'One truck = one customer. Showing only {customer} orders — unlink everything to pick a different customer.',
   },
   es: {
     title: 'Calculadora de Carga de Tarimas',
@@ -106,6 +108,8 @@ const LABELS = {
     truckloadCreating: 'Creando...',
     truckloadCreated: 'Carga creada:',
     truckloadCancel: 'Cancelar',
+    alreadyOnTl: 'Ya está en',
+    oneCustomerNote: 'Un camión = un cliente. Mostrando solo órdenes de {customer} — desvincula todo para elegir otro cliente.',
   },
 }
 
@@ -285,6 +289,13 @@ function packPallets(types: PalletType[], trailer: { length: number; width: numb
 }
 
 // ── Component ──────────────────────────────────────────────
+/** Active truckloads (from the host page) — lock the picker: a line already on
+ *  a truckload can't be linked again (Simon 2026-07-10, TL-0004/SO-00067 gap). */
+export interface ActiveTruckloadRef {
+  load_number: string
+  truckload_orders: { order_key: string; line: number | null; status: string }[]
+}
+
 export default function PalletLoadCalculator({
   stagedOrders = [],
   completedOrders = [],
@@ -292,6 +303,7 @@ export default function PalletLoadCalculator({
   lang = 'en',
   canCreateTruckload = false,
   onTruckloadCreated,
+  activeTruckloads = [],
 }: {
   stagedOrders?: Order[]
   completedOrders?: Order[]
@@ -300,6 +312,7 @@ export default function PalletLoadCalculator({
   /** manage_truckloads permission — shows the Create Truckload button */
   canCreateTruckload?: boolean
   onTruckloadCreated?: (loadNumber: string) => void
+  activeTruckloads?: ActiveTruckloadRef[]
 }) {
   const t = LABELS[lang]
 
@@ -333,6 +346,39 @@ export default function PalletLoadCalculator({
     allOrders.forEach(o => m.set(getOrderKey(o), o))
     return m
   }, [allOrders])
+
+  // Lines/keys already locked into an active truckload — line first (an
+  // order_key repeats across multi-release lines), key as fallback.
+  const tlLockedByLine = useMemo(() => {
+    const byLine = new Map<string, string>()
+    const byKey = new Map<string, string>()
+    for (const tl of activeTruckloads) {
+      for (const o of tl.truckload_orders) {
+        if (o.status !== 'pending') continue
+        if (o.line != null) byLine.set(String(o.line).trim(), tl.load_number)
+        else if (o.order_key) byKey.set(o.order_key, tl.load_number)
+      }
+    }
+    return { byLine, byKey }
+  }, [activeTruckloads])
+  const lockedTruckloadFor = useCallback(
+    (o: Order): string | undefined =>
+      tlLockedByLine.byLine.get(String(o.line ?? '').trim()) ?? tlLockedByLine.byKey.get(getOrderKey(o)),
+    [tlLockedByLine]
+  )
+
+  // One truck ships ONE customer (Simon 2026-07-10): the first linked order
+  // fixes the customer; the picker narrows to that customer until everything
+  // is unlinked again.
+  const linkedCustomer = useMemo(() => {
+    for (const pt of palletTypes) {
+      for (const k of pt.linkedOrderKeys) {
+        const o = orderMap.get(k)
+        if (o?.customer) return o.customer
+      }
+    }
+    return null
+  }, [palletTypes, orderMap])
 
   const typeInfo = useMemo(() => {
     const m = new Map<string, { numParts: number; partName: string; custPartName: string }>()
@@ -782,6 +828,12 @@ export default function PalletLoadCalculator({
                   {pt.linkSource === 'package' && (
                     <p className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">⚠️ For planning purposes — these orders are not ready to ship. You must enter estimated dimensions and weight manually.</p>
                   )}
+                  {/* One truck = one customer: after the first link, the list narrows */}
+                  {linkedCustomer && (
+                    <p className="text-[10px] text-violet-600 bg-violet-500/10 border border-violet-500/40 px-2 py-1 rounded font-semibold">
+                      🚛 {t.oneCustomerNote.replace('{customer}', linkedCustomer)}
+                    </p>
+                  )}
                   <input
                     value={linkSearch}
                     onChange={(e) => setLinkSearch(e.target.value)}
@@ -791,6 +843,16 @@ export default function PalletLoadCalculator({
                   <div data-lenis-prevent className="max-h-60 overflow-y-auto overscroll-contain space-y-0.5">
                     {(pt.linkSource === 'staged' ? stagedOrders : pt.linkSource === 'completed' ? completedOrders : needToPackageOrders)
                       .filter((o) => {
+                        // customer lock: only the linked customer's orders stay
+                        // visible (already-linked rows always show so they can
+                        // be unticked)
+                        if (
+                          linkedCustomer &&
+                          !pt.linkedOrderKeys.includes(getOrderKey(o)) &&
+                          (o.customer || '').trim().toLowerCase() !== linkedCustomer.trim().toLowerCase()
+                        ) {
+                          return false
+                        }
                         if (!linkSearch.trim()) return true
                         const q = linkSearch.toLowerCase()
                         return (
@@ -804,18 +866,21 @@ export default function PalletLoadCalculator({
                         const linkedToPallet = orderLinkMap.get(key)
                         const isLinkedHere = pt.linkedOrderKeys.includes(key)
                         const isLinkedElsewhere = linkedToPallet !== undefined && !isLinkedHere
+                        // already locked into an active truckload -> can't be
+                        // planned onto another one (TL-0004/SO-00067 gap)
+                        const lockedTl = !isLinkedHere ? lockedTruckloadFor(o) : undefined
                         return (
                           <label
                             key={key}
                             className={`flex items-start gap-2 text-xs py-0.5 ${
-                              isLinkedElsewhere ? 'opacity-50' : 'cursor-pointer'
+                              isLinkedElsewhere || lockedTl ? 'opacity-60' : 'cursor-pointer'
                             }`}
                           >
                             <input
                               type="checkbox"
                               className="mt-0.5"
                               checked={isLinkedHere}
-                              disabled={isLinkedElsewhere}
+                              disabled={isLinkedElsewhere || !!lockedTl}
                               onChange={() => toggleOrderLink(pt.id, key, o)}
                             />
                             <span className="flex flex-col">
@@ -836,6 +901,11 @@ export default function PalletLoadCalculator({
                             {isLinkedElsewhere && (
                               <span className="text-muted-foreground">
                                 ({t.linkedTo} #{(linkedToPallet ?? 0) + 1})
+                              </span>
+                            )}
+                            {lockedTl && (
+                              <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/15 text-violet-600">
+                                🚛 {t.alreadyOnTl} {lockedTl}
                               </span>
                             )}
                           </label>

@@ -1565,5 +1565,6 @@
   "fulfillment.printAllFailed": "Estos documentos no se imprimieron: {docs}. Usa los botones de abajo para reintentarlos.",
   "fulfillment.printAllHint": "{orders} órdenes - lista de empaque + BOL cada una, x{copies} copias",
   "truckload.openShip": "Cargar / Escanear",
-  "truckload.openDocs": "Firmar / Documentos"
+  "truckload.openDocs": "Firmar / Documentos",
+  "truckload.oneCustomerNote": "Un camión envía UN solo cliente — solo se pueden agregar órdenes de este cliente."
 }

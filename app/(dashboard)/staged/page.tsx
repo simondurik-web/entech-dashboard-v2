@@ -392,6 +392,7 @@ function StagedPageContent() {
                 needToPackageOrders={needToPackageOrders}
                 canCreateTruckload={canManageTruckloads}
                 onTruckloadCreated={() => fetchTruckloads()}
+                activeTruckloads={truckloads}
               />
             </div>
           )}
