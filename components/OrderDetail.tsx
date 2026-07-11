@@ -221,7 +221,7 @@ interface ErpPallet {
   shipped?: boolean
 }
 
-function ErpPalletsSection({ ifNumber }: { ifNumber?: string }) {
+function ErpPalletsSection({ ifNumber, partNumber }: { ifNumber?: string; partNumber?: string }) {
   const { t } = useI18n()
   const { canAccess } = usePermissions()
   const canManage = canAccess('/inventory-ops')
@@ -238,17 +238,24 @@ function ErpPalletsSection({ ifNumber }: { ifNumber?: string }) {
         if (!res.ok) return // no access / not found -> section stays hidden
         const body = await res.json()
         if (!mounted) return
-        const staged: ErpPallet[] = (body.order?.pallets ?? []).map(
-          (p: { palletId: string; itemCode: string; qty: number; warehouse: string }) => ({
+        // This card is ONE dashboard line = one product. A multi-product SO
+        // reserves pallets for every line — showing them all here mixed the
+        // sibling product's pallets into this card (Simon 2026-07-11,
+        // SO-00038: .1911 line listed the .2211 pallets too).
+        const part = (partNumber || '').trim().toUpperCase()
+        const mine = (p: { itemCode: string }) =>
+          !part || (p.itemCode || '').trim().toUpperCase() === part
+        const staged: ErpPallet[] = (body.order?.pallets ?? [])
+          .filter(mine)
+          .map((p: { palletId: string; itemCode: string; qty: number; warehouse: string }) => ({
             palletId: p.palletId,
             itemCode: p.itemCode,
             qty: p.qty,
             warehouse: p.warehouse,
-          })
-        )
-        const shipped: ErpPallet[] = (body.order?.shippedPallets ?? []).map(
-          (p: { palletId: string; itemCode: string; qty: number }) => ({ ...p, shipped: true })
-        )
+          }))
+        const shipped: ErpPallet[] = (body.order?.shippedPallets ?? [])
+          .filter(mine)
+          .map((p: { palletId: string; itemCode: string; qty: number }) => ({ ...p, shipped: true }))
         setRows(staged.length ? staged : shipped)
       } catch {
         /* hidden on failure */
@@ -257,7 +264,7 @@ function ErpPalletsSection({ ifNumber }: { ifNumber?: string }) {
     return () => {
       mounted = false
     }
-  }, [isErp, soName])
+  }, [isErp, soName, partNumber])
 
   if (!isErp || rows === null) return null
   return (
@@ -686,7 +693,7 @@ export function OrderDetail({
             </div>
 
             {/* ── ERP pallets assigned to this order ── */}
-            <ErpPalletsSection ifNumber={ifNumber} />
+            <ErpPalletsSection ifNumber={ifNumber} partNumber={partNumber} />
 
             {/* ── PO & Fusion Entry — role-gated (PO Automation access) ── */}
             {showPoSection && (

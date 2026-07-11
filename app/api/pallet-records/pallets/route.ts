@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { actorId, actorName, forbidden } from '@/lib/pallets/api'
+import { actorId, actorName, forbidden, markOrderInProgress } from '@/lib/pallets/api'
 import { palletActorFromRequest } from '@/lib/pallets/guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
@@ -104,6 +104,11 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) throw error
+
+    // first pallet on the line -> the order is being made/packaged (Simon
+    // 2026-07-11: status must flip off "Need to Make" the moment a pallet
+    // is recorded; staging/shipping stages are never downgraded)
+    await markOrderInProgress(line_number)
 
     try {
       await supabaseAdmin.from('audit_trail').insert({
