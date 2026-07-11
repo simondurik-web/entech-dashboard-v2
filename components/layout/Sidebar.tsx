@@ -658,7 +658,7 @@ export function Sidebar({
               </div>
             ) : (
               <button
-                onClick={signIn}
+                onClick={() => signIn()}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white overflow-hidden"
                 title={!expanded ? "Sign in" : undefined}
               >
@@ -948,7 +948,7 @@ export function Sidebar({
               </button>
             </div>
           ) : (
-            <button onClick={signIn} className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
+            <button onClick={() => signIn()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white">
               <LogIn className="size-4" />
               <span>Sign in with Google</span>
             </button>

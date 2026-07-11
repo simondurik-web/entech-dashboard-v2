@@ -6,6 +6,7 @@ import { authHeaders } from '@/lib/session-token'
 import { Search, ChevronDown, ChevronRight, UserPlus, X, Pencil, Check } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { DevicesPanel } from '@/components/admin/DevicesPanel'
+import { McpAccessPanel } from '@/components/admin/McpAccessPanel'
 
 interface UserRecord {
   id: string
@@ -400,6 +401,9 @@ export default function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {/* AI connector access (MCP: Gemini / ChatGPT / Grok / Claude) */}
+      <McpAccessPanel users={users} />
 
       {/* Authorized devices (shared floor computers) */}
       {user && <DevicesPanel adminUserId={user.id} />}

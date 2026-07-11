@@ -110,7 +110,7 @@ export default function LoginPage() {
         <p className="mb-8 text-sm text-white/60">Molding Operations</p>
 
         <button
-          onClick={signIn}
+          onClick={() => signIn()}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700"
         >
           <LogIn className="size-4" />

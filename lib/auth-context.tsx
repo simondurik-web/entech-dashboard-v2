@@ -43,7 +43,10 @@ type AuthContextType = {
   user: User | null
   profile: UserProfile | null
   loading: boolean
-  signIn: () => Promise<void>
+  // Optional redirectTo overrides the post-login landing page (default /orders);
+  // the MCP consent page uses it to survive the Google round-trip with its
+  // OAuth query params intact.
+  signIn: (redirectTo?: string) => Promise<void>
   // Passwordless email LOGIN CODE (replaces the magic link — corporate Outlook
   // Safe Links pre-scans and burns one-time links; a typed code is immune).
   // startEmailCode emails an 8-digit code via our own Resend sender; verifyEmailCode
@@ -285,11 +288,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [loadProfile, applyProfile, tryDeviceSession])
 
-  const signIn = async () => {
+  const signIn = async (redirectTo?: string) => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: typeof window !== "undefined" ? window.location.origin + "/orders" : undefined,
+        redirectTo:
+          redirectTo ??
+          (typeof window !== "undefined" ? window.location.origin + "/orders" : undefined),
       },
     })
   }
