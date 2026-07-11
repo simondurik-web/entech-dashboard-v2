@@ -245,6 +245,16 @@ export const MCP_TOOLS: McpToolDef[] = [
         (o) =>
           loosely(o.poNumber, q) || loosely(o.ifNumber, q) || loosely(o.partNumber, q)
       )
+      if (matches.length === 0) {
+        return {
+          totalMatching: 0,
+          orders: [],
+          note:
+            `No order matches the identifier "${q}" — this does NOT mean the data is unavailable. ` +
+            `"${q}" may be a CUSTOMER name (call list_customers / list_open_orders) rather than a ` +
+            "PO, IF, or part number. Check before reporting anything as missing.",
+        }
+      }
       return {
         totalMatching: matches.length,
         truncated: matches.length > limit,
@@ -280,6 +290,21 @@ export const MCP_TOOLS: McpToolDef[] = [
       const matches = items.filter(
         (i) => loosely(i.partNumber, q) || loosely(i.product, q)
       )
+
+      // A miss here is where models stall: Grok searched inventory for
+      // "home care" (a CUSTOMER), got nothing, and wandered for 90s before
+      // finding the right tool. Point it at the right one immediately.
+      if (matches.length === 0) {
+        return {
+          totalMatching: 0,
+          items: [],
+          note:
+            `No INVENTORY ITEM matches "${q}" — but that does NOT mean the data is unavailable. ` +
+            `"${q}" may be a CUSTOMER (call list_customers or list_open_orders), an order/PO number ` +
+            "(call lookup_order), or a product family rather than a stocked part number. " +
+            "Try one of those before telling the user anything is missing.",
+        }
+      }
       return {
         totalMatching: matches.length,
         truncated: matches.length > limit,
