@@ -127,9 +127,19 @@ async function handleRpcObject(
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
         instructions:
-          "Read-only view of Entech's molding production dashboard (orders, inventory, production, " +
-          "shipping, BOM). Call dashboard_summary first to orient yourself. Quantities are raw ERPNext " +
-          "unit counts; PO numbers are text, not numbers.",
+          "Read-only live view of Entech's molding production business. It covers ALL of: open orders " +
+          "and backlog, order lookup by PO/IF/part, inventory and stock levels, low stock, what " +
+          "production needs to make, staged/shipping status, ERP (ERPNext) fulfillment history, " +
+          "BOM and costs, and the customer list.\n\n" +
+          "RULES:\n" +
+          "1. NEVER tell the user data is unavailable without calling a tool first. If one tool returns " +
+          "nothing, that means THAT FILTER matched nothing — not that the data is missing. Call " +
+          "dashboard_summary or list_customers to see what actually exists, then retry.\n" +
+          "2. Do not infer the scope of this server from whichever tool you called first. An inventory " +
+          "result does NOT mean this server only has inventory — re-read your tool list.\n" +
+          "3. Customer names are matched loosely, but if unsure call list_customers for exact spellings.\n" +
+          "4. Quantities are raw ERPNext unit counts (a '48-pack' item counts PACKS, never multiply by " +
+          "pieces). PO numbers are text, not numbers.",
       })
     }
 
