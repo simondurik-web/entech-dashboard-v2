@@ -21,6 +21,10 @@ export const maxDuration = 60
 
 const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18"
+// Real MCP clients send batches of 1-3 messages; anything huge is abuse. Batch
+// entries also run SEQUENTIALLY — each tool can scan whole tables, so a
+// parallel fan-out would be a self-inflicted DoS on the shared database.
+const MAX_BATCH_SIZE = 10
 
 const SERVER_INFO = {
   name: "entech-molding-dashboard",
@@ -92,6 +96,17 @@ async function authenticate(
 }
 
 async function handleRpc(
+  message: unknown,
+  claims: McpTokenClaims,
+  accessLevel: string
+): Promise<Record<string, unknown> | null> {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) {
+    return rpcError(null, -32600, "Invalid Request")
+  }
+  return handleRpcObject(message as Record<string, unknown>, claims, accessLevel)
+}
+
+async function handleRpcObject(
   message: Record<string, unknown>,
   claims: McpTokenClaims,
   accessLevel: string
@@ -208,20 +223,27 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Streamable HTTP allows batches; respond in kind.
+  // Streamable HTTP allows batches; respond in kind (bounded + sequential —
+  // see MAX_BATCH_SIZE).
   if (Array.isArray(body)) {
-    const responses = (
-      await Promise.all(
-        body.map((m) => handleRpc(m as Record<string, unknown>, claims, accessLevel))
+    if (body.length === 0 || body.length > MAX_BATCH_SIZE) {
+      return NextResponse.json(
+        rpcError(null, -32600, `Batch size must be 1-${MAX_BATCH_SIZE}`),
+        { status: 400, headers: CORS_HEADERS }
       )
-    ).filter((r): r is Record<string, unknown> => r !== null)
+    }
+    const responses: Record<string, unknown>[] = []
+    for (const m of body) {
+      const r = await handleRpc(m, claims, accessLevel)
+      if (r !== null) responses.push(r)
+    }
     if (responses.length === 0) {
       return new NextResponse(null, { status: 202, headers: CORS_HEADERS })
     }
     return NextResponse.json(responses, { headers: CORS_HEADERS })
   }
 
-  const response = await handleRpc(body as Record<string, unknown>, claims, accessLevel)
+  const response = await handleRpc(body, claims, accessLevel)
   if (response === null) {
     // Pure notification — acknowledge with 202/no body per Streamable HTTP.
     return new NextResponse(null, { status: 202, headers: CORS_HEADERS })

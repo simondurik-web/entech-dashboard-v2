@@ -18,12 +18,10 @@ const VALID_SCOPES = ["full_read", "production_only", "financial"]
 async function requireAdmin(req: NextRequest): Promise<{ id: string; email: string | null } | null> {
   const user = await requireUser(req)
   if (!user) return null
-  const { data: profile } = await supabaseAdmin
-    .from("user_profiles")
-    .select("email")
-    .eq("id", user.id)
-    .single()
-  if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
+  // Super-admin check uses the JWT-verified email (Supabase auth.getUser),
+  // NOT user_profiles.email — profile rows are user-insertable (RLS
+  // "Users can insert own profile"), so a DB-stored email is forgeable.
+  if (user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
   const { data: appRole } = await supabaseAdmin
     .from("user_app_roles")
     .select("role")

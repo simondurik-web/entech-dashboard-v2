@@ -36,6 +36,9 @@ export function signAccessToken(claims: McpTokenClaims): string {
 }
 
 export function verifyAccessToken(token: string): McpTokenClaims | null {
+  // Our tokens are well under 2KB; anything huge is garbage — bail before
+  // allocating buffers over attacker-sized input.
+  if (token.length > 4096) return null
   const parts = token.split(".")
   if (parts.length !== 3) return null
   const [header, payload, sig] = parts
@@ -44,9 +47,14 @@ export function verifyAccessToken(token: string): McpTokenClaims | null {
   const b = Buffer.from(expected)
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null
   try {
-    const claims = JSON.parse(Buffer.from(payload, "base64").toString()) as McpTokenClaims
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString()) as McpTokenClaims
     if (claims.aud !== "mcp") return null
     if (typeof claims.exp !== "number" || claims.exp * 1000 < Date.now()) return null
+    // Strict claim shapes — these flow into DB lookups and audit rows.
+    if (typeof claims.sub !== "string" || !claims.sub) return null
+    if (typeof claims.email !== "string") return null
+    if (typeof claims.client_id !== "string") return null
+    if (typeof claims.access_level !== "string") return null
     return claims
   } catch {
     return null

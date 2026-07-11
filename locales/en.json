@@ -1600,5 +1600,6 @@
   "mcpAdmin.showLog": "Show recent requests",
   "mcpAdmin.hideLog": "Hide recent requests",
   "mcpAdmin.emptyLog": "No requests logged yet.",
-  "mcpAdmin.scope.full_read": "Full read access"
+  "mcpAdmin.scope.full_read": "Full read access",
+  "mcp.consentRedirectsTo": "After approval you will be sent to:"
 }

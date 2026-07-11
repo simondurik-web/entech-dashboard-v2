@@ -283,13 +283,21 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Orders staged and ready to ship (including loaded), grouped by customer, with real pallet-record " +
       "counts where pallets have been recorded.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: `Max order lines (default ${DEFAULT_LIMIT}, cap ${MAX_LIMIT})` },
+      },
+      additionalProperties: false,
+    },
     accessLevels: ["full_read", "production_only", "financial"],
-    handler: async () => {
+    handler: async (args) => {
+      const limit = clampLimit(args.limit)
       const orders = await fetchOrdersFromDB()
-      const staged = orders.filter(
+      const allStaged = orders.filter(
         (o) => !o.shippedDate && normalizeStatus(o.internalStatus, o.ifStatus) === "staged"
       )
+      const staged = allStaged.slice(0, limit)
 
       // Real pallet counts per dashboard line (preferred over the
       // number_of_packages estimate when records exist).
@@ -315,7 +323,51 @@ export const MCP_TOOLS: McpToolDef[] = [
         }
         ;(byCustomer[o.customer] = byCustomer[o.customer] ?? []).push(entry)
       }
-      return { stagedLines: staged.length, byCustomer }
+      return { stagedLines: allStaged.length, truncated: allStaged.length > limit, byCustomer }
+    },
+  },
+  {
+    name: "recent_fulfillments",
+    description:
+      "Recent shipping/fulfillment activity from the ERP system (ERPNext): orders staged, shipped, " +
+      "and BOLs signed, with sales-order number, customer, and pallet counts. Newest first. " +
+      "Optionally filter by customer name or SO number (contains, case-insensitive).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        customer: { type: "string", description: "Filter: customer name contains" },
+        so_number: { type: "string", description: "Filter: ERP sales-order number contains (e.g. SO-00021)" },
+        limit: { type: "number", description: `Max rows (default ${DEFAULT_LIMIT}, cap ${MAX_LIMIT})` },
+      },
+      additionalProperties: false,
+    },
+    accessLevels: ["full_read", "production_only", "financial"],
+    handler: async (args) => {
+      const limit = clampLimit(args.limit)
+      const customer = strArg(args.customer)
+      const soNumber = strArg(args.so_number)
+      let query = supabaseAdmin
+        .from("fulfillment_log")
+        .select("created_at, action, so_number, dn_number, customer, pallets, user_name, detail")
+        .order("created_at", { ascending: false })
+        .limit(limit)
+      if (customer) query = query.ilike("customer", `%${customer.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+      if (soNumber) query = query.ilike("so_number", `%${soNumber.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+      const { data, error } = await query
+      if (error) return { error: `fulfillment query failed: ${error.message}` }
+      return {
+        rows: (data ?? []).map((r) => ({
+          at: r.created_at,
+          action: r.action,
+          soNumber: r.so_number,
+          deliveryNote: r.dn_number || null,
+          customer: r.customer,
+          pallets: r.pallets ?? null,
+          by: r.user_name || null,
+          detail: r.detail || null,
+        })),
+        note: "Live ERPNext fulfillment events (staged / shipped / BOL signed).",
+      }
     },
   },
   {
@@ -336,10 +388,13 @@ export const MCP_TOOLS: McpToolDef[] = [
     handler: async (args) => {
       const q = strArg(args.part_number).toLowerCase()
       if (!q) return { error: "part_number is required" }
+      // Escape ILIKE metacharacters so the query is a literal "contains",
+      // matching the JS .includes() semantics of every other tool.
+      const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`)
       const { data, error } = await supabaseAdmin
         .from("bom_final_assemblies")
         .select("id, part_number, product_category, description, parts_per_package, total_cost, variable_cost, labor_cost_per_part")
-        .ilike("part_number", `%${q}%`)
+        .ilike("part_number", `%${escaped}%`)
         .order("part_number")
         .limit(25)
       if (error) return { error: `BOM query failed: ${error.message}` }

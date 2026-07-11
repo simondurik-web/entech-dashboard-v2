@@ -100,6 +100,11 @@ export async function POST(req: NextRequest) {
     if (!code || !codeVerifier || !clientId) {
       return tokenError("invalid_request", "code, code_verifier and client_id are required")
     }
+    // RFC 7636 §4.1: 43-128 chars of [A-Za-z0-9-._~]. Rejecting short
+    // verifiers keeps an intercepted code non-brute-forceable.
+    if (!/^[A-Za-z0-9\-._~]{43,128}$/.test(codeVerifier)) {
+      return tokenError("invalid_grant", "code_verifier must be 43-128 unreserved characters")
+    }
 
     const codeHash = sha256(code)
     const { data: row } = await supabaseAdmin
@@ -122,7 +127,9 @@ export async function POST(req: NextRequest) {
       return tokenError("invalid_grant", "Authorization code expired")
     }
     if (row.client_id !== clientId) return tokenError("invalid_grant", "client_id mismatch")
-    if (redirectUri && row.redirect_uri !== redirectUri) {
+    // Our authorize flow always binds a redirect_uri, so OAuth 2.1 requires it
+    // here too — no omission shortcut.
+    if (!redirectUri || row.redirect_uri !== redirectUri) {
       return tokenError("invalid_grant", "redirect_uri mismatch")
     }
     if (pkceChallengeFromVerifier(codeVerifier) !== row.code_challenge) {
@@ -164,7 +171,17 @@ export async function POST(req: NextRequest) {
       .eq("token_hash", tokenHash)
       .single()
 
-    if (!row || row.revoked) return tokenError("invalid_grant", "Invalid refresh token")
+    if (!row) return tokenError("invalid_grant", "Invalid refresh token")
+    if (row.revoked) {
+      // Reuse of a rotated-out token = theft signal → kill the whole family
+      // (every token this user+client pair holds), forcing re-consent.
+      await supabaseAdmin
+        .from("mcp_oauth_tokens")
+        .update({ revoked: true })
+        .eq("client_id", row.client_id)
+        .eq("user_id", row.user_id)
+      return tokenError("invalid_grant", "Invalid refresh token")
+    }
     if (new Date(row.expires_at).getTime() < Date.now()) {
       return tokenError("invalid_grant", "Refresh token expired")
     }

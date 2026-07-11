@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
   if (!client.redirect_uris.includes(redirectUri)) {
     return NextResponse.json({ error: "redirect_uri not registered for this client" }, { status: 400 })
   }
-  if (!codeChallenge || codeChallengeMethod !== "S256") {
+  // S256 challenge = base64url(sha256) → exactly 43 unreserved chars.
+  if (codeChallengeMethod !== "S256" || !/^[A-Za-z0-9\-._~]{43,128}$/.test(codeChallenge)) {
     return NextResponse.json({ error: "PKCE S256 code_challenge is required" }, { status: 400 })
   }
 

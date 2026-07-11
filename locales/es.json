@@ -1600,5 +1600,6 @@
   "mcpAdmin.showLog": "Mostrar solicitudes recientes",
   "mcpAdmin.hideLog": "Ocultar solicitudes recientes",
   "mcpAdmin.emptyLog": "Aún no hay solicitudes registradas.",
-  "mcpAdmin.scope.full_read": "Acceso de lectura completo"
+  "mcpAdmin.scope.full_read": "Acceso de lectura completo",
+  "mcp.consentRedirectsTo": "Tras aprobar, será enviado a:"
 }

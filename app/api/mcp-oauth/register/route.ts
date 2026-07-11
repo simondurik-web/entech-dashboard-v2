@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic"
 
 const MAX_REDIRECT_URIS = 10
 const MAX_NAME_LENGTH = 120
+// Abuse backstop for the (spec-mandated) unauthenticated endpoint: identical
+// re-registrations are answered idempotently, clients that never earned a
+// token get swept after 7 days, and past the hard cap we refuse outright.
+// Only a handful of real connectors (Gemini/ChatGPT/Grok/Claude per user)
+// ever register, so 200 is generous.
+const MAX_CLIENTS = 200
 
 function isAcceptableRedirectUri(uri: string): boolean {
   let url: URL
@@ -56,6 +62,56 @@ export async function POST(req: NextRequest) {
 
   const clientName =
     typeof body.client_name === "string" ? body.client_name.slice(0, MAX_NAME_LENGTH) : null
+
+  // Idempotent re-registration: same name + same redirect_uris → same client.
+  const { data: existing } = await supabaseAdmin
+    .from("mcp_oauth_clients")
+    .select("client_id, client_name, redirect_uris, created_at")
+    .eq("client_name", clientName ?? "")
+    .limit(50)
+  const match = (existing ?? []).find(
+    (c) => JSON.stringify(c.redirect_uris) === JSON.stringify(redirectUris)
+  )
+  if (match) {
+    return NextResponse.json(
+      {
+        client_id: match.client_id,
+        client_name: clientName,
+        redirect_uris: redirectUris,
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        scope: MCP_OAUTH_SCOPE,
+        client_id_issued_at: Math.floor(new Date(match.created_at).getTime() / 1000),
+      },
+      { status: 201, headers: CORS_HEADERS }
+    )
+  }
+
+  // Sweep clients that registered >7 days ago but never produced a code
+  // (mcp_oauth_codes cascades on client delete; consented clients keep rows).
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: stale } = await supabaseAdmin
+    .from("mcp_oauth_clients")
+    .select("client_id, mcp_oauth_codes(code_hash)")
+    .lt("created_at", cutoff)
+    .limit(50)
+  const sweep = (stale ?? [])
+    .filter((c) => !c.mcp_oauth_codes || c.mcp_oauth_codes.length === 0)
+    .map((c) => c.client_id)
+  if (sweep.length > 0) {
+    await supabaseAdmin.from("mcp_oauth_clients").delete().in("client_id", sweep)
+  }
+
+  const { count } = await supabaseAdmin
+    .from("mcp_oauth_clients")
+    .select("client_id", { count: "exact", head: true })
+  if ((count ?? 0) >= MAX_CLIENTS) {
+    return NextResponse.json(
+      { error: "server_error", error_description: "Registration limit reached" },
+      { status: 429, headers: CORS_HEADERS }
+    )
+  }
 
   const { data, error } = await supabaseAdmin
     .from("mcp_oauth_clients")

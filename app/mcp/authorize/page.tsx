@@ -162,6 +162,20 @@ function AuthorizeInner() {
             <p className="mb-1 text-sm">
               <span className="font-semibold">{state.clientName}</span> {t('mcp.consentAsk')}
             </p>
+            {/* Anti-phishing: names are self-declared at registration, so always
+                show WHERE the authorization actually goes. */}
+            <p className="mb-1 text-xs text-muted-foreground">
+              {t('mcp.consentRedirectsTo')}{' '}
+              <span className="font-mono font-medium">
+                {(() => {
+                  try {
+                    return new URL(redirectUri).host
+                  } catch {
+                    return redirectUri
+                  }
+                })()}
+              </span>
+            </p>
             <p className="mb-4 text-xs text-muted-foreground">
               {t('mcp.consentSignedInAs')} <span className="font-medium">{user?.email}</span>
             </p>
