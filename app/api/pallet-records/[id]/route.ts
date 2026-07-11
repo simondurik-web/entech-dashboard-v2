@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { requireUserOrDevice } from '@/lib/require-user'
+import { markOrderInProgress } from '@/lib/pallets/api'
 
 /** DELETE — Soft-delete: archive full record to audit trail, then remove */
 export async function DELETE(
@@ -186,6 +187,9 @@ export async function POST(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // manual pallet entry also means the order is being made/packaged
+  await markOrderInProgress(lineNumber)
 
   // Audit log
   await supabaseAdmin.from('pallet_record_audit').insert({

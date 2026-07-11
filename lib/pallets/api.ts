@@ -42,3 +42,27 @@ export function pushNotConfigured() {
     { status: 501 }
   )
 }
+
+/** First pallet activity on a line flips the order to In Progress ('wip') —
+ *  Simon 2026-07-11: recording a pallet (photo or manual) means the floor is
+ *  making/packaging it, so "Need to Make" must not linger. Never downgrades
+ *  later stages, never resurrects cancelled rows; failures are non-fatal. */
+export async function markOrderInProgress(lineNumber: string | number | null | undefined): Promise<void> {
+  try {
+    const lineInt = parseInt(String(lineNumber ?? ''), 10)
+    if (Number.isNaN(lineInt)) return
+    const { supabaseAdmin } = await import('@/lib/supabase-admin')
+    const { data: existing } = await supabaseAdmin
+      .from('dashboard_orders')
+      .select('work_order_status')
+      .eq('line', String(lineInt))
+      .maybeSingle()
+    if (!existing) return
+    const cur = (existing.work_order_status || '').toString().trim().toLowerCase()
+    const skip = ['completed', 'staged', 'loaded', 'shipped', 'cancelled', 'wip', 'work in progress', 'making', 'in production']
+    if (skip.includes(cur)) return
+    await supabaseAdmin.from('dashboard_orders').update({ work_order_status: 'wip' }).eq('line', String(lineInt))
+  } catch (e) {
+    console.error('markOrderInProgress (non-fatal):', e)
+  }
+}
