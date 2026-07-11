@@ -7,7 +7,7 @@ import { PhilChat } from '@/components/chat/PhilChat'
 import { Bot } from 'lucide-react'
 
 export default function PhilAssistantPage() {
-  const { user, loading } = useAuth()
+  const { user, profile, loading } = useAuth()
   const { canAccess } = usePermissions()
   const { t } = useI18n()
 
@@ -19,7 +19,10 @@ export default function PhilAssistantPage() {
     )
   }
 
-  if (!user || !canAccess('/phil-assistant')) {
+  // profile (not user): approved floor devices (e.g. the Tesla browser paired
+  // as manager) run on a device pseudo-profile with NO Supabase user — gating
+  // on user denied them even though their role has access (Simon 2026-07-11)
+  if (!profile || !canAccess('/phil-assistant')) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="max-w-md rounded-lg border bg-card p-6 text-center">
@@ -41,7 +44,7 @@ export default function PhilAssistantPage() {
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{t('phil.subtitle')}</p>
       </header>
-      <PhilChat userId={user.id} />
+      <PhilChat userId={user?.id ?? profile.id} />
     </div>
   )
 }

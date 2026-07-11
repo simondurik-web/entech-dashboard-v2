@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { requireUser } from "@/lib/require-user"
+import { requireUserOrDevice } from "@/lib/require-user"
 
 export const maxDuration = 800
 export const runtime = "nodejs"
@@ -55,6 +55,18 @@ async function loadUserContext(userId: string): Promise<UserContext | null> {
     role: effectiveRole,
     customPermissions: (profile.custom_permissions as Record<string, boolean> | null) ?? null,
   }
+}
+
+/** Google user OR approved floor device (e.g. the Tesla browser, paired with
+ *  role=manager — Simon 2026-07-11). Device sessions have no user_profiles
+ *  row; the admin-assigned device role drives canAccessPhil directly. */
+async function loadActorContext(req: NextRequest): Promise<UserContext | null> {
+  const actor = await requireUserOrDevice(req)
+  if (!actor) return null
+  if (actor.kind === "device") {
+    return { userId: actor.id, email: "", role: actor.role ?? "visitor", customPermissions: null }
+  }
+  return loadUserContext(actor.id)
 }
 
 async function canAccessPhil(user: UserContext): Promise<boolean> {
@@ -169,13 +181,8 @@ export async function POST(req: NextRequest) {
         // Critical for iOS Safari — sees data immediately, doesn't time out.
         send("open", { ts: Date.now() })
 
-        // --- Auth ---
-        const userId = (await requireUser(req))?.id
-        if (!userId) {
-          send("error", { detail: "auth_required", status: 401, fatal: true })
-          return
-        }
-        const user = await loadUserContext(userId)
+        // --- Auth (Google user OR approved floor device) ---
+        const user = await loadActorContext(req)
         if (!user) {
           send("error", { detail: "auth_required", status: 401, fatal: true })
           return
@@ -343,11 +350,7 @@ export async function POST(req: NextRequest) {
 
 // GET /api/chat/phil?sessionId=... — fetch history for current user
 export async function GET(req: NextRequest) {
-  const userId = (await requireUser(req))?.id
-  if (!userId) {
-    return NextResponse.json({ error: "auth_required" }, { status: 401 })
-  }
-  const user = await loadUserContext(userId)
+  const user = await loadActorContext(req)
   if (!user) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 })
   }
@@ -385,11 +388,7 @@ export async function GET(req: NextRequest) {
 
 // DELETE /api/chat/phil?sessionId=... — clear session (or all sessions if omitted)
 export async function DELETE(req: NextRequest) {
-  const userId = (await requireUser(req))?.id
-  if (!userId) {
-    return NextResponse.json({ error: "auth_required" }, { status: 401 })
-  }
-  const user = await loadUserContext(userId)
+  const user = await loadActorContext(req)
   if (!user) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 })
   }
