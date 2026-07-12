@@ -3,19 +3,23 @@ import { Pool, PoolClient } from 'pg'
 
 // Read-only connection helper for the Codex API.
 //
-// Connects via the Supabase **transaction-mode pooler** (port 6543) as the
-// `postgres` role — the pooler doesn't know about custom roles, so we
-// connect as the privileged role and immediately switch to `codex_reader`
-// at the start of each transaction with `SET LOCAL ROLE`. SET LOCAL is
-// transaction-scoped so it survives until COMMIT/ROLLBACK and then resets
-// for the next caller that the pooler hands the connection to.
+// Connects via the Supabase **transaction-mode pooler** (port 6543)
+// AUTHENTICATING DIRECTLY AS `codex_reader` (username
+// "codex_reader.<projectref>" in CODEX_READER_DB_URL) — NOT as `postgres`
+// with a `SET LOCAL ROLE` switch.
 //
-// Defense-in-depth still holds:
-//   - codex_reader has no INSERT/UPDATE/DELETE/DDL grants.
-//   - SET LOCAL ROLE is reverted at transaction end; the next transaction
-//     starts as postgres again, but the only way out of `codex_reader`
-//     mid-transaction is RESET ROLE / SET ROLE — both are forbidden by
-//     the Node-side SQL validator.
+// Why this matters (fixed 2026-07-12): the old design connected as `postgres`
+// and only *switched* to codex_reader with `SET LOCAL ROLE`. That is NOT a
+// security boundary — a query can call `set_config('role','postgres',true)`
+// (a function, so a keyword-only validator misses it) to revert to the
+// privileged role mid-transaction and read walled-off tables. Authenticating
+// directly as codex_reader — a role that is a member of nothing — makes
+// `SET ROLE`/`set_config('role',…)` back to postgres impossible: Postgres
+// denies it outright.
+//
+// Boundary now:
+//   - codex_reader has no INSERT/UPDATE/DELETE/DDL grants (and READ ONLY txn).
+//   - It is the SESSION role; there is no privileged role to escalate to.
 //   - Statement timeout is 10s, set per transaction.
 
 let pool: Pool | null = null
@@ -38,12 +42,13 @@ export function getCodexPool(): Pool {
   return pool
 }
 
-// Wraps a query in a transaction that:
-//   1. SET LOCAL ROLE codex_reader   → drops privileges for this txn
-//   2. SET LOCAL statement_timeout   → 10-second cap
-//   3. Runs the caller's SQL
-//   4. COMMITs (RELEASE just returns the connection — pooler resets state)
+// Wraps a query in a READ ONLY transaction that:
+//   1. SET LOCAL statement_timeout   → 10-second cap
+//   2. Runs the caller's SQL (session role is already codex_reader)
+//   3. COMMITs (RELEASE just returns the connection to the pooler)
 //
+// No SET LOCAL ROLE — the connection authenticates AS codex_reader, so there
+// is nothing to switch from and nothing to escalate back to.
 // If the caller's SQL throws, we ROLLBACK and re-throw.
 export async function runAsCodexReader<T>(
   fn: (client: PoolClient) => Promise<T>,
@@ -51,8 +56,7 @@ export async function runAsCodexReader<T>(
 ): Promise<T> {
   const client = await getCodexPool().connect()
   try {
-    await client.query('BEGIN')
-    await client.query('SET LOCAL ROLE codex_reader')
+    await client.query('BEGIN TRANSACTION READ ONLY')
     await client.query(`SET LOCAL statement_timeout = ${statementTimeoutMs}`)
     const result = await fn(client)
     await client.query('COMMIT')

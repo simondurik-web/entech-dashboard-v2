@@ -78,9 +78,13 @@ create table if not exists public.mcp_request_log (
 );
 create index if not exists mcp_request_log_ts_idx on public.mcp_request_log (ts desc);
 
--- Belt-and-suspenders for the pre-existing codex_reader role (behind
--- /api/codex-query): keep auth/token/device tables out of its reach even
--- though the MCP query tool no longer uses it.
+-- codex_reader (behind /api/codex-query + /api/codex-schema) now AUTHENTICATES
+-- DIRECTLY through the pooler (username "codex_reader.<projectref>" in
+-- CODEX_READER_DB_URL), NOT postgres+SET ROLE — same direct-auth fix as
+-- mcp_query_reader, closing the set_config('role','postgres') escalation on
+-- that path too. Set its password: `alter role codex_reader password '…'`
+-- then update CODEX_READER_DB_URL (Vercel prod+preview).
+-- Keep auth/token/device tables out of its reach:
 revoke select on
   public.mcp_access,
   public.mcp_settings,
