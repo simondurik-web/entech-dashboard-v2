@@ -71,6 +71,13 @@ export interface Order {
   // True when this row comes from the pre-ERPNext Google-Sheet archive
   // (dashboard_orders_fusion_archive), surfaced read-only in Orders Data search.
   archived?: boolean
+  // Optional dollar figures (raw dashboard_orders text; consumers parse).
+  // Only populated by fetchOrdersFromDB's mapper; undefined elsewhere.
+  // USD-suffixed to avoid clashing with other Order-shaped literals.
+  unitPriceUSD?: string
+  revenueUSD?: string
+  totalCostUSD?: string
+  profitLossUSD?: string
 }
 
 export interface InventoryHistoryPart {

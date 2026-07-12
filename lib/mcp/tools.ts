@@ -87,6 +87,18 @@ function unpad(s: string): string {
   return strip(s).replace(/0*(\d+)/g, "$1")
 }
 
+// dashboard_orders money columns are TEXT with mixed formatting ('6000',
+// '6582.00', '$12.34', '$2,680.13', or ''). Parse to a clean number, or null
+// when the field is blank/unparseable so "no value" is distinct from 0.
+function money(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  let s = String(v).replace(/[$,\s]/g, "")
+  if (!s) return null
+  if (s.startsWith("(") && s.endsWith(")")) s = "-" + s.slice(1, -1)
+  const n = Number(s)
+  return isNaN(n) ? null : n
+}
+
 /** Compact order shape for AI consumption (subset of the dashboard Order). */
 function orderView(o: Order) {
   return {
@@ -106,6 +118,12 @@ function orderView(o: Order) {
     assignedTo: o.assignedTo || null,
     packaging: o.packaging || null,
     numPackages: o.numPackages || null,
+    // Dollar figures (USD). unitPrice/revenue = what the customer pays;
+    // totalCost = internal cost; profitLoss = revenue − cost. null = not set.
+    unitPrice: money(o.unitPriceUSD),
+    revenue: money(o.revenueUSD),
+    totalCost: money(o.totalCostUSD),
+    profitLoss: money(o.profitLossUSD),
   }
 }
 
@@ -118,9 +136,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       SCOPE +
       "START HERE when you are unsure what exists or what to call. Live snapshot of the whole " +
       "operation: how many orders are open and their status breakdown (pending / WIP / staged), " +
-      "EVERY customer with open orders and their order counts, and how many inventory items are " +
-      "at or below their minimum. Takes no arguments. Use this to discover exact customer names " +
-      "before filtering other tools.",
+      "EVERY customer with open orders (count AND total open-order revenue in USD), and how many " +
+      "inventory items are at or below their minimum. Takes no arguments. Use this to discover exact " +
+      "customer names before filtering other tools.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     accessLevels: ["full_read", "production_only", "financial"],
     handler: async () => {
@@ -132,20 +150,31 @@ export const MCP_TOOLS: McpToolDef[] = [
         (o) => !o.shippedDate && OPEN_STATUSES.has(normalizeStatus(o.internalStatus, o.ifStatus))
       )
       const byStatus: Record<string, number> = {}
-      const byCustomer: Record<string, number> = {}
+      const byCustomer: Record<string, { orders: number; revenue: number }> = {}
+      let totalOpenRevenue = 0
       for (const o of open) {
         const s = normalizeStatus(o.internalStatus, o.ifStatus)
         byStatus[s] = (byStatus[s] ?? 0) + 1
-        byCustomer[o.customer] = (byCustomer[o.customer] ?? 0) + 1
+        const rev = money(o.revenueUSD) ?? 0
+        totalOpenRevenue += rev
+        const cur = byCustomer[o.customer] ?? { orders: 0, revenue: 0 }
+        cur.orders += 1
+        cur.revenue += rev
+        byCustomer[o.customer] = cur
+      }
+      // Round customer revenue for readability.
+      for (const k of Object.keys(byCustomer)) {
+        byCustomer[k].revenue = Math.round(byCustomer[k].revenue * 100) / 100
       }
       const lowStock = inventory.filter((i) => i.minimum > 0 && i.inStock <= i.minimum)
       return {
         openOrderLines: open.length,
         openByStatus: byStatus,
         openByCustomer: byCustomer,
+        totalOpenRevenueUSD: Math.round(totalOpenRevenue * 100) / 100,
         inventoryItemsTracked: inventory.length,
         itemsAtOrBelowMinimum: lowStock.length,
-        note: "Quantities are raw unit counts as tracked in ERPNext (packs are counted as packs, not pieces).",
+        note: "Quantities are raw unit counts as tracked in ERPNext (packs counted as packs). Dollar figures are USD; per-line detail via list_open_orders.",
       }
     },
   },
@@ -156,8 +185,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       "THE tool for any question about orders, the backlog, or what is due — 'how many open orders', " +
       "'what do we owe customer X', 'what's in production', 'what's ready to ship'. Lists open " +
       "(unshipped) order lines: pending, WIP (in production), staged (ready to ship). Returns customer, " +
-      "part number, PO #, IF #, qty, status, priority, due date. Filter by customer, status, or part " +
-      "number. Customer matching is forgiving — 'home care' finds 'Homecare Products, Inc.'. " +
+      "part number, PO #, IF #, qty, status, priority, due date, AND DOLLAR FIGURES per line — " +
+      "unitPrice, revenue, totalCost, profitLoss (USD; null when not filled in). Filter by customer, " +
+      "status, or part number. Customer matching is forgiving — 'home care' finds 'Homecare Products, Inc.'. " +
       "If a customer filter returns nothing, call with NO filter (or call dashboard_summary) to see " +
       "the real customer names before concluding there are no orders.",
     inputSchema: {
