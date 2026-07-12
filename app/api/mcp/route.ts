@@ -15,6 +15,7 @@ import { getMcpAccessByUserId, logMcpRequest, mcpGloballyEnabled } from "@/lib/m
 import { MCP_TOOLS, toolsForAccessLevel } from "@/lib/mcp/tools"
 import { CORS_HEADERS, corsPreflight } from "@/lib/mcp/oauth-metadata"
 import { requestOrigin } from "@/lib/mcp/base-url"
+import { KNOWLEDGE_BRIEF } from "@/lib/mcp/knowledge"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -130,16 +131,21 @@ async function handleRpcObject(
           "Read-only live view of Entech's molding production business. It covers ALL of: open orders " +
           "and backlog, order lookup by PO/IF/part, inventory and stock levels, low stock, what " +
           "production needs to make, staged/shipping status, ERP (ERPNext) fulfillment history, " +
-          "BOM and costs, and the customer list.\n\n" +
-          "RULES:\n" +
+          "BOM and costs, the customer list — plus describe_tables + run_query for free-form " +
+          "read-only SQL when no curated tool fits, and business_context for full domain knowledge.\n\n" +
+          KNOWLEDGE_BRIEF +
+          "\n\nRULES:\n" +
           "1. NEVER tell the user data is unavailable without calling a tool first. If one tool returns " +
           "nothing, that means THAT FILTER matched nothing — not that the data is missing. Call " +
           "dashboard_summary or list_customers to see what actually exists, then retry.\n" +
           "2. Do not infer the scope of this server from whichever tool you called first. An inventory " +
           "result does NOT mean this server only has inventory — re-read your tool list.\n" +
-          "3. Customer names are matched loosely, but if unsure call list_customers for exact spellings.\n" +
-          "4. Quantities are raw ERPNext unit counts (a '48-pack' item counts PACKS, never multiply by " +
-          "pieces). PO numbers are text, not numbers.",
+          "3. If NO curated tool answers the question, call describe_tables then run_query with a " +
+          "read-only SELECT — do not give up.\n" +
+          "4. Customer names are matched loosely, but if unsure call list_customers for exact spellings.\n" +
+          "5. Quantities are raw ERPNext unit counts (a '48-pack' item counts PACKS, never multiply by " +
+          "pieces). PO numbers are text, not numbers. BOM costs are internal manufacturing costs, " +
+          "never customer prices.",
       })
     }
 

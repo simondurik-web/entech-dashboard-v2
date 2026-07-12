@@ -78,6 +78,63 @@ create table if not exists public.mcp_request_log (
 );
 create index if not exists mcp_request_log_ts_idx on public.mcp_request_log (ts desc);
 
+-- Belt-and-suspenders for the pre-existing codex_reader role (behind
+-- /api/codex-query): keep auth/token/device tables out of its reach even
+-- though the MCP query tool no longer uses it.
+revoke select on
+  public.mcp_access,
+  public.mcp_settings,
+  public.mcp_oauth_clients,
+  public.mcp_oauth_codes,
+  public.mcp_oauth_tokens,
+  public.mcp_request_log,
+  public.authorized_devices
+from codex_reader;
+
+-- ── Dedicated role for the MCP run_query tool ──────────────────────────────
+-- The MCP free-form-SQL tool connects to the Supabase pooler AUTHENTICATING
+-- DIRECTLY AS THIS ROLE (username "mcp_query_reader.<projectref>"), NOT as
+-- postgres. That closes a privilege-escalation class: when the session role is
+-- postgres and you only `SET LOCAL ROLE`, a query can call
+-- set_config('role','postgres',true) and read revoked tables. As a role that
+-- is a member of nothing, that SET ROLE is denied outright.
+--
+--   password: rotate via `alter role mcp_query_reader password '…'` and update
+--             MCP_QUERY_DB_URL (Vercel + .env.local).
+drop role if exists mcp_query_reader;
+create role mcp_query_reader
+  login nosuperuser nocreatedb nocreaterole noinherit bypassrls
+  password 'SET_VIA_ALTER_ROLE_NOT_IN_SOURCE';
+
+grant usage on schema public to mcp_query_reader;
+-- Broad SELECT on tables that exist TODAY (Simon: "read everything incl.
+-- financial + ERP"). Deliberately NO `alter default privileges` for this role,
+-- so any FUTURE table is invisible until explicitly granted — fail-closed, so a
+-- later table holding secrets can't silently become readable.
+grant select on all tables in schema public to mcp_query_reader;
+
+-- Wall off auth / token / PII / audit / OTP tables from free-form SQL.
+-- bypassrls means the SELECT grant is the ONLY boundary — this list is it.
+revoke select on
+  public.mcp_access, public.mcp_settings, public.mcp_oauth_clients,
+  public.mcp_oauth_codes, public.mcp_oauth_tokens, public.mcp_request_log,
+  public.authorized_devices, public.molding_login_otp_throttle,
+  public.snappad_login_otp_throttle, public.user_profiles, public.users,
+  public.user_app_roles, public.phil_chat_history, public.phil_jobs,
+  public.push_subscriptions, public.api_audit_log
+from mcp_query_reader;
+
+-- Views run with their owner's rights, so a view over a walled table would
+-- leak it despite the base-table revoke. phil_chat_user_stats joins
+-- phil_chat_history + user_profiles (emails, names) — revoke it too. Re-scan
+-- for new such views whenever a view is added:
+--   select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+--   where n.nspname='public' and c.relkind in ('v','m')
+--     and has_table_privilege('mcp_query_reader', c.oid, 'SELECT')
+--     and pg_get_viewdef(c.oid) ~* '(user_profiles|phil_chat|oauth|otp_throttle|
+--         authorized_devices|api_audit_log|push_subscription|mcp_)';
+revoke select on public.phil_chat_user_stats from mcp_query_reader;
+
 alter table public.mcp_access enable row level security;
 alter table public.mcp_settings enable row level security;
 alter table public.mcp_oauth_clients enable row level security;

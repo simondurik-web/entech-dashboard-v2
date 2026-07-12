@@ -16,6 +16,9 @@ import {
   type Order,
 } from "@/lib/supabase-data"
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { KNOWLEDGE_FULL } from "@/lib/mcp/knowledge"
+import { runReadOnlyQuery } from "@/lib/mcp/query-db"
+import { guardQuery, sanitizeQueryError } from "@/lib/mcp/query-guard"
 
 type JsonSchema = Record<string, unknown>
 
@@ -51,11 +54,12 @@ function strArg(v: unknown): string {
  * failure impossible: any single tool the model reads tells it what else exists.
  */
 const SCOPE =
-  "[Entech Molding Dashboard — one of 10 read-only tools covering: open orders & backlog, " +
+  "[Entech Molding Dashboard — one of 13 read-only tools covering: open orders & backlog, " +
   "order lookup, inventory & stock levels, low stock, what production needs to make, " +
-  "staged/shipping status, ERP (ERPNext) fulfillment history, BOM & costs, and the customer list. " +
-  "If a question touches ANY of those, the answer is available here — call the right tool, " +
-  "never assume the data is missing.] "
+  "staged/shipping status, ERP (ERPNext) fulfillment history, BOM & costs, the customer list, " +
+  "business context/terminology, the database schema, and free-form read-only SQL (run_query) " +
+  "for anything the curated tools don't cover. If a question touches ANY business data, the " +
+  "answer is available here — call the right tool, never assume the data is missing.] "
 
 /**
  * Loose text match for human-typed names. Case-insensitive, and ignores spaces,
@@ -550,6 +554,144 @@ export const MCP_TOOLS: McpToolDef[] = [
           ? { warning: "History scan hit its row cap — very old events may be omitted." }
           : {}),
         note: "Live ERPNext fulfillment events (staged / shipped / BOL signed).",
+      }
+    },
+  },
+  {
+    name: "business_context",
+    description:
+      SCOPE +
+      "Entech's full business knowledge: what the company does, product lines, how to decode part " +
+      "numbers (6XX.YYY.ZZZZ wheels, 3-digit tires, H-prefix hubs), order status flow, priority " +
+      "rules, inventory semantics, production rates, and answering rules. Call this ONCE early in a " +
+      "conversation — it makes every other answer more accurate. No arguments.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    accessLevels: ["full_read", "production_only", "financial"],
+    handler: async () => ({ context: KNOWLEDGE_FULL }),
+  },
+  {
+    name: "describe_tables",
+    description:
+      SCOPE +
+      "Live database schema: every table the read-only query role can see, with columns and types. " +
+      "Call this before writing a run_query SQL statement, or when a curated tool doesn't cover " +
+      "what the user asked. Optionally filter by table-name fragment.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string", description: "Optional: only tables whose name contains this" },
+      },
+      additionalProperties: false,
+    },
+    accessLevels: ["full_read"],
+    handler: async (args) => {
+      const filter = strArg(args.table).toLowerCase()
+      const tables = await runReadOnlyQuery(async (client) => {
+        const { rows } = await client.query(`
+          SELECT c.table_name, c.column_name, c.data_type
+          FROM information_schema.columns c
+          WHERE c.table_schema = 'public'
+            AND has_table_privilege(current_user, (c.table_schema || '.' || c.table_name)::regclass, 'SELECT')
+          ORDER BY c.table_name, c.ordinal_position
+        `)
+        return rows as Array<{ table_name: string; column_name: string; data_type: string }>
+      })
+      const byTable = new Map<string, string[]>()
+      for (const r of tables) {
+        if (filter && !r.table_name.toLowerCase().includes(filter)) continue
+        const cols = byTable.get(r.table_name) ?? []
+        cols.push(`${r.column_name} (${r.data_type})`)
+        byTable.set(r.table_name, cols)
+      }
+      return {
+        tableCount: byTable.size,
+        tables: [...byTable.entries()].map(([name, columns]) => ({ name, columns })),
+        note:
+          "Key tables: dashboard_orders (live orders), dashboard_orders_fusion_archive " +
+          "(pre-2026-06-30 history), inventory (item_number, real_number_value = available, " +
+          "on_hand_total, reserved_staged, minimum), production_totals (part list + mold types), " +
+          "bom_final_assemblies + bom_final_assembly_components (+ bom_sub_assemblies / " +
+          "bom_individual_items), pallet_records, fulfillment_log (ERP shipping events), " +
+          "customer_part_mappings (customer part numbers + packaging).",
+        sqlGotchas: [
+          "MANY dashboard_orders columns are TEXT holding numbers/dates, and blanks are EMPTY " +
+            "STRINGS, not NULL. Casting fails on ''. Always use NULLIF(col,'')::numeric (or " +
+            "::date) — e.g. sum(NULLIF(order_qty,'')::numeric).",
+          "Unshipped orders: (shipped_date IS NULL OR shipped_date = '').",
+          "po_number is TEXT (e.g. 'PPO044775-1-LODI') — never compare it numerically.",
+          "Order status lives in work_order_status / if_status_fusion (raw ERP text); " +
+            "'staged' also covers 'loaded', and 'invoiced'/'to bill' mean shipped.",
+        ],
+      }
+    },
+  },
+  {
+    name: "run_query",
+    description:
+      SCOPE +
+      "Escape hatch when NO curated tool answers the question: run a custom read-only SQL SELECT " +
+      "against the live dashboard database (Postgres). Call describe_tables first to learn the " +
+      "schema. Single SELECT/WITH statement only, max 200 rows returned. The database login is " +
+      "read-only — writes are impossible — and auth/token tables are invisible to it. " +
+      "Prefer the curated tools when they fit; use this for joins, aggregations, date math, " +
+      "or columns the other tools don't return.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sql: { type: "string", description: "One read-only SELECT (or WITH … SELECT) statement" },
+      },
+      required: ["sql"],
+      additionalProperties: false,
+    },
+    accessLevels: ["full_read"],
+    handler: async (args) => {
+      const sql = typeof args.sql === "string" ? args.sql : ""
+      const verdict = guardQuery(sql)
+      if (!verdict.ok) return { error: `Query rejected: ${verdict.reason}` }
+
+      const MAX_ROWS = 200
+      const MAX_ROW_CHARS = 20_000 // bound bytes PER ROW at the database
+      try {
+        const inner = sql.trim().replace(/;\s*$/, "")
+        const rows = await runReadOnlyQuery(async (client) => {
+          // Serialize each row to JSON and truncate it AT THE DATABASE with
+          // left(), so a pathological SELECT repeat('x',5e8) or a giant
+          // json/array/bytea value can't cross the wire and blow up Node.
+          // (statement_timeout + work_mem bound the DB side.)
+          const res = await client.query({
+            text: `SELECT left(row_to_json(mcp_q)::text, ${MAX_ROW_CHARS}) AS mcp_row
+                   FROM (${inner}) mcp_q LIMIT ${MAX_ROWS + 1}`,
+          })
+          return res.rows as Array<{ mcp_row: string }>
+        })
+        const truncated = rows.length > MAX_ROWS
+        const capped = rows.slice(0, MAX_ROWS)
+        let anyRowClipped = false
+        const parsed = capped.map((r) => {
+          const raw = r.mcp_row ?? "null"
+          if (raw.length >= MAX_ROW_CHARS) anyRowClipped = true
+          try {
+            return JSON.parse(raw)
+          } catch {
+            // Row was clipped mid-JSON by left(); hand back the raw prefix.
+            anyRowClipped = true
+            return { _clipped: raw }
+          }
+        })
+        return {
+          rowCount: parsed.length,
+          truncated,
+          rows: parsed,
+          ...(truncated
+            ? { note: `Result capped at ${MAX_ROWS} rows — add aggregation or a WHERE clause.` }
+            : {}),
+          ...(anyRowClipped
+            ? { rowsClipped: `Rows exceeding ${MAX_ROW_CHARS} chars were truncated — select fewer/narrower columns.` }
+            : {}),
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "query failed"
+        return sanitizeQueryError(message)
       }
     },
   },
