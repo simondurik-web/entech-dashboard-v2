@@ -610,8 +610,10 @@ function OrdersPageContent() {
 
   // Default browse = current orders, status-filtered (unchanged). While searching
   // (≥2 chars), widen to include the pre-ERPNext archive — deduped by IF#+line so
-  // the live row wins — and ignore the status chips, so a lookup by IF#, line,
-  // customer, PO or part surfaces old and current orders together in one table.
+  // the live row wins. The status chips STILL apply to the widened set: with
+  // "Shipped" off, Fusion-era history stays hidden even mid-search (Simon
+  // 2026-07-13 — searching "oflex" matched customer Technoflex and flooded the
+  // table with shipped backlog). Toggle "Shipped" on to search old orders.
   const tableData = useMemo<OrderRow[]>(() => {
     const q = search.trim()
     if (q.length < 2 || archiveCat.length === 0) return browseFiltered
@@ -626,8 +628,8 @@ function OrdersPageContent() {
       seen.add(k)
       extra.push(a)
     }
-    return [...currentCat, ...extra] as OrderRow[]
-  }, [search, browseFiltered, currentCat, archiveCat])
+    return filterByStatus([...currentCat, ...extra], activeStatuses) as OrderRow[]
+  }, [search, browseFiltered, currentCat, archiveCat, activeStatuses])
 
   const table = useDataTable({
     data: tableData,
