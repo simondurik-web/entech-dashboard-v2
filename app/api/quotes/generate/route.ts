@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import React from 'react'
 import { renderToBuffer, Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer'
 import { ENTECH_LOGO_BASE64 } from '@/lib/entech-logo'
-import { requireUser } from '@/lib/require-user'
+import { requireUserOrService } from '@/lib/require-user'
 
 const styles = StyleSheet.create({
   page: { padding: 36, fontFamily: 'Helvetica', fontSize: 9, color: '#333' },
@@ -229,7 +229,7 @@ async function generateQuoteNumber(): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await requireUser(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await requireUserOrService(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const body: QuoteRequest = await req.json()
 
