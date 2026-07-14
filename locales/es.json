@@ -1363,6 +1363,8 @@
   "inventoryOps.transferLast": "Última transferencia",
   "inventoryOps.transferNotFound": "no es una tarima con existencia",
   "inventoryOps.transferSplit": "dividida entre ubicaciones — consolida en ERPNext primero",
+  "inventoryOps.transferStaged": "apartada para {so} — usa Mover para reubicarla, o libérala desde la pantalla de preparación",
+  "inventoryOps.unstagedWarning": "Listo, PERO la tarima {batch} se soltó de la orden {so} y ya no está apartada — vuelve a apartarla antes de embarcar.",
   "inventoryOps.transferAlreadyHere": "ya está en esta ubicación",
   "inventoryOps.transferAlreadyQueued": "ya está en la cola",
   "inventoryOps.transferPosted": "Transferidas",

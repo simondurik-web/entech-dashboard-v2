@@ -7,6 +7,7 @@ import {
   erpnextUpdate,
   erpnextCallGet,
 } from './client'
+import { reservationsForBatches } from './staging'
 import type { Committed } from './operation'
 
 // ERPNext stock operations for the inventory-ops module. Company is fixed to
@@ -644,6 +645,7 @@ export interface PalletLookup {
   split: boolean
   superseded: boolean // the scanned code was an older serial
   scanned: string
+  reservedFor: string | null // SO the pallet is staged to (bulk transfer refuses it at scan time)
 }
 
 /** Resolve a scanned/typed pallet code to a transfer-queue line: current serial, item,
@@ -659,6 +661,10 @@ export async function lookupPallet(code: string): Promise<PalletLookup | null> {
   const loc = await getBatchLocation(batch, itemCode)
   if (!loc || loc.qty <= 0) return null
   const item = await erpnextGetDoc<{ item_name?: string }>('Item', itemCode).catch(() => null)
+  // Surface a staging reservation at SCAN time so a staged pallet is refused as it's
+  // scanned (with the SO on screen) instead of silently skipped when the queue posts.
+  // Lookup failure -> null (don't fail the scan): bulkTransfer re-checks server-side.
+  const reservation = (await reservationsForBatches([batch]).catch(() => ({}) as Record<string, { so: string }>))[batch]
   return {
     batch,
     itemCode,
@@ -668,6 +674,7 @@ export async function lookupPallet(code: string): Promise<PalletLookup | null> {
     split: loc.split,
     superseded,
     scanned: trimmed,
+    reservedFor: reservation?.so ?? null,
   }
 }
 
@@ -690,9 +697,26 @@ export async function bulkTransfer(input: {
   await preflight(uniq[0].itemCode, destination)
   const meta = await itemNameMap([...new Set(uniq.map((l) => l.itemCode))])
 
+  // Staged (reserved) pallets are SKIPPED, not moved: an SRE pins the batch to its
+  // warehouse, so including one makes ERPNext reject the whole atomic transfer
+  // (NegativeStockError — the H5ES bulk attempt, 2026-07-07). Bulk moves are floor
+  // re-org sweeps; silently unstaging many pallets is not what anyone scanned for.
+  // Relocating a staged pallet deliberately = the single-pallet Move, which carries
+  // the reservation along. Lookup failure -> empty map: don't block a floor sweep on
+  // a staging-lookup hiccup; a genuinely reserved pallet then fails the ERP submit,
+  // which is the pre-2026-07-14 behavior (a clean re-postable failure), not stock loss.
+  const reservations = await reservationsForBatches(uniq.map((l) => l.batch)).catch(
+    () => ({}) as Record<string, { so: string }>
+  )
+
   const rows: Record<string, unknown>[] = []
   const skipped: { batch: string; reason: string }[] = []
   for (const l of uniq) {
+    const reservation = reservations[l.batch]
+    if (reservation) {
+      skipped.push({ batch: l.batch, reason: `staged:${reservation.so}` })
+      continue
+    }
     const loc = await getBatchLocation(l.batch, l.itemCode)
     if (!loc || loc.qty <= 0) {
       skipped.push({ batch: l.batch, reason: 'no-stock' })

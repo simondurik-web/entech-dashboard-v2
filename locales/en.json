@@ -1363,6 +1363,8 @@
   "inventoryOps.transferLast": "Last transfer",
   "inventoryOps.transferNotFound": "not a stocked pallet",
   "inventoryOps.transferSplit": "split across bins — consolidate in ERPNext first",
+  "inventoryOps.transferStaged": "staged for {so} — use Move to relocate it, or release it from the staging screen",
+  "inventoryOps.unstagedWarning": "Done, BUT pallet {batch} came off order {so} and is no longer staged — re-stage it before shipping.",
   "inventoryOps.transferAlreadyHere": "is already in this bin",
   "inventoryOps.transferAlreadyQueued": "is already in the queue",
   "inventoryOps.transferPosted": "Transferred",
