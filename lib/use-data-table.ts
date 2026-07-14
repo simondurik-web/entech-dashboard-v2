@@ -134,7 +134,13 @@ export function useDataTable<T extends Record<string, unknown>>({
         return next
       })
     }
-  }, [columns]) // eslint-disable-line react-hooks/exhaustive-deps
+    // columnOrder is a dep so this re-runs when the server prefs GET (or
+    // applyView) replaces the order with a copy that predates a newly added
+    // column — otherwise the new column would skip reconciliation, land at the
+    // far right, and ignore its defaultHidden flag. No loop: the setColumnOrder
+    // above produces an order containing every column key, so the re-run's
+    // `missing` is empty.
+  }, [columns, columnOrder]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (storageKey && typeof window !== 'undefined') {
