@@ -68,12 +68,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 502 })
   }
 
-  // Refine by customer (party casing varies upstream).
+  // Refine by customer, EXACT (normalized) match only. Substring matching would
+  // leak across customers whose names are prefixes of one another (e.g. a doc
+  // filed under "One Monroe - Des Moines" being returned for a query on "One
+  // Monroe" when they share a PO#). norm() lowercases + trims, so legitimate
+  // casing variance of the SAME party (e.g. "SERVICE CASTER CORPORATION" vs
+  // "Service Caster Corporation") still matches; different parties never do.
   const wantCustomer = norm(customer)
-  const rows = (data ?? []).filter((d) => {
-    const c = norm(d.customer)
-    return c === wantCustomer || c.includes(wantCustomer) || wantCustomer.includes(c)
-  })
+  const rows = (data ?? []).filter((d) => norm(d.customer) === wantCustomer)
 
   return NextResponse.json({ documents: rows })
 }
