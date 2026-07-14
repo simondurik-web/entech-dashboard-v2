@@ -157,6 +157,25 @@ async function getJsonOrThrow<T>(url: string, signal?: AbortSignal): Promise<T> 
   return (await res.json()) as T
 }
 
+/** Fetch just the drawings map (normalized part number → DrawingLite). Used by the
+ *  BOM Explorer, which already loads its own BOM tables and only needs drawings. */
+export async function fetchDrawingsByPN(signal?: AbortSignal): Promise<Map<string, DrawingLite>> {
+  const drawingsRes = await getJsonOrThrow<DrawingApi[]>('/api/drawings', signal)
+  const map = new Map<string, DrawingLite>()
+  for (const row of drawingsRes) {
+    if (!row?.partNumber) continue
+    const valid = (row.drawingUrls ?? [])
+      .map((u) => sanitizeDrawingUrl(u))
+      .filter((u): u is string => typeof u === 'string')
+    map.set(norm(row.partNumber), {
+      partNumber: row.partNumber,
+      productType: coerceDrawingProductType(row.productType),
+      drawingUrls: valid,
+    })
+  }
+  return map
+}
+
 export async function fetchBomMaps(signal?: AbortSignal): Promise<BomMaps> {
   // Surface network / server failures to the caller so the Retry UI is reachable.
   // Using Promise.all means any one failing rejects the whole prefetch — the page

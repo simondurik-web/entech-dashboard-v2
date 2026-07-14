@@ -24,6 +24,9 @@ import { authHeaders } from '@/lib/session-token'
 import { useI18n } from '@/lib/i18n'
 import { useDataTable, type ColumnDef } from '@/lib/use-data-table'
 import { DataTable } from '@/components/data-table'
+import { InventoryPopover } from '@/components/InventoryPopover'
+import { DrawingIconButton } from '@/components/customer-reference/DrawingIconButton'
+import { fetchDrawingsByPN, type DrawingLite, type DrawingProductType } from '@/lib/customer-reference-bom'
 
 // ─── Audit Types ────────────────────────────────────────────────
 
@@ -144,6 +147,26 @@ interface BomConfig {
 
 const fmt = (n: number) => `$${Number(n).toFixed(n < 1 ? 4 : 2)}`
 const pct = (n: number) => `${(Number(n) * 100).toFixed(2)}%`
+
+// Same feature as the Customer Reference BOM panel: per-part inventory + drawing icons.
+const partTypeFromDrawing = (pt: DrawingProductType | undefined): 'tire' | 'hub' | 'part' =>
+  pt === 'Tire' ? 'tire' : pt === 'Hub' ? 'hub' : 'part'
+
+function PartIconCells({ partNumber, drawings }: { partNumber: string; drawings: Map<string, DrawingLite> }) {
+  const drawing = drawings.get((partNumber || '').trim().toUpperCase())
+  return (
+    <>
+      <TableCell className="text-center">
+        <div className="inline-flex" onClick={(e) => e.stopPropagation()}>
+          <InventoryPopover partNumber={partNumber} partType={partTypeFromDrawing(drawing?.productType)} />
+        </div>
+      </TableCell>
+      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+        <DrawingIconButton partNumber={partNumber} drawingUrls={drawing?.drawingUrls ?? []} />
+      </TableCell>
+    </>
+  )
+}
 const FINAL_COMPONENT_SOURCES = [
   { value: 'sub_assembly', label: 'Sub-Assembly' },
   { value: 'individual_item', label: 'Individual Item' },
@@ -228,6 +251,7 @@ export default function BOMExplorer() {
   const [finalAssemblies, setFinalAssemblies] = useState<FinalAssembly[]>([])
   const [config, setConfig] = useState<BomConfig[]>([])
   const [inventoryParts, setInventoryParts] = useState<{ partNumber: string; product: string }[]>([])
+  const [drawingsByPN, setDrawingsByPN] = useState<Map<string, DrawingLite>>(new Map())
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -243,12 +267,14 @@ export default function BOMExplorer() {
     setLoading(true)
     const qs = bust ? `?t=${Date.now()}` : ''
     try {
-      const [items, subs, finals, cfg, inv] = await Promise.all([
+      const [items, subs, finals, cfg, inv, drawings] = await Promise.all([
         fetch(`/api/bom/individual-items${qs}`).then(r => r.json()),
         fetch(`/api/bom/sub-assemblies${qs}`).then(r => r.json()),
         fetch(`/api/bom/final-assemblies${qs}`).then(r => r.json()),
         fetch(`/api/bom/config${qs}`).then(r => r.json()),
         fetch(`/api/inventory${qs}`).then(r => r.json()).catch(() => []),
+        // Drawings power the per-part drawing icon; non-fatal if the endpoint is down.
+        fetchDrawingsByPN().catch(() => new Map<string, DrawingLite>()),
       ])
       setIndividualItems(items)
       setSubAssemblies(subs)
@@ -257,6 +283,7 @@ export default function BOMExplorer() {
       if (Array.isArray(inv)) {
         setInventoryParts(inv.map((i: { partNumber: string; product: string }) => ({ partNumber: i.partNumber, product: i.product })))
       }
+      setDrawingsByPN(drawings)
     } catch (e) {
       console.error('Failed to fetch BOM data', e)
     }
@@ -421,10 +448,10 @@ export default function BOMExplorer() {
         </TabsList>
 
         <TabsContent value="individual">
-          <IndividualItemsTab items={individualItems} inventoryParts={inventoryParts} search={search} onRefresh={fetchAll} />
+          <IndividualItemsTab items={individualItems} inventoryParts={inventoryParts} drawings={drawingsByPN} search={search} onRefresh={fetchAll} />
         </TabsContent>
         <TabsContent value="sub">
-          <SubAssembliesTab assemblies={subAssemblies} individualItems={individualItems} search={search} onRefresh={fetchAll} />
+          <SubAssembliesTab assemblies={subAssemblies} individualItems={individualItems} drawings={drawingsByPN} search={search} onRefresh={fetchAll} />
         </TabsContent>
         <TabsContent value="final">
           <FinalAssembliesTab
@@ -432,6 +459,7 @@ export default function BOMExplorer() {
             subAssemblies={subAssemblies}
             individualItems={individualItems}
             config={config}
+            drawings={drawingsByPN}
             search={search}
             onRefresh={fetchAll}
           />
@@ -446,9 +474,10 @@ export default function BOMExplorer() {
 
 // ─── Tab 1: Individual Items ─────────────────────────────────────
 
-function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
+function IndividualItemsTab({ items, inventoryParts, drawings, search, onRefresh }: {
   items: IndividualItem[]
   inventoryParts: { partNumber: string; product: string }[]
+  drawings: Map<string, DrawingLite>
   search: string
   onRefresh: (bust?: boolean) => void
 }) {
@@ -627,6 +656,8 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
               <TableHead>{t('bom.unit')}</TableHead>
               <TableHead>Supplier</TableHead>
               <TableHead className="text-right">Lead Time</TableHead>
+              <TableHead className="text-center w-[70px]">{t('customerRef.inventoryLabel')}</TableHead>
+              <TableHead className="text-center w-[70px]">{t('customerRef.drawingLabel')}</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -692,6 +723,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
                     </span>
                   )}
                 </TableCell>
+                <PartIconCells partNumber={item.part_number} drawings={drawings} />
                 <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="sm" className={`h-7 px-2 ${costHistoryId === item.id ? 'bg-muted' : ''}`} onClick={() => toggleCostHistory(item.id, () => {})} title="Cost History">
@@ -709,7 +741,7 @@ function IndividualItemsTab({ items, inventoryParts, search, onRefresh }: {
               </TableRow>
               {costHistoryId === item.id && (
                 <TableRow key={`${item.id}-history`}>
-                  <TableCell colSpan={7} className="bg-muted/30 p-4">
+                  <TableCell colSpan={9} className="bg-muted/30 p-4">
                     <CostHistoryPanel
                       data={costHistoryData}
                       loading={costHistoryLoading}
@@ -1723,9 +1755,10 @@ function useCostHistory(typePrefix: 'sub' | 'final' | 'individual') {
 
 // ─── Tab 2: Sub Assemblies ───────────────────────────────────────
 
-function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
+function SubAssembliesTab({ assemblies, individualItems, drawings, search, onRefresh }: {
   assemblies: SubAssembly[]
   individualItems: IndividualItem[]
+  drawings: Map<string, DrawingLite>
   search: string
   onRefresh: (bust?: boolean) => void
 }) {
@@ -1864,6 +1897,8 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                                 <TableHead className="text-right">Qty</TableHead>
                                 <TableHead className="text-right">Cost</TableHead>
                                 <TableHead>Scrap?</TableHead>
+                                <TableHead className="text-center w-[70px]">{t('customerRef.inventoryLabel')}</TableHead>
+                                <TableHead className="text-center w-[70px]">{t('customerRef.drawingLabel')}</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1873,6 +1908,7 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
                                   <TableCell className="text-right">{Number(c.quantity).toFixed(4)}</TableCell>
                                   <TableCell className="text-right">{fmt(c.cost)}</TableCell>
                                   <TableCell>{c.is_scrap ? `Yes (${pct(c.scrap_rate || 0)})` : ''}</TableCell>
+                                  <PartIconCells partNumber={c.component_part_number} drawings={drawings} />
                                 </TableRow>
                               ))}
                             </TableBody>
@@ -1903,11 +1939,12 @@ function SubAssembliesTab({ assemblies, individualItems, search, onRefresh }: {
 
 // ─── Tab 3: Final Assemblies ─────────────────────────────────────
 
-function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config, search, onRefresh }: {
+function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config, drawings, search, onRefresh }: {
   assemblies: FinalAssembly[]
   subAssemblies: SubAssembly[]
   individualItems: IndividualItem[]
   config: BomConfig[]
+  drawings: Map<string, DrawingLite>
   search: string
   onRefresh: (bust?: boolean) => void
 }) {
@@ -2105,6 +2142,8 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                                   <TableHead>Source</TableHead>
                                   <TableHead className="text-right">Qty</TableHead>
                                   <TableHead className="text-right">Cost</TableHead>
+                                  <TableHead className="text-center w-[70px]">{t('customerRef.inventoryLabel')}</TableHead>
+                                  <TableHead className="text-center w-[70px]">{t('customerRef.drawingLabel')}</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -2118,6 +2157,7 @@ function FinalAssembliesTab({ assemblies, subAssemblies, individualItems, config
                                     </TableCell>
                                     <TableCell className="text-right">{Number(c.quantity).toFixed(6)}</TableCell>
                                     <TableCell className="text-right">{fmt(c.cost)}</TableCell>
+                                    <PartIconCells partNumber={c.component_part_number} drawings={drawings} />
                                   </TableRow>
                                 ))}
                               </TableBody>
