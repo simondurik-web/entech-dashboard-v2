@@ -4,6 +4,7 @@ import { Columns3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useI18n } from '@/lib/i18n'
 
 interface ColumnToggleProps {
   columns: { key: string; label: string; defaultHidden?: boolean }[]
@@ -12,6 +13,7 @@ interface ColumnToggleProps {
 }
 
 export function ColumnToggle({ columns, hiddenColumns, onToggle }: ColumnToggleProps) {
+  const { t } = useI18n()
   const defaultCols = columns.filter((c) => !c.defaultHidden)
   const extraCols = columns.filter((c) => c.defaultHidden)
 
@@ -20,12 +22,12 @@ export function ColumnToggle({ columns, hiddenColumns, onToggle }: ColumnToggleP
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm">
           <Columns3 className="size-4" />
-          <span className="hidden sm:inline">Columns</span>
+          <span className="hidden sm:inline">{t('ui.columns')}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-0 max-h-[70vh] overflow-y-auto">
         <div className="p-3 space-y-1">
-          <p className="text-sm font-medium mb-2">Toggle columns</p>
+          <p className="text-sm font-medium mb-2">{t('ui.toggleColumns')}</p>
           {defaultCols.map((col) => (
             <label
               key={col.key}
@@ -41,7 +43,7 @@ export function ColumnToggle({ columns, hiddenColumns, onToggle }: ColumnToggleP
           {extraCols.length > 0 && (
             <>
               <div className="border-t border-border/50 my-2" />
-              <p className="text-xs text-muted-foreground font-medium mb-1">Additional columns</p>
+              <p className="text-xs text-muted-foreground font-medium mb-1">{t('ui.additionalColumns')}</p>
               {extraCols.map((col) => (
                 <label
                   key={col.key}

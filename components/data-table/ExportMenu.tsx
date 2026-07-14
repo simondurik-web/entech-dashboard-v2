@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { exportToCSV, exportToExcel } from '@/lib/export-utils'
+import { useI18n } from '@/lib/i18n'
 
 interface ExportMenuProps<T extends Record<string, unknown>> {
   data: T[]
@@ -19,6 +20,7 @@ export function ExportMenu<T extends Record<string, unknown>>({
   filename = 'export',
   onExcelExport,
 }: ExportMenuProps<T>) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -72,7 +74,7 @@ export function ExportMenu<T extends Record<string, unknown>>({
         disabled={data.length === 0}
       >
         <Download className="size-4" />
-        <span className="hidden sm:inline">Export</span>
+        <span className="hidden sm:inline">{t('ui.export')}</span>
       </Button>
       {open && pos && createPortal(
         <div
