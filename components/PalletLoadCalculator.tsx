@@ -1329,7 +1329,7 @@ export default function PalletLoadCalculator({
     </div>
     <table>
       <thead><tr>
-        <th>Customer / Label</th><th>IF Number(s)</th><th>Width</th><th>Length</th><th>Qty</th><th>Total Weight</th><th>Orientation</th>
+        <th>Customer / Label</th><th>Sales Order Number(s)</th><th>Width</th><th>Length</th><th>Qty</th><th>Total Weight</th><th>Orientation</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
