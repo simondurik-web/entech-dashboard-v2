@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveBatchesToSO, reservationsForBatches, releaseBatchReservation } from '@/lib/erpnext/staging'
-import { reserveNextSerial, reissuePallet } from '@/lib/erpnext/inventory'
+import { reserveNextSerial, reissuePallet, palletBase } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
@@ -77,6 +77,39 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = guard.userId
+
+  // Do not stage a pallet that is in the middle of an inventory operation.
+  //
+  // A move/adjust/reprint/remove has to UN-STAGE a pallet before it can touch it (ERPNext
+  // refuses to move reserved stock) and re-stages it afterwards. During that window the
+  // pallet looks unreserved — and staging it to a different order here would quietly steal
+  // stock the original order is still counting on. The op detects the theft and warns, but
+  // by then the reservation has moved. Refusing while an operation holds the pallet's family
+  // closes the window instead of reporting it after the fact. (codex BLOCKER, 2026-07-14.)
+  //
+  // Reads the same partial unique index the ops use as their lock — staging now participates
+  // in it rather than working around it.
+  const { data: busy, error: busyErr } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('batch, action')
+    .in('family', [...new Set(pallets.map((p) => palletBase(p.batch)))])
+    // failed_pre_erp counts too: such a row still HOLDS the family lock, and it may carry
+    // reservation debt — a Sales Order the pallet still owes itself back to. Staging it to a
+    // different order before that is settled is exactly the cross-order theft we're closing.
+    .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
+    .limit(1)
+  // Fail CLOSED: if we cannot tell whether a pallet is mid-operation, do not stage it.
+  if (busyErr) {
+    return NextResponse.json({ error: 'Could not verify the pallets are free to stage; try again.' }, { status: 503 })
+  }
+  if (busy && busy.length) {
+    return NextResponse.json(
+      {
+        error: `Pallet ${busy[0].batch ?? ''} has an unfinished ${busy[0].action ?? 'operation'} on it. Finish or clear that first, then stage it.`.replace('  ', ' '),
+      },
+      { status: 409 }
+    )
+  }
 
   // Pallets reserved to a DIFFERENT order: hard-stop unless the operator
   // explicitly confirmed the move (allowMove). Same-order reservations are
@@ -167,7 +200,7 @@ export async function POST(req: NextRequest) {
       const printedBy = await resolveUserName(userId)
       for (const m of moves) {
         const entry = pallets.find((p) => p.batch === m.oldBatch)
-        const rel = await releaseBatchReservation(m.oldBatch)
+        const rel = await releaseBatchReservation(m.oldBatch, m.fromSo)
         await reissuePallet({
           oldBatch: m.oldBatch,
           newBatch: m.newBatch,

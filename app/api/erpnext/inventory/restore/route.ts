@@ -11,6 +11,7 @@ import {
 } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
+import { restoreReservation } from '@/lib/erpnext/staged-pallet-op'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -141,6 +142,11 @@ export async function POST(req: NextRequest) {
       result_batch: willReissue ? newBatch : null,
     },
     erp: () => restorePallet({ batch, itemCode, requestedQty: qty, warehouse, newBatch, opKey: idempotencyKey }),
+    // Restore never un-stages anything itself, but it CAN take over a dead operation that
+    // did — and inherit its debt. Without a finalize() the inherited snapshot would just sit
+    // there: the pallet comes back, the op reports done, and the Sales Order it was reserved
+    // to is quietly short. Re-stage whatever this op actually put back. (codex BLOCKER.)
+    finalize: (c) => restoreReservation(idempotencyKey, c.batch ?? target, itemCode),
     // Proof required before superseding a dead op that holds this pallet family:
     // did ERP commit any stock document under THAT op's key? (see runInventoryOp)
     erpTouchedKey: (k) => reconcileStockEntry(k).then(Boolean),

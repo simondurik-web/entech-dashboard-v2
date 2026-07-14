@@ -70,14 +70,24 @@ export async function POST(req: NextRequest) {
       // recording the reservation on the op row so ANY later attempt can put it back; the
       // re-reserve itself happens in finalize(), which — unlike erp() — also runs when a
       // retry resumes an already-committed op.
-      await snapshotAndRelease(idempotencyKey, batch, itemCode)
       try {
+        // Inside the try: snapshotAndRelease cancels the SRE and then does its own SO
+        // bookkeeping, which can itself fail — leaving the pallet un-staged with no restore
+        // attempted if this sat outside. (codex BLOCKER.)
+        await snapshotAndRelease(idempotencyKey, batch, itemCode)
         return await transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey })
       } catch (e) {
-        // The move failed after we un-staged the pallet. It never committed, so the pallet
-        // still sits in its original bin: put the reservation straight back rather than
-        // leaving the order unbacked while the user retries.
-        await restoreReservation(idempotencyKey, batch, itemCode).catch(() => undefined)
+        // Put back what we un-staged. If the restore reports the pallet is no longer backing
+        // its order (e.g. the transfer did commit and then timed out), say so IN the error —
+        // a generic failure would hide it and the order would ship short.
+        const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+        if (w) {
+          // Warning FIRST: the runner truncates the error to 200 chars for the response, and
+          // an ERPNext message alone routinely exceeds that — appending buried it. (codex.)
+          throw new Error(
+            `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+          )
+        }
         throw e
       }
     },

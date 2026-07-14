@@ -27,7 +27,11 @@ import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } f
 // it must be: finalize() runs on fresh commits AND on resumes.
 
 export interface ReservationSnapshot {
-  so: string
+  // null = we checked and the pallet was NOT staged. A NULL column (no snapshot at all)
+  // means the check never ran — and since the check is what releases the reservation, that
+  // also means nothing was released. Keeping the two cases distinct is what stops a takeover
+  // from reading "unknown" as "wasn't staged" and finishing cleanly with an order short.
+  so: string | null
   warehouse: string
   qty: number
 }
@@ -63,12 +67,19 @@ export async function snapshotAndRelease(
         `Pallet ${batch} is now staged to ${current.so} but is still owed to ${prior.so}. Resolve the conflict in ERPNext before changing this pallet.`
       )
     }
-    if (current) await releaseBatchReservation(batch)
+    if (current) await releaseBatchReservation(batch, prior.so)
     return prior
   }
 
   const reservation = (await reservationsForBatches([batch]))[batch]
-  if (!reservation) return null
+  if (!reservation) {
+    // Record the negative result explicitly: checked, not staged. Nothing to release.
+    await supabaseAdmin
+      .from('inventory_ops_log')
+      .update({ reservation_snapshot: { so: null, warehouse: '', qty: 0 } })
+      .eq('idempotency_key', opKey)
+    return null
+  }
 
   // The reservation carries the SO + qty but not the bin; read the bin while the pallet is
   // still sitting in it.
@@ -87,7 +98,7 @@ export async function snapshotAndRelease(
     .eq('idempotency_key', opKey)
   if (error) throw new Error(`could not record the pallet's staging before releasing it: ${error.message}`)
 
-  await releaseBatchReservation(batch)
+  await releaseBatchReservation(batch, reservation.so)
   return snap
 }
 
@@ -97,7 +108,13 @@ export async function snapshotAndRelease(
 export async function restoreReservation(
   opKey: string,
   batch: string,
-  itemCode: string
+  itemCode: string,
+  // Pass true from a FAILURE path: the operation did not complete, so the pallet should still
+  // hold everything it held when we snapshotted it. If it doesn't, part of the stock has
+  // already moved (e.g. a down-adjust that repacked and then threw) and the order is short —
+  // warn, don't report success. finalize() leaves this false: there, a different quantity is
+  // the whole point of the operation. (codex BLOCKER.)
+  expectWhole = false
 ): Promise<string | null> {
   const { data: row, error } = await supabaseAdmin
     .from('inventory_ops_log')
@@ -124,9 +141,14 @@ export async function restoreReservation(
     // while the original order silently ships short. Don't steal it back (whoever holds it
     // may be mid-shipment) — report it.
     if (current.so !== snap.so) return 'reservation_transfer_failed'
+    // An SRE pointing at the right order but NO stock under the pallet is a phantom: the
+    // order looks backed and is not. (codex BLOCKER.)
+    if (!loc || Number(loc.qty) <= 0) return 'reservation_transfer_failed'
     // Right order, but is the WHOLE pallet covered? A partial SRE leaves the order
-    // under-backed while looking restored. (codex BLOCKER, round 4.)
-    if (loc && loc.qty > 0 && current.reservedQty < loc.qty) return 'reservation_transfer_failed'
+    // under-backed while looking restored.
+    if (Number(current.reservedQty) + 1e-6 < Number(loc.qty)) return 'reservation_transfer_failed'
+    // And on a failure path the pallet should still hold everything it did before.
+    if (expectWhole && Number(loc.qty) + 1e-6 < Number(snap.qty)) return 'reservation_transfer_failed'
     return null // fully restored already — idempotent no-op
   }
 
@@ -140,5 +162,19 @@ export async function restoreReservation(
     soName: snap.so,
     items: [{ batch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
   })
+
+  // The op failed, yet the pallet no longer holds what it did: stock has moved elsewhere and
+  // is not backing the order any more.
+  if (expectWhole && Number(loc.qty) + 1e-6 < Number(snap.qty)) return 'reservation_transfer_failed'
+
+  // VERIFY, don't assume. Between the ownership check above and this write, a concurrent
+  // staging run can claim the pallet, or ERPNext can bind less than the whole pallet. Either
+  // way the call returns without throwing, and reporting success would leave the original
+  // order short with nobody warned. Re-read and confirm the pallet really is back on ITS
+  // order, for its full quantity. (codex BLOCKER.)
+  const after = (await reservationsForBatches([batch]))[batch]
+  if (!after || after.so !== snap.so || Number(after.reservedQty) + 1e-6 < Number(loc.qty)) {
+    return 'reservation_transfer_failed'
+  }
   return null
 }

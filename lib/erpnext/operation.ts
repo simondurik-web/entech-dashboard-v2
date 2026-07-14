@@ -73,6 +73,10 @@ const LOG = () => supabaseAdmin.from('inventory_ops_log')
 // far shorter than the hours/days a real jam sits for.
 const SUPERSEDE_MIN_AGE_MS = 15 * 60 * 1000
 
+// Actions whose erp() releases a staging reservation. If one of these died without recording
+// its staging finding, it predates the snapshot protocol and cannot be safely taken over.
+const RESERVATION_TOUCHING = new Set(['move', 'adjust', 'reprint', 'remove'])
+
 export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
   const { key, action, createdBy, meta, erp, reconcile, label, erpTouchedKey, finalize } = args
   if (!/^[A-Za-z0-9-]{8,64}$/.test(key)) {
@@ -80,20 +84,39 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
   }
   let committed: Committed | null = null
 
+  // The lease we hold on this row: the pending_since we ourselves stamped. Every terminal
+  // write is guarded by it, so a worker whose attempt was superseded or reclaimed can never
+  // overwrite the row that replaced it.
+  let lease: string | null = null
+  // Update THIS row only while we still hold the lease on it (supabase-js requires the
+  // filters after .update()).
+  const updateOwn = (payload: Record<string, unknown>) => {
+    const q = LOG().update(payload).eq('idempotency_key', key)
+    return lease ? q.eq('pending_since', lease) : q
+  }
+
   // Reserve the key.
-  const insertRow = () =>
-    LOG().insert({
-      idempotency_key: key,
-      action,
-      status: 'pending',
-      created_by: createdBy,
-      ...meta,
-    })
+  const insertRow = () => {
+    const t = new Date().toISOString()
+    return LOG()
+      .insert({
+        idempotency_key: key,
+        action,
+        status: 'pending',
+        created_by: createdBy,
+        pending_since: t,
+        ...meta,
+      })
+      .then((r) => {
+        if (!r.error) lease = t
+        return r
+      })
+  }
   let { error: insErr } = await insertRow()
 
   if (insErr) {
     let { data: ex } = await LOG()
-      .select('status, action, family, batch, item_code, station_id, qty, warehouse, erp_stock_entry, print_job_id, error, warning, reservation_snapshot')
+      .select('status, action, family, batch, item_code, station_id, qty, warehouse, erp_stock_entry, print_job_id, error, warning, reservation_snapshot, pending_since')
       .eq('idempotency_key', key)
       .maybeSingle()
     if (!ex && insErr.code === '23505' && meta.family && erpTouchedKey) {
@@ -122,39 +145,21 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       // failed_pre_erp), NOT created_at — an old row that just timed out AGAIN is freshly
       // ambiguous, and created_at would wave it straight through. (codex BLOCKER, round 3.)
       const staleBefore = new Date(Date.now() - SUPERSEDE_MIN_AGE_MS).toISOString()
+      // At most ONE row can hold a family (the partial unique index guarantees it).
       const { data: holders } = await LOG()
-        .select('idempotency_key, reservation_snapshot')
+        .select('idempotency_key, failed_at, action, reservation_snapshot')
         .eq('family', meta.family)
         .eq('status', 'failed_pre_erp')
         .neq('idempotency_key', key)
         .lt('failed_at', staleBefore)
-      let superseded = 0
-      let dirtyHolder = false
-      let inheritedSnapshot: unknown = null
-      for (const h of holders ?? []) {
-        if (await erpTouchedKey(h.idempotency_key)) {
-          dirtyHolder = true // ERP has state under this key — hands off.
-          continue
-        }
-        // CAS: only flip a row that is STILL failed_pre_erp, so we can't stomp a
-        // same-key retry that just claimed it back to 'pending' and is re-running ERP.
-        const { data: flipped } = await LOG()
-          .update({ status: 'failed', error: `superseded by ${key} (no ERP commit under this key)` })
-          .eq('idempotency_key', h.idempotency_key)
-          .eq('status', 'failed_pre_erp')
-          .select('idempotency_key')
-        if (flipped && flipped.length > 0) {
-          superseded++
-          // INHERIT the dead op's reservation snapshot. It may have already un-staged the
-          // pallet (released the SRE) and then died — the SO is recorded ONLY on its row.
-          // Retiring that row without carrying the snapshot forward strands the pallet off
-          // its Sales Order forever: our finalize() would find no snapshot and no-op, and
-          // the order ships short with nobody warned. Carrying it means our finalize()
-          // re-stages the pallet the dead op abandoned. (codex + grok BLOCKER, round 3.)
-          if (!inheritedSnapshot && h.reservation_snapshot) inheritedSnapshot = h.reservation_snapshot
-        }
-      }
-      if (dirtyHolder) {
+        .limit(1)
+
+      // Vet the holder against ERP FIRST. Only a key with no stock document stamped
+      // [op:<key>] may be retired; anything ERP touched still holds the pallet and still
+      // needs a human. `failed_at` is captured here and re-checked inside the RPC, so a
+      // holder that comes back to life and touches ERP after this probe is left alone.
+      const holder = holders?.[0]
+      if (holder && (await erpTouchedKey(holder.idempotency_key))) {
         return {
           status: 409,
           body: {
@@ -163,37 +168,62 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
           },
         }
       }
-      if (superseded > 0) {
-        ;({ error: insErr } = await insertRow())
-        // Success -> a fresh 'pending' row is ours; fall through to the normal first-run
-        // path. Still failing (lost the post-supersede race to another new op, or the write
-        // genuinely broke) -> `ex` stays null and the classifier below returns the right
-        // 409/500. A SAME-key retry never reaches here: its own row is found by key, so
-        // `ex` is set and the existing failed_pre_erp resume path handles it as before.
-        if (!insErr) {
+      // FAIL CLOSED on a holder that predates this protocol. Every op written since records
+      // its staging finding — the Sales Order, or an explicit "checked, not staged" — BEFORE
+      // it releases anything. A holder with no record at all is therefore a legacy row from
+      // the old code, which released the reservation without ever writing it down. Taking it
+      // over would read "unknown" as "was never staged", finish cleanly, and leave the
+      // original order short. Hand it to a human instead. (codex BLOCKER.)
+      // (Verified 2026-07-14: prod has ZERO rows in a takeover-eligible state, so this path
+      // is unreachable today; it exists so it can never become reachable.)
+      if (
+        holder &&
+        (holder as { reservation_snapshot?: unknown }).reservation_snapshot == null &&
+        RESERVATION_TOUCHING.has((holder as { action?: string }).action ?? '')
+      ) {
+        return {
+          status: 409,
+          body: {
+            error:
+              "A previous operation on this pallet failed before we recorded whether it was staged, so it isn't safe to take over automatically. An admin needs to check the pallet's Sales Order.",
+          },
+        }
+      }
+
+      if (holder) {
+        // ONE transaction: retire the dead holders, claim the family, and inherit their
+        // reservation debt (the Sales Order the pallet still owes itself back to). Doing
+        // this as three separate writes left the family briefly UNLOCKED between the
+        // retirement and our insert — a racing request could claim it without the debt and
+        // then complete "cleanly" with the pallet permanently detached from its order.
+        // Losing the race now rolls the whole thing back: the dead holder keeps holding the
+        // family, its debt stays recorded, and the next attempt re-runs the hand-off.
+        const { data: claimed, error: rpcErr } = await supabaseAdmin.rpc('supersede_and_claim_family', {
+          p_key: key,
+          p_action: action,
+          p_created_by: createdBy,
+          p_family: meta.family as string,
+          p_clean_key: holder.idempotency_key,
+          p_failed_at: holder.failed_at,
+          p_item_code: (meta.item_code as string) ?? null,
+          p_qty: (meta.qty as number) ?? null,
+          p_warehouse: (meta.warehouse as string) ?? null,
+          p_station_id: (meta.station_id as string) ?? null,
+          p_batch: (meta.batch as string) ?? null,
+          p_result_batch: (meta.result_batch as string) ?? null,
+        })
+        if (rpcErr) {
+          // Fail closed: we do not hold the family and nothing was half-done.
+          return { status: 503, body: { error: 'Could not take over a previous failed operation on this pallet; try again.' } }
+        }
+        if (claimed) {
+          // The row is ours, already carrying any inherited debt. Fall through to the normal
+          // first-run path (ERP phase). Read back the pending_since the function stamped —
+          // that is our lease on this attempt.
+          const { data: mine } = await LOG().select('pending_since').eq('idempotency_key', key).maybeSingle()
+          lease = (mine?.pending_since as string) ?? null
+          insErr = null
           ex = null
-          // Adopt the abandoned reservation so our finalize() re-stages the pallet. Written
-          // before any ERP work, so even if THIS op dies too, the snapshot lives on and the
-          // next attempt inherits it in turn.
-          if (inheritedSnapshot) {
-            const { error: snapErr } = await LOG()
-              .update({ reservation_snapshot: inheritedSnapshot })
-              .eq('idempotency_key', key)
-            if (snapErr) {
-              // FAIL CLOSED. We now hold the family lock but do NOT know the pallet owes
-              // itself back to an order. Proceeding would mutate the pallet and finish
-              // "clean" while it stays detached from its Sales Order. Retire our own row
-              // (releasing the lock) and refuse — the debt is still recorded on the row we
-              // superseded, and the next attempt inherits it again.
-              await LOG()
-                .update({ status: 'failed', error: `could not inherit reservation snapshot: ${snapErr.message}` })
-                .eq('idempotency_key', key)
-              return {
-                status: 503,
-                body: { error: 'Could not safely take over a previous failed operation on this pallet; try again.' },
-              }
-            }
-          }
         }
       }
     }
@@ -260,6 +290,24 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
     }
     if (ex.status === 'erp_committed') {
       committed = { batch: ex.batch ?? undefined, stockEntry: ex.erp_stock_entry ?? null }
+      // Claim the right to finish this op. finalize() re-creates a staging reservation, and
+      // it is check-then-create — two concurrent same-key resumes could each make one. CAS on
+      // the row's current pending_since so exactly ONE worker proceeds. (codex BLOCKER.)
+      const t = new Date().toISOString()
+      const prev = (ex as { pending_since?: string | null }).pending_since ?? null
+      const claim = LOG().update({ pending_since: t }).eq('idempotency_key', key).eq('status', 'erp_committed')
+      const { data: won } = await (prev === null
+        ? claim.is('pending_since', null)
+        : claim.eq('pending_since', prev)
+      ).select('idempotency_key')
+      if (!won || won.length === 0) {
+        // Someone else is finishing it. Return what ERP already committed — no ERP writes here.
+        return {
+          status: 200,
+          body: { ok: true, duplicate: true, batch: ex.batch, stockEntry: ex.erp_stock_entry, printJobId: ex.print_job_id },
+        }
+      }
+      lease = t
     } else if (ex.status === 'failed_pre_erp') {
       // Before re-running ERP, confirm it really didn't commit (a post-commit
       // checkpoint failure can also land here). If it did, resume; never re-run.
@@ -275,13 +323,28 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       if (!committed) {
         // Atomically claim the retry (compare-and-swap on status) so two
         // concurrent retries can't both proceed to re-run ERP.
+        const t = new Date().toISOString()
         const { data: claimed } = await LOG()
-          .update({ status: 'pending', error: null })
+          .update({ status: 'pending', error: null, pending_since: t })
           .eq('idempotency_key', key)
           .eq('status', 'failed_pre_erp')
           .select('idempotency_key')
         if (!claimed || claimed.length === 0) {
           return { status: 409, body: { error: 'Operation is being retried; try again shortly' } }
+        }
+        lease = t
+        // Re-probe AFTER taking the lease. reconcile() ran BEFORE the CAS, so a submit that
+        // timed out could have landed in the gap; re-running erp() would duplicate it. Same
+        // fence as the stale-pending path. (codex BLOCKER.)
+        if (erpTouchedKey && (await erpTouchedKey(key))) {
+          const r2 = reconcile ? await reconcile() : null
+          if (r2) {
+            committed = r2
+            await updateOwn({ status: 'erp_committed', batch: r2.batch ?? null, erp_stock_entry: r2.stockEntry ?? null })
+          } else {
+            await updateOwn({ status: 'failed_pre_erp', failed_at: new Date().toISOString(), error: 'ERP committed under this key but could not be reconciled' })
+            return { status: 409, body: { error: 'A previous attempt on this pallet reached ERPNext but could not be confirmed. It needs an admin to reconcile it.' } }
+          }
         }
       }
     } else {
@@ -295,6 +358,18 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
             .eq('idempotency_key', key)
         }
       }
+      // A row CAN die in 'pending' (crash after erp() started, before any status write). We
+      // deliberately do NOT auto-recover that here.
+      //
+      // An earlier version reclaimed a stale pending row and re-ran erp(). Both codex and
+      // grok blocked it, correctly: nothing proves the original worker is finished, so two
+      // workers could submit stock documents for the same operation — duplicate receipts,
+      // issues, transfers. Wrong inventory is far worse than a stuck pallet, and this trade
+      // was the wrong way round. A stuck pending row stays a 409 until an admin retires it;
+      // the next operation then supersedes it, INHERITS its reservation snapshot, and
+      // re-stages the pallet — so the order is made whole, just not automatically.
+      //
+      // The one-worker-per-key invariant is what keeps stock correct. Don't weaken it.
       if (!committed) {
         return {
           status: 409,
@@ -316,18 +391,20 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       // Stamp failed_at: the supersede age gate keys off WHEN THIS ROW LAST FAILED, not
       // when it was created. A long-lived row that just timed out again is freshly
       // ambiguous — its ERPNext write may still land — and must restart the clock.
-      await LOG()
-        .update({ status: 'failed_pre_erp', error: msg.slice(0, 500), failed_at: new Date().toISOString() })
-        .eq('idempotency_key', key)
+      // Guarded by the lease: if this attempt was superseded or reclaimed while erp() ran,
+      // the row now belongs to a newer op — flipping it to failed_pre_erp would re-lock the
+      // pallet and could clobber a finished operation. Losing the lease means our result is
+      // moot, so we say nothing about the row and just report the failure. (grok BLOCKER.)
+      await updateOwn({ status: 'failed_pre_erp', error: msg.slice(0, 500), failed_at: new Date().toISOString() })
+        .eq('status', 'pending')
       return { status: 502, body: { error: `${action} failed: ${msg.slice(0, 200)}` } }
     }
     committed = r
     // Best-effort checkpoint. If THIS write fails the row stays 'pending';
     // a retry's reconcile() will detect the committed ERP doc and resume —
     // it must NOT be treated as a pre-ERP failure (that would duplicate stock).
-    await LOG()
-      .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
-      .eq('idempotency_key', key)
+    await updateOwn({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
+      .eq('status', 'pending')
       .then(undefined, () => undefined)
   }
 
@@ -349,7 +426,7 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       warning = 'reservation_transfer_failed'
     }
     if (warning) {
-      await LOG().update({ warning }).eq('idempotency_key', key).then(undefined, () => undefined)
+      await updateOwn({ warning }).then(undefined, () => undefined)
       // Name the order the pallet fell off — "re-stage it" is not actionable without it.
       const { data: snapRow } = await LOG()
         .select('reservation_snapshot')
@@ -371,9 +448,7 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       // (recording the label error + committed batch) so the active-family lock RELEASES —
       // otherwise the row sits at erp_committed, the family stays locked, and the user's
       // Reprint would hit 409. Reprint then reissues normally to recover the label.
-      await LOG()
-        .update({ status: 'done', batch: committed.batch ?? null, erp_stock_entry: committed.stockEntry ?? null, error: `label: ${msg.slice(0, 400)}`, ...(warning ? { warning } : {}) })
-        .eq('idempotency_key', key)
+      await updateOwn({ status: 'done', batch: committed.batch ?? null, erp_stock_entry: committed.stockEntry ?? null, error: `label: ${msg.slice(0, 400)}`, ...(warning ? { warning } : {}) })
       return {
         status: 200,
         body: {
@@ -392,8 +467,7 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
   // checkpoint is best-effort (its failure is swallowed), and for a reissue that's where
   // `batch` flips from the old serial to the new one. Writing it here too guarantees the
   // row ends up pointing at the committed (new) serial even if the checkpoint was lost.
-  await LOG()
-    .update({
+  await updateOwn({
       status: 'done',
       print_job_id: printJobId,
       batch: committed.batch ?? null,
@@ -402,8 +476,7 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       // if it failed and this one omitted the warning, a lost-response retry would replay
       // the row as a clean success while the pallet is still off its order.
       ...(warning ? { warning } : {}),
-    })
-    .eq('idempotency_key', key)
+  })
   return {
     status: 200,
     body: {

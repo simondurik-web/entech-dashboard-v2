@@ -1555,7 +1555,15 @@ export default function InventoryOpsPage() {
     const d = await r.json()
     if (!r.ok) throw new Error(d.error || 'restore failed')
     clearOpKey('restore', p.batch, payload)
-    return { serial: (d.batch as string) ?? p.batch, newLabel: !!d.newLabel }
+    return {
+      serial: (d.batch as string) ?? p.batch,
+      newLabel: !!d.newLabel,
+      // A restore can inherit a dead op's staging debt; if the re-stage failed the pallet is
+      // back in stock but OFF its order. Hand that up — swallowing it here is how an order
+      // ships short while the operator sees a clean "restored". (codex BLOCKER.)
+      warning: (d.warning as string | undefined) ?? null,
+      unstagedFrom: (d.unstagedFrom as string | undefined) ?? null,
+    }
   }
 
   // Return a removed/zeroed pallet's stock to inventory (scan path). A different qty reissues
@@ -1577,8 +1585,13 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setRestoring(true)
     try {
-      const { serial, newLabel } = await doRestore(removedPallet, qty, bin)
-      showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      const { serial, newLabel, warning, unstagedFrom } = await doRestore(removedPallet, qty, bin)
+      // Pallet is back in stock but off its order — an error, not a clean "restored ✓".
+      if (warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(unstagedFrom ?? '')))
+      } else {
+        showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      }
       if (newLabel) loadRecentLabels(recentExpanded)
       loadDeletedLabels(deletedExpanded) // this deletion is now undone
       // Re-run the search on the (possibly new) serial so it now shows as stocked.
@@ -1613,8 +1626,13 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setDelRestoring(true)
     try {
-      const { serial, newLabel } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
-      showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      const { serial, newLabel, warning, unstagedFrom } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
+      // Pallet is back in stock but off its order — an error, not a clean "restored ✓".
+      if (warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(unstagedFrom ?? '')))
+      } else {
+        showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      }
       if (newLabel) loadRecentLabels(recentExpanded)
       setDelRow(null)
       loadDeletedLabels(deletedExpanded)

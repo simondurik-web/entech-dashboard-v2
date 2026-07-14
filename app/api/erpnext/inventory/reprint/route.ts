@@ -114,16 +114,26 @@ export async function POST(req: NextRequest) {
       // finalize(): the old best-effort re-reserve inside erp() silently dropped the pallet
       // off its order whenever the reprint was retried/resumed (erp() doesn't re-run on a
       // resume), which is the same silent-unstage class as move/adjust.
-      await snapshotAndRelease(idempotencyKey, batch, itemCode)
       try {
+        await snapshotAndRelease(idempotencyKey, batch, itemCode)
         return await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
       } catch (e) {
-        await restoreReservation(idempotencyKey, batch, itemCode).catch(() => undefined)
+        // Restore what we un-staged. If the restore itself reports the pallet is no longer
+        // backing its order (e.g. ERP committed after all and the stock moved to the new
+        // serial), say so IN the error — a generic failure would hide it. (codex BLOCKER.)
+        const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+        if (w) {
+          // Warning FIRST: the runner truncates the error to 200 chars for the response, and
+          // an ERPNext message alone routinely exceeds that — appending buried it. (codex.)
+          throw new Error(
+            `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+          )
+        }
         throw e
       }
     },
     // Re-stage the NEW serial. Runs on fresh commits and on resumes alike.
-    finalize: () => restoreReservation(idempotencyKey, newBatch, itemCode),
+    finalize: (c) => restoreReservation(idempotencyKey, c.batch ?? newBatch, itemCode),
     // reconcile is READ-ONLY: it only reports done if the reissue already completed, so it
     // is safe to call while a peer request may still be mutating. Incomplete -> null, and
     // the state machine re-runs erp() (reissuePallet) under its CAS claim.

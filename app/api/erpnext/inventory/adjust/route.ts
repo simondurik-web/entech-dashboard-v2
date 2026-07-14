@@ -136,11 +136,16 @@ export async function POST(req: NextRequest) {
         // or the order keeps a phantom (bug-hunt 2026-07-04). Snapshot it first so a removal
         // that fails AFTER the cancel can put the reservation back — otherwise the op looks
         // ERP-clean, gets superseded, and the pallet's order link is lost silently.
-        await snapshotAndRelease(idempotencyKey, batch, itemCode)
         try {
+          await snapshotAndRelease(idempotencyKey, batch, itemCode)
           return await removeInventory({ batch, itemCode, reason: 'adjusted to 0', opKey: idempotencyKey })
         } catch (e) {
-          await restoreReservation(idempotencyKey, batch, itemCode).catch(() => undefined)
+          const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+          if (w) {
+            throw new Error(
+              `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+            )
+          }
           throw e
         }
       },
@@ -176,22 +181,29 @@ export async function POST(req: NextRequest) {
       // returns nothing and the reissue just re-runs.
       // Record the reservation on the op row, THEN release — so any later attempt can put
       // it back even though this closure is long gone by then.
-      await snapshotAndRelease(idempotencyKey, batch, itemCode)
       try {
+        // Inside the try: the release can fail mid-way (it cancels the SRE, then updates the
+        // SO), which would otherwise leave the pallet un-staged with no restore attempted.
+        await snapshotAndRelease(idempotencyKey, batch, itemCode)
         return await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
       } catch (e) {
-        // Reissue failed after we un-staged the pallet. Whatever stock is still under the
-        // OLD serial gets its reservation back immediately, so the order isn't left unbacked
-        // while the user retries. (A retry re-runs reissuePallet, which is resumable, and
-        // finalize() then re-stages the new serial.)
-        await restoreReservation(idempotencyKey, batch, itemCode).catch(() => undefined)
+        // Restore what we un-staged; if the pallet is no longer backing its order, say so IN
+        // the error rather than letting a generic failure hide it. (codex BLOCKER.)
+        const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+        if (w) {
+          // Warning FIRST: the runner truncates the error to 200 chars for the response, and
+          // an ERPNext message alone routinely exceeds that — appending buried it. (codex.)
+          throw new Error(
+            `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+          )
+        }
         throw e
       }
     },
     // The qty change reissues the pallet under a NEW serial, so the reservation follows the
     // stock there. Runs on fresh commits AND resumes — a retry that skips erp() must still
     // re-stage, or the pallet quietly leaves its order.
-    finalize: () => restoreReservation(idempotencyKey, newBatch, itemCode),
+    finalize: (c) => restoreReservation(idempotencyKey, c.batch ?? newBatch, itemCode),
     // reconcile is READ-ONLY (see reprint route): reports done only if already complete,
     // else null and the state machine re-runs erp() (reissuePallet) under its CAS claim.
     // Proof required before superseding a dead op that holds this pallet family:

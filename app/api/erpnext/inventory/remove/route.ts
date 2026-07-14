@@ -98,12 +98,21 @@ export async function POST(req: NextRequest) {
       // later op would supersede this row and the Sales Order link would be lost silently.
       // The snapshot lets us put it straight back. No finalize() on success: the pallet is
       // meant to be gone, and re-staging a removed pallet is exactly what we don't want.
-      await snapshotAndRelease(idempotencyKey, batch, itemCode)
       try {
+        await snapshotAndRelease(idempotencyKey, batch, itemCode)
         const r = await removeInventory({ batch, itemCode, reason, opKey: idempotencyKey })
         return { batch: r.batch, stockEntry: r.stockEntry }
       } catch (e) {
-        await restoreReservation(idempotencyKey, batch, itemCode).catch(() => undefined)
+        // Restore what we un-staged; if the pallet is no longer backing its order, say so IN
+        // the error rather than letting a generic failure hide it. (codex BLOCKER.)
+        const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+        if (w) {
+          // Warning FIRST: the runner truncates the error to 200 chars for the response, and
+          // an ERPNext message alone routinely exceeds that — appending buried it. (codex.)
+          throw new Error(
+            `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+          )
+        }
         throw e
       }
     },
