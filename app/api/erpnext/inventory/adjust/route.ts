@@ -108,6 +108,10 @@ export async function POST(req: NextRequest) {
       .select('idempotency_key')
       .eq('family', palletBase(batch))
       .in('status', ['pending', 'erp_committed'])
+      // stage-lock markers are arbitrated by runInventoryOp, not here: a LIVE one still
+      // blocks (its family conflicts on insert), but a STALE one — a crashed staging
+      // request — must reach the retire logic instead of 409ing forever in this pre-check.
+      .neq('action', 'stage-lock')
       .neq('idempotency_key', idempotencyKey)
       .limit(1)
     if (inflight && inflight.length) {

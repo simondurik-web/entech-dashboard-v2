@@ -1392,6 +1392,10 @@ export default function InventoryOpsPage() {
       // ships short (review 2026-07-14).
       if (d.warning === 'reservation_transfer_failed') {
         showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(d.unstagedFrom ?? '')))
+      } else if (d.finalizePending) {
+        // Stock committed, but another worker is still re-staging the pallet — this reply
+        // must not read as a confirmed clean finish. (review round 17)
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
       } else {
         showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
       }
@@ -1462,6 +1466,8 @@ export default function InventoryOpsPage() {
       // error, not a quiet success. See submitAdjust.
       if (d.warning === 'reservation_transfer_failed') {
         showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', batch).replace('{so}', String(d.unstagedFrom ?? '')))
+      } else if (d.finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', batch))
       } else {
         showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
       }
@@ -1516,6 +1522,8 @@ export default function InventoryOpsPage() {
       // order. Show that as an error, never a clean "reprinted ✓".
       if (d.warning === 'reservation_transfer_failed') {
         showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(d.unstagedFrom ?? '')))
+      } else if (d.finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
       } else {
         showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       }
@@ -1563,6 +1571,7 @@ export default function InventoryOpsPage() {
       // ships short while the operator sees a clean "restored". (codex BLOCKER.)
       warning: (d.warning as string | undefined) ?? null,
       unstagedFrom: (d.unstagedFrom as string | undefined) ?? null,
+      finalizePending: !!d.finalizePending,
     }
   }
 
@@ -1585,10 +1594,12 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setRestoring(true)
     try {
-      const { serial, newLabel, warning, unstagedFrom } = await doRestore(removedPallet, qty, bin)
+      const { serial, newLabel, warning, unstagedFrom, finalizePending } = await doRestore(removedPallet, qty, bin)
       // Pallet is back in stock but off its order — an error, not a clean "restored ✓".
       if (warning === 'reservation_transfer_failed') {
         showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(unstagedFrom ?? '')))
+      } else if (finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
       } else {
         showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
       }
@@ -1626,10 +1637,12 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setDelRestoring(true)
     try {
-      const { serial, newLabel, warning, unstagedFrom } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
+      const { serial, newLabel, warning, unstagedFrom, finalizePending } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
       // Pallet is back in stock but off its order — an error, not a clean "restored ✓".
       if (warning === 'reservation_transfer_failed') {
         showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(unstagedFrom ?? '')))
+      } else if (finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
       } else {
         showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
       }

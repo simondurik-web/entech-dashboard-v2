@@ -16,8 +16,16 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 // Idempotent via runInventoryOp: the op identity binds to the SO + the exact pallet set, so a
 // double-tap or timeout-then-retry reuses the row instead of double-reserving. A reservation
 // can't over-reserve a batch anyway (ERPNext caps at the stock's available-to-reserve qty), so
-// a retry that re-runs is safe. family is null — this spans many pallets, outside the per-pallet
-// lock, and it posts no Stock Entry.
+// a retry that re-runs is safe.
+//
+// LOCKING: the op row itself carries family = null (one row can't lock N pallets), so the
+// route takes the per-family lock EXPLICITLY: claim_staging_families inserts one marker row
+// per pallet family under the same partial unique index the inventory ops serialize on —
+// all-or-nothing — and release_staging_families frees them when the request finishes. While
+// the markers are held, no move/adjust/reprint/remove can start on these pallets, so staging
+// can never reserve a pallet whose op has temporarily released its reservation (the
+// cross-order theft window; review blocker #1, 2026-07-14). Merely READING the index — the
+// previous approach — was TOCTOU: an op could acquire the family right after the read.
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -57,6 +65,13 @@ export async function POST(req: NextRequest) {
   if (!soName || !idempotencyKey || rawPallets.length === 0) {
     return NextResponse.json({ error: 'soName, pallets, and idempotencyKey are required' }, { status: 400 })
   }
+  // Validated here (not just in runInventoryOp) because the key feeds the family-lock claim
+  // BEFORE the op runner sees it, and the claim builds marker keys / LIKE patterns from it.
+  // '-fam-' is the markers' reserved separator: a key containing it could make one key's
+  // release LIKE-match another key's markers (round-17 should-fix).
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(idempotencyKey) || idempotencyKey.includes('-fam-')) {
+    return NextResponse.json({ error: 'invalid idempotencyKey' }, { status: 400 })
+  }
   if (rawPallets.length > MAX_PALLETS) {
     return NextResponse.json({ error: `Too many pallets in one staging (max ${MAX_PALLETS})` }, { status: 400 })
   }
@@ -83,33 +98,51 @@ export async function POST(req: NextRequest) {
   // A move/adjust/reprint/remove has to UN-STAGE a pallet before it can touch it (ERPNext
   // refuses to move reserved stock) and re-stages it afterwards. During that window the
   // pallet looks unreserved — and staging it to a different order here would quietly steal
-  // stock the original order is still counting on. The op detects the theft and warns, but
-  // by then the reservation has moved. Refusing while an operation holds the pallet's family
-  // closes the window instead of reporting it after the fact. (codex BLOCKER, 2026-07-14.)
+  // stock the original order is still counting on. (codex BLOCKER, 2026-07-14.)
   //
-  // Reads the same partial unique index the ops use as their lock — staging now participates
-  // in it rather than working around it.
-  const { data: busy, error: busyErr } = await supabaseAdmin
-    .from('inventory_ops_log')
-    .select('batch, action')
-    .in('family', [...new Set(pallets.map((p) => palletBase(p.batch)))])
-    // failed_pre_erp counts too: such a row still HOLDS the family lock, and it may carry
-    // reservation debt — a Sales Order the pallet still owes itself back to. Staging it to a
-    // different order before that is settled is exactly the cross-order theft we're closing.
-    .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
-    .limit(1)
-  // Fail CLOSED: if we cannot tell whether a pallet is mid-operation, do not stage it.
-  if (busyErr) {
+  // TAKE the per-family lock, don't just read it: claim_staging_families atomically inserts
+  // one marker row per family under the same partial unique index the ops serialize on. From
+  // here to the finally-release, no op can start on these pallets — and if any family is
+  // already held (an op mid-flight, or a dead failed_pre_erp op still owed a reservation),
+  // the claim admits nothing and names the busy pallet. A stale marker from a crashed
+  // staging request is retired inside the claim itself (age-gated), so staging-vs-staging
+  // can't jam either.
+  const families = new Map<string, string>() // family -> first scanned serial (for messages)
+  for (const p of pallets) {
+    const fam = palletBase(p.batch)
+    if (!families.has(fam)) families.set(fam, p.batch)
+  }
+  const { data: claim, error: claimErr } = await supabaseAdmin.rpc('claim_staging_families', {
+    p_key: idempotencyKey,
+    p_created_by: userId,
+    p_so: soName,
+    p_pallets: [...families.entries()].map(([family, batch]) => ({ family, batch })),
+  })
+  // Fail CLOSED: if we cannot take the locks, do not stage.
+  if (claimErr || !claim) {
     return NextResponse.json({ error: 'Could not verify the pallets are free to stage; try again.' }, { status: 503 })
   }
-  if (busy && busy.length) {
+  if (!(claim as { ok?: boolean }).ok) {
+    const busy = ((claim as { busy?: { batch?: string; action?: string }[] }).busy ?? [])[0]
+    // The holder can finish between losing the claim and the busy re-query (it runs after
+    // the rollback) — an empty list still means "we lost", just with nobody left to name.
+    if (!busy?.batch) {
+      return NextResponse.json(
+        { error: 'Another operation just ran on one of these pallets; try again.' },
+        { status: 409 }
+      )
+    }
+    const busyAction = busy.action === 'stage-lock' ? 'staging' : busy.action ?? 'operation'
     return NextResponse.json(
-      {
-        error: `Pallet ${busy[0].batch ?? ''} has an unfinished ${busy[0].action ?? 'operation'} on it. Finish or clear that first, then stage it.`.replace('  ', ' '),
-      },
+      { error: `Pallet ${busy.batch} has an unfinished ${busyAction} on it. Finish or clear that first, then stage it.` },
       { status: 409 }
     )
   }
+
+  // Everything below runs under the family locks; the finally releases them. The release is
+  // guarded server-side by the main op row's status, so a same-key duplicate that 409s out
+  // of runInventoryOp cannot free the markers while the first worker is still reserving.
+  try {
 
   // Pallets reserved to a DIFFERENT order: hard-stop unless the operator
   // explicitly confirmed the move (allowMove). Same-order reservations are
@@ -189,7 +222,8 @@ export async function POST(req: NextRequest) {
     key: idempotencyKey,
     action: 'stage-reserve',
     createdBy: userId,
-    // family null: spans many pallets, no Stock Entry, so it sits outside the per-pallet lock.
+    // family null on the op row itself: it spans many pallets. The per-family locking is the
+    // marker rows claimed above — one per family, same index, released in the finally.
     meta: { warehouse: soName, qty: pallets.length, item_code: fingerprint, batch: null, family: null },
     erp: async () => {
       // Moved pallets: release the old reservation, REISSUE the pallet to its
@@ -284,4 +318,14 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json(result.body, { status: result.status })
+
+  } finally {
+    // Free the family locks. Server-side guard: release_staging_families refuses while the
+    // main op row is still pending/erp_committed, so only a request whose op actually
+    // finished (or never inserted its row) frees them. If THIS process dies before reaching
+    // here, the markers age out via the stale retire (15 min) — never a permanent jam.
+    await supabaseAdmin
+      .rpc('release_staging_families', { p_key: idempotencyKey })
+      .then(undefined, () => undefined)
+  }
 }

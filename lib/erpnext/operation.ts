@@ -73,13 +73,25 @@ const LOG = () => supabaseAdmin.from('inventory_ops_log')
 // far shorter than the hours/days a real jam sits for.
 const SUPERSEDE_MIN_AGE_MS = 15 * 60 * 1000
 
+// How long a finalize claim on an erp_committed row is exclusive. Far beyond any request's
+// maxDuration (120s), so a LIVE finalizer can never be raced — only a crashed one succeeded.
+const FINALIZE_LEASE_MS = 15 * 60 * 1000
+
+// Same age gate for retiring a stage-lock MARKER left by a crashed staging request (see
+// claim_staging_families in 20260714b_staging_family_locks.sql — the two must stay in sync).
+const STAGE_LOCK_STALE_MS = 15 * 60 * 1000
+
 // Actions whose erp() releases a staging reservation. If one of these died without recording
 // its staging finding, it predates the snapshot protocol and cannot be safely taken over.
 const RESERVATION_TOUCHING = new Set(['move', 'adjust', 'reprint', 'remove'])
 
 export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
   const { key, action, createdBy, meta, erp, reconcile, label, erpTouchedKey, finalize } = args
-  if (!/^[A-Za-z0-9-]{8,64}$/.test(key)) {
+  // '-fam-' is the reserved separator of staging lock-marker keys (<stagingKey>-fam-<family>).
+  // A client key containing it could collide with — or be LIKE-matched by — another key's
+  // marker namespace (round-17 should-fix). Real client keys are crypto.randomUUID() (hex,
+  // no 'm'), so nothing legitimate is refused.
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(key) || key.includes('-fam-')) {
     return { status: 400, body: { error: 'invalid idempotencyKey' } }
   }
   let committed: Committed | null = null
@@ -112,6 +124,70 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         return r
       })
   }
+  // Claim the exclusive right to run finalize() on an erp_committed row — EVERY path that
+  // reaches finalize() without already holding a fresh exclusive lease must pass through
+  // this, or two workers can re-reserve the same pallet concurrently (round-17 panel
+  // BLOCKER: the reconcile-success paths used to fall through to finalize un-leased).
+  //
+  // The claim is TIME-GATED, not a CAS on a value we read. A read-value CAS is
+  // TRANSFERABLE: while worker A is mid-finalize, worker B reads A's fresh stamp and CASes
+  // it away — B "wins" a claim A still believes it holds, and both run finalize (the exact
+  // double-reserve this exists to prevent; round-16 blocker #2). Honoring a claim only when
+  // the previous one is NULL or older than FINALIZE_LEASE_MS makes a LIVE finalizer
+  // unraceable — no request survives past maxDuration (120s), let alone 15 minutes — while
+  // a crashed worker's claim ages out so a later retry can still finish the re-reserve.
+  // The cost: for up to the lease window after a crash, a same-key retry answers duplicate
+  // (with finalizePending + any persisted warning) instead of finishing the job.
+  //
+  // Two sequential CAS attempts instead of one OR'd predicate: PostgREST rejects `or=`
+  // filters on mutations (PATCH + or= returns 42703 for ANY column — verified live
+  // 2026-07-14; GET + or= and plain PATCH filters are fine). Each UPDATE is individually
+  // atomic, and losing both is conclusive: a stamp fresh enough to defeat the .lt() also
+  // defeats the .is(null). A transport/DB error is NOT a loss — fail closed instead of
+  // reporting duplicate while nobody actually holds the lease (round-17 should-fix).
+  const claimFinalizeLease = async (): Promise<'won' | 'lost' | 'error'> => {
+    const t = new Date().toISOString()
+    const leaseCutoff = new Date(Date.now() - FINALIZE_LEASE_MS).toISOString()
+    const first = await LOG()
+      .update({ pending_since: t })
+      .eq('idempotency_key', key)
+      .eq('status', 'erp_committed')
+      .is('pending_since', null)
+      .select('idempotency_key')
+    if (first.error) return 'error'
+    let rows = first.data
+    if (!rows || rows.length === 0) {
+      const second = await LOG()
+        .update({ pending_since: t })
+        .eq('idempotency_key', key)
+        .eq('status', 'erp_committed')
+        .lt('pending_since', leaseCutoff)
+        .select('idempotency_key')
+      if (second.error) return 'error'
+      rows = second.data
+    }
+    if (!rows || rows.length === 0) return 'lost'
+    lease = t
+    return 'won'
+  }
+  // The lost-lease reply: ERP already committed, no ERP writes happen here, and the claim
+  // holder may still be RUNNING finalize — so the re-staging is not confirmed done. Callers
+  // must not read this as "fully finished" (finalizePending), and any persisted warning is
+  // replayed (a lost response must never resurface as a clean success while the pallet may
+  // still be off its order).
+  const finalizePendingReply = (c: Committed, warning?: string | null, unstagedFrom?: string | null, printJobId?: string | null): RunOpResult => ({
+    status: 200,
+    body: {
+      ok: true,
+      duplicate: true,
+      finalizePending: true,
+      batch: c.batch,
+      stockEntry: c.stockEntry,
+      printJobId: printJobId ?? null,
+      ...(warning ? { warning, unstagedFrom: unstagedFrom ?? undefined } : {}),
+    },
+  })
+
   let { error: insErr } = await insertRow()
 
   if (insErr) {
@@ -119,7 +195,30 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       .select('status, action, family, batch, item_code, station_id, qty, warehouse, erp_stock_entry, print_job_id, error, warning, reservation_snapshot, pending_since')
       .eq('idempotency_key', key)
       .maybeSingle()
-    if (!ex && insErr.code === '23505' && meta.family && erpTouchedKey) {
+    if (!ex && insErr.code === '23505' && meta.family) {
+      // A stage-lock MARKER may be holding this family. Markers are pure lock rows staging
+      // inserts via claim_staging_families — nothing ever executes under a marker's key (no
+      // erp() run, no stock document), so retiring a stale one cannot race in-flight work
+      // and does not weaken one-worker-per-key. A LIVE marker (staging still executing, or
+      // finished less than the gate ago) is left alone and this op 409s below like any
+      // other conflict. Without this, a crashed staging request would jam every pallet it
+      // touched — recreating the exact jam class this file exists to clear.
+      const markerCutoff = new Date(Date.now() - STAGE_LOCK_STALE_MS).toISOString()
+      const { data: retiredMarkers } = await LOG()
+        .update({ status: 'cancelled', error: `stale stage-lock retired by ${key}` })
+        .eq('family', meta.family)
+        .eq('action', 'stage-lock')
+        .eq('status', 'pending')
+        .lt('pending_since', markerCutoff)
+        .select('idempotency_key')
+      if (retiredMarkers && retiredMarkers.length > 0) {
+        const retry = await insertRow()
+        if (!retry.error) {
+          insErr = null
+        }
+      }
+    }
+    if (insErr && !ex && insErr.code === '23505' && meta.family && erpTouchedKey) {
       // No row for THIS key -> the insert tripped the partial unique index on `family`:
       // a DIFFERENT op holds this pallet family. Before 2026-07-14 a failed_pre_erp
       // holder held it FOREVER — every new attempt 409'd "ask an admin to clear it from
@@ -290,24 +389,15 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
     }
     if (ex.status === 'erp_committed') {
       committed = { batch: ex.batch ?? undefined, stockEntry: ex.erp_stock_entry ?? null }
-      // Claim the right to finish this op. finalize() re-creates a staging reservation, and
-      // it is check-then-create — two concurrent same-key resumes could each make one. CAS on
-      // the row's current pending_since so exactly ONE worker proceeds. (codex BLOCKER.)
-      const t = new Date().toISOString()
-      const prev = (ex as { pending_since?: string | null }).pending_since ?? null
-      const claim = LOG().update({ pending_since: t }).eq('idempotency_key', key).eq('status', 'erp_committed')
-      const { data: won } = await (prev === null
-        ? claim.is('pending_since', null)
-        : claim.eq('pending_since', prev)
-      ).select('idempotency_key')
-      if (!won || won.length === 0) {
-        // Someone else is finishing it. Return what ERP already committed — no ERP writes here.
-        return {
-          status: 200,
-          body: { ok: true, duplicate: true, batch: ex.batch, stockEntry: ex.erp_stock_entry, printJobId: ex.print_job_id },
-        }
+      // finalize() re-creates a staging reservation and is check-then-create — two
+      // concurrent same-key resumes could each make one. Exactly ONE worker proceeds.
+      const l = await claimFinalizeLease()
+      if (l === 'error') {
+        return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
       }
-      lease = t
+      if (l === 'lost') {
+        return finalizePendingReply(committed, ex.warning, ex.reservation_snapshot?.so, ex.print_job_id)
+      }
     } else if (ex.status === 'failed_pre_erp') {
       // Before re-running ERP, confirm it really didn't commit (a post-commit
       // checkpoint failure can also land here). If it did, resume; never re-run.
@@ -318,6 +408,17 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
           await LOG()
             .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
             .eq('idempotency_key', key)
+          // Reconcile proves the stock landed; it does NOT grant the right to finalize.
+          // The worker that committed it may be alive and heading to finalize itself —
+          // running finalize here too would double-re-reserve. Same lease as every other
+          // finalize entrance. (round-17 panel BLOCKER.)
+          const l = await claimFinalizeLease()
+          if (l === 'error') {
+            return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
+          }
+          if (l === 'lost') {
+            return finalizePendingReply(r, ex.warning, ex.reservation_snapshot?.so, ex.print_job_id)
+          }
         }
       }
       if (!committed) {
@@ -336,6 +437,9 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         // Re-probe AFTER taking the lease. reconcile() ran BEFORE the CAS, so a submit that
         // timed out could have landed in the gap; re-running erp() would duplicate it. Same
         // fence as the stale-pending path. (codex BLOCKER.)
+        // No claimFinalizeLease needed if this resumes to finalize: the status CAS above was
+        // single-winner and stamped a FRESH pending_since — this worker already holds an
+        // exclusive lease that any concurrent claimer's age gate will lose to.
         if (erpTouchedKey && (await erpTouchedKey(key))) {
           const r2 = reconcile ? await reconcile() : null
           if (r2) {
@@ -356,6 +460,18 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
           await LOG()
             .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
             .eq('idempotency_key', key)
+          // Same rule as the failed_pre_erp reconcile above: proving the stock landed is
+          // not the right to finalize. Here especially — a 'pending' row very often means
+          // the ORIGINAL worker is still alive just past its stock commit, about to run
+          // finalize itself; its insert-time pending_since is fresh, so this claim loses
+          // and we answer duplicate instead of racing it. (round-17 panel BLOCKER.)
+          const l = await claimFinalizeLease()
+          if (l === 'error') {
+            return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
+          }
+          if (l === 'lost') {
+            return finalizePendingReply(r, ex.warning, ex.reservation_snapshot?.so, ex.print_job_id)
+          }
         }
       }
       // A row CAN die in 'pending' (crash after erp() started, before any status write). We
