@@ -350,7 +350,7 @@ function NeedToMakePageContent() {
         <DataTable
           table={table}
           data={filtered}
-          noun="part"
+          noun={t('needToMake.noun')}
           exportFilename="need-to-make.csv"
           page="need-to-make"
           initialView={initialView}

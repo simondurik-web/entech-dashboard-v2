@@ -3,45 +3,49 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Home } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
-const pathLabels: Record<string, string> = {
-  orders: 'Orders',
-  'need-to-make': 'Need to Make',
-  'need-to-package': 'Need to Package',
-  staged: 'Staged',
-  shipped: 'Shipped',
-  inventory: 'Inventory',
-  'inventory-history': 'Inventory History',
-  'sales-overview': 'Sales Overview',
-  'sales-parts': 'Sales by Part',
-  'sales-customers': 'Sales by Customer',
-  'sales-dates': 'Sales by Date',
-  bom: 'Bill of Materials',
-  scheduling: 'Scheduling',
-  labels: 'Labels',
-  quotes: 'Quotes',
-  drawings: 'Drawings',
-  reports: 'Reports',
-  admin: 'Admin',
+// i18n keys reused from the sidebar nav so breadcrumb and sidebar always agree
+const pathLabelKeys: Record<string, string> = {
+  orders: 'nav.ordersData',
+  'need-to-make': 'nav.productionMake',
+  'need-to-package': 'nav.ordersQueue',
+  staged: 'nav.ordersStaged',
+  shipped: 'nav.ordersShipped',
+  inventory: 'nav.inventory',
+  'inventory-history': 'nav.inventoryHistory',
+  'sales-overview': 'nav.salesOverview',
+  'sales-parts': 'nav.salesByPart',
+  'sales-customers': 'nav.salesByCustomer',
+  'sales-dates': 'nav.salesByDate',
+  bom: 'nav.bom',
+  scheduling: 'nav.scheduling',
+  labels: 'nav.labels',
+  quotes: 'nav.quotes',
+  drawings: 'nav.drawingsLibrary',
+  reports: 'nav.reports',
+  admin: 'admin.page',
 }
 
-const sectionMap: Record<string, string> = {
-  orders: 'Production', 'need-to-make': 'Production', 'need-to-package': 'Production',
-  staged: 'Production', shipped: 'Production', inventory: 'Production',
-  'inventory-history': 'Production', bom: 'Production', scheduling: 'Production',
-  labels: 'Production', drawings: 'Production',
-  'sales-overview': 'Sales', 'sales-parts': 'Sales', 'sales-customers': 'Sales', 'sales-dates': 'Sales',
-  admin: 'Admin', reports: 'Reports', quotes: 'Quotes',
+const sectionKeys: Record<string, string> = {
+  orders: 'nav.production', 'need-to-make': 'nav.production', 'need-to-package': 'nav.production',
+  staged: 'nav.production', shipped: 'nav.production', inventory: 'nav.production',
+  'inventory-history': 'nav.production', bom: 'nav.production', scheduling: 'nav.production',
+  labels: 'nav.production', drawings: 'nav.production',
+  'sales-overview': 'nav.salesFinance', 'sales-parts': 'nav.salesFinance',
+  'sales-customers': 'nav.salesFinance', 'sales-dates': 'nav.salesFinance',
+  admin: 'admin.page', reports: 'nav.reports', quotes: 'nav.quotes',
 }
 
 export function BreadcrumbNav() {
+  const { t } = useI18n()
   const pathname = usePathname()
   const segments = pathname.split('/').filter(Boolean)
   if (segments.length === 0) return null
 
   const pageKey = segments[segments.length - 1]
-  const section = sectionMap[pageKey]
-  const label = pathLabels[pageKey] || pageKey
+  const sectionKey = sectionKeys[pageKey]
+  const label = pathLabelKeys[pageKey] ? t(pathLabelKeys[pageKey]) : pageKey
 
   return (
     <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
@@ -49,9 +53,9 @@ export function BreadcrumbNav() {
         <Home className="size-3.5" />
       </Link>
       <ChevronRight className="size-3" />
-      {section && (
+      {sectionKey && (
         <>
-          <span>{section}</span>
+          <span>{t(sectionKey)}</span>
           <ChevronRight className="size-3" />
         </>
       )}
