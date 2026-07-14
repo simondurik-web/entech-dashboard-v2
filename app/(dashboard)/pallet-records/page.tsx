@@ -1064,10 +1064,14 @@ export default function ProductionPage() {
           <div>
             <label className="block text-sm font-semibold text-muted-foreground mb-2">{t('pallet.photos')}</label>
             <div className="grid grid-cols-2 gap-3">
-              {[0, 1, 2, 3].map((idx) => (
+              {/* Grow one slot at a time up to 15 photos; always show at least the familiar 4 */}
+              {Array.from(
+                { length: Math.min(15, Math.max(4, photoUrls.filter(Boolean).length + 1, photoUrls.length)) },
+                (_, idx) => idx,
+              ).map((idx) => (
                 <div key={idx}>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    {idx === 0 ? t('pallet.photo1') : t(`pallet.photo${idx + 1}` as 'pallet.photo2')}
+                    {idx === 0 ? t('pallet.photo1') : `${t('pallet.photoN')} ${idx + 1} ${t('pallet.photoOptional')}`}
                   </label>
                   {photoUrls[idx] ? (
                     <div className="relative">

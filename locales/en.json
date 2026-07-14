@@ -1215,6 +1215,8 @@
   "pallets.pallet.number": "Pallet Number",
   "pallets.pallet.photo": "Take Photo",
   "pallets.pallet.photoAdded": "photo(s) added",
+  "pallets.pallet.photoN": "Photo",
+  "pallets.pallet.photoOptional": "(optional)",
   "pallets.pallet.weight": "Weight (lbs)",
   "pallets.pallet.length": "Length (in)",
   "pallets.pallet.width": "Width (in)",

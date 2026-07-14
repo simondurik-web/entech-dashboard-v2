@@ -557,7 +557,7 @@ export default function ShippingPage() {
     label: string,
     photos: string[],
     setter: React.Dispatch<React.SetStateAction<string[]>>,
-    max: number = 5,
+    max: number = 15,
   ) => (
     <div>
       <label className="block text-sm font-medium text-muted-foreground mb-1">
@@ -889,7 +889,7 @@ export default function ShippingPage() {
 
                 {/* Photos for this pallet */}
                 <div className="mt-2">
-                  <p className="text-xs text-muted-foreground mb-1">Photos ({(stagedBulkEdits[p.id]?.photo_urls || []).length}/5)</p>
+                  <p className="text-xs text-muted-foreground mb-1">Photos ({(stagedBulkEdits[p.id]?.photo_urls || []).length}/15)</p>
                   {(stagedBulkEdits[p.id]?.photo_urls || []).length > 0 && (
                     <div className="flex gap-2 mb-2 flex-wrap">
                       {(stagedBulkEdits[p.id]?.photo_urls || []).map((url, idx) => (
@@ -913,7 +913,7 @@ export default function ShippingPage() {
                       ))}
                     </div>
                   )}
-                  {(stagedBulkEdits[p.id]?.photo_urls || []).length < 5 && (
+                  {(stagedBulkEdits[p.id]?.photo_urls || []).length < 15 && (
                     <label className="block w-full h-12 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-sky-400 active:bg-sky-50 dark:active:bg-sky-950">
                       <div className="text-center">
                         <span className="text-lg">📷</span>
@@ -1000,7 +1000,7 @@ export default function ShippingPage() {
             )}
           </div>
           <p className="text-xs text-amber-700">{t('ship.palletPhotoHelp')}</p>
-          {multiPhotoField(t('ship.palletPhoto'), palletPhotos, setPalletPhotos, 5)}
+          {multiPhotoField(t('ship.palletPhoto'), palletPhotos, setPalletPhotos, 15)}
           <button
             onClick={handleSavePalletPhoto}
             disabled={savingPalletOnly || uploading || palletPhotos.length === 0}

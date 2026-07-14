@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       if (photo && !restoredPhotos.includes(photo)) {
         const emptyIdx = restoredPhotos.findIndex((p) => !p)
         if (emptyIdx >= 0) restoredPhotos[emptyIdx] = photo
-        else if (restoredPhotos.length < 4) restoredPhotos.push(photo)
+        else if (restoredPhotos.length < 15) restoredPhotos.push(photo)
       }
     }
 

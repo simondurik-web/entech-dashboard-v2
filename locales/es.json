@@ -1215,6 +1215,8 @@
   "pallets.pallet.number": "Número de Tarima",
   "pallets.pallet.photo": "Tomar Foto",
   "pallets.pallet.photoAdded": "foto(s) agregada(s)",
+  "pallets.pallet.photoN": "Foto",
+  "pallets.pallet.photoOptional": "(opcional)",
   "pallets.pallet.weight": "Peso (libras)",
   "pallets.pallet.length": "Largo (pulg)",
   "pallets.pallet.width": "Ancho (pulg)",
