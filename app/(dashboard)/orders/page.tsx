@@ -178,6 +178,13 @@ function OrdersPageContent() {
   // into the table only while searching (see tableData). Search is controlled at
   // the page level so we can widen the dataset when a query is active.
   const [archiveOrders, setArchiveOrders] = useState<Order[]>([])
+  // Chip next to the status filters: off = archive rows never merge into search
+  // results (Simon 2026-07-13 — old Fusion rows were drowning out live orders).
+  const [showArchived, setShowArchived] = useState(true)
+  // (customer, internal part) → customer part number, from customer_part_mappings.
+  // Feeds the optional "Customer Part #" column; keys are lowercased to match
+  // the ilike-by-name resolution the packing slip uses (lib/erpnext/customer-part.ts).
+  const [custPartByKey, setCustPartByKey] = useState<Map<string, string>>(new Map())
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -354,6 +361,21 @@ function OrdersPageContent() {
       },
     },
     { key: 'customer', label: t('table.customer'), sortable: true, filterable: true },
+    {
+      // Optional column (hidden by default, toggleable via Columns picker):
+      // the customer's own part number for this line, resolved from
+      // customer_part_mappings. Rows are enriched with the value (not
+      // render-only) so sort / filter / search / CSV export all see it.
+      key: 'customerPartNumber' as keyof OrderRow & string,
+      label: t('table.customerPart'),
+      sortable: true,
+      filterable: true,
+      defaultHidden: true,
+      render: (v) => {
+        const s = String(v ?? '')
+        return s ? <span className="whitespace-nowrap">{s}</span> : <span className="text-muted-foreground">-</span>
+      },
+    },
     {
       key: 'partNumber',
       label: t('table.partNumber'),
@@ -552,6 +574,29 @@ function OrdersPageContent() {
     }
   }, [])
 
+  // Load the customer-part-number lookup in the background (~600 small rows).
+  // Non-critical — without it the optional column just shows "-".
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await fetchJsonAndCache<{ customer: string; internalPart: string; customerPart: string }[]>(
+          '/api/customer-part-numbers'
+        )
+        if (!cancelled && Array.isArray(data)) {
+          setCustPartByKey(
+            new Map(data.map((m) => [`${m.customer.toLowerCase()}::${m.internalPart.toLowerCase()}`, m.customerPart]))
+          )
+        }
+      } catch {
+        /* lookup is optional */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Fetch label statuses for the icon — green once labels EXIST for the
   // line (generated or printed): a custom split that never went through the
   // preview-print PATCH left the icon gray (Simon 2026-07-09, SO-00102).
@@ -598,14 +643,33 @@ function OrdersPageContent() {
     setExpandedOrderKey((prev) => (prev === key ? null : key))
   }
 
-  const currentCat = useMemo(() => filterByCategory(orders, categoryFilter), [orders, categoryFilter])
+  // Stamp each row with its customer part number (when mapped) so the optional
+  // column can sort/filter/search/export on a real field. Unmapped rows are
+  // passed through untouched.
+  const enrichCustomerPart = useCallback(
+    (rows: Order[]): Order[] => {
+      if (custPartByKey.size === 0) return rows
+      return rows.map((o) => {
+        const cp = custPartByKey.get(
+          `${(o.customer || '').trim().toLowerCase()}::${(o.partNumber || '').trim().toLowerCase()}`
+        )
+        return cp ? ({ ...o, customerPartNumber: cp } as Order) : o
+      })
+    },
+    [custPartByKey]
+  )
+
+  const ordersEnriched = useMemo(() => enrichCustomerPart(orders), [orders, enrichCustomerPart])
+  const archiveEnriched = useMemo(() => enrichCustomerPart(archiveOrders), [archiveOrders, enrichCustomerPart])
+
+  const currentCat = useMemo(() => filterByCategory(ordersEnriched, categoryFilter), [ordersEnriched, categoryFilter])
   const browseFiltered = useMemo(
     () => filterByStatus(currentCat, activeStatuses) as OrderRow[],
     [currentCat, activeStatuses]
   )
   const archiveCat = useMemo(
-    () => filterByCategory(archiveOrders, categoryFilter),
-    [archiveOrders, categoryFilter]
+    () => filterByCategory(archiveEnriched, categoryFilter),
+    [archiveEnriched, categoryFilter]
   )
 
   // Default browse = current orders, status-filtered (unchanged). While searching
@@ -616,7 +680,7 @@ function OrdersPageContent() {
   // table with shipped backlog). Toggle "Shipped" on to search old orders.
   const tableData = useMemo<OrderRow[]>(() => {
     const q = search.trim()
-    if (q.length < 2 || archiveCat.length === 0) return browseFiltered
+    if (q.length < 2 || archiveCat.length === 0 || !showArchived) return browseFiltered
     // Current rows win; also dedup within the archive so a repeated IF#+line
     // can't produce a duplicate React key / double-expanded row.
     const keyOf = (o: Order) => `${o.ifNumber || 'no-if'}::${o.line || 'no-line'}`
@@ -629,7 +693,7 @@ function OrdersPageContent() {
       extra.push(a)
     }
     return filterByStatus([...currentCat, ...extra], activeStatuses) as OrderRow[]
-  }, [search, browseFiltered, currentCat, archiveCat, activeStatuses])
+  }, [search, browseFiltered, currentCat, archiveCat, activeStatuses, showArchived])
 
   const table = useDataTable({
     data: tableData,
@@ -735,6 +799,21 @@ function OrdersPageContent() {
             {t(STATUS_I18N[key])}
           </button>
         ))}
+        {/* Archive toggle — only shown while a search is active, because that's
+            the only time archive rows can appear in the table at all. */}
+        {search.trim().length >= 2 && archiveOrders.length > 0 && (
+          <button
+            onClick={() => setShowArchived((prev) => !prev)}
+            title={t('orders.archivedChipHint')}
+            className={`ml-3 px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
+              showArchived
+                ? 'bg-slate-500 text-white'
+                : 'bg-muted hover:bg-muted/80 opacity-50'
+            }`}
+          >
+            🗄 {t('orders.archivedChip')}
+          </button>
+        )}
       </div>
 
       {/* Loading state — shimmer skeletons */}

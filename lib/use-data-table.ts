@@ -108,6 +108,14 @@ export function useDataTable<T extends Record<string, unknown>>({
     const orderKeys = new Set(columnOrder)
     const missing = columns.filter((c) => !orderKeys.has(c.key)).map((c) => c.key)
     if (missing.length > 0) {
+      // A column this user has never seen (not in their stored order) must also
+      // honor its defaultHidden flag — otherwise anyone with saved prefs (whose
+      // hiddenColumns predate the column) gets a brand-new optional column
+      // forced visible. Doesn't mark prefs dirty: reconciliation isn't an edit.
+      const missingHidden = columns.filter((c) => !orderKeys.has(c.key) && c.defaultHidden).map((c) => c.key)
+      if (missingHidden.length > 0) {
+        setHiddenColumns((prev) => new Set([...prev, ...missingHidden]))
+      }
       setColumnOrder((prev) => {
         // Drop columns that no longer exist, then insert each new column at its
         // definition-adjacent position (right after its preceding defined column
