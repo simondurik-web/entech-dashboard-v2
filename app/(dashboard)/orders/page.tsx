@@ -799,9 +799,9 @@ function OrdersPageContent() {
             {t(STATUS_I18N[key])}
           </button>
         ))}
-        {/* Archive toggle — only shown while a search is active, because that's
-            the only time archive rows can appear in the table at all. */}
-        {search.trim().length >= 2 && archiveOrders.length > 0 && (
+        {/* Archive toggle — only shown while a search is active AND the current
+            category filter leaves archive rows that could actually appear. */}
+        {search.trim().length >= 2 && archiveCat.length > 0 && (
           <button
             onClick={() => setShowArchived((prev) => !prev)}
             title={t('orders.archivedChipHint')}

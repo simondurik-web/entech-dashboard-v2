@@ -13,20 +13,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
-    // Explicit range: supabase-js silently caps un-ranged selects at 1000 rows.
-    const { data, error } = await supabaseAdmin
-      .from('customer_part_mappings')
-      .select('internal_part_number, customer_part_number, customers(name)')
-      .range(0, 9999)
-    if (error) throw error
-
     type MappingRow = {
       internal_part_number: string | null
       customer_part_number: string | null
       customers: { name: string | null } | { name: string | null }[] | null
     }
-    const out = ((data ?? []) as MappingRow[])
-      .map((m) => {
+    // PostgREST caps each response at max_rows (1000 on this project) no matter
+    // the requested range — paginate in stable, ordered pages until a short
+    // page, same pattern as fetchAllRows in lib/supabase-data.ts.
+    const rows: MappingRow[] = []
+    const pageSize = 1000
+    let offset = 0
+    while (true) {
+      const { data, error } = await supabaseAdmin
+        .from('customer_part_mappings')
+        .select('internal_part_number, customer_part_number, customers(name)')
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      rows.push(...(data as MappingRow[]))
+      if (data.length < pageSize) break
+      offset += pageSize
+    }
+
+    const out = rows
+      .map((m: MappingRow) => {
         const cust = Array.isArray(m.customers) ? m.customers[0] : m.customers
         return {
           customer: cust?.name?.trim() || '',
