@@ -119,6 +119,31 @@ export async function POST(req: NextRequest) {
       continue
     }
 
+    // Hub Style must never be substituted with the hub MOLD — they are different
+    // attributes, and printing the mold as the style mislabeled Roll Tech hubs
+    // (line 3963 printed "236 Mold" where "Through hole" belonged, 2026-07-14).
+    // The ERPNext->dashboard sync now enriches hub_style per part (same as
+    // tire/hub/hub_mold), so this row should normally have it; this sibling
+    // backfill is defense for the gap between a brand-new order row and the next
+    // sync, and for a part whose style only a newer sibling order carries. Pull it
+    // from the newest sibling order of the SAME part. If no sibling knows, leave it
+    // blank: an empty field is visibly missing on the floor; a wrong value ships.
+    // (Runs after the exists check so a regenerate that will be rejected doesn't
+    // pay for the lookup.)
+    let hubStyle: string | null = (order.hub_style || '').trim() || null
+    if (!hubStyle && partNumber) {
+      const { data: sibling } = await supabaseAdmin
+        .from('dashboard_orders')
+        .select('hub_style')
+        .eq('part_number', partNumber)
+        .not('hub_style', 'is', null)
+        .neq('hub_style', '')
+        .order('line', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      hubStyle = (sibling?.hub_style || '').trim() || null
+    }
+
     // Insert one label per pallet — each gets a unique QR code
     const palletRows = Array.from({ length: numPackages }, (_, i) => {
       const palletNum = i + 1
@@ -136,7 +161,7 @@ export async function POST(req: NextRequest) {
         label_status: 'generated' as const,
         tire: order.tire || null,
         hub: order.hub || null,
-        hub_style: order.hub_style || order.hub_mold || null,
+        hub_style: hubStyle,
         bearings: order.bearings || null,
         po_number: order.po_number || null,
         if_number: order.if_number || null,
