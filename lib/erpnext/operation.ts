@@ -188,6 +188,66 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
     },
   })
 
+  // Resolve a LOST finalize lease. The holder may already have FINISHED (written 'done')
+  // between our claim attempt and now — re-read so a finished-clean op returns the normal
+  // done/duplicate body (with any label-pending + warning replay), NOT a false finalizePending
+  // error flash (round-18 codex #3). If it's still erp_committed, the holder is genuinely
+  // mid-finalize, so finalizePending is right.
+  const resolveLostLease = async (c: Committed): Promise<RunOpResult> => {
+    const { data: now } = await LOG()
+      .select('status, batch, erp_stock_entry, print_job_id, error, warning, reservation_snapshot')
+      .eq('idempotency_key', key)
+      .maybeSingle()
+    if (now?.status === 'done') {
+      const labelFailed = !now.print_job_id && typeof now.error === 'string' && now.error.startsWith('label:')
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          duplicate: true,
+          batch: now.batch,
+          stockEntry: now.erp_stock_entry,
+          printJobId: now.print_job_id,
+          ...(labelFailed ? { labelPending: true, message: 'Stock recorded; label print failed — use Reprint.' } : {}),
+          ...(now.warning ? { warning: now.warning, unstagedFrom: now.reservation_snapshot?.so } : {}),
+        },
+      }
+    }
+    return finalizePendingReply(
+      c,
+      now?.warning ?? null,
+      (now?.reservation_snapshot as { so?: string } | null)?.so ?? null,
+      now?.print_job_id ?? null,
+    )
+  }
+
+  // Transition a reconcile-proven-committed row to erp_committed AND take the finalize lease
+  // in ONE compare-and-swap on the prior status. Only the worker that flips the status wins,
+  // and it stamps its OWN fresh pending_since — so a stale-but-fresh lease left behind by the
+  // dead worker that wrote failed_pre_erp/pending can't block re-staging for the whole lease
+  // window (round-18 codex #1: without this, a reconcile-success retry loses claimFinalizeLease
+  // to a fresh-looking dead stamp and only warns for up to FINALIZE_LEASE_MS). A loser (someone
+  // else already transitioned) falls through to claimFinalizeLease against the live holder.
+  // Returns 'won' (this worker holds the lease — proceed to finalize) or a RunOpResult to return.
+  const claimViaReconcileTransition = async (r: Committed, fromStatus: string): Promise<'won' | RunOpResult> => {
+    const t = new Date().toISOString()
+    const { data: won, error } = await LOG()
+      .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null, pending_since: t })
+      .eq('idempotency_key', key)
+      .eq('status', fromStatus)
+      .select('idempotency_key')
+    if (error) return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
+    if (won && won.length > 0) {
+      lease = t
+      return 'won'
+    }
+    // Someone else transitioned it first — claim (or lose) the lease against the live holder.
+    const l = await claimFinalizeLease()
+    if (l === 'error') return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
+    if (l === 'lost') return await resolveLostLease(r)
+    return 'won'
+  }
+
   let { error: insErr } = await insertRow()
 
   if (insErr) {
@@ -396,7 +456,7 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
       }
       if (l === 'lost') {
-        return finalizePendingReply(committed, ex.warning, ex.reservation_snapshot?.so, ex.print_job_id)
+        return await resolveLostLease(committed)
       }
     } else if (ex.status === 'failed_pre_erp') {
       // Before re-running ERP, confirm it really didn't commit (a post-commit
@@ -405,20 +465,11 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         const r = await reconcile()
         if (r) {
           committed = r
-          await LOG()
-            .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
-            .eq('idempotency_key', key)
-          // Reconcile proves the stock landed; it does NOT grant the right to finalize.
-          // The worker that committed it may be alive and heading to finalize itself —
-          // running finalize here too would double-re-reserve. Same lease as every other
-          // finalize entrance. (round-17 panel BLOCKER.)
-          const l = await claimFinalizeLease()
-          if (l === 'error') {
-            return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
-          }
-          if (l === 'lost') {
-            return finalizePendingReply(r, ex.warning, ex.reservation_snapshot?.so, ex.print_job_id)
-          }
+          // Transition failed_pre_erp -> erp_committed AND claim the finalize lease in one CAS,
+          // stamping a fresh owning lease so the dead worker's stale-fresh pending_since can't
+          // block re-staging (round-18 codex #1). A loser gets a RunOpResult to return.
+          const outcome = await claimViaReconcileTransition(r, 'failed_pre_erp')
+          if (outcome !== 'won') return outcome
         }
       }
       if (!committed) {
@@ -457,21 +508,14 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         const r = await reconcile()
         if (r) {
           committed = r
-          await LOG()
-            .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
-            .eq('idempotency_key', key)
-          // Same rule as the failed_pre_erp reconcile above: proving the stock landed is
-          // not the right to finalize. Here especially — a 'pending' row very often means
-          // the ORIGINAL worker is still alive just past its stock commit, about to run
-          // finalize itself; its insert-time pending_since is fresh, so this claim loses
-          // and we answer duplicate instead of racing it. (round-17 panel BLOCKER.)
-          const l = await claimFinalizeLease()
-          if (l === 'error') {
-            return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
-          }
-          if (l === 'lost') {
-            return finalizePendingReply(r, ex.warning, ex.reservation_snapshot?.so, ex.print_job_id)
-          }
+          // Transition pending -> erp_committed AND claim the finalize lease in one CAS.
+          // Here especially the loser path matters: a 'pending' row very often means the
+          // ORIGINAL worker is still alive just past its stock commit, about to finalize
+          // itself — the CAS lets it keep its lease and we defer with finalizePending rather
+          // than racing it. (round-17 blocker; round-18 codex #1 made the transition stamp
+          // a fresh owning lease so a genuinely-dead pending row doesn't block for 15 min.)
+          const outcome = await claimViaReconcileTransition(r, 'pending')
+          if (outcome !== 'won') return outcome
         }
       }
       // A row CAN die in 'pending' (crash after erp() started, before any status write). We

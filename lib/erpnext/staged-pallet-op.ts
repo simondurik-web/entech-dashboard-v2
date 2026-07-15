@@ -155,6 +155,14 @@ export async function restoreReservation(
   if (!loc || loc.qty <= 0) {
     // No stock under this code (e.g. it was removed, or reissued to a new serial the caller
     // restores instead). Nothing to reserve, but the order lost its pallet — say so.
+    //
+    // KNOWN FAIL-LOUD LIMITATION (codex round-18 #2, pre-existing since commit 1): on the
+    // FAILURE path of a partial reissue, stock may have already moved to the NEW serial while
+    // this restore targets the OLD one — so we can't auto-re-reserve here and instead surface
+    // 'reservation_transfer_failed'. That is SAFE (the operator is told to re-stage before
+    // shipping; the order is never silently short), just not self-healing. Auto-restoring onto
+    // result_batch when the old serial is empty is a worthwhile follow-up, tracked separately —
+    // deliberately NOT bolted onto this PR (it touches the reissue-restore path of four routes).
     return 'reservation_transfer_failed'
   }
 
