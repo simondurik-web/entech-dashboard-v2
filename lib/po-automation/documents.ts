@@ -4,8 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 export const PO_DOC_BUCKET = 'po-documents'
 export const MAX_DOC_BYTES = 25 * 1024 * 1024 // 25 MB
 
-export type OrderDocType = 'bol' | 'erp_entry'
-export const ORDER_DOC_TYPES: OrderDocType[] = ['bol', 'erp_entry']
+export type OrderDocType = 'bol' | 'erp_entry' | 'customer_po'
+export const ORDER_DOC_TYPES: OrderDocType[] = ['bol', 'erp_entry', 'customer_po']
 
 export interface OrderDocument {
   id: string

@@ -79,13 +79,18 @@ export function OrderPoBolSection({
   const media: PoMediaItem[] = []
   if (pdfUrl) media.push({ url: pdfUrl, kind: 'pdf', label: t('po.detail.originalPo') })
   for (const url of screenshots) media.push({ url, kind: 'image' })
-  // ERP-entry proofs (SO verification PDFs) live with the PO, not with the BOLs.
-  for (const d of erpEntryDocs)
+  // ERP-entry proofs (SO verification PDFs) and customer-PO copies live with
+  // the PO, not with the BOLs. A customer_po row usually duplicates the
+  // po_pdf_url thumb above — skip it.
+  for (const d of erpEntryDocs) {
+    if (d.file_url === pdfUrl) continue
+    const prefix = d.doc_type === 'customer_po' ? t('po.detail.originalPo') : t('po.detail.erpEntryProof')
     media.push({
       url: d.file_url!,
       kind: isPdfDoc(d) ? 'pdf' : 'image',
-      label: d.doc_number ? `${t('po.detail.erpEntryProof')} ${d.doc_number}` : t('po.detail.erpEntryProof'),
+      label: d.doc_number ? `${prefix} ${d.doc_number}` : prefix,
     })
+  }
 
   return (
     <div className="space-y-3">
