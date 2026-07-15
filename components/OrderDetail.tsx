@@ -110,12 +110,16 @@ function PoErpEntrySection({
   const media: PoMediaItem[] = []
   if (pdfUrl) media.push({ url: pdfUrl, kind: 'pdf', label: t('po.detail.originalPo') })
   for (const url of screenshots) media.push({ url, kind: 'image', label: screenshotLabel(url) })
-  for (const d of erpEntryDocs)
+  for (const d of erpEntryDocs) {
+    // A customer_po row usually duplicates the po_pdf_url thumb above — skip it.
+    if (d.file_url === pdfUrl) continue
+    const prefix = d.doc_type === 'customer_po' ? t('po.detail.originalPo') : t('po.detail.erpEntryProof')
     media.push({
       url: d.file_url!,
       kind: isPdfDoc(d) ? 'pdf' : 'image',
-      label: d.doc_number ? `${t('po.detail.erpEntryProof')} ${d.doc_number}` : t('po.detail.erpEntryProof'),
+      label: d.doc_number ? `${prefix} ${d.doc_number}` : prefix,
     })
+  }
 
   return (
     <div

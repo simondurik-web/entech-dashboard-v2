@@ -10,11 +10,16 @@ export function isPdfDoc(doc: OrderDocument): boolean {
   return /\.pdf($|\?)/i.test(doc.file_url ?? '') || /\.pdf$/i.test(doc.file_name ?? '')
 }
 
+/** Doc types that belong to the "PO & ERP Entry" section (PO-side data). */
+const PO_SIDE_TYPES = new Set(['erp_entry', 'customer_po'])
+
 /**
- * ERP-entry proof documents (doc_type='erp_entry') for an order — the Sales
- * Order verification PDFs filed after an order is entered in ERPNext. They
- * render inside the "PO & ERP Entry" section; they are NOT bills of lading
- * (BillOfLadingSection lists doc_type='bol' only).
+ * PO-side documents for an order: ERP-entry proofs (doc_type='erp_entry' — the
+ * SO verification PDFs filed after entry in ERPNext) plus customer-PO copies
+ * (doc_type='customer_po' — attach_po_pdf.py's document rows). They render
+ * inside the "PO & ERP Entry" section; they are NOT bills of lading
+ * (BillOfLadingSection lists doc_type='bol' only). Callers dedupe customer_po
+ * rows against the processed_pos.po_pdf_url thumb they usually duplicate.
  */
 export function useErpEntryDocs(customer: string, poNumber: string, enabled = true): OrderDocument[] {
   const [docs, setDocs] = useState<OrderDocument[]>([])
@@ -30,7 +35,7 @@ export function useErpEntryDocs(customer: string, poNumber: string, enabled = tr
       .then((data) => {
         if (!active) return
         const rows: OrderDocument[] = Array.isArray(data?.documents) ? data.documents : []
-        setDocs(rows.filter((d) => d.doc_type === 'erp_entry' && isSafeStorageUrl(d.file_url)))
+        setDocs(rows.filter((d) => PO_SIDE_TYPES.has(d.doc_type) && isSafeStorageUrl(d.file_url)))
       })
       .catch(() => {
         if (active) setDocs([])
