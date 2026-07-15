@@ -450,6 +450,20 @@ export async function reserveBatchesToSO(
     // turning it off makes ERPNext silently SKIP every per-pallet reservation
     // (verified live 2026-07-04). The whole-pallet rule is enforced HERE.
     const bound = (await reservationsForBatches([p.batch]).catch(() => ({} as Record<string, BatchReservation>)))[p.batch]
+    // OWNERSHIP CHECK (round-21 codex BLOCKER): what is bound MUST belong to THIS Sales Order.
+    // If the pallet was re-staged to a DIFFERENT order in a race — e.g. this op's stage-lock
+    // marker got stale-retired (15-min), freeing the family, and another request grabbed the
+    // pallet — then ERPNext binds nothing new for us and `bound` reflects the OTHER order's
+    // full reservation. The quantity check below would PASS against it and mark this order
+    // done while it is actually short: a silent short-ship, the exact failure this whole
+    // change exists to prevent. Fail loud instead of confirming against someone else's stock.
+    // (Do NOT release it — releaseBatchReservation(expectedSo) refuses to cancel another SO's
+    // reservation anyway; there is nothing of ours to undo.)
+    if (bound && bound.so !== soName) {
+      throw new Error(
+        `Pallet ${p.batch} is now reserved to ${bound.so}, not ${soName} — another order took it while this one was being staged. Re-scan and stage it fresh.`
+      )
+    }
     const boundQty = Number(bound?.reservedQty ?? 0)
     if (boundQty + 1e-6 < p.qty) {
       await releaseBatchReservation(p.batch, soName).catch(() => undefined)
