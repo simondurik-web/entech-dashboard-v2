@@ -119,6 +119,7 @@ AS $$
 DECLARE
   v_snapshot jsonb;
   v_retired  int;
+  v_now      timestamptz := now();  -- one stamp for the insert AND the returned lease
 BEGIN
   -- Retire every dead holder the caller vetted, keeping any reservation debt they carry.
   -- The CAS on status = 'failed_pre_erp' means a same-key retry that just claimed its row
@@ -163,9 +164,13 @@ BEGIN
      -- MUST be stamped. A pending row with a NULL pending_since can never be aged, so a
      -- crash during erp() would lock this family forever — a new permanent jam, created by
      -- the very path that exists to clear jams.
-     now());
+     v_now);
 
-  RETURN jsonb_build_object('retired', v_retired, 'inherited_snapshot', v_snapshot);
+  -- Return the stamped pending_since as 'lease' so the caller uses it DIRECTLY as its lease,
+  -- with no separate readback. A readback could transient-fail and leave the caller with a
+  -- null lease (unguarded terminal writes — round-19 should-fix). (`::text` = ISO 8601, which
+  -- is what the JS layer compares pending_since against.)
+  RETURN jsonb_build_object('retired', v_retired, 'inherited_snapshot', v_snapshot, 'lease', v_now::text);
 
 EXCEPTION
   -- Lost the race: someone else claimed the family (or reused our key) between our read and

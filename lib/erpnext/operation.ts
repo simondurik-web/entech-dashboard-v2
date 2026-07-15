@@ -377,10 +377,15 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         }
         if (claimed) {
           // The row is ours, already carrying any inherited debt. Fall through to the normal
-          // first-run path (ERP phase). Read back the pending_since the function stamped —
-          // that is our lease on this attempt.
-          const { data: mine } = await LOG().select('pending_since').eq('idempotency_key', key).maybeSingle()
-          lease = (mine?.pending_since as string) ?? null
+          // first-run path (ERP phase). The RPC RETURNS the pending_since it stamped as
+          // `lease` — use it directly, so a transient readback failure can't leave us with a
+          // null lease and unguarded terminal writes (round-19 should-fix). Fall back to a
+          // readback only in the impossible case the field is absent.
+          lease = (claimed as { lease?: string }).lease ?? null
+          if (!lease) {
+            const { data: mine } = await LOG().select('pending_since').eq('idempotency_key', key).maybeSingle()
+            lease = (mine?.pending_since as string) ?? null
+          }
           insErr = null
           ex = null
         }
@@ -560,12 +565,18 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       return { status: 502, body: { error: `${action} failed: ${msg.slice(0, 200)}` } }
     }
     committed = r
-    // Best-effort checkpoint. If THIS write fails the row stays 'pending';
-    // a retry's reconcile() will detect the committed ERP doc and resume —
-    // it must NOT be treated as a pre-ERP failure (that would duplicate stock).
-    await updateOwn({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null })
-      .eq('status', 'pending')
-      .then(undefined, () => undefined)
+    // Checkpoint to erp_committed AND RE-VERIFY the finalize lease in one CAS — the same
+    // mechanism every other finalize entrance uses. The insert/supersede lease is NOT
+    // guaranteed to survive a slow erp(): a same-key retry that reconciled the just-committed
+    // stock can STEAL the row (pending -> erp_committed, fresh lease) while erp() is still
+    // returning. Relying on the stale insert lease here let the first-run worker AND the
+    // reconcile winner both run finalize() -> double re-reserve. (round-19 codex+grok BLOCKER.)
+    // claimViaReconcileTransition flips pending -> erp_committed with a fresh OWNING lease when
+    // we still hold the row; if the row was stolen it returns the lost-lease response and we
+    // do NOT finalize/label. A transport error returns 503 (safe: stock is committed, a retry
+    // reconciles and resumes — never re-runs erp()).
+    const outcome = await claimViaReconcileTransition(r, 'pending')
+    if (outcome !== 'won') return outcome
   }
 
   // Finalize phase. Runs whenever ERP is known-committed — on a fresh commit AND on a
