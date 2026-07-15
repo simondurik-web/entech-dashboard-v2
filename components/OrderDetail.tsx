@@ -8,6 +8,7 @@ import { PhotoGrid } from '@/components/ui/PhotoGrid'
 import { PoMediaThumbs, type PoMediaItem } from '@/components/po-automation/PoMediaThumbs'
 import { BillOfLadingSection } from '@/components/po-automation/BillOfLadingSection'
 import { ErpShippingDocs } from '@/components/po-automation/ErpShippingDocs'
+import { useErpEntryDocs, isPdfDoc } from '@/components/po-automation/useErpEntryDocs'
 import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { getDriveThumbUrl } from '@/lib/drive-utils'
 import { useI18n } from '@/lib/i18n'
@@ -53,12 +54,13 @@ interface PoMatch {
 }
 
 /**
- * "PO & Fusion Entry" section for the order detail. Shows the customer's
- * original PO PDF + the Fusion entry screenshots as compact thumbnails
- * (PoMediaThumbs — click to expand/download). Only mounted for permitted users
- * with a customer + poNumber present, so the fetch is gated by the caller.
+ * "PO & ERP Entry" section for the order detail. Shows the customer's original
+ * PO PDF, any legacy Fusion-entry screenshots, and the ERP-entry proof PDFs
+ * (doc_type='erp_entry') as compact thumbnails (PoMediaThumbs — click to
+ * expand/download). Only mounted for permitted users with a customer +
+ * poNumber present, so the fetch is gated by the caller.
  */
-function PoFusionSection({
+function PoErpEntrySection({
   customer,
   poNumber,
   userId,
@@ -70,6 +72,7 @@ function PoFusionSection({
   const { t } = useI18n()
   const [match, setMatch] = useState<PoMatch | null>(null)
   const [loading, setLoading] = useState(true)
+  const erpEntryDocs = useErpEntryDocs(customer, poNumber)
 
   // The caller remounts this component via a key on (customer, poNumber), so the
   // initial state (loading=true, match=null) already resets per lookup — we do
@@ -101,12 +104,18 @@ function PoFusionSection({
   const screenshots = Array.isArray(match?.screenshot_urls)
     ? match!.screenshot_urls.filter((u): u is string => typeof u === 'string' && isSafeStorageUrl(u))
     : []
-  // Compact thumbnails: the PO PDF first, then the Fusion screenshots — small
-  // pallet-style tiles that expand/download in a modal on click (no more giant
-  // full-width inline PDF).
+  // Compact thumbnails: the PO PDF first, then any legacy Fusion screenshots,
+  // then the ERP-entry proof PDFs — small pallet-style tiles that expand/
+  // download in a modal on click (no more giant full-width inline PDF).
   const media: PoMediaItem[] = []
   if (pdfUrl) media.push({ url: pdfUrl, kind: 'pdf', label: t('po.detail.originalPo') })
   for (const url of screenshots) media.push({ url, kind: 'image', label: screenshotLabel(url) })
+  for (const d of erpEntryDocs)
+    media.push({
+      url: d.file_url!,
+      kind: isPdfDoc(d) ? 'pdf' : 'image',
+      label: d.doc_number ? `${t('po.detail.erpEntryProof')} ${d.doc_number}` : t('po.detail.erpEntryProof'),
+    })
 
   return (
     <div
@@ -114,7 +123,7 @@ function PoFusionSection({
       style={{ borderTopWidth: 2, borderTopColor: 'rgb(6, 182, 212)' }}
     >
       <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-cyan-400">
-        <Inbox className="size-3" /> {t('po.detail.poFusionEntry')}
+        <Inbox className="size-3" /> {t('po.detail.poErpEntry')}
         {match?.so_numbers && (
           <span className="ml-auto rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px]">
             {t('po.detail.soNumbers')} {match.so_numbers}
@@ -127,10 +136,12 @@ function PoFusionSection({
           <div className="h-3 w-3 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
           {t('ui.loading')}
         </div>
+      ) : media.length > 0 ? (
+        // Proofs may exist even with no processed_pos match (e.g. Cascade's
+        // recurring static PO is entered by hand) — media wins over "no record".
+        <PoMediaThumbs items={media} size="md" />
       ) : !match ? (
         <p className="text-[10px] text-muted-foreground">{t('po.detail.noRecord')}</p>
-      ) : media.length > 0 ? (
-        <PoMediaThumbs items={media} size="md" />
       ) : (
         <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <ImageOff className="size-3" />
@@ -695,9 +706,9 @@ export function OrderDetail({
             {/* ── ERP pallets assigned to this order ── */}
             <ErpPalletsSection ifNumber={ifNumber} partNumber={partNumber} />
 
-            {/* ── PO & Fusion Entry — role-gated (PO Automation access) ── */}
+            {/* ── PO & ERP Entry — role-gated (PO Automation access) ── */}
             {showPoSection && (
-              <PoFusionSection
+              <PoErpEntrySection
                 key={`${customer!.trim()}|${poNumber!.trim()}`}
                 customer={customer!.trim()}
                 poNumber={poNumber!.trim()}
@@ -705,7 +716,7 @@ export function OrderDetail({
               />
             )}
 
-            {/* ── Bill of Lading — role-gated, sits beside PO & Fusion Entry ── */}
+            {/* ── Bill of Lading — role-gated, sits beside PO & ERP Entry ── */}
             {showPoSection && (
               <BillOfLadingSection
                 key={`bol|${customer!.trim()}|${poNumber!.trim()}`}

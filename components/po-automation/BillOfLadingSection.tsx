@@ -80,7 +80,10 @@ export function BillOfLadingSection({
         cache: 'no-store',
       })
       const data = res.ok ? await res.json() : { documents: [] }
-      if (active()) setDocs(Array.isArray(data?.documents) ? data.documents : [])
+      // BOLs only — ERP-entry proofs (doc_type='erp_entry') belong to the
+      // "PO & ERP Entry" section, not here. Legacy rows have doc_type='bol'.
+      const rows: OrderDocument[] = Array.isArray(data?.documents) ? data.documents : []
+      if (active()) setDocs(rows.filter((d) => (d.doc_type ?? 'bol') === 'bol'))
     } catch {
       if (active()) setDocs([])
     } finally {

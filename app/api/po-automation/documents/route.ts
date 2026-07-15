@@ -16,25 +16,35 @@ import { requireUserOrService } from '@/lib/require-user'
 
 export const dynamic = 'force-dynamic'
 
-async function gate(req: NextRequest): Promise<NextResponse | string> {
+interface DocsCaller {
+  userId: string
+  isService: boolean
+  /** PO-Automation access — REQUIRED for non-BOL doc types (erp_entry docs are
+   *  PO-side data; a shipping-BOL-only caller must never read/write/delete them). */
+  poAccess: boolean
+}
+
+async function gate(req: NextRequest): Promise<NextResponse | DocsCaller> {
   // requireUserOrService (not requireUser): the BOL / PO-PDF auto-upload scripts
   // (release_toter.py, attach_po_pdf.py) POST here server-side with no Supabase
   // user session, authenticating via the x-service-key shared secret instead.
   const authed = await requireUserOrService(req)
   if (!authed?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  // A valid service key IS the authorization (skip the per-user role check); a
-  // human caller passes if they can access PO Automation OR are allowed to
+  // A valid service key IS the authorization (skip the per-user role check).
+  if (authed.isService) return { userId: authed.id, isService: true, poAccess: true }
+  // A human caller passes if they can access PO Automation OR are allowed to
   // manage shipping BOLs (Admin/Manager/Shipping Manager) — the latter lets a
   // shipping manager without PO-Automation access still handle BOLs. NOTE: this
   // is intentionally a UNION, not the shipping-only role set: PO-Automation users
   // have always been able to manage BOLs on the PO surface, so requiring the
   // shipping role here would REGRESS that. No new capability is granted — each
-  // group keeps exactly what it already had. Surface-specific visibility (only
-  // the 3 roles see the controls in Shipping Overview) is handled client-side.
-  if (!authed.isService && !(await canAccessPoAutomation(authed.id)) && !(await canManageShippingBol(authed.id))) {
+  // group keeps exactly what it already had. Doc-TYPE scoping (BOL-only callers
+  // never see/touch erp_entry docs) is enforced per-handler via `poAccess`.
+  const poAccess = await canAccessPoAutomation(authed.id)
+  if (!poAccess && !(await canManageShippingBol(authed.id))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  return authed.id
+  return { userId: authed.id, isService: false, poAccess }
 }
 
 function norm(v: string | null): string {
@@ -50,6 +60,7 @@ function norm(v: string | null): string {
 export async function GET(req: NextRequest) {
   const gated = await gate(req)
   if (gated instanceof NextResponse) return gated
+  const caller = gated
 
   const sp = new URL(req.url).searchParams
   const customer = sp.get('customer')
@@ -75,7 +86,11 @@ export async function GET(req: NextRequest) {
   // casing variance of the SAME party (e.g. "SERVICE CASTER CORPORATION" vs
   // "Service Caster Corporation") still matches; different parties never do.
   const wantCustomer = norm(customer)
-  const rows = (data ?? []).filter((d) => norm(d.customer) === wantCustomer)
+  let rows = (data ?? []).filter((d) => norm(d.customer) === wantCustomer)
+
+  // Doc-type scoping: erp_entry docs are PO-side data — a shipping-BOL-only
+  // caller gets BOLs only. Server-side, never left to the UI filters.
+  if (!caller.poAccess) rows = rows.filter((d) => (d.doc_type ?? 'bol') === 'bol')
 
   return NextResponse.json({ documents: rows })
 }
@@ -92,7 +107,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const gated = await gate(req)
   if (gated instanceof NextResponse) return gated
-  const userId = gated
+  const caller = gated
+  const userId = caller.userId
 
   const form = await req.formData()
   const file = form.get('file')
@@ -101,9 +117,16 @@ export async function POST(req: NextRequest) {
   const docNumber = str(form.get('doc_number'))
   const notes = str(form.get('notes'))
   const docTypeRaw = str(form.get('doc_type')) ?? 'bol'
-  const docType: OrderDocType = ORDER_DOC_TYPES.includes(docTypeRaw as OrderDocType)
-    ? (docTypeRaw as OrderDocType)
-    : 'bol'
+  // Reject unknown types outright — silently coercing a mistyped 'ERP_ENTRY'
+  // to 'bol' would misfile a PO-side proof where BOL-only callers can see it.
+  if (!ORDER_DOC_TYPES.includes(docTypeRaw as OrderDocType)) {
+    return NextResponse.json({ error: `Unsupported doc_type '${docTypeRaw}'` }, { status: 400 })
+  }
+  const docType = docTypeRaw as OrderDocType
+  // Non-BOL doc types are PO-side data — BOL-only shipping callers can't file them.
+  if (docType !== 'bol' && !caller.poAccess) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'No file' }, { status: 400 })
@@ -170,10 +193,10 @@ export async function POST(req: NextRequest) {
       po_number: po,
       changed_by: userId,
       changed_by_name: actor.name,
-      changes: [{ field: 'bol_added', old: null, new: docNumber || fileName }],
+      changes: [{ field: `${docType}_added`, old: null, new: docNumber || fileName }],
       note: null,
     })
-  if (auditErr) console.error('[po-automation] BOL add audit error:', auditErr)
+  if (auditErr) console.error('[po-automation] document add audit error:', auditErr)
 
   return NextResponse.json({ document: row })
 }
@@ -182,17 +205,34 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const gated = await gate(req)
   if (gated instanceof NextResponse) return gated
-  const userId = gated
+  const caller = gated
+  const userId = caller.userId
 
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const { data: doc } = await supabaseAdmin
+  const { data: doc, error: lookupErr } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
-    .select('file_url, po_number, doc_number, file_name')
+    .select('file_url, po_number, doc_type, doc_number, file_name')
     .eq('id', id)
     .single()
+
+  // The lookup must SUCCEED before we authorize — deleting past a failed
+  // lookup would skip the doc-type check (fail-open under a transient DB
+  // error). PGRST116 = zero rows (a plain 404); anything else is a real
+  // DB failure and must not read as "already gone".
+  if (lookupErr && lookupErr.code !== 'PGRST116') {
+    return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })
+  }
+  if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Doc-type scoping mirrors GET/POST: a BOL-only caller must not delete
+  // erp_entry docs (their ids are hidden from that caller's GET, but ids must
+  // not be a capability — authorize the mutation itself).
+  if ((doc.doc_type ?? 'bol') !== 'bol' && !caller.poAccess) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   // Delete the DB row FIRST — a storage-removal failure then leaves an orphan
   // object but never a DB row pointing at a missing file.
@@ -224,10 +264,17 @@ export async function DELETE(req: NextRequest) {
         po_number: doc.po_number ?? null,
         changed_by: userId,
         changed_by_name: actor.name,
-        changes: [{ field: 'bol_removed', old: doc.doc_number || doc.file_name || null, new: null }],
+        changes: [
+          {
+            // Normalize against the allowlist — never interpolate a raw DB value.
+            field: `${ORDER_DOC_TYPES.includes(doc.doc_type as OrderDocType) ? doc.doc_type : 'bol'}_removed`,
+            old: doc.doc_number || doc.file_name || null,
+            new: null,
+          },
+        ],
         note: null,
       })
-    if (auditErr) console.error('[po-automation] BOL delete audit error:', auditErr)
+    if (auditErr) console.error('[po-automation] document delete audit error:', auditErr)
   }
 
   return NextResponse.json({ ok: true })
@@ -242,7 +289,7 @@ export async function DELETE(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const gated = await gate(req)
   if (gated instanceof NextResponse) return gated
-  const userId = gated
+  const userId = gated.userId
 
   const form = await req.formData()
   const id = str(form.get('id'))
@@ -255,9 +302,10 @@ export async function PATCH(req: NextRequest) {
     .eq('id', id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  // Defensive: this route only manages BOLs today, but guard against editing a
-  // future non-BOL doc_type through the same id-based endpoint.
-  if (existing.doc_type && existing.doc_type !== 'bol') {
+  // PATCH edits BOLs only. Non-BOL docs (erp_entry proofs) are immutable through
+  // this endpoint for EVERY caller — the guard runs before any edit logic, so a
+  // BOL-only caller can never modify a PO-side document by id.
+  if ((existing.doc_type ?? 'bol') !== 'bol') {
     return NextResponse.json({ error: 'Unsupported document type' }, { status: 400 })
   }
 
