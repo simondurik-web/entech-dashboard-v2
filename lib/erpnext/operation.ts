@@ -229,23 +229,48 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
   // to a fresh-looking dead stamp and only warns for up to FINALIZE_LEASE_MS). A loser (someone
   // else already transitioned) falls through to claimFinalizeLease against the live holder.
   // Returns 'won' (this worker holds the lease — proceed to finalize) or a RunOpResult to return.
+  const err503: RunOpResult = { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
   const claimViaReconcileTransition = async (r: Committed, fromStatus: string): Promise<'won' | RunOpResult> => {
-    const t = new Date().toISOString()
-    const { data: won, error } = await LOG()
-      .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null, pending_since: t })
-      .eq('idempotency_key', key)
-      .eq('status', fromStatus)
-      .select('idempotency_key')
-    if (error) return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
-    if (won && won.length > 0) {
-      lease = t
-      return 'won'
+    // We hold a reconciliation PROOF that ERP committed. So ANY not-yet-finalized state is
+    // ours to take over: 'pending' (still running / another reconciler hasn't won) OR
+    // 'failed_pre_erp' (the original worker COMMIT-then-THREW and wrote failed_pre_erp after
+    // our reconcile — round-20 codex BLOCKER: without taking it over here we'd return
+    // finalizePending while nobody owns the lease, leaving the family jammed). We loop because
+    // the row can move under us; each iteration transitions from whatever it actually is now.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const from = attempt === 0 ? fromStatus : undefined
+      let status = from
+      if (status === undefined) {
+        const { data: cur, error } = await LOG().select('status').eq('idempotency_key', key).maybeSingle()
+        if (error) return err503
+        status = (cur?.status as string) ?? 'done' // row vanished -> treat as finished
+      }
+      if (status === 'done' || status === 'failed' || status === 'error' || status === 'cancelled') {
+        return await resolveLostLease(r)
+      }
+      if (status === 'erp_committed') {
+        // Someone else already transitioned; contend for the finalize lease against them.
+        const l = await claimFinalizeLease()
+        if (l === 'error') return err503
+        if (l === 'won') return 'won'
+        return await resolveLostLease(r) // live holder mid-finalize (or just finished)
+      }
+      // 'pending' or 'failed_pre_erp' — take it over: flip to erp_committed with a fresh
+      // OWNING lease, guarded on the exact status so exactly one worker wins.
+      const t = new Date().toISOString()
+      const { data: won, error } = await LOG()
+        .update({ status: 'erp_committed', batch: r.batch ?? null, erp_stock_entry: r.stockEntry ?? null, pending_since: t })
+        .eq('idempotency_key', key)
+        .eq('status', status)
+        .select('idempotency_key')
+      if (error) return err503
+      if (won && won.length > 0) {
+        lease = t
+        return 'won'
+      }
+      // Lost this transition — the row moved. Loop and re-read its current status.
     }
-    // Someone else transitioned it first — claim (or lose) the lease against the live holder.
-    const l = await claimFinalizeLease()
-    if (l === 'error') return { status: 503, body: { error: 'Could not confirm the operation state; try again.' } }
-    if (l === 'lost') return await resolveLostLease(r)
-    return 'won'
+    return err503 // gave up after repeated contention — safe: stock committed, a retry resumes
   }
 
   let { error: insErr } = await insertRow()
@@ -372,8 +397,22 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
           p_result_batch: (meta.result_batch as string) ?? null,
         })
         if (rpcErr) {
-          // Fail closed: we do not hold the family and nothing was half-done.
-          return { status: 503, body: { error: 'Could not take over a previous failed operation on this pallet; try again.' } }
+          // The RPC is one transaction, but its RESPONSE can be lost after it commits. Blindly
+          // 503-ing would strand a successor row we actually created as 'pending' forever (a
+          // retry can't reclaim an ambiguous pending row → the family jams; round-20 codex
+          // should-fix). Read back our key: if the claim committed (our row exists), adopt it
+          // and resume; only 503 when nothing was created.
+          const { data: mine } = await LOG()
+            .select('status, pending_since, reservation_snapshot')
+            .eq('idempotency_key', key)
+            .maybeSingle()
+          if (mine && mine.status === 'pending') {
+            lease = (mine.pending_since as string) ?? null
+            insErr = null
+            ex = null
+          } else {
+            return { status: 503, body: { error: 'Could not take over a previous failed operation on this pallet; try again.' } }
+          }
         }
         if (claimed) {
           // The row is ours, already carrying any inherited debt. Fall through to the normal

@@ -177,31 +177,26 @@ BEGIN
      AND idempotency_key LIKE p_key || '-fam-%';
 
   SELECT status INTO v_main_status FROM inventory_ops_log WHERE idempotency_key = p_key;
-  IF v_main_status IN ('pending', 'erp_committed') THEN
+  -- KEEP the locks held whenever the staging op is still executing OR RETRYABLE. `failed_pre_erp`
+  -- is retryable: a same-key retry resumes and RE-RUNS staging ERP — if we cancelled its markers
+  -- here it would run without family locks, reopening the staging-vs-inventory theft race
+  -- (round-20 codex BLOCKER). Treat it exactly like pending/erp_committed.
+  IF v_main_status IN ('pending', 'erp_committed', 'failed_pre_erp') THEN
     RETURN 0;
   END IF;
 
-  IF v_main_status IS NULL THEN
-    -- No main row: siblings may still be executing their pre-op phase, so only the LAST
-    -- holder may free the locks.
-    UPDATE inventory_ops_log
-       SET status = 'cancelled'
-     WHERE action = 'stage-lock'
-       AND status = 'pending'
-       AND coalesce(qty, 0) <= 0
-       AND idempotency_key LIKE p_key || '-fam-%';
-  ELSE
-    -- Terminal main row: the operation itself is finished. Any remaining same-key sibling
-    -- can only be heading toward the done/duplicate replay (reads, no ERP writes), so the
-    -- refcount no longer gates the cancel — this also repays the count a CRASHED earlier
-    -- holder leaked, which would otherwise keep the pallets locked for the full stale
-    -- window after a clean crash-retry-success.
-    UPDATE inventory_ops_log
-       SET status = 'cancelled'
-     WHERE action = 'stage-lock'
-       AND status = 'pending'
-       AND idempotency_key LIKE p_key || '-fam-%';
-  END IF;
+  -- Main op is genuinely finished (done / cancelled) or never existed. Free the markers only
+  -- when the LAST holder has released (refcount reached 0) — NEVER pull locks out from under a
+  -- live same-key sibling. A crashed sibling that leaked its increment keeps the markers a
+  -- little longer; the 15-min stale retire is the backstop (it never causes a theft, only a
+  -- brief extra hold on already-staged pallets). This is the ONLY cancel path — the previous
+  -- "terminal main row cancels regardless of refcount" branch was the theft-race reopener.
+  UPDATE inventory_ops_log
+     SET status = 'cancelled'
+   WHERE action = 'stage-lock'
+     AND status = 'pending'
+     AND coalesce(qty, 0) <= 0
+     AND idempotency_key LIKE p_key || '-fam-%';
   GET DIAGNOSTICS v_released = ROW_COUNT;
   RETURN v_released;
 END;
