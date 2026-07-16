@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react'
 import type { Order } from '@/lib/google-sheets-shared'
 import { authedFetch, authedJson } from '@/lib/authed-fetch'
 import { buildLoadSheetHtml, openPrintShell, writePrintHtml, type LoadSheetOrder } from '@/lib/truckload-loadsheet'
+import { useI18n } from '@/lib/i18n'
 import enLocale from '@/locales/en.json'
 import esLocale from '@/locales/es.json'
 
@@ -318,6 +319,8 @@ export default function PalletLoadCalculator({
   activeTruckloads?: ActiveTruckloadRef[]
 }) {
   const t = LABELS[lang]
+  // hosts don't pass `lang` — the load sheet follows the app-wide language
+  const { language } = useI18n()
 
   const [trailerKey, setTrailerKey] = useState<TrailerKey>(53)
   const [maxPayload, setMaxPayload] = useState(45000)
@@ -1186,7 +1189,7 @@ export default function PalletLoadCalculator({
           className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           {tlCreatedId
-            ? `🖨️ ${lang === 'es' ? 'Hoja de Carga' : 'Load Sheet'} (${tlCreated})`
+            ? `🖨️ ${language === 'es' ? 'Hoja de Carga' : 'Load Sheet'} (${tlCreated})`
             : `📄 ${lang === 'es' ? 'Exportar PDF' : 'Export Load Report (PDF)'}`}
         </button>
         {canCreateTruckload && (
@@ -1214,7 +1217,7 @@ export default function PalletLoadCalculator({
               onClick={() => printCreatedLoadSheet()}
               className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
             >
-              🖨️ {lang === 'es' ? 'Hoja de Carga' : 'Load Sheet'}
+              🖨️ {language === 'es' ? 'Hoja de Carga' : 'Load Sheet'}
             </button>
           )}
         </div>
@@ -1290,7 +1293,7 @@ export default function PalletLoadCalculator({
   // report and the load sheet used to be two different documents).
   async function printCreatedLoadSheet() {
     if (!tlCreatedId) return
-    const dict = (lang === 'es' ? esLocale : enLocale) as Record<string, string>
+    const dict = (language === 'es' ? esLocale : enLocale) as Record<string, string>
     const enDict = enLocale as Record<string, string>
     const tr = (key: string) => dict[key] ?? enDict[key] ?? key
     const win = openPrintShell() // before the await — Safari popup blocking

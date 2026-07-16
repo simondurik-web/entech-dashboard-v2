@@ -44,14 +44,7 @@ function sanitizeSvgMarkup(markup: string | null): string {
   const doc = new DOMParser().parseFromString(markup, 'image/svg+xml')
   const root = doc.documentElement
   if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) return ''
-  const scrub = (el: Element) => {
-    for (const child of [...el.children]) {
-      if (!SVG_ALLOWED_TAGS.has(child.tagName.toLowerCase())) {
-        child.remove()
-        continue
-      }
-      scrub(child)
-    }
+  const scrubAttrs = (el: Element) => {
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase()
       if (name.startsWith('on') || name === 'href' || name === 'xlink:href' || name === 'src' || name === 'style') {
@@ -59,11 +52,26 @@ function sanitizeSvgMarkup(markup: string | null): string {
       }
     }
   }
-  scrub(root)
-  for (const attr of [...root.attributes]) {
-    const name = attr.name.toLowerCase()
-    if (name.startsWith('on') || name === 'href' || name === 'xlink:href' || name === 'style') root.removeAttribute(attr.name)
+  const scrub = (el: Element) => {
+    for (const node of [...el.childNodes]) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const child = node as Element
+        if (!SVG_ALLOWED_TAGS.has(child.tagName.toLowerCase())) {
+          child.remove()
+          continue
+        }
+        scrubAttrs(child)
+        scrub(child)
+      } else if (node.nodeType !== Node.TEXT_NODE) {
+        // processing instructions / comments / CDATA parse differently once
+        // document.write re-reads this as HTML — an XML-legal PI can smuggle a
+        // live <script> through that mismatch, so only elements and text survive
+        node.remove()
+      }
+    }
   }
+  scrubAttrs(root)
+  scrub(root)
   return new XMLSerializer().serializeToString(root)
 }
 

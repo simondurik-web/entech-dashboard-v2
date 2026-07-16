@@ -98,7 +98,9 @@ export async function attachCustomerPartNumbers(orders: TruckloadOrderRow[]): Pr
   const idByName = new Map<string, string>()
   await Promise.all(
     names.map(async (n) => {
-      const { data } = await supabaseAdmin.from('customers').select('id').ilike('name', n).maybeSingle()
+      // escape LIKE metacharacters — the name must match literally, not as a pattern
+      const literal = n.replace(/[\\%_]/g, (c) => `\\${c}`)
+      const { data } = await supabaseAdmin.from('customers').select('id').ilike('name', literal).maybeSingle()
       if (data?.id) idByName.set(n, data.id as string)
     })
   )
