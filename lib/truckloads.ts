@@ -93,11 +93,15 @@ export async function attachCustomerPartNumbers(orders: TruckloadOrderRow[]): Pr
   const names = [...new Set(orders.map((o) => (o.customer || '').trim().toLowerCase()).filter(Boolean))]
   const parts = [...new Set(orders.map((o) => o.part_number).filter((p): p is string => !!p))]
   if (!names.length || !parts.length) return
-  const { data: custRows } = await supabaseAdmin.from('customers').select('id, name')
+  // one truck ships one customer, so this is 1–2 point lookups — never a full
+  // table scan (supabase-js silently caps un-ranged selects at 1000 rows)
   const idByName = new Map<string, string>()
-  for (const c of (custRows ?? []) as { id: string; name: string | null }[]) {
-    if (c.name) idByName.set(c.name.trim().toLowerCase(), c.id)
-  }
+  await Promise.all(
+    names.map(async (n) => {
+      const { data } = await supabaseAdmin.from('customers').select('id').ilike('name', n).maybeSingle()
+      if (data?.id) idByName.set(n, data.id as string)
+    })
+  )
   const ids = [...new Set(names.map((n) => idByName.get(n)).filter((v): v is string => !!v))]
   if (!ids.length) return
   const { data: maps } = await supabaseAdmin

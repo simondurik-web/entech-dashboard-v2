@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import type { Order } from '@/lib/google-sheets-shared'
 import { authedFetch, authedJson } from '@/lib/authed-fetch'
-import { buildLoadSheetHtml, openPrintWindow, type LoadSheetOrder } from '@/lib/truckload-loadsheet'
+import { buildLoadSheetHtml, openPrintShell, writePrintHtml, type LoadSheetOrder } from '@/lib/truckload-loadsheet'
 import enLocale from '@/locales/en.json'
 import esLocale from '@/locales/es.json'
 
@@ -1220,6 +1220,10 @@ export default function PalletLoadCalculator({
         </div>
       )}
 
+      {/* print/report errors — the create panel (and its error line) is closed
+          by the time the success banner's print button can fail */}
+      {tlError && !tlOpen && <p className="text-sm text-red-600 font-semibold">{tlError}</p>}
+
       {/* Create Truckload confirm panel */}
       {tlOpen && canCreateTruckload && (
         <div className="rounded-xl border border-violet-500/40 bg-violet-500/5 p-4 space-y-3">
@@ -1286,7 +1290,13 @@ export default function PalletLoadCalculator({
   // report and the load sheet used to be two different documents).
   async function printCreatedLoadSheet() {
     if (!tlCreatedId) return
+    const dict = (lang === 'es' ? esLocale : enLocale) as Record<string, string>
+    const enDict = enLocale as Record<string, string>
+    const tr = (key: string) => dict[key] ?? enDict[key] ?? key
+    const win = openPrintShell() // before the await — Safari popup blocking
+    setTlError(null)
     try {
+      if (!win) throw new Error(tr('truckload.popupBlocked'))
       const res = await authedFetch(`/api/truckloads/${tlCreatedId}?pallets=1`)
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || 'Failed')
@@ -1298,9 +1308,8 @@ export default function PalletLoadCalculator({
         calculator_state?: { svgMarkup?: string | null } | null
         truckload_orders: LoadSheetOrder[]
       }
-      const dict = (lang === 'es' ? esLocale : enLocale) as Record<string, string>
-      const enDict = enLocale as Record<string, string>
-      openPrintWindow(
+      writePrintHtml(
+        win,
         buildLoadSheetHtml({
           loadNumber: tl.load_number,
           createdAt: tl.created_at,
@@ -1308,10 +1317,11 @@ export default function PalletLoadCalculator({
           notes: tl.notes,
           svgMarkup: tl.calculator_state?.svgMarkup ?? null,
           orders: tl.truckload_orders ?? [],
-          t: (key) => dict[key] ?? enDict[key] ?? key,
+          t: tr,
         })
       )
     } catch (err) {
+      win?.close()
       setTlError(err instanceof Error ? err.message : 'Failed')
     }
   }

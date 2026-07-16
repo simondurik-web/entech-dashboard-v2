@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { FileText, RefreshCw, Truck, X } from 'lucide-react'
 import { authedFetch, authedJson } from '@/lib/authed-fetch'
 import { useI18n } from '@/lib/i18n'
-import { buildLoadSheetHtml, openPrintWindow } from '@/lib/truckload-loadsheet'
+import { buildLoadSheetHtml, openPrintShell, writePrintHtml } from '@/lib/truckload-loadsheet'
 import type { Order } from '@/lib/google-sheets-shared'
 
 // Truckloads panel (Simon 2026-07-08): every planned "ships together" group in
@@ -186,13 +186,16 @@ export default function TruckloadsPanel({
   }
 
   const printLoadSheet = async (tl: Truckload) => {
+    const win = openPrintShell() // before the await — Safari popup blocking
     try {
+      if (!win) throw new Error(t('truckload.popupBlocked'))
       const res = await authedFetch(`/api/truckloads/${tl.id}?pallets=1`)
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || 'Failed')
       const state = (body.truckload?.calculator_state ?? {}) as { svgMarkup?: string | null }
       const orders = (body.truckload?.truckload_orders ?? []) as TruckloadOrder[]
-      openPrintWindow(
+      writePrintHtml(
+        win,
         buildLoadSheetHtml({
           loadNumber: tl.load_number,
           createdAt: tl.created_at,
@@ -204,6 +207,7 @@ export default function TruckloadsPanel({
         })
       )
     } catch (err) {
+      win?.close()
       setError(err instanceof Error ? err.message : 'Failed')
     }
   }

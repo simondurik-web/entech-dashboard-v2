@@ -1555,6 +1555,7 @@
   "truckload.sheetTitle": "Hoja de Carga de Camión",
   "truckload.sheetWarn": "TODAS las {count} órdenes de esta hoja van en el MISMO camión. No dejes salir el camión hasta cargar y escanear todas.",
   "truckload.sheetRefNotice": "Por favor use {tl} como referencia para la recolección y toda la documentación relacionada con esta carga.",
+  "truckload.popupBlocked": "El navegador bloqueó la ventana de impresión — permite las ventanas emergentes para este sitio e inténtalo de nuevo.",
   "truckload.orderStatus": "Estado",
   "truckload.bannerShipsWith": "Se envía junto — {tl} ({count} órdenes)",
   "fulfillment.tlBlockTitle": "Esta orden es parte de una carga de camión",

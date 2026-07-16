@@ -31,6 +31,42 @@ export interface LoadSheetInput {
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c])
 
+// The diagram snapshot is client-produced markup persisted in calculator_state
+// — anyone with PATCH access could store a hostile payload that would run in
+// the next viewer's print window. Rebuild it through DOMParser keeping only
+// drawing elements and dropping scripts/handlers/links.
+const SVG_ALLOWED_TAGS = new Set([
+  'svg', 'g', 'rect', 'text', 'tspan', 'line', 'path', 'circle', 'ellipse',
+  'polygon', 'polyline', 'marker', 'defs', 'title',
+])
+function sanitizeSvgMarkup(markup: string | null): string {
+  if (!markup || typeof window === 'undefined') return ''
+  const doc = new DOMParser().parseFromString(markup, 'image/svg+xml')
+  const root = doc.documentElement
+  if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) return ''
+  const scrub = (el: Element) => {
+    for (const child of [...el.children]) {
+      if (!SVG_ALLOWED_TAGS.has(child.tagName.toLowerCase())) {
+        child.remove()
+        continue
+      }
+      scrub(child)
+    }
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase()
+      if (name.startsWith('on') || name === 'href' || name === 'xlink:href' || name === 'src' || name === 'style') {
+        el.removeAttribute(attr.name)
+      }
+    }
+  }
+  scrub(root)
+  for (const attr of [...root.attributes]) {
+    const name = attr.name.toLowerCase()
+    if (name.startsWith('on') || name === 'href' || name === 'xlink:href' || name === 'style') root.removeAttribute(attr.name)
+  }
+  return new XMLSerializer().serializeToString(root)
+}
+
 export function buildLoadSheetHtml({ loadNumber, createdAt, createdByName, notes, svgMarkup, orders, t }: LoadSheetInput): string {
   const totalPallets = orders.reduce((s, o) => s + (o.pallet_count ?? 0), 0)
   const rowsHtml =
@@ -92,18 +128,26 @@ export function buildLoadSheetHtml({ loadNumber, createdAt, createdByName, notes
     ${notes ? `<div class="notes"><b>${esc(t('truckload.notes'))}:</b> ${esc(notes)}</div>` : ''}
     <table><thead><tr><th>#</th><th>SO</th><th>${esc(t('truckload.line'))}</th><th>${esc(t('table.customer'))}</th><th>${esc(t('table.partNumber'))}</th><th>${esc(t('table.customerPart'))}</th><th>${esc(t('truckload.palletIds'))}</th><th>${esc(t('truckload.pallets'))}</th><th>${esc(t('truckload.orderStatus'))}</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>
-    ${svgMarkup ? `<div class="diagram"><div class="diagram-tl">${esc(loadNumber)}</div>${svgMarkup}</div>` : ''}
+    ${(() => {
+      const safeSvg = sanitizeSvgMarkup(svgMarkup)
+      return safeSvg ? `<div class="diagram"><div class="diagram-tl">${esc(loadNumber)}</div>${safeSvg}</div>` : ''
+    })()}
     <div class="no-print" style="text-align:center;margin-top:16px;">
       <button onclick="window.print()" style="padding:10px 24px;background:#5b21b6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨️ ${esc(t('truckload.printSheet'))}</button>
     </div>
   </body></html>`
 }
 
-export function openPrintWindow(html: string): void {
+/** Open the print window SYNCHRONOUSLY from the click handler (before any
+ *  await) — Safari drops user activation across a network round-trip and
+ *  blocks the popup otherwise. Returns null when the browser blocked it. */
+export function openPrintShell(): Window | null {
   const win = window.open('', '_blank')
-  if (win) {
-    win.opener = null
-    win.document.write(html)
-    win.document.close()
-  }
+  if (win) win.opener = null
+  return win
+}
+
+export function writePrintHtml(win: Window, html: string): void {
+  win.document.write(html)
+  win.document.close()
 }
