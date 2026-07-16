@@ -3,7 +3,7 @@ import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { conflictingOrderKeys, conflictingOrderLines, distinctCustomers, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
+import { attachCustomerPartNumbers, conflictingOrderKeys, conflictingOrderLines, distinctCustomers, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
 import { getFulfillmentOrder } from '@/lib/erpnext/fulfillment'
 
 // One truckload — GET full (incl. calculator snapshot for the load sheet /
@@ -29,6 +29,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // ?pallets=1 (load sheet): live staged pallet IDs per member line, from the
     // reservations — scoped to the member's SO Item like the ship flow
     if (req.nextUrl.searchParams.get('pallets') === '1') {
+      // the load sheet also prints the customer's own part numbers
+      await attachCustomerPartNumbers(truckload.truckload_orders)
       const soNames = [...new Set(truckload.truckload_orders.filter((o) => o.status === 'pending').map((o) => o.so_number))]
       const bySo = new Map<string, Awaited<ReturnType<typeof getFulfillmentOrder>>>()
       await Promise.all(

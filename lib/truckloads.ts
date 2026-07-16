@@ -12,6 +12,8 @@ export interface TruckloadOrderRow {
   if_number: string | null
   customer: string | null
   part_number: string | null
+  /** the customer's own part number (joined from customer_part_mappings at read time) */
+  customer_part_number?: string | null
   position: number
   pallet_count: number | null
   /** dashboard line number — a truckload entry is ONE line/release, not the whole SO */
@@ -81,6 +83,36 @@ async function attachSoItems(orders: TruckloadOrderRow[]): Promise<void> {
     .in('line', lines)
   const byLine = new Map((data ?? []).map((m) => [m.line as number, m.erp_so_item_name as string]))
   for (const o of orders) o.so_item = o.line != null ? (byLine.get(o.line) ?? null) : null
+}
+
+/** Fill customer_part_number on member rows from customer_part_mappings
+ *  (customer name → customers.id → mapping by internal part number) — the same
+ *  authoritative source the packing slip and shipping overview use. Best-effort:
+ *  a lookup miss just leaves the field null (Simon 2026-07-16, load sheet). */
+export async function attachCustomerPartNumbers(orders: TruckloadOrderRow[]): Promise<void> {
+  const names = [...new Set(orders.map((o) => (o.customer || '').trim().toLowerCase()).filter(Boolean))]
+  const parts = [...new Set(orders.map((o) => o.part_number).filter((p): p is string => !!p))]
+  if (!names.length || !parts.length) return
+  const { data: custRows } = await supabaseAdmin.from('customers').select('id, name')
+  const idByName = new Map<string, string>()
+  for (const c of (custRows ?? []) as { id: string; name: string | null }[]) {
+    if (c.name) idByName.set(c.name.trim().toLowerCase(), c.id)
+  }
+  const ids = [...new Set(names.map((n) => idByName.get(n)).filter((v): v is string => !!v))]
+  if (!ids.length) return
+  const { data: maps } = await supabaseAdmin
+    .from('customer_part_mappings')
+    .select('customer_id, internal_part_number, customer_part_number')
+    .in('customer_id', ids)
+    .in('internal_part_number', parts)
+  const byKey = new Map<string, string>()
+  for (const m of (maps ?? []) as { customer_id: string; internal_part_number: string; customer_part_number: string | null }[]) {
+    if (m.customer_part_number) byKey.set(`${m.customer_id}||${m.internal_part_number}`, m.customer_part_number)
+  }
+  for (const o of orders) {
+    const cid = idByName.get((o.customer || '').trim().toLowerCase())
+    o.customer_part_number = cid && o.part_number ? (byKey.get(`${cid}||${o.part_number}`) ?? null) : null
+  }
 }
 
 /** Active truckload containing this SO with the order still pending — the ship

@@ -1554,6 +1554,7 @@
   "truckload.singleLeft": "Only one order left to load on this truck.",
   "truckload.sheetTitle": "Truckload Load Sheet",
   "truckload.sheetWarn": "ALL {count} orders on this sheet ship on the SAME truck. Do not release the truck until every one is loaded and scanned.",
+  "truckload.sheetRefNotice": "Please reference {tl} for the pickup and all documentation related to this truckload.",
   "truckload.orderStatus": "Status",
   "truckload.bannerShipsWith": "Ships together — {tl} ({count} orders)",
   "fulfillment.tlBlockTitle": "This order is part of a truckload",

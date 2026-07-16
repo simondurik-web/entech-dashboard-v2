@@ -2,7 +2,10 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import type { Order } from '@/lib/google-sheets-shared'
-import { authedJson } from '@/lib/authed-fetch'
+import { authedFetch, authedJson } from '@/lib/authed-fetch'
+import { buildLoadSheetHtml, openPrintWindow, type LoadSheetOrder } from '@/lib/truckload-loadsheet'
+import enLocale from '@/locales/en.json'
+import esLocale from '@/locales/es.json'
 
 // ── Constants ──────────────────────────────────────────────
 const PLC_TRAILERS = {
@@ -327,6 +330,7 @@ export default function PalletLoadCalculator({
   const [tlSaving, setTlSaving] = useState(false)
   const [tlError, setTlError] = useState<string | null>(null)
   const [tlCreated, setTlCreated] = useState<string | null>(null)
+  const [tlCreatedId, setTlCreatedId] = useState<string | null>(null)
 
   const trailer = PLC_TRAILERS[trailerKey]
 
@@ -454,6 +458,7 @@ export default function PalletLoadCalculator({
       if (!res.ok) throw new Error(body?.error || 'Failed')
       const loadNumber = body.truckload.loadNumber as string
       setTlCreated(loadNumber)
+      setTlCreatedId((body.truckload.id as string) ?? null)
       setTlOpen(false)
       setTlNotes('')
       onTruckloadCreated?.(loadNumber)
@@ -1180,12 +1185,15 @@ export default function PalletLoadCalculator({
           onClick={() => exportLoadPDF()}
           className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
         >
-          📄 {lang === 'es' ? 'Exportar PDF' : 'Export Load Report (PDF)'}
+          {tlCreatedId
+            ? `🖨️ ${lang === 'es' ? 'Hoja de Carga' : 'Load Sheet'} (${tlCreated})`
+            : `📄 ${lang === 'es' ? 'Exportar PDF' : 'Export Load Report (PDF)'}`}
         </button>
         {canCreateTruckload && (
           <button
             onClick={() => {
               setTlCreated(null)
+              setTlCreatedId(null)
               setTlError(null)
               setTlOpen((v) => !v)
             }}
@@ -1197,8 +1205,18 @@ export default function PalletLoadCalculator({
       </div>
 
       {tlCreated && (
-        <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600">
-          ✓ {t.truckloadCreated} <span className="font-mono">{tlCreated}</span>
+        <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600 flex flex-wrap items-center gap-2">
+          <span>
+            ✓ {t.truckloadCreated} <span className="font-mono">{tlCreated}</span>
+          </span>
+          {tlCreatedId && (
+            <button
+              onClick={() => printCreatedLoadSheet()}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+            >
+              🖨️ {lang === 'es' ? 'Hoja de Carga' : 'Load Sheet'}
+            </button>
+          )}
         </div>
       )}
 
@@ -1262,7 +1280,48 @@ export default function PalletLoadCalculator({
     </div>
   )
 
+  // Once a truckload exists, the calculator prints the SAME unified load sheet
+  // as the Truckloads panel — TL number, pickup-reference notice, notes,
+  // pallet IDs, customer part numbers, diagram (Simon 2026-07-16: the creation
+  // report and the load sheet used to be two different documents).
+  async function printCreatedLoadSheet() {
+    if (!tlCreatedId) return
+    try {
+      const res = await authedFetch(`/api/truckloads/${tlCreatedId}?pallets=1`)
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Failed')
+      const tl = body.truckload as {
+        load_number: string
+        created_at: string
+        created_by_name: string | null
+        notes: string | null
+        calculator_state?: { svgMarkup?: string | null } | null
+        truckload_orders: LoadSheetOrder[]
+      }
+      const dict = (lang === 'es' ? esLocale : enLocale) as Record<string, string>
+      const enDict = enLocale as Record<string, string>
+      openPrintWindow(
+        buildLoadSheetHtml({
+          loadNumber: tl.load_number,
+          createdAt: tl.created_at,
+          createdByName: tl.created_by_name,
+          notes: tl.notes,
+          svgMarkup: tl.calculator_state?.svgMarkup ?? null,
+          orders: tl.truckload_orders ?? [],
+          t: (key) => dict[key] ?? enDict[key] ?? key,
+        })
+      )
+    } catch (err) {
+      setTlError(err instanceof Error ? err.message : 'Failed')
+    }
+  }
+
   function exportLoadPDF() {
+    // the created truckload's load sheet IS the report from here on
+    if (tlCreatedId) {
+      void printCreatedLoadSheet()
+      return
+    }
     // Build HTML report for printing as PDF
     const trailerLabel = trailer.length === 636 ? '53\' Trailer' : '48\' Trailer'
     const rows = palletTypes.filter(pt => pt.qty > 0).map((pt) => {

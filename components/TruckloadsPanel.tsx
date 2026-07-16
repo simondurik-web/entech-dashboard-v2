@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { FileText, RefreshCw, Truck, X } from 'lucide-react'
 import { authedFetch, authedJson } from '@/lib/authed-fetch'
 import { useI18n } from '@/lib/i18n'
+import { buildLoadSheetHtml, openPrintWindow } from '@/lib/truckload-loadsheet'
 import type { Order } from '@/lib/google-sheets-shared'
 
 // Truckloads panel (Simon 2026-07-08): every planned "ships together" group in
@@ -20,6 +21,7 @@ export interface TruckloadOrder {
   if_number: string | null
   customer: string | null
   part_number: string | null
+  customer_part_number?: string | null
   position: number
   pallet_count: number | null
   line: number | null
@@ -190,60 +192,17 @@ export default function TruckloadsPanel({
       if (!res.ok) throw new Error(body?.error || 'Failed')
       const state = (body.truckload?.calculator_state ?? {}) as { svgMarkup?: string | null }
       const orders = (body.truckload?.truckload_orders ?? []) as TruckloadOrder[]
-      const totalPallets = orders.reduce((s, o) => s + (o.pallet_count ?? 0), 0)
-      const rowsHtml = orders
-        .map(
-          (o, i) => `<tr>
-            <td style="text-align:center;">${i + 1}</td>
-            <td style="font-family:monospace;font-weight:700;">${o.so_number}</td>
-            <td style="text-align:center;">${o.line ?? '—'}</td>
-            <td>${o.customer ?? ''}</td>
-            <td>${o.part_number ?? ''}</td>
-            <td style="font-family:monospace;font-size:10px;">${(o.pallet_ids ?? []).join(', ') || '—'}</td>
-            <td style="text-align:center;font-weight:700;">${o.pallet_count ?? '—'}</td>
-            <td style="text-align:center;">${
-              o.status === 'shipped'
-                ? `${t('truckload.chipShipped')}${o.dn_number ? ` (${o.dn_number})` : ''}`
-                : o.status === 'released'
-                  ? t('truckload.chipReleased')
-                  : t('truckload.chipPending')
-            }</td>
-          </tr>`
-        )
-        .join('') +
-        `<tr style="background:#ede9fe;font-weight:700;">
-          <td colspan="6" style="text-align:right;">${t('truckload.palletsTotal')}</td>
-          <td style="text-align:center;">${totalPallets || '—'}</td>
-          <td></td>
-        </tr>`
-      const html = `<!DOCTYPE html><html><head><title>${tl.load_number}</title><style>
-        body { font-family: Arial, sans-serif; margin: 16px; color: #1a1a2e; }
-        h1 { font-size: 20px; margin: 0 0 2px; } .meta { color:#666; font-size: 11px; margin-bottom: 10px; }
-        .warn { background:#f5f3ff; border:2px solid #7c3aed; color:#5b21b6; border-radius:8px; padding:10px 12px; font-weight:700; font-size:13px; margin-bottom:12px; }
-        table { border-collapse: collapse; width: 100%; margin-bottom: 12px; }
-        th { background: #5b21b6; color: white; padding: 5px 8px; text-align: left; font-size: 11px; }
-        td { font-size: 11px; padding: 4px 8px; border: 1px solid #ddd; }
-        .notes { background:#fffbeb; border:1px solid #f59e0b; border-radius:8px; padding:8px 12px; font-size:12px; margin-bottom:12px; white-space:pre-wrap; }
-        .diagram svg { width: 100%; max-height: 300px; color:#333; } .diagram svg text { fill:#333; }
-        @media print { .no-print { display:none; } } @page { margin: 8mm; }
-      </style></head><body>
-        <h1>🚛 ${t('truckload.sheetTitle')} — ${tl.load_number}</h1>
-        <div class="meta">${new Date(tl.created_at).toLocaleString()} · ${tl.created_by_name ?? ''}</div>
-        <div class="warn">${t('truckload.sheetWarn').replace('{count}', String(orders.length))}</div>
-        ${tl.notes ? `<div class="notes"><b>${t('truckload.notes')}:</b> ${tl.notes}</div>` : ''}
-        <table><thead><tr><th>#</th><th>SO</th><th>${t('truckload.line')}</th><th>${t('table.customer')}</th><th>${t('table.partNumber')}</th><th>${t('truckload.palletIds')}</th><th>${t('truckload.pallets')}</th><th>${t('truckload.orderStatus')}</th></tr></thead>
-        <tbody>${rowsHtml}</tbody></table>
-        ${state.svgMarkup ? `<div class="diagram">${state.svgMarkup}</div>` : ''}
-        <div class="no-print" style="text-align:center;margin-top:16px;">
-          <button onclick="window.print()" style="padding:10px 24px;background:#5b21b6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨️ ${t('truckload.printSheet')}</button>
-        </div>
-      </body></html>`
-      const win = window.open('', '_blank')
-      if (win) {
-        win.opener = null
-        win.document.write(html)
-        win.document.close()
-      }
+      openPrintWindow(
+        buildLoadSheetHtml({
+          loadNumber: tl.load_number,
+          createdAt: tl.created_at,
+          createdByName: tl.created_by_name,
+          notes: (body.truckload?.notes as string | null) ?? tl.notes,
+          svgMarkup: state.svgMarkup ?? null,
+          orders,
+          t,
+        })
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed')
     }
