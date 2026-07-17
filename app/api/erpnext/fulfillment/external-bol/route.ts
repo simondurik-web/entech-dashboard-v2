@@ -13,6 +13,7 @@ import {
   normalizeExternalPdf,
   resolveDnShipment,
   resolveOriginalSource,
+  truckloadMemberDns,
 } from '@/lib/erpnext/external-bol'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
@@ -215,7 +216,10 @@ export async function POST(req: NextRequest) {
     const out = await pdf.save()
     // upload the new signed copy first, then remove the previous one(s) — a
     // redo never leaves a window with no signed copy, and exactly one remains
-    const previous = await findSignedBolObjects(dn)
+    // PER TRUCK: reads are truck-scoped, so cleanup sweeps every member DN or
+    // a re-sign from a different member would leave divergent signed copies
+    const sibDns = await truckloadMemberDns(dn)
+    const previous = (await Promise.all([dn, ...sibDns].map((d) => findSignedBolObjects(d)))).flat()
     const signedPath = newSignedBolPath(dn)
     const { error: upErr } = await supabaseAdmin.storage
       .from(PO_DOC_BUCKET)

@@ -356,6 +356,11 @@ export async function fetchOriginalExternalBol(
   const src = await resolveOriginalSource(ref)
   if (!src) return null
   if (src.kind === 'erpnext') {
+    // File.file_url must be a site-relative files path. Anything else (an
+    // absolute URL, or '@host' userinfo smuggling against `${BASE}${path}`)
+    // could steer the authenticated fetch off-host and leak the CF/service
+    // credentials in its headers (review panel, gemini slice-2b round 3).
+    if (!/^\/(?:private\/)?files\//.test(src.sourceKey)) return null
     const res = await erpnextFetchRaw(src.sourceKey).catch(() => null)
     if (!res?.ok) return null
     return {
