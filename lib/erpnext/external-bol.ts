@@ -335,17 +335,18 @@ export async function invalidateSignedBolsForOrder(customer: string | null, poNu
 }
 
 export interface ExternalBolState {
-  original: ExternalBolFile | null
+  original: ExternalBolSource | null
   /** path of a signed copy that is NOT stale (stamped after the current
    *  original was uploaded). A replaced/deleted original invalidates it. */
   signedPath: string | null
 }
 
-/** Resolve what exists for a DN: the original external BOL and, when still
- *  valid, its signature-stamped copy. No original → nothing (an orphaned
- *  signed copy of a deleted BOL must not keep printing). */
+/** Resolve what exists for a DN — identity only, NO byte download (the
+ *  presence check must stay cheap and can't mistake a download hiccup for
+ *  absence). No original → nothing (an orphaned signed copy of a deleted
+ *  BOL must not keep printing). */
 export async function getExternalBolState(ref: DnShipmentRef): Promise<ExternalBolState> {
-  const original = await fetchOriginalExternalBol(ref)
+  const original = await resolveOriginalSource(ref)
   if (!original) return { original: null, signedPath: null }
   const signed = (await findSignedBolObjects(ref.dn))[0] ?? null
   if (!signed) return { original, signedPath: null }
@@ -366,9 +367,11 @@ export async function fetchExternalBolPdf(
     if (data) return { bytes: new Uint8Array(await data.arrayBuffer()), signed: true, source: 'signed' }
   }
   if (!state.original) return null
+  const original = await fetchOriginalExternalBol(ref)
+  if (!original) return null
   return {
-    bytes: await externalBolToPdf(state.original.bytes, state.original.contentType),
+    bytes: await externalBolToPdf(original.bytes, original.contentType),
     signed: false,
-    source: state.original.source,
+    source: original.source,
   }
 }

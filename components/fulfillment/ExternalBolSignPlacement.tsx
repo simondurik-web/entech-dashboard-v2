@@ -49,6 +49,9 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
   const dragRef = useRef<{ page: number; el: HTMLDivElement } | null>(null)
 
   const blobUrlRef = useRef<string | null>(null)
+  // exact source version the preview shows — echoed back on save so the stamp
+  // can never apply these coordinates to a file replaced mid-signing
+  const sourceKeyRef = useRef<string | null>(null)
   useEffect(() => {
     if (!open || blobUrl) return
     let alive = true
@@ -59,6 +62,7 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
           { headers: authHeaders(), cache: 'no-store' }
         )
         if (!res.ok) throw new Error()
+        sourceKeyRef.current = res.headers.get('X-Source-Key')
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         if (alive) {
@@ -124,14 +128,30 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
       const res = await fetch('/api/erpnext/fulfillment/external-bol', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dn, page: placement.page, x: placement.x, y: placement.y, w: wFrac }),
+        body: JSON.stringify({
+          dn,
+          page: placement.page,
+          x: placement.x,
+          y: placement.y,
+          w: wFrac,
+          sourceKey: sourceKeyRef.current,
+        }),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
+        if (body?.error === 'source_changed') {
+          // the file was swapped mid-signing — drop the stale preview so the
+          // next open fetches (and stamps against) the new version
+          if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+          blobUrlRef.current = null
+          sourceKeyRef.current = null
+          setBlobUrl(null)
+          setPlacement(null)
+          throw new Error(t('fulfillment.extBolSourceChanged'))
+        }
         if (body?.error === 'not_signed') throw new Error(t('fulfillment.extBolNeedsSignature'))
         if (body?.error === 'unsupported_format') throw new Error(t('fulfillment.extBolUnsupported'))
         if (body?.error === 'rotated_pdf') throw new Error(t('fulfillment.extBolRotated'))
-        if (body?.error === 'source_changed') throw new Error(t('fulfillment.extBolSourceChanged'))
         throw new Error(body?.error || t('fulfillment.extBolSaveFailed'))
       }
       setDone(true)

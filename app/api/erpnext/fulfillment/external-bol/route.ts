@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
         {
           exists: !!state.original,
           signed: !!state.signedPath,
-          source: state.original?.source ?? null,
+          source: state.original?.kind ?? null,
           fileName: state.original?.fileName ?? null,
         },
         { headers: { 'Cache-Control': 'no-store' } }
@@ -71,9 +71,11 @@ export async function GET(req: NextRequest) {
     }
 
     let bytes: Uint8Array | null = null
+    let sourceKey: string | null = null
     if (forceOriginal) {
       const original = await fetchOriginalExternalBol(ref)
       bytes = original ? await externalBolToPdf(original.bytes, original.contentType) : null
+      sourceKey = original?.sourceKey ?? null
     } else {
       bytes = (await fetchExternalBolPdf(ref))?.bytes ?? null
     }
@@ -83,6 +85,9 @@ export async function GET(req: NextRequest) {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="CustomerBOL-${dn}.pdf"`,
         'Cache-Control': 'no-store',
+        // the placement UI echoes this back so a stamp is bound to the exact
+        // file version the crew previewed (base64: header must be ASCII-safe)
+        ...(sourceKey ? { 'X-Source-Key': Buffer.from(sourceKey).toString('base64') } : {}),
       },
     })
   } catch (error) {
@@ -98,12 +103,17 @@ export async function POST(req: NextRequest) {
   const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
-  let body: { dn?: string; page?: unknown; x?: unknown; y?: unknown; w?: unknown }
+  let body: { dn?: string; page?: unknown; x?: unknown; y?: unknown; w?: unknown; sourceKey?: unknown }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
+  // the exact file version the crew previewed (base64 of X-Source-Key)
+  const previewKey =
+    typeof body.sourceKey === 'string' && body.sourceKey
+      ? Buffer.from(body.sourceKey, 'base64').toString()
+      : null
   const dn = String(body.dn ?? '').trim()
   const pageIndex = Number(body.page)
   const x = Number(body.x)
@@ -139,6 +149,11 @@ export async function POST(req: NextRequest) {
 
     const original = await fetchOriginalExternalBol(ref)
     if (!original) return NextResponse.json({ error: 'No external BOL' }, { status: 404 })
+    // the coordinates were chosen on the previewed file — refuse to stamp a
+    // DIFFERENT file (replaced since preview) at those coordinates
+    if (previewKey && previewKey !== original.sourceKey) {
+      return NextResponse.json({ error: 'source_changed' }, { status: 409 })
+    }
     const pdfBytes = await externalBolToPdf(original.bytes, original.contentType)
 
     const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
