@@ -104,6 +104,8 @@ export interface FulfillmentOrder {
     attachments: string[]
     signed: boolean
     driverName: string | null
+    /** carrier PRO / transport receipt number (DN lr_no) — optional */
+    proNumber: string | null
   } | null
   // pallets across ALL shipped DNs (what actually shipped) — the staged
   // `pallets` list empties once reservations are consumed. A multi-release
@@ -237,13 +239,19 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
       ['custom_ship_against_so', '=', soName],
       ['docstatus', '=', 1],
     ]),
-    listParam('fields', ['name', 'custom_shipped', 'custom_signed_at', 'custom_driver_name']),
+    listParam('fields', ['name', 'custom_shipped', 'custom_signed_at', 'custom_driver_name', 'lr_no']),
     'order_by=creation desc',
     'limit_page_length=50',
   ].join('&')
   const dnRows =
     (await erpnextGet<{
-      data: { name: string; custom_shipped?: number; custom_signed_at?: string | null; custom_driver_name?: string | null }[]
+      data: {
+        name: string
+        custom_shipped?: number
+        custom_signed_at?: string | null
+        custom_driver_name?: string | null
+        lr_no?: string | null
+      }[]
     }>(`/api/resource/Delivery Note?${dnQs}`)).data ?? []
   const dnRow = dnRows[0] ?? null
   const shippedRows = dnRows.filter((d) => !!d.custom_shipped)
@@ -293,6 +301,7 @@ export async function getFulfillmentOrder(soName: string): Promise<FulfillmentOr
           attachments: dnAttachments,
           signed: !!dnRow.custom_signed_at,
           driverName: dnRow.custom_driver_name ?? null,
+          proNumber: dnRow.lr_no ?? null,
         }
       : null,
     shippedPallets,

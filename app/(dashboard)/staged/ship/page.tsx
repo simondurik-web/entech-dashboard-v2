@@ -76,6 +76,7 @@ interface FulfillmentOrder {
     attachments: string[]
     signed: boolean
     driverName: string | null
+    proNumber: string | null
   } | null
   previousShipments: { name: string; signed: boolean; driverName: string | null }[]
 }
@@ -88,6 +89,7 @@ interface LogEntry {
     | 'undo'
     | 'sign_bol'
     | 'sign_external_bol'
+    | 'set_pro_number'
     | 'upload_customer_bol'
     | 'print_document'
     | 'move_reservation'
@@ -302,6 +304,10 @@ function ShipOrderContent() {
   // carrier BOLs that were still being discovered.
   const [extBol, setExtBol] = useState<Record<string, { exists: boolean; signed: boolean }>>({})
   const [extBolReady, setExtBolReady] = useState(false)
+  // optional carrier PRO number, filled by shipping at print time (freight)
+  const [proNumber, setProNumber] = useState('')
+  const [proSaving, setProSaving] = useState(false)
+  const [proSavedMsg, setProSavedMsg] = useState(false)
   // Letter-printer stations (print relay) for physical BOL/packing-slip printing
   const [printStations, setPrintStations] = useState<{ id: string; name: string }[]>([])
   const [printStation, setPrintStation] = useState('')
@@ -868,6 +874,26 @@ function ShipOrderContent() {
     if (so) fetchLog()
   }, [so, fetchLog, justShipped, undoing])
 
+  // one PRO for a single order's DN; a truckload writes the same PRO to every
+  // member DN (one freight PRO per truck)
+  const doSaveProNumber = async (dns: string[]) => {
+    if (proSaving || dns.length === 0) return
+    setProSaving(true)
+    setShipError(null)
+    try {
+      const res = await authedPost('/api/erpnext/fulfillment/pro-number', { dns, pro: proNumber.trim() })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || t('fulfillment.proNumberFailed'))
+      setProSavedMsg(true)
+      setTimeout(() => setProSavedMsg(false), 4000)
+      fetchLog()
+    } catch (err) {
+      setShipError(err instanceof Error ? err.message : t('fulfillment.proNumberFailed'))
+    } finally {
+      setProSaving(false)
+    }
+  }
+
   const doSignBol = async (dn: string) => {
     if (!signature || signing) return
     setSigning(true)
@@ -1157,6 +1183,14 @@ function ShipOrderContent() {
     if (shippedDn) void fetchExtBol([shippedDn])
   }, [shippedDn, fetchExtBol])
 
+  // prefill the PRO box from the shipped DN (single-order view)
+  useEffect(() => {
+    if (shippedDn && order?.deliveryNote?.name === shippedDn) {
+      setProNumber(order.deliveryNote.proNumber ?? '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shippedDn, order?.deliveryNote?.name])
+
   return (
     <div className="p-4 pb-44 max-w-3xl mx-auto">
       <Link
@@ -1261,6 +1295,38 @@ function ShipOrderContent() {
                   </button>
                 </div>
               </div>
+              {/* Optional carrier PRO number — one per truck, every member DN */}
+              {canShip && (
+                <div className="mb-3 rounded-xl border border-border bg-card/60 p-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    {t('fulfillment.proNumberLabel')}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">{t('fulfillment.proNumberHint')}</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={proNumber}
+                      onChange={(e) => setProNumber(e.target.value)}
+                      maxLength={30}
+                      placeholder="PRO #"
+                      autoComplete="off"
+                      className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm"
+                    />
+                    <button
+                      onClick={() => doSaveProNumber(tlDocsList.map((c) => c.dn))}
+                      disabled={proSaving}
+                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {proSaving && <RefreshCw className="size-4 animate-spin" />}
+                      {t('fulfillment.proNumberSave')}
+                    </button>
+                  </div>
+                  {proSavedMsg && (
+                    <p className="mt-1 text-xs font-semibold text-emerald-600">{t('fulfillment.proNumberSaved')}</p>
+                  )}
+                </div>
+              )}
+
               {/* ONE button: packing slip + BOL for every order, ×copies each */}
               {canShip && printStations.length > 0 && (
                 <div className="mb-3">
@@ -1858,6 +1924,38 @@ function ShipOrderContent() {
                   </button>
                 )}
 
+                {/* Optional carrier PRO number — important for freight */}
+                {canShip && (
+                  <div className="mt-3 rounded-xl border border-border bg-card/60 p-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                      {t('fulfillment.proNumberLabel')}
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-2">{t('fulfillment.proNumberHint')}</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={proNumber}
+                        onChange={(e) => setProNumber(e.target.value)}
+                        maxLength={30}
+                        placeholder="PRO #"
+                        autoComplete="off"
+                        className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm"
+                      />
+                      <button
+                        onClick={() => doSaveProNumber([shippedDn])}
+                        disabled={proSaving}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        {proSaving && <RefreshCw className="size-4 animate-spin" />}
+                        {t('fulfillment.proNumberSave')}
+                      </button>
+                    </div>
+                    {proSavedMsg && (
+                      <p className="mt-1 text-xs font-semibold text-emerald-600">{t('fulfillment.proNumberSaved')}</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Physical printing through the station relay (letter paper) */}
                 {canShip && printStations.length > 0 && (
                   <div className="mt-3 rounded-xl border border-border bg-card/60 p-3">
@@ -1982,7 +2080,9 @@ function ShipOrderContent() {
                                 ? 'fulfillment.logSign'
                                 : e.action === 'sign_external_bol'
                                   ? 'fulfillment.logSignExternal'
-                                  : e.action === 'print_document'
+                                  : e.action === 'set_pro_number'
+                                    ? 'fulfillment.logPro'
+                                    : e.action === 'print_document'
                                     ? 'fulfillment.logPrint'
                                     : e.action === 'move_reservation'
                                       ? 'fulfillment.logMove'
