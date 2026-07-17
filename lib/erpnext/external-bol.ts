@@ -121,30 +121,22 @@ function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
 }
 
-/** The ORIGINAL (un-stamped) external BOL: the dashboard upload for this
- *  order first, else the DN's own CustomerBOL-* attachment. */
-export async function fetchOriginalExternalBol(ref: DnShipmentRef): Promise<ExternalBolFile | null> {
-  // 1) Dashboard upload — order_documents keyed by customer + customer PO
-  if (ref.customer && ref.poNo) {
-    const { data } = await supabaseAdmin
-      .schema('po_automation')
-      .from('order_documents')
-      .select('file_url, file_name, customer, created_at')
-      .eq('doc_type', 'bol')
-      .ilike('po_number', escapeLike(ref.poNo.trim()))
-      .order('created_at', { ascending: false })
-      .limit(25)
-    const want = normName(ref.customer)
-    const row = (data ?? []).find((d) => normName(d.customer) === want && d.file_url)
-    if (row?.file_url) {
-      const file = await downloadDocUrl(row.file_url)
-      if (file) {
-        return { ...file, fileName: row.file_name ?? null, source: 'dashboard', createdAt: row.created_at ?? null }
-      }
-    }
-  }
+export interface ExternalBolSource {
+  kind: 'dashboard' | 'erpnext'
+  /** stable identity of the exact file version — used to detect a swap
+   *  between reading the original and publishing a stamped copy */
+  sourceKey: string
+  fileName: string | null
+  createdAt: string | null
+}
 
-  // 2) Fallback — CustomerBOL-* attached straight to the Delivery Note
+/** Which file IS the external BOL for this DN, without downloading it.
+ *  Preference order: the DN's OWN CustomerBOL-* attachment first (release-
+ *  scoped — a multi-release order can carry a different carrier BOL per
+ *  shipment), then the order-level dashboard upload (customer + customer PO).
+ *  Timestamps: ERP `creation` is naive server-local time; the ERP host runs
+ *  UTC, matching Supabase, so cross-source comparison is sound. */
+export async function resolveOriginalSource(ref: DnShipmentRef): Promise<ExternalBolSource | null> {
   const fq = [
     listParam('filters', [
       ['attached_to_doctype', '=', 'Delivery Note'],
@@ -161,18 +153,48 @@ export async function fetchOriginalExternalBol(ref: DnShipmentRef): Promise<Exte
     ).catch(() => ({ data: [] }))).data ?? []
   const f = files[0]
   if (f?.file_url) {
-    const res = await erpnextFetchRaw(f.file_url).catch(() => null)
-    if (res?.ok) {
-      return {
-        bytes: new Uint8Array(await res.arrayBuffer()),
-        contentType: res.headers.get('content-type') || 'application/octet-stream',
-        fileName: f.file_name,
-        source: 'erpnext',
-        createdAt: f.creation ?? null,
-      }
+    return { kind: 'erpnext', sourceKey: f.file_url, fileName: f.file_name, createdAt: f.creation ?? null }
+  }
+
+  if (ref.customer && ref.poNo) {
+    const { data } = await supabaseAdmin
+      .schema('po_automation')
+      .from('order_documents')
+      .select('file_url, file_name, customer, created_at')
+      .eq('doc_type', 'bol')
+      .ilike('po_number', escapeLike(ref.poNo.trim()))
+      .order('created_at', { ascending: false })
+      .limit(25)
+    const want = normName(ref.customer)
+    const row = (data ?? []).find((d) => normName(d.customer) === want && d.file_url)
+    if (row?.file_url) {
+      return { kind: 'dashboard', sourceKey: row.file_url, fileName: row.file_name ?? null, createdAt: row.created_at ?? null }
     }
   }
   return null
+}
+
+/** The ORIGINAL (un-stamped) external BOL bytes for a DN. */
+export async function fetchOriginalExternalBol(
+  ref: DnShipmentRef
+): Promise<(ExternalBolFile & { sourceKey: string }) | null> {
+  const src = await resolveOriginalSource(ref)
+  if (!src) return null
+  if (src.kind === 'erpnext') {
+    const res = await erpnextFetchRaw(src.sourceKey).catch(() => null)
+    if (!res?.ok) return null
+    return {
+      bytes: new Uint8Array(await res.arrayBuffer()),
+      contentType: res.headers.get('content-type') || 'application/octet-stream',
+      fileName: src.fileName,
+      source: 'erpnext',
+      createdAt: src.createdAt,
+      sourceKey: src.sourceKey,
+    }
+  }
+  const file = await downloadDocUrl(src.sourceKey)
+  if (!file) return null
+  return { ...file, fileName: src.fileName, source: 'dashboard', createdAt: src.createdAt, sourceKey: src.sourceKey }
 }
 
 function isPdf(bytes: Uint8Array): boolean {

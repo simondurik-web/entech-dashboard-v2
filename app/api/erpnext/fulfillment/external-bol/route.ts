@@ -11,6 +11,7 @@ import {
   getExternalBolState,
   newSignedBolPath,
   resolveDnShipment,
+  resolveOriginalSource,
 } from '@/lib/erpnext/external-bol'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
@@ -146,13 +147,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
     const page = pages[pageIndex]
-    const { width: pw, height: ph } = page.getSize()
+    // Rotated scans would need the tap coordinates re-mapped from the rendered
+    // (rotated) viewport into unrotated user space — refuse rather than stamp
+    // the wrong spot; the crew re-uploads upright or signs on paper.
+    if (page.getRotation().angle % 360 !== 0) {
+      return NextResponse.json({ error: 'rotated_pdf' }, { status: 422 })
+    }
+    // The preview renders the CropBox — do the math in the same space
+    const box = page.getCropBox()
     const sig = await pdf.embedPng(sigBytes)
-    const boxW = w * pw
+    const boxW = w * box.width
     const sigH = boxW * (sig.height / sig.width)
-    const drawX = Math.min(x * pw, pw - boxW)
+    const drawX = box.x + Math.min(x * box.width, box.width - boxW)
     // UI y = top-left from the page TOP; PDF origin is bottom-left
-    const drawY = Math.max(ph - y * ph - sigH, 12)
+    const drawY = box.y + Math.max(box.height - y * box.height - sigH, 12)
     page.drawImage(sig, { x: drawX, y: drawY, width: boxW, height: sigH })
 
     const font = await pdf.embedFont(StandardFonts.Helvetica)
@@ -173,10 +181,21 @@ export async function POST(req: NextRequest) {
     // upload the new signed copy first, then remove the previous one(s) — a
     // redo never leaves a window with no signed copy, and exactly one remains
     const previous = await findSignedBolObjects(dn)
+    const signedPath = newSignedBolPath(dn)
     const { error: upErr } = await supabaseAdmin.storage
       .from(PO_DOC_BUCKET)
-      .upload(newSignedBolPath(dn), Buffer.from(out), { contentType: 'application/pdf' })
+      .upload(signedPath, Buffer.from(out), { contentType: 'application/pdf' })
     if (upErr) throw new Error(upErr.message)
+
+    // Atomic-enough recheck: if the source file was swapped while we were
+    // stamping (concurrent replace/delete), the copy we just published was
+    // made from stale bytes — withdraw it and tell the crew to redo.
+    const nowSource = await resolveOriginalSource(ref).catch(() => null)
+    if (nowSource?.sourceKey !== original.sourceKey) {
+      await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([signedPath])
+      return NextResponse.json({ error: 'source_changed' }, { status: 409 })
+    }
+
     if (previous.length) {
       const { error: rmErr } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove(previous.map((o) => o.path))
       if (rmErr) console.error('previous signed BOL cleanup failed:', dn, rmErr.message)

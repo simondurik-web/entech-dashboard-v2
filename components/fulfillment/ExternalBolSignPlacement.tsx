@@ -130,6 +130,8 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
       if (!res.ok) {
         if (body?.error === 'not_signed') throw new Error(t('fulfillment.extBolNeedsSignature'))
         if (body?.error === 'unsupported_format') throw new Error(t('fulfillment.extBolUnsupported'))
+        if (body?.error === 'rotated_pdf') throw new Error(t('fulfillment.extBolRotated'))
+        if (body?.error === 'source_changed') throw new Error(t('fulfillment.extBolSourceChanged'))
         throw new Error(body?.error || t('fulfillment.extBolSaveFailed'))
       }
       setDone(true)
