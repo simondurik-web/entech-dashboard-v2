@@ -72,6 +72,8 @@ const LABELS = {
     truckloadCancel: 'Cancel',
     alreadyOnTl: 'Already on',
     oneCustomerNote: 'One truck = one customer. Showing only {customer} orders — unlink everything to pick a different customer.',
+    planningNotice: 'For planning purposes only — exporting this PDF does not set up a truckload. Nothing is scheduled until you save the load with "Create Truckload".',
+    planningPdfBanner: 'FOR PLANNING PURPOSES ONLY — this report is NOT a scheduled truckload. Save the load with "Create Truckload" on the dashboard to make it official.',
   },
   es: {
     title: 'Calculadora de Carga de Tarimas',
@@ -114,6 +116,8 @@ const LABELS = {
     truckloadCancel: 'Cancelar',
     alreadyOnTl: 'Ya está en',
     oneCustomerNote: 'Un camión = un cliente. Mostrando solo órdenes de {customer} — desvincula todo para elegir otro cliente.',
+    planningNotice: 'Solo para planificación — exportar este PDF no crea una carga de camión. Nada queda programado hasta que guardes la carga con "Crear Carga de Camión".',
+    planningPdfBanner: 'SOLO PARA PLANIFICACIÓN — este reporte NO es una carga de camión programada. Guarda la carga con "Crear Carga de Camión" en el dashboard para hacerla oficial.',
   },
 }
 
@@ -1182,6 +1186,15 @@ export default function PalletLoadCalculator({
       </div>
       </div>{/* end plc-export-area */}
 
+      {/* Planning-only warning — the exported report is NOT a truckload until the
+          load is saved (Simon 2026-07-17: a salesman printed the PDF and stopped,
+          thinking the truckload was set up). Hidden once a truckload exists. */}
+      {!tlCreatedId && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600">
+          ⚠️ {t.planningNotice}
+        </div>
+      )}
+
       {/* Export + Create Truckload */}
       <div className="flex flex-wrap gap-2">
         <button
@@ -1398,6 +1411,9 @@ export default function PalletLoadCalculator({
         <div class="stat"><div class="stat-label">Space</div><div class="stat-value">${spaceUsedPct}%</div></div>
         <div class="stat"><div class="stat-label">Status</div><div class="stat-value ${isOverweight ? 'status-bad' : hasOverflow ? 'status-warn' : 'status-ok'}">${loadStatus}</div></div>
       </div>
+    </div>
+    <div style="background:#FEF3C7;border:2px solid #D97706;border-radius:6px;padding:5px 10px;margin-bottom:6px;color:#92400E;font-weight:700;font-size:10px;line-height:1.5;">
+      ⚠️ ${LABELS.en.planningPdfBanner}<br/>⚠️ ${LABELS.es.planningPdfBanner}
     </div>
     <table>
       <thead><tr>
