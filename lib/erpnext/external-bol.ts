@@ -112,6 +112,8 @@ async function downloadDocUrl(fileUrl: string): Promise<{ bytes: Uint8Array; con
   const at = fileUrl.indexOf(marker)
   if (at < 0) return null
   const path = decodeURIComponent(fileUrl.slice(at + marker.length))
+  // service-role download — never let a poisoned path traverse out of the bucket
+  if (path.includes('..') || path.includes('\\') || path.startsWith('/')) return null
   const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).download(path)
   if (!data) return null
   return { bytes: new Uint8Array(await data.arrayBuffer()), contentType: data.type || 'application/octet-stream' }
@@ -357,10 +359,26 @@ export async function fetchOriginalExternalBol(
   if (!src) return null
   if (src.kind === 'erpnext') {
     // File.file_url must be a site-relative files path. Anything else (an
-    // absolute URL, or '@host' userinfo smuggling against `${BASE}${path}`)
-    // could steer the authenticated fetch off-host and leak the CF/service
-    // credentials in its headers (review panel, gemini slice-2b round 3).
-    if (!/^\/(?:private\/)?files\//.test(src.sourceKey)) return null
+    // absolute URL, '@host' userinfo smuggling against `${BASE}${path}`, or
+    // encoded dot-segments escaping /files/) could steer the authenticated
+    // fetch off-host or off-path (review panel, gemini+codex slice-2b).
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(src.sourceKey)
+      } catch {
+        return null
+      }
+    })()
+    const FILES_PATH = /^\/(?:private\/)?files\//
+    if (
+      !decoded ||
+      decoded.includes('..') ||
+      decoded.includes('\\') ||
+      !FILES_PATH.test(decoded) ||
+      !FILES_PATH.test(src.sourceKey)
+    ) {
+      return null
+    }
     const res = await erpnextFetchRaw(src.sourceKey).catch(() => null)
     if (!res?.ok) return null
     return {
@@ -536,14 +554,14 @@ export async function getExternalBolState(ref: DnShipmentRef): Promise<ExternalB
   const original = await resolveOriginalSource(ref)
   if (!original) return { original: null, signedPath: null }
   // the truck's ONE signed copy may be stamped under a sibling member's DN —
-  // a reprint from any member must serve it (review panel, codex slice-2b)
-  let signed = (await findSignedBolObjects(ref.dn))[0] ?? null
-  if (!signed) {
-    for (const sib of await truckloadMemberDns(ref.dn)) {
-      signed = (await findSignedBolObjects(sib))[0] ?? null
-      if (signed) break
-    }
-  }
+  // a reprint from any member must serve it. Selection is GLOBALLY newest
+  // across all member DNs, so a stray older duplicate (e.g. a partially-failed
+  // re-sign cleanup) is inert rather than divergent (codex slice-2b r4).
+  const candidates = (
+    await Promise.all([ref.dn, ...(await truckloadMemberDns(ref.dn))].map((d) => findSignedBolObjects(d)))
+  ).flat()
+  candidates.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+  const signed = candidates[0] ?? null
   if (!signed) return { original, signedPath: null }
   const sAt = Date.parse(signed.createdAt ?? '')
   const oAt = Date.parse(original.createdAt ?? '')
