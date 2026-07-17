@@ -89,10 +89,12 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
     if (el) setPageWidth(Math.max(280, Math.min(640, el.clientWidth - 8)))
   }, [open])
 
+  const lastRectRef = useRef<{ w: number; h: number } | null>(null)
   const place = useCallback(
     (pageIndex: number, el: HTMLDivElement, clientX: number, clientY: number) => {
       const rect = el.getBoundingClientRect()
       if (rect.width === 0 || rect.height === 0) return
+      lastRectRef.current = { w: rect.width, h: rect.height }
       const boxW = wFrac
       const boxH = ((wFrac * rect.width * SIG_ASPECT) / rect.height) || 0
       const x = Math.min(Math.max((clientX - rect.left) / rect.width - boxW / 2, 0), 1 - boxW)
@@ -101,6 +103,18 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
     },
     [wFrac]
   )
+
+  // resizing after placement re-clamps the box so the preview never overflows
+  // the page (the server clamps independently — keep both views identical)
+  const changeSize = useCallback((w: number) => {
+    setWFrac(w)
+    setPlacement((p) => {
+      if (!p) return p
+      const rect = lastRectRef.current
+      const boxH = rect ? (w * rect.w * SIG_ASPECT) / rect.h : 0
+      return { ...p, x: Math.min(p.x, 1 - w), y: Math.min(p.y, Math.max(1 - boxH, 0)) }
+    })
+  }, [])
 
   const doSave = async () => {
     if (!placement || saving) return
@@ -231,7 +245,7 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
           min={15}
           max={70}
           value={Math.round(wFrac * 100)}
-          onChange={(e) => setWFrac(Number(e.target.value) / 100)}
+          onChange={(e) => changeSize(Number(e.target.value) / 100)}
           className="flex-1"
         />
       </div>

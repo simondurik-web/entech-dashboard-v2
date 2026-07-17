@@ -7,9 +7,10 @@ import {
   externalBolToPdf,
   fetchExternalBolPdf,
   fetchOriginalExternalBol,
-  fetchSignedExternalBol,
+  findSignedBolObjects,
+  getExternalBolState,
+  newSignedBolPath,
   resolveDnShipment,
-  signedBolPath,
 } from '@/lib/erpnext/external-bol'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
@@ -56,13 +57,13 @@ export async function GET(req: NextRequest) {
     if (!ref) return NextResponse.json({ error: 'Shipment not found' }, { status: 404 })
 
     if (!raw) {
-      const [signed, original] = await Promise.all([fetchSignedExternalBol(dn), fetchOriginalExternalBol(ref)])
+      const state = await getExternalBolState(ref)
       return NextResponse.json(
         {
-          exists: !!original || !!signed,
-          signed: !!signed,
-          source: original?.source ?? null,
-          fileName: original?.fileName ?? null,
+          exists: !!state.original,
+          signed: !!state.signedPath,
+          source: state.original?.source ?? null,
+          fileName: state.original?.fileName ?? null,
         },
         { headers: { 'Cache-Control': 'no-store' } }
       )
@@ -169,10 +170,19 @@ export async function POST(req: NextRequest) {
     }
 
     const out = await pdf.save()
+    // upload the new signed copy first, then remove the previous one(s) — a
+    // redo never leaves a window with no signed copy, and exactly one remains
+    const previous = await findSignedBolObjects(dn)
     const { error: upErr } = await supabaseAdmin.storage
       .from(PO_DOC_BUCKET)
-      .upload(signedBolPath(dn), Buffer.from(out), { contentType: 'application/pdf', upsert: true })
+      .upload(newSignedBolPath(dn), Buffer.from(out), { contentType: 'application/pdf' })
     if (upErr) throw new Error(upErr.message)
+    if (previous.length) {
+      await supabaseAdmin.storage
+        .from(PO_DOC_BUCKET)
+        .remove(previous.map((o) => o.path))
+        .catch(() => null)
+    }
 
     // Permanent record next to our own BOL on the Delivery Note (best-effort:
     // the signed copy in storage is already the print source).

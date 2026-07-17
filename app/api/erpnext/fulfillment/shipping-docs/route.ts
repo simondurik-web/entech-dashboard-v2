@@ -98,8 +98,8 @@ export async function GET(req: NextRequest) {
         names.map(async (n) => {
           const { data } = await supabaseAdmin.storage
             .from(PO_DOC_BUCKET)
-            .list('signed-bol', { limit: 5, search: n })
-          return (data ?? []).some((o) => o.name === `${n}.pdf`) ? n : null
+            .list('signed-bol', { limit: 5, search: `${n}-` })
+          return (data ?? []).some((o) => o.name.startsWith(`${n}-`) && o.name.endsWith('.pdf')) ? n : null
         })
       ),
     ])

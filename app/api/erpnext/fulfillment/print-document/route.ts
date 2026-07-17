@@ -73,11 +73,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not allowed to print to this station' }, { status: 403 })
     }
 
-    const doc = await erpnextGetDoc<{ docstatus: number; custom_ship_against_so?: string | null; customer?: string }>(
-      'Delivery Note',
-      dn
-    )
-    if (doc.docstatus !== 1 || !doc.custom_ship_against_so) {
+    // Same linkage rule as the view route: wrapper DNs carry
+    // custom_ship_against_so, natively-scanned DNs link via their items.
+    const doc = await erpnextGetDoc<{
+      docstatus: number
+      custom_ship_against_so?: string | null
+      customer?: string
+      items?: { against_sales_order?: string | null }[]
+    }>('Delivery Note', dn)
+    const soLinked =
+      doc.custom_ship_against_so || (doc.items ?? []).map((i) => i.against_sales_order).find(Boolean) || null
+    if (doc.docstatus !== 1 || !soLinked) {
       return NextResponse.json({ error: 'Shipment not found' }, { status: 404 })
     }
 
@@ -121,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     logFulfillment({
       action: 'print_document',
-      so: doc.custom_ship_against_so,
+      so: soLinked,
       dn,
       customer: doc.customer,
       userId: guard.userId,

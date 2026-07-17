@@ -297,8 +297,11 @@ function ShipOrderContent() {
   const [uploading, setUploading] = useState(false)
   const [uploadedBols, setUploadedBols] = useState<string[]>([])
   // Carrier (external) BOL per DN — drives the extra view/print buttons and the
-  // tap-to-place signature step (outside-trucking paperwork)
+  // tap-to-place signature step (outside-trucking paperwork). extBolReady gates
+  // the truckload "print everything" button so an early tap can't silently skip
+  // carrier BOLs that were still being discovered.
   const [extBol, setExtBol] = useState<Record<string, { exists: boolean; signed: boolean }>>({})
+  const [extBolReady, setExtBolReady] = useState(false)
   // Letter-printer stations (print relay) for physical BOL/packing-slip printing
   const [printStations, setPrintStations] = useState<{ id: string; name: string }[]>([])
   const [printStation, setPrintStation] = useState('')
@@ -1071,7 +1074,9 @@ function ShipOrderContent() {
 
   // carrier-BOL presence for every DN on the truckload completion screen
   useEffect(() => {
-    if (tlAllDone && tlDnsKey) void fetchExtBol(tlDnsKey.split(','))
+    if (!tlAllDone || !tlDnsKey) return
+    setExtBolReady(false)
+    void fetchExtBol(tlDnsKey.split(',')).finally(() => setExtBolReady(true))
   }, [tlAllDone, tlDnsKey, fetchExtBol])
 
   // ONE tap -> packing slip + BOL for EVERY order of the load, ×copies each
@@ -1259,7 +1264,7 @@ function ShipOrderContent() {
                   )}
                   <button
                     onClick={doPrintAllDocuments}
-                    disabled={!!printingAll || !!printing}
+                    disabled={!!printingAll || !!printing || !extBolReady}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white py-3.5 text-base font-bold hover:bg-emerald-700 transition-colors disabled:opacity-60"
                   >
                     {printingAll ? <RefreshCw className="size-5 animate-spin" /> : <Printer className="size-5" />}

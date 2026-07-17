@@ -17,9 +17,32 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
 import { escapeLike } from '@/lib/po-automation/edit'
 
-/** Signed copies live at a deterministic path so a re-placement overwrites. */
-export function signedBolPath(dn: string): string {
-  return `signed-bol/${dn}.pdf`
+// Signed copies live under signed-bol/<DN>-<uuid>.pdf. The uuid keeps the
+// object key unguessable (the bucket is still public until the Slice-2
+// private-bucket hardening — review panel 2026-07-17, codex+grok BLOCKER);
+// discovery goes through storage.list, and a re-placement deletes the old
+// object first so exactly one signed copy exists per DN.
+export const SIGNED_BOL_FOLDER = 'signed-bol'
+
+export function newSignedBolPath(dn: string): string {
+  return `${SIGNED_BOL_FOLDER}/${dn}-${crypto.randomUUID()}.pdf`
+}
+
+export interface SignedBolObject {
+  path: string
+  createdAt: string | null
+}
+
+/** Locate the (single) signed copy for a DN, newest first. */
+export async function findSignedBolObjects(dn: string): Promise<SignedBolObject[]> {
+  const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).list(SIGNED_BOL_FOLDER, {
+    search: `${dn}-`,
+    limit: 20,
+    sortBy: { column: 'created_at', order: 'desc' },
+  })
+  return (data ?? [])
+    .filter((o) => o.name.startsWith(`${dn}-`) && o.name.endsWith('.pdf'))
+    .map((o) => ({ path: `${SIGNED_BOL_FOLDER}/${o.name}`, createdAt: o.created_at ?? null }))
 }
 
 const LETTER = { w: 612, h: 792 } // 8.5x11in in PDF points
@@ -66,37 +89,24 @@ export interface ExternalBolFile {
   contentType: string
   fileName: string | null
   source: 'dashboard' | 'erpnext'
-}
-
-/** The signed (signature-stamped) copy, if one has been produced. */
-export async function fetchSignedExternalBol(dn: string): Promise<Uint8Array | null> {
-  const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).download(signedBolPath(dn))
-  if (!data) return null
-  return new Uint8Array(await data.arrayBuffer())
+  createdAt: string | null
 }
 
 function normName(s: string | null | undefined): string {
   return (s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-/** Download an order_documents file via its stored public URL, preferring the
- *  storage API (works even if the bucket later goes private). */
+/** Download an order_documents file via the storage API ONLY — no raw URL
+ *  fetch (a poisoned file_url must not become an SSRF vector; review panel
+ *  2026-07-17). Non-bucket URLs are refused. */
 async function downloadDocUrl(fileUrl: string): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   const marker = `/object/public/${PO_DOC_BUCKET}/`
   const at = fileUrl.indexOf(marker)
-  if (at >= 0) {
-    const path = decodeURIComponent(fileUrl.slice(at + marker.length))
-    const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).download(path)
-    if (data) {
-      return { bytes: new Uint8Array(await data.arrayBuffer()), contentType: data.type || 'application/octet-stream' }
-    }
-  }
-  const res = await fetch(fileUrl, { cache: 'no-store', signal: AbortSignal.timeout(15000) }).catch(() => null)
-  if (!res?.ok) return null
-  return {
-    bytes: new Uint8Array(await res.arrayBuffer()),
-    contentType: res.headers.get('content-type') || 'application/octet-stream',
-  }
+  if (at < 0) return null
+  const path = decodeURIComponent(fileUrl.slice(at + marker.length))
+  const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).download(path)
+  if (!data) return null
+  return { bytes: new Uint8Array(await data.arrayBuffer()), contentType: data.type || 'application/octet-stream' }
 }
 
 function listParam(name: string, value: unknown): string {
@@ -120,7 +130,9 @@ export async function fetchOriginalExternalBol(ref: DnShipmentRef): Promise<Exte
     const row = (data ?? []).find((d) => normName(d.customer) === want && d.file_url)
     if (row?.file_url) {
       const file = await downloadDocUrl(row.file_url)
-      if (file) return { ...file, fileName: row.file_name ?? null, source: 'dashboard' }
+      if (file) {
+        return { ...file, fileName: row.file_name ?? null, source: 'dashboard', createdAt: row.created_at ?? null }
+      }
     }
   }
 
@@ -131,14 +143,14 @@ export async function fetchOriginalExternalBol(ref: DnShipmentRef): Promise<Exte
       ['attached_to_name', '=', ref.dn],
       ['file_name', 'like', 'CustomerBOL-%'],
     ]),
-    listParam('fields', ['file_name', 'file_url']),
+    listParam('fields', ['file_name', 'file_url', 'creation']),
     'order_by=creation desc',
     'limit_page_length=1',
   ].join('&')
   const files =
-    (await erpnextGet<{ data: { file_name: string; file_url: string }[] }>(`/api/resource/File?${fq}`).catch(() => ({
-      data: [],
-    }))).data ?? []
+    (await erpnextGet<{ data: { file_name: string; file_url: string; creation?: string }[] }>(
+      `/api/resource/File?${fq}`
+    ).catch(() => ({ data: [] }))).data ?? []
   const f = files[0]
   if (f?.file_url) {
     const res = await erpnextFetchRaw(f.file_url).catch(() => null)
@@ -148,6 +160,7 @@ export async function fetchOriginalExternalBol(ref: DnShipmentRef): Promise<Exte
         contentType: res.headers.get('content-type') || 'application/octet-stream',
         fileName: f.file_name,
         source: 'erpnext',
+        createdAt: f.creation ?? null,
       }
     }
   }
@@ -199,16 +212,26 @@ export async function attachBolToSalesOrder(input: {
   fileName: string
   contentType: string
 }): Promise<string | null> {
-  // dashboard_orders mirrors ERPNext — if_number's first token is the SO name
+  // dashboard_orders mirrors ERPNext — if_number's first token is the SO name.
+  // A non-empty customer match is REQUIRED, and the (customer, PO) pair must
+  // resolve to exactly ONE Sales Order — attaching to "the first PO match"
+  // could file a BOL on another customer's order (review panel 2026-07-17,
+  // codex BLOCKER). Ambiguous or empty → skip the ERPNext push entirely.
+  const want = normName(input.customer)
+  if (!want) return null
   const { data } = await supabaseAdmin
     .from('dashboard_orders')
     .select('if_number, customer, po_number')
     .ilike('po_number', escapeLike(input.poNumber.trim()))
-    .limit(25)
-  const want = normName(input.customer)
-  const row = (data ?? []).find((r) => (!want || normName(r.customer) === want) && r.if_number)
-  const soName = String(row?.if_number ?? '').trim().split(/\s+/)[0]
-  if (!soName) return null
+    .limit(50)
+  const soNames = new Set(
+    (data ?? [])
+      .filter((r) => normName(r.customer) === want && r.if_number)
+      .map((r) => String(r.if_number).trim().split(/\s+/)[0])
+      .filter(Boolean)
+  )
+  if (soNames.size !== 1) return null
+  const soName = [...soNames][0]
   const ext = input.fileName.includes('.') ? input.fileName.slice(input.fileName.lastIndexOf('.')) : ''
   const safeExt = /^\.[A-Za-z0-9]{1,5}$/.test(ext) ? ext : ''
   const up = await erpnextUploadFile({
@@ -229,17 +252,41 @@ export async function attachBolToSalesOrder(input: {
   return soName
 }
 
-/** The external BOL as printable PDF bytes — the signature-stamped copy when
- *  one exists, else the original. Null when the order has no external BOL. */
-export async function fetchExternalBolPdf(
-  ref: DnShipmentRef,
-  opts?: { preferSigned?: boolean }
-): Promise<{ bytes: Uint8Array; signed: boolean; source: 'dashboard' | 'erpnext' | 'signed' } | null> {
-  if (opts?.preferSigned !== false) {
-    const signed = await fetchSignedExternalBol(ref.dn)
-    if (signed) return { bytes: signed, signed: true, source: 'signed' }
-  }
+export interface ExternalBolState {
+  original: ExternalBolFile | null
+  /** path of a signed copy that is NOT stale (stamped after the current
+   *  original was uploaded). A replaced/deleted original invalidates it. */
+  signedPath: string | null
+}
+
+/** Resolve what exists for a DN: the original external BOL and, when still
+ *  valid, its signature-stamped copy. No original → nothing (an orphaned
+ *  signed copy of a deleted BOL must not keep printing). */
+export async function getExternalBolState(ref: DnShipmentRef): Promise<ExternalBolState> {
   const original = await fetchOriginalExternalBol(ref)
-  if (!original) return null
-  return { bytes: await externalBolToPdf(original.bytes, original.contentType), signed: false, source: original.source }
+  if (!original) return { original: null, signedPath: null }
+  const signed = (await findSignedBolObjects(ref.dn))[0] ?? null
+  if (!signed) return { original, signedPath: null }
+  const sAt = Date.parse(signed.createdAt ?? '')
+  const oAt = Date.parse(original.createdAt ?? '')
+  const stale = Number.isFinite(sAt) && Number.isFinite(oAt) && sAt < oAt
+  return { original, signedPath: stale ? null : signed.path }
+}
+
+/** The external BOL as printable PDF bytes — the valid signature-stamped copy
+ *  when one exists, else the original. Null when the order has no external BOL. */
+export async function fetchExternalBolPdf(
+  ref: DnShipmentRef
+): Promise<{ bytes: Uint8Array; signed: boolean; source: 'dashboard' | 'erpnext' | 'signed' } | null> {
+  const state = await getExternalBolState(ref)
+  if (state.signedPath) {
+    const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).download(state.signedPath)
+    if (data) return { bytes: new Uint8Array(await data.arrayBuffer()), signed: true, source: 'signed' }
+  }
+  if (!state.original) return null
+  return {
+    bytes: await externalBolToPdf(state.original.bytes, state.original.contentType),
+    signed: false,
+    source: state.original.source,
+  }
 }
