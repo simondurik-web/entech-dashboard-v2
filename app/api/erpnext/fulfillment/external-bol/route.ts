@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextGetDoc, erpnextUploadFile } from '@/lib/erpnext/client'
 import {
@@ -175,13 +175,15 @@ export async function POST(req: NextRequest) {
     if (previewKey !== original.sourceKey) {
       return NextResponse.json({ error: 'source_changed' }, { status: 409 })
     }
-    // Bake the crew's chosen rotation (plus any inherent /Rotate) into the
-    // content — the SAME transform the preview was served with, so the tap
-    // coordinates line up 1:1 and the saved copy reads upright.
-    const pdfBytes = await normalizeExternalPdf(
-      await externalBolToPdf(original.bytes, original.contentType),
-      rot
-    )
+    // The PRINTED document must keep the carrier's ORIGINAL page geometry —
+    // baking the view rotation into the page swapped its dimensions and the
+    // printer clipped it (Simon's 2026-07-17 test print). Instead: the crew
+    // places the box on the ROTATED preview (rotation = inherent /Rotate +
+    // their Rotate taps); we inverse-map those display coordinates back into
+    // the original page space and draw the SIGNATURE rotated to match, so on
+    // paper the document prints exactly like the carrier's original with the
+    // signature aligned to the document's own text direction.
+    const pdfBytes = await externalBolToPdf(original.bytes, original.contentType)
 
     const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
     const pages = pdf.getPages()
@@ -189,27 +191,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
     const page = pages[pageIndex]
-    // normalized pages are rotation-0 with CropBox at origin
-    const box = page.getCropBox()
+    const inherent = ((page.getRotation().angle % 360) + 360) % 360
+    // total CLOCKWISE rotation of the preview the crew tapped on
+    const theta = (inherent + rot) % 360
+    const crop = page.getCropBox()
+    const W = crop.width
+    const H = crop.height
+    // preview (display) dimensions in page units; display origin = top-left, y down
+    const Dw = theta === 90 || theta === 270 ? H : W
+    const Dh = theta === 90 || theta === 270 ? W : H
     const sig = await pdf.embedPng(sigBytes)
-    const boxW = w * box.width
-    const sigH = boxW * (sig.height / sig.width)
-    const drawX = box.x + Math.min(x * box.width, box.width - boxW)
-    // UI y = top-left from the page TOP; PDF origin is bottom-left
-    const drawY = box.y + Math.max(box.height - y * box.height - sigH, 12)
-    page.drawImage(sig, { x: drawX, y: drawY, width: boxW, height: sigH })
+    const bw = w * Dw
+    const bh = bw * (sig.height / sig.width)
+    const dx0 = Math.min(Math.max(x * Dw, 0), Math.max(Dw - bw, 0))
+    const dy0 = Math.min(Math.max(y * Dh, 0), Math.max(Dh - bh, 0))
+    // display -> original user space (origin bottom-left, y up), verified per
+    // corner mapping for each quarter turn
+    const toUser = (d: { x: number; y: number }) => {
+      switch (theta) {
+        case 90:
+          return { x: d.y, y: d.x }
+        case 180:
+          return { x: W - d.x, y: d.y }
+        case 270:
+          return { x: W - d.y, y: H - d.x }
+        default:
+          return { x: d.x, y: H - d.y }
+      }
+    }
+    // drawImage anchors at the image's UNROTATED bottom-left and rotates CCW
+    // about it — the display box's bottom-left corner is that anchor
+    const aU = toUser({ x: dx0, y: dy0 + bh })
+    page.drawImage(sig, {
+      x: crop.x + aU.x,
+      y: crop.y + aU.y,
+      width: bw,
+      height: bh,
+      rotate: degrees(theta),
+    })
 
     const font = await pdf.embedFont(StandardFonts.Helvetica)
     const who = (doc.custom_driver_name || doc.received_by_name || '').trim()
     const when = (doc.custom_signed_at || '').slice(0, 16)
     const caption = [who, when].filter(Boolean).join(' — ')
     if (caption) {
+      const cU = toUser({ x: dx0, y: Math.min(dy0 + bh + 9, Dh - 2) })
       page.drawText(caption, {
-        x: drawX,
-        y: Math.max(drawY - 10, 2),
+        x: crop.x + cU.x,
+        y: crop.y + cU.y,
         size: 7,
         font,
         color: rgb(0.1, 0.1, 0.35),
+        rotate: degrees(theta),
       })
     }
 
