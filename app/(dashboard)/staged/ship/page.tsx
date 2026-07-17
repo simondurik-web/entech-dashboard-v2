@@ -34,6 +34,10 @@ import { authedJson } from '@/lib/authed-fetch'
 // Designed iPhone-first: big tap targets, sticky scan bar, camera scanner.
 
 const PalletScanner = dynamic(() => import('@/components/inventory/PalletScanner'), { ssr: false })
+// react-pdf is browser-only — load the carrier-BOL signature placement UI lazily
+const ExternalBolSignPlacement = dynamic(() => import('@/components/fulfillment/ExternalBolSignPlacement'), {
+  ssr: false,
+})
 
 interface FulfillmentLine {
   soItem: string
@@ -83,6 +87,7 @@ interface LogEntry {
     | 'complete'
     | 'undo'
     | 'sign_bol'
+    | 'sign_external_bol'
     | 'upload_customer_bol'
     | 'print_document'
     | 'move_reservation'
@@ -291,6 +296,9 @@ function ShipOrderContent() {
   const [justShipped, setJustShipped] = useState<{ dn: string; docsOk: boolean } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadedBols, setUploadedBols] = useState<string[]>([])
+  // Carrier (external) BOL per DN — drives the extra view/print buttons and the
+  // tap-to-place signature step (outside-trucking paperwork)
+  const [extBol, setExtBol] = useState<Record<string, { exists: boolean; signed: boolean }>>({})
   // Letter-printer stations (print relay) for physical BOL/packing-slip printing
   const [printStations, setPrintStations] = useState<{ id: string; name: string }[]>([])
   const [printStation, setPrintStation] = useState('')
@@ -320,6 +328,29 @@ function ShipOrderContent() {
     }
     return res
   }, [])
+
+  // Does each shipped DN have a carrier-provided (external) BOL on file, and has
+  // the driver's signature already been stamped onto it?
+  const fetchExtBol = useCallback(
+    async (dns: string[]) => {
+      const entries = await Promise.all(
+        dns.map(async (dn) => {
+          try {
+            const res = await authedFetch(`/api/erpnext/fulfillment/external-bol?dn=${encodeURIComponent(dn)}`)
+            if (!res.ok) return null
+            const b = await res.json()
+            return [dn, { exists: !!b.exists, signed: !!b.signed }] as const
+          } catch {
+            return null
+          }
+        })
+      )
+      const map: Record<string, { exists: boolean; signed: boolean }> = {}
+      for (const e of entries) if (e) map[e[0]] = e[1]
+      if (Object.keys(map).length) setExtBol((prev) => ({ ...prev, ...map }))
+    },
+    [authedFetch]
+  )
 
   const fetchOrder = useCallback(async () => {
     setLoading(true)
@@ -878,7 +909,7 @@ function ShipOrderContent() {
     }
   }, [canShip, authedFetch])
 
-  const doPrintDocument = async (dn: string, type: 'bol' | 'packing') => {
+  const doPrintDocument = async (dn: string, type: 'bol' | 'packing' | 'customer_bol') => {
     if (!printStation || printing) return
     setPrinting(type)
     setShipError(null)
@@ -928,6 +959,7 @@ function ShipOrderContent() {
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || t('fulfillment.uploadFailed'))
       setUploadedBols((prev) => [...prev, body.fileName as string])
+      void fetchExtBol([dn]) // the carrier BOL buttons appear right away
     } catch (err) {
       setShipError(err instanceof Error ? err.message : t('fulfillment.uploadFailed'))
     } finally {
@@ -939,14 +971,14 @@ function ShipOrderContent() {
   // (standalone Safari) window.open is a no-op, so on devices that support file
   // sharing we hand the PDF to the iOS share sheet instead — which includes
   // Print (AirPrint) and Save to Files. Desktop keeps the new-tab viewer.
-  const openDocument = async (dn: string, type: 'bol' | 'packing') => {
+  const openDocument = async (dn: string, type: 'bol' | 'packing' | 'customer_bol') => {
     try {
       const res = await authedFetch(
         `/api/erpnext/fulfillment/document?dn=${encodeURIComponent(dn)}&type=${type}&copies=${copies}`
       )
       if (!res.ok) throw new Error()
       const blob = await res.blob()
-      const fileName = `${type === 'bol' ? 'BOL' : 'PackingSlip'}-${dn}.pdf`
+      const fileName = `${type === 'bol' ? 'BOL' : type === 'customer_bol' ? 'CustomerBOL' : 'PackingSlip'}-${dn}.pdf`
       const file = new File([blob], fileName, { type: 'application/pdf' })
       const standalone =
         window.matchMedia('(display-mode: standalone)').matches ||
@@ -1037,11 +1069,22 @@ function ShipOrderContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tlAllDone, tlDnsKey, tlSignDone, authedFetch])
 
+  // carrier-BOL presence for every DN on the truckload completion screen
+  useEffect(() => {
+    if (tlAllDone && tlDnsKey) void fetchExtBol(tlDnsKey.split(','))
+  }, [tlAllDone, tlDnsKey, fetchExtBol])
+
   // ONE tap -> packing slip + BOL for EVERY order of the load, ×copies each
   // (Simon 2026-07-09: no per-order printing at the end of a truckload)
   const doPrintAllDocuments = async () => {
     if (!printStation || printingAll || tlDocsList.length === 0) return
-    const jobs = tlDocsList.flatMap((c) => (['packing', 'bol'] as const).map((type) => ({ dn: c.dn, type })))
+    // packing slip + our BOL always; the carrier's own BOL joins the batch when
+    // one is on file for that DN (outside trucking — Simon 2026-07-17)
+    const jobs = tlDocsList.flatMap((c) => {
+      const types: ('packing' | 'bol' | 'customer_bol')[] = ['packing', 'bol']
+      if (extBol[c.dn]?.exists) types.push('customer_bol')
+      return types.map((type) => ({ dn: c.dn, type }))
+    })
     setPrintingAll({ done: 0, total: jobs.length })
     setShipError(null)
     setPrintQueuedMsg(null)
@@ -1056,7 +1099,15 @@ function ShipOrderContent() {
         })
         if (!res.ok) throw new Error()
       } catch {
-        failed.push(`${job.dn} (${job.type === 'bol' ? 'BOL' : t('fulfillment.packingShort')})`)
+        failed.push(
+          `${job.dn} (${
+            job.type === 'bol'
+              ? 'BOL'
+              : job.type === 'customer_bol'
+                ? t('fulfillment.customerBolShort')
+                : t('fulfillment.packingShort')
+          })`
+        )
       }
       setPrintingAll({ done: i + 1, total: jobs.length })
     }
@@ -1080,6 +1131,11 @@ function ShipOrderContent() {
   const dnSigned = order?.deliveryNote?.signed ?? false
   const showSignStep = canShip && !!shippedDn && !dnSigned && !signSkipped
   const showDocs = !!shippedDn && (dnSigned || signSkipped || !canShip)
+
+  // carrier-BOL presence for the single-order shipped view
+  useEffect(() => {
+    if (shippedDn) void fetchExtBol([shippedDn])
+  }, [shippedDn, fetchExtBol])
 
   return (
     <div className="p-4 pb-44 max-w-3xl mx-auto">
@@ -1211,7 +1267,10 @@ function ShipOrderContent() {
                       ? t('fulfillment.printAllProgress')
                           .replace('{done}', String(printingAll.done))
                           .replace('{total}', String(printingAll.total))
-                      : t('fulfillment.printAllDocs').replace('{count}', String(tlDocsList.length * 2))}
+                      : t('fulfillment.printAllDocs').replace(
+                          '{count}',
+                          String(tlDocsList.reduce((n, c) => n + 2 + (extBol[c.dn]?.exists ? 1 : 0), 0))
+                        )}
                   </button>
                   <p className="mt-1 text-center text-[11px] text-muted-foreground">
                     {t('fulfillment.printAllHint')
@@ -1267,6 +1326,39 @@ function ShipOrderContent() {
                           {t('fulfillment.printPackingSlip')} ×{copies}
                         </button>
                       </div>
+                    )}
+                    {/* Carrier-provided (outside trucking) BOL — view/print + signature stamp */}
+                    {extBol[c.dn]?.exists && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <button
+                            onClick={() => openDocument(c.dn, 'customer_bol')}
+                            className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors"
+                          >
+                            <FileText className="size-3.5" />
+                            {t('fulfillment.viewCustomerBol')}
+                          </button>
+                          {canShip && printStations.length > 0 && (
+                            <button
+                              onClick={() => doPrintDocument(c.dn, 'customer_bol')}
+                              disabled={!!printing}
+                              className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <Printer className="size-3.5" />
+                              {t('fulfillment.printCustomerBol')} ×{copies}
+                            </button>
+                          )}
+                        </div>
+                        {canShip && dnSignedMap[c.dn] && (
+                          <div className="mt-2">
+                            <ExternalBolSignPlacement
+                              dn={c.dn}
+                              alreadySigned={!!extBol[c.dn]?.signed}
+                              onSigned={() => fetchExtBol([c.dn])}
+                            />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ))}
@@ -1672,6 +1764,17 @@ function ShipOrderContent() {
                 </p>
               )}
 
+              {/* Outside trucking: stamp the driver's signature onto the carrier's BOL */}
+              {canShip && shippedDn && dnSigned && extBol[shippedDn]?.exists && (
+                <div className="mb-3">
+                  <ExternalBolSignPlacement
+                    dn={shippedDn}
+                    alreadySigned={!!extBol[shippedDn]?.signed}
+                    onSigned={() => fetchExtBol([shippedDn])}
+                  />
+                </div>
+              )}
+
               {showDocs && shippedDn && (
                 <>
                 <div className="flex items-center justify-end gap-1.5 mb-2">
@@ -1706,6 +1809,15 @@ function ShipOrderContent() {
                     {t('fulfillment.viewPackingSlip')}
                   </button>
                 </div>
+                {extBol[shippedDn]?.exists && (
+                  <button
+                    onClick={() => openDocument(shippedDn, 'customer_bol')}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 py-3 text-sm font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors"
+                  >
+                    <FileText className="size-4" />
+                    {t('fulfillment.viewCustomerBol')}
+                  </button>
+                )}
 
                 {/* Physical printing through the station relay (letter paper) */}
                 {canShip && printStations.length > 0 && (
@@ -1748,6 +1860,20 @@ function ShipOrderContent() {
                         {t('fulfillment.printPackingSlip')}
                       </button>
                     </div>
+                    {extBol[shippedDn]?.exists && (
+                      <button
+                        onClick={() => doPrintDocument(shippedDn, 'customer_bol')}
+                        disabled={!!printing}
+                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 py-2.5 text-sm font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                      >
+                        {printing === 'customer_bol' ? (
+                          <RefreshCw className="size-4 animate-spin" />
+                        ) : (
+                          <Printer className="size-4" />
+                        )}
+                        {t('fulfillment.printCustomerBol')}
+                      </button>
+                    )}
                     {printQueuedMsg && (
                       <p className="mt-2 text-xs font-semibold text-emerald-600">{printQueuedMsg}</p>
                     )}
@@ -1815,13 +1941,15 @@ function ShipOrderContent() {
                               ? 'fulfillment.logUndo'
                               : e.action === 'sign_bol'
                                 ? 'fulfillment.logSign'
-                                : e.action === 'print_document'
-                                  ? 'fulfillment.logPrint'
-                                  : e.action === 'move_reservation'
-                                    ? 'fulfillment.logMove'
-                                    : e.action === 'tl_release'
-                                      ? 'fulfillment.logRelease'
-                                      : 'fulfillment.logUpload'
+                                : e.action === 'sign_external_bol'
+                                  ? 'fulfillment.logSignExternal'
+                                  : e.action === 'print_document'
+                                    ? 'fulfillment.logPrint'
+                                    : e.action === 'move_reservation'
+                                      ? 'fulfillment.logMove'
+                                      : e.action === 'tl_release'
+                                        ? 'fulfillment.logRelease'
+                                        : 'fulfillment.logUpload'
                         )}{' '}
                         <span className="font-mono text-xs text-muted-foreground">{e.dn_number}</span>
                       </p>

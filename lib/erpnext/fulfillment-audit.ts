@@ -11,6 +11,7 @@ export type FulfillmentAction =
   | 'complete'
   | 'undo'
   | 'sign_bol'
+  | 'sign_external_bol'
   | 'upload_customer_bol'
   | 'print_document'
   | 'move_reservation'

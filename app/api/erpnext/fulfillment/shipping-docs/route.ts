@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
-import { erpnextGet } from '@/lib/erpnext/client'
+import { erpnextGet, erpnextGetDoc } from '@/lib/erpnext/client'
+import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
+import { escapeLike } from '@/lib/po-automation/edit'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // GET /api/erpnext/fulfillment/shipping-docs?so=<SO>
 // Lists the submitted Delivery Notes behind a Sales Order so the dashboard can
@@ -62,9 +65,55 @@ export async function GET(req: NextRequest) {
         ['docstatus', '=', 1],
       ])}&${listParam('fields', ['name', 'posting_date', 'custom_shipped'])}&limit_page_length=0`
     )
+    // Carrier (external) BOL availability — an order-level dashboard upload, a
+    // CustomerBOL attached to the DN, or an already-stamped signed copy. Powers
+    // the "Carrier BOL" reprint button in the Shipped view.
+    const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+    let hasOrderBol = false
+    try {
+      const soDoc = await erpnextGetDoc<{ customer?: string | null; po_no?: string | null }>('Sales Order', so)
+      if (soDoc.po_no) {
+        const { data: docs } = await supabaseAdmin
+          .schema('po_automation')
+          .from('order_documents')
+          .select('customer')
+          .eq('doc_type', 'bol')
+          .ilike('po_number', escapeLike(soDoc.po_no.trim()))
+          .limit(25)
+        const want = norm(soDoc.customer)
+        hasOrderBol = (docs ?? []).some((d) => norm(d.customer) === want)
+      }
+    } catch {
+      /* best-effort flag */
+    }
+    const [dnBols, signedLists] = await Promise.all([
+      erpnextGet<{ data: { attached_to_name: string }[] }>(
+        `/api/resource/File?${listParam('filters', [
+          ['attached_to_doctype', '=', 'Delivery Note'],
+          ['attached_to_name', 'in', names],
+          ['file_name', 'like', 'CustomerBOL-%'],
+        ])}&${listParam('fields', ['attached_to_name'])}&limit_page_length=0`
+      ).catch(() => ({ data: [] })),
+      Promise.all(
+        names.map(async (n) => {
+          const { data } = await supabaseAdmin.storage
+            .from(PO_DOC_BUCKET)
+            .list('signed-bol', { limit: 5, search: n })
+          return (data ?? []).some((o) => o.name === `${n}.pdf`) ? n : null
+        })
+      ),
+    ])
+    const dnBolSet = new Set((dnBols.data ?? []).map((f) => f.attached_to_name))
+    const signedSet = new Set(signedLists.filter(Boolean) as string[])
+
     const documents = (details.data ?? [])
       .sort((a, b) => (a.posting_date < b.posting_date ? 1 : -1))
-      .map((d) => ({ dn: d.name, date: d.posting_date, shipped: !!d.custom_shipped }))
+      .map((d) => ({
+        dn: d.name,
+        date: d.posting_date,
+        shipped: !!d.custom_shipped,
+        customerBol: hasOrderBol || dnBolSet.has(d.name) || signedSet.has(d.name),
+      }))
     return NextResponse.json({ documents }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('shipping-docs lookup failed:', error)

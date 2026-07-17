@@ -13,6 +13,7 @@ import {
   type OrderDocType,
 } from '@/lib/po-automation/documents'
 import { requireUserOrService } from '@/lib/require-user'
+import { attachBolToSalesOrder } from '@/lib/erpnext/external-bol'
 
 export const dynamic = 'force-dynamic'
 
@@ -198,7 +199,24 @@ export async function POST(req: NextRequest) {
     })
   if (auditErr) console.error('[po-automation] document add audit error:', auditErr)
 
-  return NextResponse.json({ document: row })
+  // Carrier BOLs also land on the ERPNext Sales Order (scan-enforcement plan,
+  // Simon 2026-06-26/2026-07-17) — best-effort, never fails the upload.
+  let erpSo: string | null = null
+  if (docType === 'bol') {
+    try {
+      erpSo = await attachBolToSalesOrder({
+        customer,
+        poNumber: po,
+        bytes: new Uint8Array(buf),
+        fileName,
+        contentType: file.type,
+      })
+    } catch (e) {
+      console.error('[po-automation] BOL ERPNext attach failed:', e)
+    }
+  }
+
+  return NextResponse.json({ document: row, erpSo })
 }
 
 /** DELETE /api/po-automation/documents?id= — removes a document row + its object. */

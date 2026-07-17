@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PDFDocument } from 'pdf-lib'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextFetchRaw, erpnextGetDoc } from '@/lib/erpnext/client'
+import { ExternalBolUnsupportedError, fetchExternalBolPdf, resolveDnShipment } from '@/lib/erpnext/external-bol'
 import { BOL_FORMAT, PACKING_SLIP_FORMAT } from '@/lib/erpnext/fulfillment'
 
 // GET /api/erpnext/fulfillment/document?dn=<DN>&type=bol|packing&copies=2
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const dn = req.nextUrl.searchParams.get('dn')?.trim() ?? ''
   const type = req.nextUrl.searchParams.get('type') ?? ''
-  if (!DN_NAME.test(dn) || !['bol', 'packing'].includes(type)) {
+  if (!DN_NAME.test(dn) || !['bol', 'packing', 'customer_bol'].includes(type)) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
   try {
@@ -48,11 +49,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Not available' }, { status: 404 })
     }
 
-    const format = type === 'bol' ? BOL_FORMAT : PACKING_SLIP_FORMAT
-    const qs = new URLSearchParams({ doctype: 'Delivery Note', name: dn, format })
-    const upstream = await erpnextFetchRaw(`/api/method/frappe.utils.print_format.download_pdf?${qs}`)
-    if (!upstream.ok) return NextResponse.json({ error: 'Not available' }, { status: 502 })
-    let bytes = await upstream.arrayBuffer()
+    let bytes: ArrayBuffer
+    if (type === 'customer_bol') {
+      // Carrier-provided BOL — signature-stamped copy when one exists
+      const ref = await resolveDnShipment(dn)
+      const ext = ref ? await fetchExternalBolPdf(ref) : null
+      if (!ext) return NextResponse.json({ error: 'Not available' }, { status: 404 })
+      bytes = ext.bytes.buffer.slice(
+        ext.bytes.byteOffset,
+        ext.bytes.byteOffset + ext.bytes.byteLength
+      ) as ArrayBuffer
+    } else {
+      const format = type === 'bol' ? BOL_FORMAT : PACKING_SLIP_FORMAT
+      const qs = new URLSearchParams({ doctype: 'Delivery Note', name: dn, format })
+      const upstream = await erpnextFetchRaw(`/api/method/frappe.utils.print_format.download_pdf?${qs}`)
+      if (!upstream.ok) return NextResponse.json({ error: 'Not available' }, { status: 502 })
+      bytes = await upstream.arrayBuffer()
+    }
 
     const copies = Math.min(5, Math.max(1, parseInt(req.nextUrl.searchParams.get('copies') ?? '1', 10) || 1))
     if (copies > 1) {
@@ -72,11 +85,14 @@ export async function GET(req: NextRequest) {
     return new NextResponse(bytes, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${type === 'bol' ? 'BOL' : 'PackingSlip'}-${dn}.pdf"`,
+        'Content-Disposition': `inline; filename="${type === 'bol' ? 'BOL' : type === 'customer_bol' ? 'CustomerBOL' : 'PackingSlip'}-${dn}.pdf"`,
         'Cache-Control': 'no-store',
       },
     })
   } catch (error) {
+    if (error instanceof ExternalBolUnsupportedError) {
+      return NextResponse.json({ error: 'unsupported_format' }, { status: 422 })
+    }
     console.error('fulfillment document failed:', error)
     return NextResponse.json({ error: 'Not available' }, { status: 502 })
   }

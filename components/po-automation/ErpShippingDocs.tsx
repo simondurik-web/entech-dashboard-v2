@@ -9,6 +9,7 @@ interface ShippingDoc {
   dn: string
   date: string
   shipped: boolean
+  customerBol?: boolean
 }
 
 /**
@@ -44,7 +45,7 @@ export function ErpShippingDocs({ soName }: { soName: string }) {
 
   // Fetch with auth, then open — PWA/standalone gets the share sheet (AirPrint /
   // Save to Files); desktop gets the new-tab viewer. Mirrors the ship page.
-  const openDocument = async (dn: string, type: 'bol' | 'packing') => {
+  const openDocument = async (dn: string, type: 'bol' | 'packing' | 'customer_bol') => {
     const key = `${dn}|${type}`
     setBusy(key)
     try {
@@ -54,7 +55,7 @@ export function ErpShippingDocs({ soName }: { soName: string }) {
       )
       if (!res.ok) throw new Error()
       const blob = await res.blob()
-      const fileName = `${type === 'bol' ? 'BOL' : 'PackingSlip'}-${dn}.pdf`
+      const fileName = `${type === 'bol' ? 'BOL' : type === 'customer_bol' ? 'CustomerBOL' : 'PackingSlip'}-${dn}.pdf`
       const file = new File([blob], fileName, { type: 'application/pdf' })
       const standalone =
         window.matchMedia('(display-mode: standalone)').matches ||
@@ -109,6 +110,21 @@ export function ErpShippingDocs({ soName }: { soName: string }) {
                 {type === 'bol' ? t('shippingDocs.bol') : t('shippingDocs.packingSlip')}
               </button>
             ))}
+            {d.customerBol && (
+              <button
+                type="button"
+                onClick={() => openDocument(d.dn, 'customer_bol')}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950"
+              >
+                {busy === `${d.dn}|customer_bol` ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <FileDown className="size-3.5" />
+                )}
+                {t('shippingDocs.customerBol')}
+              </button>
+            )}
           </li>
         ))}
       </ul>

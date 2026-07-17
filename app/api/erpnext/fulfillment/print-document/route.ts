@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextFetchRaw, erpnextGetDoc } from '@/lib/erpnext/client'
+import { ExternalBolUnsupportedError, fetchExternalBolPdf, resolveDnShipment } from '@/lib/erpnext/external-bol'
 import { BOL_FORMAT, PACKING_SLIP_FORMAT } from '@/lib/erpnext/fulfillment'
 import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { allowedStationIds, userCanPrintTo } from '@/lib/erpnext/printer-access'
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
   // Shipping needs two of everything (Simon 2026-07-08) — the UI defaults to 2,
   // the relay honors 1-5. One print_jobs row per copy: zero station-agent changes.
   const copies = Math.min(5, Math.max(1, Number(body.copies) || 1))
-  if (!DN_NAME.test(dn) || !['bol', 'packing'].includes(type) || !station) {
+  if (!DN_NAME.test(dn) || !['bol', 'packing', 'customer_bol'].includes(type) || !station) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
@@ -80,13 +81,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Shipment not found' }, { status: 404 })
     }
 
-    const format = type === 'bol' ? BOL_FORMAT : PACKING_SLIP_FORMAT
-    const qs = new URLSearchParams({ doctype: 'Delivery Note', name: dn, format })
-    const upstream = await erpnextFetchRaw(`/api/method/frappe.utils.print_format.download_pdf?${qs}`)
-    if (!upstream.ok) return NextResponse.json({ error: 'Could not generate the PDF' }, { status: 502 })
-    const bytes = new Uint8Array(await upstream.arrayBuffer())
-    if (!(bytes.length > 4 && bytes[0] === 0x25)) {
-      return NextResponse.json({ error: 'Could not generate the PDF' }, { status: 502 })
+    let bytes: Uint8Array
+    if (type === 'customer_bol') {
+      // Carrier-provided BOL — the signature-stamped copy when one exists
+      const ref = await resolveDnShipment(dn)
+      const ext = ref ? await fetchExternalBolPdf(ref) : null
+      if (!ext) return NextResponse.json({ error: 'No external BOL on this order' }, { status: 404 })
+      bytes = ext.bytes
+    } else {
+      const format = type === 'bol' ? BOL_FORMAT : PACKING_SLIP_FORMAT
+      const qs = new URLSearchParams({ doctype: 'Delivery Note', name: dn, format })
+      const upstream = await erpnextFetchRaw(`/api/method/frappe.utils.print_format.download_pdf?${qs}`)
+      if (!upstream.ok) return NextResponse.json({ error: 'Could not generate the PDF' }, { status: 502 })
+      bytes = new Uint8Array(await upstream.arrayBuffer())
+      if (!(bytes.length > 4 && bytes[0] === 0x25)) {
+        return NextResponse.json({ error: 'Could not generate the PDF' }, { status: 502 })
+      }
     }
 
     const payload = Buffer.from(bytes).toString('base64')
@@ -96,7 +106,7 @@ export async function POST(req: NextRequest) {
         station_id: station,
         format: 'pdf',
         zpl: payload,
-        item_code: type === 'bol' ? 'BOL' : 'PACKING-SLIP',
+        item_code: type === 'bol' ? 'BOL' : type === 'customer_bol' ? 'CUSTOMER-BOL' : 'PACKING-SLIP',
         batch: dn,
         created_by: guard.userId,
         idempotency_key: `doc-${dn}-${type}-${stamp}-${i + 1}`, // reprints are intentional
@@ -115,6 +125,9 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json({ queued: true }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
+    if (error instanceof ExternalBolUnsupportedError) {
+      return NextResponse.json({ error: 'unsupported_format' }, { status: 422 })
+    }
     console.error('print document failed:', error)
     return NextResponse.json({ error: 'Print failed. Try again.' }, { status: 502 })
   }
