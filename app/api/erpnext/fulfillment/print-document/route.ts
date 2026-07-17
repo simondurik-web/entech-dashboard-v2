@@ -87,6 +87,10 @@ export async function POST(req: NextRequest) {
       const ref = await resolveDnShipment(dn)
       const ext = ref ? await fetchExternalBolPdf(ref) : null
       if (!ext) return NextResponse.json({ error: 'No external BOL on this order' }, { status: 404 })
+      // print_jobs carries the PDF base64 in a table row — keep huge uploads out
+      if (ext.bytes.length > 10 * 1024 * 1024) {
+        return NextResponse.json({ error: 'File too large for the relay — use View + AirPrint' }, { status: 413 })
+      }
       bytes = ext.bytes
     } else {
       const format = type === 'bol' ? BOL_FORMAT : PACKING_SLIP_FORMAT

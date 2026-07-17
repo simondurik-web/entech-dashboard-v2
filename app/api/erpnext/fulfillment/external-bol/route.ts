@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     if (!original) return NextResponse.json({ error: 'No external BOL' }, { status: 404 })
     const pdfBytes = await externalBolToPdf(original.bytes, original.contentType)
 
-    const pdf = await PDFDocument.load(pdfBytes)
+    const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
     const pages = pdf.getPages()
     if (pageIndex >= pages.length) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })

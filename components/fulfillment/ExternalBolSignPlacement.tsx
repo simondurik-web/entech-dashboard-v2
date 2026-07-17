@@ -48,9 +48,10 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
   const [pageWidth, setPageWidth] = useState(560)
   const dragRef = useRef<{ page: number; el: HTMLDivElement } | null>(null)
 
+  const blobUrlRef = useRef<string | null>(null)
   useEffect(() => {
     if (!open || blobUrl) return
-    let revoked: string | null = null
+    let alive = true
     ;(async () => {
       try {
         const res = await fetch(
@@ -59,17 +60,28 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
         )
         if (!res.ok) throw new Error()
         const blob = await res.blob()
-        revoked = URL.createObjectURL(blob)
-        setBlobUrl(revoked)
+        const url = URL.createObjectURL(blob)
+        if (alive) {
+          blobUrlRef.current = url
+          setBlobUrl(url)
+        } else {
+          URL.revokeObjectURL(url)
+        }
       } catch {
-        setLoadError(true)
+        if (alive) setLoadError(true)
       }
     })()
     return () => {
-      if (revoked) URL.revokeObjectURL(revoked)
+      alive = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, dn])
+  }, [open, dn, blobUrl])
+  // revoke only on unmount — the fetched document survives open/close toggles
+  useEffect(
+    () => () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+    },
+    []
+  )
 
   useEffect(() => {
     if (!open) return
@@ -118,10 +130,22 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
 
   if (done) {
     return (
-      <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-        <CheckCircle2 className="size-3.5" />
-        {t('fulfillment.extBolSignedDone')}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+          <CheckCircle2 className="size-3.5" />
+          {t('fulfillment.extBolSignedDone')}
+        </p>
+        <button
+          onClick={() => {
+            setDone(false)
+            setPlacement(null)
+            setOpen(true)
+          }}
+          className="text-xs font-semibold text-muted-foreground underline underline-offset-2"
+        >
+          {t('fulfillment.extBolRedoPlace')}
+        </button>
+      </div>
     )
   }
 
