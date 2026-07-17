@@ -1039,6 +1039,11 @@ function ShipOrderContent() {
     .filter((c) => (dnSignedMap[c.dn] !== undefined ? !dnSignedMap[c.dn] : tlCompleted.length > 0))
     .map((c) => c.dn)
   const tlPosition = Math.min(tlCompleted.length + 1, Math.max(tlActiveOrders.length, 1))
+  // ONE carrier BOL per truckload — the representative DN (signed copy first)
+  const tlExtDn =
+    tlDocsList.find((c) => extBol[c.dn]?.signed)?.dn ??
+    tlDocsList.find((c) => extBol[c.dn]?.exists)?.dn ??
+    null
 
   // fetch the signed state of every DN on the completion screen — powers the
   // per-DN "Signed" badge and re-offers the sign pad for unsigned BOLs
@@ -1083,21 +1088,22 @@ function ShipOrderContent() {
   // (Simon 2026-07-09: no per-order printing at the end of a truckload)
   const doPrintAllDocuments = async () => {
     if (!printStation || printingAll || tlDocsList.length === 0) return
-    // packing slip + our BOL always; the carrier's own BOL joins the batch when
-    // one is on file for that DN (outside trucking — Simon 2026-07-17). A DN
-    // whose presence lookup FAILED (no map entry) still gets an attempt — the
-    // server's 404 for a no-BOL order is tolerated, so a flaky lookup can only
-    // add a harmless try, never silently drop a document.
-    const jobs = tlDocsList.flatMap((c) => {
-      const known = extBol[c.dn]
-      const types: { type: 'packing' | 'bol' | 'customer_bol'; optional?: boolean }[] = [
-        { type: 'packing' },
-        { type: 'bol' },
-      ]
-      if (known?.exists) types.push({ type: 'customer_bol' })
-      else if (!known) types.push({ type: 'customer_bol', optional: true })
-      return types.map((t) => ({ dn: c.dn, ...t }))
-    })
+    // packing slip + our BOL per DN, plus the carrier's own BOL ONCE for the
+    // whole truck (one external BOL per truckload — Simon 2026-07-17), taken
+    // from the DN whose signed copy exists, else any DN that resolves one.
+    // If every presence lookup failed, one optional attempt still goes out —
+    // the server's 404 for a no-BOL truck is tolerated, so a flaky lookup can
+    // only add a harmless try, never silently drop the document.
+    const jobs: { dn: string; type: 'packing' | 'bol' | 'customer_bol'; optional?: boolean }[] =
+      tlDocsList.flatMap((c) => (['packing', 'bol'] as const).map((type) => ({ dn: c.dn, type })))
+    const extDn =
+      tlDocsList.find((c) => extBol[c.dn]?.signed)?.dn ?? tlDocsList.find((c) => extBol[c.dn]?.exists)?.dn
+    if (extDn) {
+      jobs.push({ dn: extDn, type: 'customer_bol' })
+    } else {
+      const unknown = tlDocsList.find((c) => !extBol[c.dn])
+      if (unknown) jobs.push({ dn: unknown.dn, type: 'customer_bol', optional: true })
+    }
     setPrintingAll({ done: 0, total: jobs.length })
     setShipError(null)
     setPrintQueuedMsg(null)
@@ -1283,7 +1289,7 @@ function ShipOrderContent() {
                           .replace('{total}', String(printingAll.total))
                       : t('fulfillment.printAllDocs').replace(
                           '{count}',
-                          String(tlDocsList.reduce((n, c) => n + 2 + (extBol[c.dn]?.exists ? 1 : 0), 0))
+                          String(tlDocsList.length * 2 + (tlExtDn ? 1 : 0))
                         )}
                   </button>
                   <p className="mt-1 text-center text-[11px] text-muted-foreground">
@@ -1341,43 +1347,48 @@ function ShipOrderContent() {
                         </button>
                       </div>
                     )}
-                    {/* Carrier-provided (outside trucking) BOL — view/print + signature stamp */}
-                    {extBol[c.dn]?.exists && (
-                      <>
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          <button
-                            onClick={() => openDocument(c.dn, 'customer_bol')}
-                            className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors"
-                          >
-                            <FileText className="size-3.5" />
-                            {t('fulfillment.viewCustomerBol')}
-                          </button>
-                          {canShip && printStations.length > 0 && (
-                            <button
-                              onClick={() => doPrintDocument(c.dn, 'customer_bol')}
-                              disabled={!!printing}
-                              className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-amber-500/10 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-                            >
-                              <Printer className="size-3.5" />
-                              {t('fulfillment.printCustomerBol')} ×{copies}
-                            </button>
-                          )}
-                        </div>
-                        {canShip && dnSignedMap[c.dn] && (
-                          <div className="mt-2">
-                            <ExternalBolSignPlacement
-                              key={c.dn}
-                              dn={c.dn}
-                              alreadySigned={!!extBol[c.dn]?.signed}
-                              onSigned={() => fetchExtBol([c.dn])}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
                   </div>
                 ))}
               </div>
+              {/* ONE carrier BOL for the whole truckload (outside trucking) —
+                  view/print once + the tap-to-place signature stamp */}
+              {tlExtDn && (
+                <div className="mt-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3">
+                  <p className="mb-2 flex items-start gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                    <Truck className="size-4 shrink-0 mt-0.5" />
+                    {t('fulfillment.extBolHandDriver')}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => openDocument(tlExtDn, 'customer_bol')}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-card py-2.5 text-sm font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors"
+                    >
+                      <FileText className="size-4" />
+                      {t('fulfillment.viewCustomerBol')}
+                    </button>
+                    {canShip && printStations.length > 0 && (
+                      <button
+                        onClick={() => doPrintDocument(tlExtDn, 'customer_bol')}
+                        disabled={!!printing}
+                        className="flex items-center justify-center gap-2 rounded-xl border border-amber-500/60 bg-card py-2.5 text-sm font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                      >
+                        <Printer className="size-4" />
+                        {t('fulfillment.printCustomerBol')} ×{copies}
+                      </button>
+                    )}
+                  </div>
+                  {canShip && dnSignedMap[tlExtDn] && (
+                    <div className="mt-2">
+                      <ExternalBolSignPlacement
+                        key={tlExtDn}
+                        dn={tlExtDn}
+                        alreadySigned={!!extBol[tlExtDn]?.signed}
+                        onSigned={() => fetchExtBol([tlExtDn])}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               {printQueuedMsg && <p className="mt-2 text-xs font-semibold text-emerald-600">{printQueuedMsg}</p>}
               <Link
                 href="/staged"
@@ -1777,6 +1788,16 @@ function ShipOrderContent() {
                 <p className="text-xs text-emerald-700 mb-3">
                   {t('fulfillment.signedNote').replace('{name}', order?.deliveryNote?.driverName || '-')}
                 </p>
+              )}
+
+              {/* Outside trucking: the carrier BOL leaves WITH the driver */}
+              {shippedDn && extBol[shippedDn]?.exists && (
+                <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 mb-3 flex items-start gap-2">
+                  <Truck className="size-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                    {t('fulfillment.extBolHandDriver')}
+                  </p>
+                </div>
               )}
 
               {/* Outside trucking: stamp the driver's signature onto the carrier's BOL */}

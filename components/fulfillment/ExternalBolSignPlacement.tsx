@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
-import { CheckCircle2, PenLine, RefreshCw } from 'lucide-react'
+import { CheckCircle2, PenLine, RefreshCw, RotateCw } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { authHeaders } from '@/lib/session-token'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
@@ -41,6 +41,9 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
   const [numPages, setNumPages] = useState(0)
   const [placement, setPlacement] = useState<Placement | null>(null)
   const [wFrac, setWFrac] = useState(0.35)
+  // additional clockwise view rotation — carrier scans often arrive sideways;
+  // the server bakes the same rotation into the stamped/printed copy
+  const [rot, setRot] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -58,7 +61,7 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
     ;(async () => {
       try {
         const res = await fetch(
-          `/api/erpnext/fulfillment/external-bol?dn=${encodeURIComponent(dn)}&raw=1&original=1`,
+          `/api/erpnext/fulfillment/external-bol?dn=${encodeURIComponent(dn)}&raw=1&original=1&rot=${rot}`,
           { headers: authHeaders(), cache: 'no-store' }
         )
         if (!res.ok) throw new Error()
@@ -78,7 +81,17 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
     return () => {
       alive = false
     }
-  }, [open, dn, blobUrl])
+  }, [open, dn, blobUrl, rot])
+
+  // rotating re-fetches the document baked at the new orientation; any placed
+  // box no longer means anything, so it resets
+  const doRotate = useCallback(() => {
+    setRot((r) => (r + 90) % 360)
+    setPlacement(null)
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+    blobUrlRef.current = null
+    setBlobUrl(null)
+  }, [])
   // revoke only on unmount — the fetched document survives open/close toggles
   useEffect(
     () => () => {
@@ -134,6 +147,7 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
           x: placement.x,
           y: placement.y,
           w: wFrac,
+          rot,
           sourceKey: sourceKeyRef.current,
         }),
       })
@@ -151,7 +165,6 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
         }
         if (body?.error === 'not_signed') throw new Error(t('fulfillment.extBolNeedsSignature'))
         if (body?.error === 'unsupported_format') throw new Error(t('fulfillment.extBolUnsupported'))
-        if (body?.error === 'rotated_pdf') throw new Error(t('fulfillment.extBolRotated'))
         throw new Error(body?.error || t('fulfillment.extBolSaveFailed'))
       }
       setDone(true)
@@ -270,6 +283,14 @@ export default function ExternalBolSignPlacement({ dn, alreadySigned, onSigned }
           onChange={(e) => changeSize(Number(e.target.value) / 100)}
           className="flex-1"
         />
+        <button
+          onClick={doRotate}
+          disabled={saving || !blobUrl}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          <RotateCw className="size-3.5" />
+          {t('fulfillment.extBolRotate')}
+        </button>
       </div>
 
       {error && <p className="mt-2 text-xs font-semibold text-destructive">{error}</p>}

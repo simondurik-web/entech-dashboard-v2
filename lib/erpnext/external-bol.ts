@@ -11,7 +11,7 @@
 // Everything here resolves a Delivery Note -> the bytes of its external BOL,
 // normalized to a PDF so the print relay and pdf-lib can always handle it.
 
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, degrees } from 'pdf-lib'
 import { erpnextGet, erpnextGetDoc, erpnextFetchRaw, erpnextUpdate, erpnextUploadFile } from '@/lib/erpnext/client'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
@@ -121,6 +121,84 @@ function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
 }
 
+/** SO names sharing a (non-canceled) truckload with the given SO. One carrier
+ *  BOL covers the whole truck (Simon 2026-07-17) — uploading it on ANY member
+ *  line makes it resolve for every member's DN. Released members don't count. */
+export async function truckloadSiblingSos(so: string): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('truckload_id, truckloads!inner(status)')
+    .eq('so_number', so)
+    .neq('status', 'released')
+    .neq('truckloads.status', 'canceled')
+  const tlIds = [...new Set((data ?? []).map((r) => r.truckload_id).filter(Boolean))]
+  if (tlIds.length === 0) return []
+  const { data: members } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('so_number')
+    .in('truckload_id', tlIds)
+    .neq('status', 'released')
+  return [...new Set((members ?? []).map((m) => m.so_number).filter((s) => s && s !== so))]
+}
+
+/** The (customer, customer-PO) pairs the dashboard files documents under, for
+ *  a set of SO names — via the dashboard_orders mirror (if_number startsWith). */
+async function docPairsForSos(sos: string[]): Promise<{ customer: string; po: string }[]> {
+  const pairs: { customer: string; po: string }[] = []
+  for (const so of sos) {
+    const { data } = await supabaseAdmin
+      .from('dashboard_orders')
+      .select('if_number, customer, po_number')
+      .ilike('if_number', `${escapeLike(so)}%`)
+      .limit(20)
+    for (const r of data ?? []) {
+      if (String(r.if_number ?? '').trim().split(/\s+/)[0] !== so) continue
+      if (r.customer && r.po_number) pairs.push({ customer: r.customer, po: r.po_number })
+    }
+  }
+  const seen = new Set<string>()
+  return pairs.filter((p) => {
+    const k = `${normName(p.customer)}||${normName(p.po)}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+}
+
+/** Newest BOL order_document across a set of (customer, PO) pairs. */
+async function newestBolDoc(
+  pairs: { customer: string; po: string }[]
+): Promise<{ file_url: string; file_name: string | null; created_at: string | null } | null> {
+  let best: { file_url: string; file_name: string | null; created_at: string | null } | null = null
+  for (const pair of pairs) {
+    const { data } = await supabaseAdmin
+      .schema('po_automation')
+      .from('order_documents')
+      .select('file_url, file_name, customer, created_at')
+      .eq('doc_type', 'bol')
+      .ilike('po_number', escapeLike(pair.po.trim()))
+      .order('created_at', { ascending: false })
+      .limit(25)
+    const want = normName(pair.customer)
+    const row = (data ?? []).find((d) => normName(d.customer) === want && d.file_url)
+    if (row && (!best || String(row.created_at ?? '') > String(best.created_at ?? ''))) {
+      best = { file_url: row.file_url, file_name: row.file_name ?? null, created_at: row.created_at ?? null }
+    }
+  }
+  return best
+}
+
+/** Newest BOL upload among this SO's truckload siblings (null when the SO is
+ *  not on a truckload or no member has one) — powers the "Carrier BOL" flag
+ *  in views that only know the SO. */
+export async function truckloadSiblingBolDoc(
+  so: string
+): Promise<{ file_url: string; file_name: string | null; created_at: string | null } | null> {
+  const siblings = await truckloadSiblingSos(so)
+  if (siblings.length === 0) return null
+  return newestBolDoc(await docPairsForSos(siblings))
+}
+
 export interface ExternalBolSource {
   kind: 'dashboard' | 'erpnext'
   /** stable identity of the exact file version — used to detect a swap
@@ -157,21 +235,73 @@ export async function resolveOriginalSource(ref: DnShipmentRef): Promise<Externa
   }
 
   if (ref.customer && ref.poNo) {
-    const { data } = await supabaseAdmin
-      .schema('po_automation')
-      .from('order_documents')
-      .select('file_url, file_name, customer, created_at')
-      .eq('doc_type', 'bol')
-      .ilike('po_number', escapeLike(ref.poNo.trim()))
-      .order('created_at', { ascending: false })
-      .limit(25)
-    const want = normName(ref.customer)
-    const row = (data ?? []).find((d) => normName(d.customer) === want && d.file_url)
-    if (row?.file_url) {
-      return { kind: 'dashboard', sourceKey: row.file_url, fileName: row.file_name ?? null, createdAt: row.created_at ?? null }
+    const own = await newestBolDoc([{ customer: ref.customer, po: ref.poNo }])
+    if (own) {
+      return { kind: 'dashboard', sourceKey: own.file_url, fileName: own.file_name, createdAt: own.created_at }
+    }
+  }
+
+  // One carrier BOL per truckload: an upload on ANY member line of this DN's
+  // truckload covers this DN too (Simon 2026-07-17).
+  const siblings = await truckloadSiblingSos(ref.so)
+  if (siblings.length) {
+    const doc = await newestBolDoc(await docPairsForSos(siblings))
+    if (doc) {
+      return { kind: 'dashboard', sourceKey: doc.file_url, fileName: doc.file_name, createdAt: doc.created_at }
     }
   }
   return null
+}
+
+/** Bake page rotation into the content. `extraCw` = additional CLOCKWISE view
+ *  rotation chosen by the crew (0/90/180/270) on top of each page's own
+ *  /Rotate. Output pages have rotation 0 with the CropBox content at origin —
+ *  the placement/stamp math stays rotation-free, and the printed copy reads
+ *  the way the crew rotated it (Simon 2026-07-17: carrier scans often arrive
+ *  sideways). No-op (returns input) when nothing needs baking. */
+export async function normalizeExternalPdf(bytes: Uint8Array, extraCw: number): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true })
+  const pages = src.getPages()
+  const extra = ((Math.round(extraCw / 90) * 90) % 360 + 360) % 360
+  const needs =
+    extra !== 0 ||
+    pages.some((p) => {
+      const rot = ((p.getRotation().angle % 360) + 360) % 360
+      const crop = p.getCropBox()
+      const media = p.getMediaBox()
+      return rot !== 0 || crop.x !== media.x || crop.y !== media.y
+    })
+  if (!needs) return bytes
+  const out = await PDFDocument.create()
+  for (const p of pages) {
+    const crop = p.getCropBox()
+    const inherent = ((p.getRotation().angle % 360) + 360) % 360
+    const totalCw = (inherent + extra) % 360
+    const emb = await out.embedPage(p, {
+      left: crop.x,
+      bottom: crop.y,
+      right: crop.x + crop.width,
+      top: crop.y + crop.height,
+    })
+    const W = crop.width
+    const H = crop.height
+    if (totalCw === 90) {
+      // display = content rotated 90° clockwise: (px,py) -> (py, W-px)
+      const page = out.addPage([H, W])
+      page.drawPage(emb, { x: 0, y: W, rotate: degrees(-90) })
+    } else if (totalCw === 180) {
+      const page = out.addPage([W, H])
+      page.drawPage(emb, { x: W, y: H, rotate: degrees(180) })
+    } else if (totalCw === 270) {
+      // 270 CW == 90 CCW: (px,py) -> (H-py, px)
+      const page = out.addPage([H, W])
+      page.drawPage(emb, { x: H, y: 0, rotate: degrees(90) })
+    } else {
+      const page = out.addPage([W, H])
+      page.drawPage(emb, { x: 0, y: 0 })
+    }
+  }
+  return out.save()
 }
 
 /** The ORIGINAL (un-stamped) external BOL bytes for a DN. */
@@ -308,16 +438,23 @@ export async function invalidateSignedBolsForOrder(customer: string | null, poNu
     ),
   ]
   if (sos.length === 0) return
+  // a truckload's carrier BOL may be stamped under ANY member's DN — expand to
+  // truckload siblings so a replace/delete clears those stamps too
+  const expanded = new Set(sos)
+  for (const so of sos) {
+    for (const sib of await truckloadSiblingSos(so)) expanded.add(sib)
+  }
+  const allSos = [...expanded]
   const [byField, byItems] = await Promise.all([
     erpnextGet<{ data: { name: string }[] }>(
       `/api/resource/Delivery%20Note?${listParam('filters', [
         ['docstatus', '=', 1],
-        ['custom_ship_against_so', 'in', sos],
+        ['custom_ship_against_so', 'in', allSos],
       ])}&${listParam('fields', ['name'])}&limit_page_length=0`
     ),
     erpnextGet<{ data: { parent: string }[] }>(
       `/api/resource/Delivery%20Note%20Item?parent=${encodeURIComponent('Delivery Note')}&${listParam('filters', [
-        ['against_sales_order', 'in', sos],
+        ['against_sales_order', 'in', allSos],
         ['docstatus', '=', 1],
       ])}&${listParam('fields', ['parent'])}&limit_page_length=0`
     ),

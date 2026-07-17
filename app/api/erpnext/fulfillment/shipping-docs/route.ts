@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextGet, erpnextGetDoc } from '@/lib/erpnext/client'
-import { findSignedBolObjects } from '@/lib/erpnext/external-bol'
+import { findSignedBolObjects, truckloadSiblingBolDoc } from '@/lib/erpnext/external-bol'
 import { escapeLike } from '@/lib/po-automation/edit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -85,6 +85,14 @@ export async function GET(req: NextRequest) {
       }
     } catch {
       /* best-effort flag */
+    }
+    if (!hasOrderBol) {
+      // one carrier BOL per truckload — a sibling member's upload counts
+      try {
+        hasOrderBol = !!(await truckloadSiblingBolDoc(so))
+      } catch {
+        /* best-effort flag */
+      }
     }
     const [dnBols, signedLists] = await Promise.all([
       erpnextGet<{ data: { attached_to_name: string }[] }>(

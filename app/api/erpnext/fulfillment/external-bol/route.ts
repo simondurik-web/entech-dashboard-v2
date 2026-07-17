@@ -10,6 +10,7 @@ import {
   findSignedBolObjects,
   getExternalBolState,
   newSignedBolPath,
+  normalizeExternalPdf,
   resolveDnShipment,
   resolveOriginalSource,
 } from '@/lib/erpnext/external-bol'
@@ -70,11 +71,17 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    // crew-chosen additional clockwise view rotation (placement preview only)
+    const rot = Number(req.nextUrl.searchParams.get('rot') ?? '0')
+    if (![0, 90, 180, 270].includes(rot)) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+    }
     let bytes: Uint8Array | null = null
     let sourceKey: string | null = null
     if (forceOriginal) {
       const original = await fetchOriginalExternalBol(ref)
       bytes = original ? await externalBolToPdf(original.bytes, original.contentType) : null
+      if (bytes) bytes = await normalizeExternalPdf(bytes, rot)
       sourceKey = original?.sourceKey ?? null
     } else {
       bytes = (await fetchExternalBolPdf(ref))?.bytes ?? null
@@ -103,7 +110,15 @@ export async function POST(req: NextRequest) {
   const guard = await requireMenuAccess(req, 'ship_loads')
   if (!guard.ok) return guard.res
 
-  let body: { dn?: string; page?: unknown; x?: unknown; y?: unknown; w?: unknown; sourceKey?: unknown }
+  let body: {
+    dn?: string
+    page?: unknown
+    x?: unknown
+    y?: unknown
+    w?: unknown
+    rot?: unknown
+    sourceKey?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -121,13 +136,15 @@ export async function POST(req: NextRequest) {
   const x = Number(body.x)
   const y = Number(body.y)
   const w = Number(body.w)
+  const rot = Number(body.rot ?? 0)
   if (
     !DN_NAME.test(dn) ||
     !Number.isInteger(pageIndex) ||
     pageIndex < 0 ||
     !(x >= 0 && x <= 1) ||
     !(y >= 0 && y <= 1) ||
-    !(w >= 0.05 && w <= 0.9)
+    !(w >= 0.05 && w <= 0.9) ||
+    ![0, 90, 180, 270].includes(rot)
   ) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
@@ -157,7 +174,13 @@ export async function POST(req: NextRequest) {
     if (previewKey !== original.sourceKey) {
       return NextResponse.json({ error: 'source_changed' }, { status: 409 })
     }
-    const pdfBytes = await externalBolToPdf(original.bytes, original.contentType)
+    // Bake the crew's chosen rotation (plus any inherent /Rotate) into the
+    // content — the SAME transform the preview was served with, so the tap
+    // coordinates line up 1:1 and the saved copy reads upright.
+    const pdfBytes = await normalizeExternalPdf(
+      await externalBolToPdf(original.bytes, original.contentType),
+      rot
+    )
 
     const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
     const pages = pdf.getPages()
@@ -165,13 +188,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
     const page = pages[pageIndex]
-    // Rotated scans would need the tap coordinates re-mapped from the rendered
-    // (rotated) viewport into unrotated user space — refuse rather than stamp
-    // the wrong spot; the crew re-uploads upright or signs on paper.
-    if (page.getRotation().angle % 360 !== 0) {
-      return NextResponse.json({ error: 'rotated_pdf' }, { status: 422 })
-    }
-    // The preview renders the CropBox — do the math in the same space
+    // normalized pages are rotation-0 with CropBox at origin
     const box = page.getCropBox()
     const sig = await pdf.embedPng(sigBytes)
     const boxW = w * box.width
