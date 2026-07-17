@@ -13,7 +13,7 @@ import {
   type OrderDocType,
 } from '@/lib/po-automation/documents'
 import { requireUserOrService } from '@/lib/require-user'
-import { attachBolToSalesOrder } from '@/lib/erpnext/external-bol'
+import { attachBolToSalesOrder, invalidateSignedBolsForOrder } from '@/lib/erpnext/external-bol'
 
 export const dynamic = 'force-dynamic'
 
@@ -316,7 +316,7 @@ export async function PATCH(req: NextRequest) {
   const { data: existing } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
-    .select('file_url, po_number, doc_type, doc_number, file_name')
+    .select('file_url, po_number, doc_type, doc_number, file_name, customer')
     .eq('id', id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -386,6 +386,31 @@ export async function PATCH(req: NextRequest) {
 
   // Old object cleanup only after the row points at the new one (best-effort).
   if (oldPath) await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([oldPath])
+
+  // A REPLACED file invalidates any signature-stamped copies (they were made
+  // from the old file and keep the row's created_at — the staleness check
+  // can't see the swap), and re-attaches the new version to the ERPNext SO.
+  // Both best-effort; the row update above already succeeded.
+  if (newPath && (existing.doc_type ?? 'bol') === 'bol' && existing.po_number) {
+    try {
+      await invalidateSignedBolsForOrder(existing.customer ?? null, existing.po_number)
+    } catch (e) {
+      console.error('[po-automation] signed-BOL invalidation failed:', e)
+    }
+    if (file instanceof File) {
+      try {
+        await attachBolToSalesOrder({
+          customer: existing.customer ?? null,
+          poNumber: existing.po_number,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+          fileName: (update.file_name as string) ?? file.name,
+          contentType: file.type,
+        })
+      } catch (e) {
+        console.error('[po-automation] replaced-BOL ERPNext attach failed:', e)
+      }
+    }
+  }
 
   const actor = await resolvePoActor(userId)
   const field = newPath ? 'bol_replaced' : 'bol_edited'

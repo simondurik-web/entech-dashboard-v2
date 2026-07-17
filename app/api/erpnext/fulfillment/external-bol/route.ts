@@ -178,10 +178,8 @@ export async function POST(req: NextRequest) {
       .upload(newSignedBolPath(dn), Buffer.from(out), { contentType: 'application/pdf' })
     if (upErr) throw new Error(upErr.message)
     if (previous.length) {
-      await supabaseAdmin.storage
-        .from(PO_DOC_BUCKET)
-        .remove(previous.map((o) => o.path))
-        .catch(() => null)
+      const { error: rmErr } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove(previous.map((o) => o.path))
+      if (rmErr) console.error('previous signed BOL cleanup failed:', dn, rmErr.message)
     }
 
     // Permanent record next to our own BOL on the Delivery Note (best-effort:

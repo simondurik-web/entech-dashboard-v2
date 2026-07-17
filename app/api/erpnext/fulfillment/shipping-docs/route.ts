@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { erpnextGet, erpnextGetDoc } from '@/lib/erpnext/client'
-import { PO_DOC_BUCKET } from '@/lib/po-automation/documents'
+import { findSignedBolObjects } from '@/lib/erpnext/external-bol'
 import { escapeLike } from '@/lib/po-automation/edit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -94,14 +94,7 @@ export async function GET(req: NextRequest) {
           ['file_name', 'like', 'CustomerBOL-%'],
         ])}&${listParam('fields', ['attached_to_name'])}&limit_page_length=0`
       ).catch(() => ({ data: [] })),
-      Promise.all(
-        names.map(async (n) => {
-          const { data } = await supabaseAdmin.storage
-            .from(PO_DOC_BUCKET)
-            .list('signed-bol', { limit: 5, search: `${n}-` })
-          return (data ?? []).some((o) => o.name.startsWith(`${n}-`) && o.name.endsWith('.pdf')) ? n : null
-        })
-      ),
+      Promise.all(names.map(async (n) => ((await findSignedBolObjects(n)).length ? n : null))),
     ])
     const dnBolSet = new Set((dnBols.data ?? []).map((f) => f.attached_to_name))
     const signedSet = new Set(signedLists.filter(Boolean) as string[])

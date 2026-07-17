@@ -33,15 +33,20 @@ export interface SignedBolObject {
   createdAt: string | null
 }
 
-/** Locate the (single) signed copy for a DN, newest first. */
+/** Locate the (single) signed copy for a DN, newest first. Matching is STRICT
+ *  (<DN>-<uuid>.pdf) — a bare startsWith would let DN "X-1" match objects of
+ *  DN "X-1-2" and even delete them on re-sign (review panel round 2). */
 export async function findSignedBolObjects(dn: string): Promise<SignedBolObject[]> {
   const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).list(SIGNED_BOL_FOLDER, {
     search: `${dn}-`,
     limit: 20,
     sortBy: { column: 'created_at', order: 'desc' },
   })
+  const exact = new RegExp(
+    `^${dn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\.pdf$`
+  )
   return (data ?? [])
-    .filter((o) => o.name.startsWith(`${dn}-`) && o.name.endsWith('.pdf'))
+    .filter((o) => exact.test(o.name))
     .map((o) => ({ path: `${SIGNED_BOL_FOLDER}/${o.name}`, createdAt: o.created_at ?? null }))
 }
 
@@ -223,7 +228,7 @@ export async function attachBolToSalesOrder(input: {
     .from('dashboard_orders')
     .select('if_number, customer, po_number')
     .ilike('po_number', escapeLike(input.poNumber.trim()))
-    .limit(50)
+    .limit(200)
   const soNames = new Set(
     (data ?? [])
       .filter((r) => normName(r.customer) === want && r.if_number)
@@ -250,6 +255,50 @@ export async function attachBolToSalesOrder(input: {
     // the fields may not be editable post-submit — the File attach above is the record
   }
   return soName
+}
+
+/** A replaced BOL file keeps its order_documents row (and created_at), so the
+ *  timestamp staleness check alone can't see it — remove the stamped signed
+ *  copies of every DN behind this order so the next print uses the NEW
+ *  original until the crew re-stamps (review panel round 2, codex). Safe to
+ *  over-apply; callers treat it as best-effort. */
+export async function invalidateSignedBolsForOrder(customer: string | null, poNumber: string | null): Promise<void> {
+  const want = normName(customer)
+  if (!want || !poNumber?.trim()) return
+  const { data } = await supabaseAdmin
+    .from('dashboard_orders')
+    .select('if_number, customer')
+    .ilike('po_number', escapeLike(poNumber.trim()))
+    .limit(200)
+  const sos = [
+    ...new Set(
+      (data ?? [])
+        .filter((r) => normName(r.customer) === want && r.if_number)
+        .map((r) => String(r.if_number).trim().split(/\s+/)[0])
+        .filter(Boolean)
+    ),
+  ]
+  if (sos.length === 0) return
+  const dnQs = [
+    listParam('filters', [
+      ['docstatus', '=', 1],
+      ['custom_ship_against_so', 'in', sos],
+    ]),
+    listParam('fields', ['name']),
+    'limit_page_length=0',
+  ].join('&')
+  const dns = (
+    (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Delivery%20Note?${dnQs}`).catch(() => ({
+      data: [],
+    }))).data ?? []
+  ).map((d) => d.name)
+  for (const dn of dns) {
+    const objs = await findSignedBolObjects(dn)
+    if (objs.length) {
+      const { error } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove(objs.map((o) => o.path))
+      if (error) console.error('signed BOL invalidation remove failed:', dn, error.message)
+    }
+  }
 }
 
 export interface ExternalBolState {

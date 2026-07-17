@@ -1357,6 +1357,7 @@ function ShipOrderContent() {
                         {canShip && dnSignedMap[c.dn] && (
                           <div className="mt-2">
                             <ExternalBolSignPlacement
+                              key={c.dn}
                               dn={c.dn}
                               alreadySigned={!!extBol[c.dn]?.signed}
                               onSigned={() => fetchExtBol([c.dn])}
@@ -1772,7 +1773,10 @@ function ShipOrderContent() {
               {/* Outside trucking: stamp the driver's signature onto the carrier's BOL */}
               {canShip && shippedDn && dnSigned && extBol[shippedDn]?.exists && (
                 <div className="mb-3">
+                  {/* key: a DN switch (multi-release) must remount so the loaded
+                      PDF can never belong to the previous shipment */}
                   <ExternalBolSignPlacement
+                    key={shippedDn}
                     dn={shippedDn}
                     alreadySigned={!!extBol[shippedDn]?.signed}
                     onSigned={() => fetchExtBol([shippedDn])}
