@@ -9,6 +9,7 @@ import {
   docPublicUrl,
   pathSlug,
   isAllowedDocType,
+  signedDocUrl,
   validatedExt,
   type OrderDocType,
 } from '@/lib/po-automation/documents'
@@ -93,7 +94,12 @@ export async function GET(req: NextRequest) {
   // caller gets BOLs only. Server-side, never left to the UI filters.
   if (!caller.poAccess) rows = rows.filter((d) => (d.doc_type ?? 'bol') === 'bol')
 
-  return NextResponse.json({ documents: rows })
+  // Private bucket: the browser can only fetch via short-lived signed URLs —
+  // the stored public-form URL is just the path carrier.
+  const documents = await Promise.all(
+    rows.map(async (d) => ({ ...d, file_url: await signedDocUrl(d.file_url) }))
+  )
+  return NextResponse.json({ documents })
 }
 
 /**
@@ -216,7 +222,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ document: row, erpSo })
+  return NextResponse.json({ document: { ...row, file_url: await signedDocUrl(row.file_url) }, erpSo })
 }
 
 /** DELETE /api/po-automation/documents?id= — removes a document row + its object. */
@@ -451,5 +457,5 @@ export async function PATCH(req: NextRequest) {
     })
   if (auditErr) console.error('[po-automation] BOL edit audit error:', auditErr)
 
-  return NextResponse.json({ document: row })
+  return NextResponse.json({ document: { ...row, file_url: await signedDocUrl(row.file_url) } })
 }
