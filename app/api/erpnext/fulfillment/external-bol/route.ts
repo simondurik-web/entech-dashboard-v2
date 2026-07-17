@@ -109,11 +109,13 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
-  // the exact file version the crew previewed (base64 of X-Source-Key)
+  // the exact file version the crew previewed (base64 of X-Source-Key).
+  // REQUIRED — an omitted/empty key must never skip the version check, or a
+  // stale client could stamp old-preview coordinates onto a replaced file.
   const previewKey =
     typeof body.sourceKey === 'string' && body.sourceKey
       ? Buffer.from(body.sourceKey, 'base64').toString()
-      : null
+      : ''
   const dn = String(body.dn ?? '').trim()
   const pageIndex = Number(body.page)
   const x = Number(body.x)
@@ -150,8 +152,9 @@ export async function POST(req: NextRequest) {
     const original = await fetchOriginalExternalBol(ref)
     if (!original) return NextResponse.json({ error: 'No external BOL' }, { status: 404 })
     // the coordinates were chosen on the previewed file — refuse to stamp a
-    // DIFFERENT file (replaced since preview) at those coordinates
-    if (previewKey && previewKey !== original.sourceKey) {
+    // DIFFERENT file (replaced since preview, or no key at all) at those
+    // coordinates; the comparison is unconditional
+    if (previewKey !== original.sourceKey) {
       return NextResponse.json({ error: 'source_changed' }, { status: 409 })
     }
     const pdfBytes = await externalBolToPdf(original.bytes, original.contentType)
