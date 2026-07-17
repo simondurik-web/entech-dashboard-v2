@@ -144,6 +144,26 @@ export async function truckloadSiblingSosForDn(dn: string, so: string): Promise<
   return [...new Set((members ?? []).map((m) => m.so_number).filter((s) => s && s !== so))]
 }
 
+/** DN numbers of the OTHER members of this DN's truckload (shipped members
+ *  only carry dn_number) — the truck's ONE signed carrier BOL may be stamped
+ *  under any of them. */
+export async function truckloadMemberDns(dn: string): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('truckload_id, truckloads!inner(status)')
+    .eq('dn_number', dn)
+    .neq('status', 'released')
+    .neq('truckloads.status', 'canceled')
+  const tlIds = [...new Set((data ?? []).map((r) => r.truckload_id).filter(Boolean))]
+  if (tlIds.length === 0) return []
+  const { data: members } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('dn_number')
+    .in('truckload_id', tlIds)
+    .neq('status', 'released')
+  return [...new Set((members ?? []).map((m) => m.dn_number).filter((d): d is string => !!d && d !== dn))]
+}
+
 /** SO names sharing ANY (non-canceled) truckload with the given SO — used ONLY
  *  for signed-copy INVALIDATION, where over-application is safe (clearing an
  *  extra stamp just means re-stamping). Resolution must use the dn-scoped
@@ -510,7 +530,15 @@ export interface ExternalBolState {
 export async function getExternalBolState(ref: DnShipmentRef): Promise<ExternalBolState> {
   const original = await resolveOriginalSource(ref)
   if (!original) return { original: null, signedPath: null }
-  const signed = (await findSignedBolObjects(ref.dn))[0] ?? null
+  // the truck's ONE signed copy may be stamped under a sibling member's DN —
+  // a reprint from any member must serve it (review panel, codex slice-2b)
+  let signed = (await findSignedBolObjects(ref.dn))[0] ?? null
+  if (!signed) {
+    for (const sib of await truckloadMemberDns(ref.dn)) {
+      signed = (await findSignedBolObjects(sib))[0] ?? null
+      if (signed) break
+    }
+  }
   if (!signed) return { original, signedPath: null }
   const sAt = Date.parse(signed.createdAt ?? '')
   const oAt = Date.parse(original.createdAt ?? '')
