@@ -166,7 +166,13 @@ export async function POST(req: NextRequest) {
       pallets,
       userId: guard.userId,
       userName: userName || guard.email,
-      detail: truckloadNumber ? `truckload ${truckloadNumber}` : null,
+      detail:
+        [
+          truckloadNumber ? `truckload ${truckloadNumber}` : null,
+          result.releasedSres.length ? `auto-released stale reservations: ${result.releasedSres.join(', ')}` : null,
+        ]
+          .filter(Boolean)
+          .join('; ') || null,
     })
     flipDashboardStatus(
       so,
