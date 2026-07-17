@@ -357,7 +357,13 @@ export const PACKING_SLIP_FORMAT = 'Packing Slip - Entech'
 
 /** Thrown when the ERPNext safety gate (or any validation) rejects the
  *  shipment — carries the server's user-facing (often bilingual) message. */
-export class ShipmentRejectedError extends Error {}
+export class ShipmentRejectedError extends Error {
+  // set when the self-heal released reservations but the retry STILL failed —
+  // the route must audit-log this even though the shipment errored, because
+  // the cancels are already committed in ERPNext (codex/gemini review)
+  releasedSres?: string[]
+  dn?: string
+}
 
 /** Redact money-shaped fragments from a server message before it reaches the
  *  shipping floor (currency symbols/amounts, "rate/price/amount N"). */
@@ -391,22 +397,29 @@ export interface CompleteShipmentResult {
   releasedSres: string[]
 }
 
-/** ERPNext's reserved-stock deadlock at DN submit: the check that guards
- *  reserved stock counts the order's OWN reservations when one of them fails
- *  to be consumed (e.g. a reservation corrupted at staging time — the
- *  2026-07-17 Cascade SO-00013 incident: a driver sat at the dock while the
- *  order's own pallets were "reserved for other sales orders"). */
+/** ERPNext's reserved-stock deadlock at DN submit: the guard counts the
+ *  order's OWN reservations when one of them fails to be consumed (e.g. a
+ *  reservation corrupted at staging time — the 2026-07-17 Cascade SO-00013
+ *  incident: a driver sat at the dock while the order's own pallets were
+ *  "reserved for other sales orders"). Match ONLY that phrase — a plain
+ *  "Insufficient Stock" is a REAL shortage and must never trigger the
+ *  destructive recovery (codex/gemini review 2026-07-17). */
 function isReservedStockDeadlock(msg: string): boolean {
-  return /reserved for (other )?sales orders|Insufficient Stock/i.test(msg)
+  return /reserved for (other )?sales orders/i.test(msg)
 }
 
 /** Release the SO's own leftover reservations for pallets this DN is shipping
  *  RIGHT NOW. Safe by construction: only this order's reservations, and only
- *  those whose reserved pallets are all in the DN's pallet set — the stock is
- *  leaving on this truck, so the reservation has nothing left to protect.
- *  Returns the cancelled SRE names ([] when nothing matched — caller rethrows
- *  the original error in that case). */
-async function releaseOwnStaleReservations(soName: string, dnPallets: Set<string>): Promise<string[]> {
+ *  those whose every reserved (batch, warehouse) pair is on this DN — the
+ *  stock is leaving on this truck, so the reservation has nothing left to
+ *  protect. Cancels are individually committed in ERPNext, so the loop STOPS
+ *  at the first failed cancel (don't keep destroying reservations once the
+ *  outcome is uncertain — grok review). Returns the cancelled SRE names
+ *  ([] when nothing matched — caller rethrows the original error). */
+async function releaseOwnStaleReservations(
+  soName: string,
+  dnPairs: Map<string, string> // UPPER(batch_no) -> warehouse, from the DN's own items
+): Promise<string[]> {
   const qs = [
     listParam('filters', [
       ['voucher_type', '=', 'Sales Order'],
@@ -421,20 +434,23 @@ async function releaseOwnStaleReservations(soName: string, dnPallets: Set<string
     (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Stock Reservation Entry?${qs}`)).data ?? []
   const released: string[] = []
   for (const s of sres) {
+    const full = await erpnextGetDoc<{
+      sb_entries?: { batch_no?: string | null; warehouse?: string | null }[]
+    }>('Stock Reservation Entry', s.name)
+    const entries = (full.sb_entries ?? []).filter((e) => e.batch_no)
+    // qty-based (no batches) reservations are left alone — we can only prove
+    // a batch-based reservation is covered by what's on the truck
+    if (!entries.length) continue
+    const covered = entries.every(
+      (e) => dnPairs.get(String(e.batch_no).toUpperCase()) === String(e.warehouse ?? '')
+    )
+    if (!covered) continue
     try {
-      const full = await erpnextGetDoc<{ sb_entries?: { batch_no?: string | null }[] }>(
-        'Stock Reservation Entry',
-        s.name
-      )
-      const batches = (full.sb_entries ?? []).map((e) => String(e.batch_no ?? '').toUpperCase()).filter(Boolean)
-      // qty-based (no batches) reservations are left alone — we can only prove
-      // a batch-based reservation is covered by what's on the truck
-      if (!batches.length || !batches.every((b) => dnPallets.has(b))) continue
       await erpnextCancel('Stock Reservation Entry', s.name)
       released.push(s.name)
     } catch (e) {
-      // fail open per SRE: releasing the others may still clear the deadlock
-      console.error(`releaseOwnStaleReservations ${soName}: ${s.name} failed:`, e)
+      console.error(`releaseOwnStaleReservations ${soName}: cancel ${s.name} failed, stopping:`, e)
+      break
     }
   }
   return released
@@ -572,19 +588,33 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
   // Self-heal (Cascade SO-00013 incident, 2026-07-17): if ERPNext refuses
   // because the order's OWN reservations weren't consumed (a corrupted
   // reservation makes the reserved-stock guard read them as someone else's),
-  // release this order's reservations for exactly the pallets on this DN and
-  // retry ONCE. A failed submit rolls back, so the release is the only state
-  // change before the retry.
+  // release this order's reservations for exactly the (batch, warehouse)
+  // pairs on this DN and retry ONCE. The submit itself rolls back on failure;
+  // the releases are individually committed, so a retry failure surfaces them
+  // on the error for the route's audit log.
   let releasedSres: string[] = []
   if (!alreadySubmitted) {
-    const palletSet = new Set([...(staged.size ? staged.keys() : scanned)].map((p) => p.toUpperCase()))
-    const fresh = await erpnextGetDoc('Delivery Note', dn)
+    const fresh = await erpnextGetDoc<{
+      items?: { batch_no?: string | null; warehouse?: string | null }[]
+    }>('Delivery Note', dn)
     try {
       await erpnextSubmit(fresh)
     } catch (e) {
       const msg = parseErpErrorMessage(e instanceof Error ? e.message : String(e))
       if (!isReservedStockDeadlock(msg)) throw new ShipmentRejectedError(scrubMoney(msg))
-      releasedSres = await releaseOwnStaleReservations(soName, palletSet)
+      const dnPairs = new Map(
+        (fresh.items ?? [])
+          .filter((i) => i.batch_no)
+          .map((i) => [String(i.batch_no).toUpperCase(), String(i.warehouse ?? '')])
+      )
+      try {
+        releasedSres = await releaseOwnStaleReservations(soName, dnPairs)
+      } catch (relErr) {
+        // the release sweep itself broke (e.g. the SRE list read) — surface the
+        // ORIGINAL rejection, not the internal error
+        console.error(`completeShipment ${soName}: release sweep failed:`, relErr)
+        throw new ShipmentRejectedError(scrubMoney(msg))
+      }
       if (!releasedSres.length) throw new ShipmentRejectedError(scrubMoney(msg))
       console.warn(`completeShipment ${soName}: released own reservations to clear deadlock:`, releasedSres)
       try {
@@ -592,7 +622,12 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
         await erpnextSubmit(fresh2)
       } catch (e2) {
         const msg2 = parseErpErrorMessage(e2 instanceof Error ? e2.message : String(e2))
-        throw new ShipmentRejectedError(scrubMoney(msg2))
+        const err = new ShipmentRejectedError(
+          `${scrubMoney(msg2)} (auto-released reservations before retry: ${releasedSres.join(', ')} — tell the office)`
+        )
+        err.releasedSres = releasedSres
+        err.dn = dn
+        throw err
       }
     }
   }
