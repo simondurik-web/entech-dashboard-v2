@@ -157,8 +157,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // audit + instant section hop (best-effort; the 5-min sync self-heals)
-    logFulfillment({
+    // audit + instant section hop (best-effort; the 5-min sync self-heals).
+    // Awaited so a serverless response can't cut the audit short — the released
+    // reservations especially must always land in the log (codex round-2).
+    await logFulfillment({
       action: 'complete',
       so,
       dn: result.dn,
@@ -166,7 +168,13 @@ export async function POST(req: NextRequest) {
       pallets,
       userId: guard.userId,
       userName: userName || guard.email,
-      detail: truckloadNumber ? `truckload ${truckloadNumber}` : null,
+      detail:
+        [
+          truckloadNumber ? `truckload ${truckloadNumber}` : null,
+          result.releasedSres.length ? `auto-released stale reservations: ${result.releasedSres.join(', ')}` : null,
+        ]
+          .filter(Boolean)
+          .join('; ') || null,
     })
     flipDashboardStatus(
       so,
@@ -179,6 +187,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (error instanceof ShipmentRejectedError) {
+      // self-heal released reservations but the retry still failed: those
+      // cancels are already committed in ERPNext — audit them even though the
+      // shipment errored, or the release would be invisible to ops
+      if (error.releasedSres?.length) {
+        await logFulfillment({
+          action: 'move_reservation',
+          so,
+          dn: error.dn ?? '',
+          userId: guard.userId,
+          detail: `self-heal released ${error.releasedSres.join(', ')} but submit still failed: ${error.message}`,
+        })
+      }
       return NextResponse.json({ error: error.message, rejected: true }, { status: 422 })
     }
     console.error('complete shipment failed:', error)
