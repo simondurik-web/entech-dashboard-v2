@@ -418,7 +418,7 @@ function isReservedStockDeadlock(msg: string): boolean {
  *  ([] when nothing matched — caller rethrows the original error). */
 async function releaseOwnStaleReservations(
   soName: string,
-  dnPairs: Map<string, string> // UPPER(batch_no) -> warehouse, from the DN's own items
+  dnPairs: Map<string, Set<string>> // UPPER(batch_no) -> warehouses it ships from on this DN
 ): Promise<string[]> {
   const qs = [
     listParam('filters', [
@@ -430,26 +430,31 @@ async function releaseOwnStaleReservations(
     listParam('fields', ['name']),
     'limit_page_length=0',
   ].join('&')
+  // The list read happens BEFORE any cancel — a failure here may safely throw.
   const sres =
     (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Stock Reservation Entry?${qs}`)).data ?? []
   const released: string[] = []
+  // From the first cancel on, NOTHING may throw past this loop: cancels are
+  // individually committed, so partial results must always reach the caller
+  // for auditing (codex round-2). Any per-SRE failure stops the sweep and
+  // returns what was already released.
   for (const s of sres) {
-    const full = await erpnextGetDoc<{
-      sb_entries?: { batch_no?: string | null; warehouse?: string | null }[]
-    }>('Stock Reservation Entry', s.name)
-    const entries = (full.sb_entries ?? []).filter((e) => e.batch_no)
-    // qty-based (no batches) reservations are left alone — we can only prove
-    // a batch-based reservation is covered by what's on the truck
-    if (!entries.length) continue
-    const covered = entries.every(
-      (e) => dnPairs.get(String(e.batch_no).toUpperCase()) === String(e.warehouse ?? '')
-    )
-    if (!covered) continue
     try {
+      const full = await erpnextGetDoc<{
+        sb_entries?: { batch_no?: string | null; warehouse?: string | null }[]
+      }>('Stock Reservation Entry', s.name)
+      const entries = (full.sb_entries ?? []).filter((e) => e.batch_no)
+      // qty-based (no batches) reservations are left alone — we can only prove
+      // a batch-based reservation is covered by what's on the truck
+      if (!entries.length) continue
+      const covered = entries.every((e) =>
+        dnPairs.get(String(e.batch_no).toUpperCase())?.has(String(e.warehouse ?? ''))
+      )
+      if (!covered) continue
       await erpnextCancel('Stock Reservation Entry', s.name)
       released.push(s.name)
     } catch (e) {
-      console.error(`releaseOwnStaleReservations ${soName}: cancel ${s.name} failed, stopping:`, e)
+      console.error(`releaseOwnStaleReservations ${soName}: ${s.name} failed, stopping sweep:`, e)
       break
     }
   }
@@ -602,16 +607,19 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
     } catch (e) {
       const msg = parseErpErrorMessage(e instanceof Error ? e.message : String(e))
       if (!isReservedStockDeadlock(msg)) throw new ShipmentRejectedError(scrubMoney(msg))
-      const dnPairs = new Map(
-        (fresh.items ?? [])
-          .filter((i) => i.batch_no)
-          .map((i) => [String(i.batch_no).toUpperCase(), String(i.warehouse ?? '')])
-      )
+      const dnPairs = new Map<string, Set<string>>()
+      for (const i of fresh.items ?? []) {
+        if (!i.batch_no) continue
+        const key = String(i.batch_no).toUpperCase()
+        if (!dnPairs.has(key)) dnPairs.set(key, new Set())
+        dnPairs.get(key)!.add(String(i.warehouse ?? ''))
+      }
       try {
         releasedSres = await releaseOwnStaleReservations(soName, dnPairs)
       } catch (relErr) {
-        // the release sweep itself broke (e.g. the SRE list read) — surface the
-        // ORIGINAL rejection, not the internal error
+        // only the pre-cancel SRE list read can throw (per-SRE failures stop
+        // the sweep and return partial results) — nothing was cancelled, so
+        // surface the ORIGINAL rejection, not the internal error
         console.error(`completeShipment ${soName}: release sweep failed:`, relErr)
         throw new ShipmentRejectedError(scrubMoney(msg))
       }

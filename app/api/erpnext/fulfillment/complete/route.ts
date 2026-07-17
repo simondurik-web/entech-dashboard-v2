@@ -157,8 +157,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // audit + instant section hop (best-effort; the 5-min sync self-heals)
-    logFulfillment({
+    // audit + instant section hop (best-effort; the 5-min sync self-heals).
+    // Awaited so a serverless response can't cut the audit short — the released
+    // reservations especially must always land in the log (codex round-2).
+    await logFulfillment({
       action: 'complete',
       so,
       dn: result.dn,
@@ -189,7 +191,7 @@ export async function POST(req: NextRequest) {
       // cancels are already committed in ERPNext — audit them even though the
       // shipment errored, or the release would be invisible to ops
       if (error.releasedSres?.length) {
-        logFulfillment({
+        await logFulfillment({
           action: 'move_reservation',
           so,
           dn: error.dn ?? '',
