@@ -25,6 +25,23 @@ export interface OrderDocument {
 export function docPublicUrl(path: string): string {
   return supabaseAdmin.storage.from(PO_DOC_BUCKET).getPublicUrl(path).data.publicUrl
 }
+// NOTE: once the bucket goes private, the stored public-form URL is an
+// IDENTIFIER (it encodes the object path), not a fetchable link — every read
+// path converts it with signedDocUrl() below or downloads via the storage API.
+
+/** Convert a stored po-documents URL into a short-lived signed URL the browser
+ *  can actually fetch (private-bucket hardening, Simon 2026-07-17). Non-bucket
+ *  URLs pass through unchanged; traversal-shaped paths return null. */
+export async function signedDocUrl(fileUrl: string | null | undefined): Promise<string | null> {
+  if (!fileUrl) return null
+  const marker = `/object/public/${PO_DOC_BUCKET}/`
+  const at = fileUrl.indexOf(marker)
+  if (at < 0) return fileUrl
+  const path = decodeURIComponent(fileUrl.slice(at + marker.length))
+  if (path.includes('..') || path.includes('\\') || path.startsWith('/')) return null
+  const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).createSignedUrl(path, 3600)
+  return data?.signedUrl ?? fileUrl
+}
 
 /** Slugify a value for safe use inside a storage path segment. */
 export function pathSlug(value: string | null | undefined, fallback: string): string {
