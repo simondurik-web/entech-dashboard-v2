@@ -13,6 +13,7 @@ import {
   type OrderDocType,
 } from '@/lib/po-automation/documents'
 import { requireUserOrService } from '@/lib/require-user'
+import { attachBolToSalesOrder, invalidateSignedBolsForOrder } from '@/lib/erpnext/external-bol'
 
 export const dynamic = 'force-dynamic'
 
@@ -198,7 +199,24 @@ export async function POST(req: NextRequest) {
     })
   if (auditErr) console.error('[po-automation] document add audit error:', auditErr)
 
-  return NextResponse.json({ document: row })
+  // Carrier BOLs also land on the ERPNext Sales Order (scan-enforcement plan,
+  // Simon 2026-06-26/2026-07-17) — best-effort, never fails the upload.
+  let erpSo: string | null = null
+  if (docType === 'bol') {
+    try {
+      erpSo = await attachBolToSalesOrder({
+        customer,
+        poNumber: po,
+        bytes: new Uint8Array(buf),
+        fileName,
+        contentType: file.type,
+      })
+    } catch (e) {
+      console.error('[po-automation] BOL ERPNext attach failed:', e)
+    }
+  }
+
+  return NextResponse.json({ document: row, erpSo })
 }
 
 /** DELETE /api/po-automation/documents?id= — removes a document row + its object. */
@@ -214,7 +232,7 @@ export async function DELETE(req: NextRequest) {
   const { data: doc, error: lookupErr } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
-    .select('file_url, po_number, doc_type, doc_number, file_name')
+    .select('file_url, po_number, doc_type, doc_number, file_name, customer')
     .eq('id', id)
     .single()
 
@@ -232,6 +250,21 @@ export async function DELETE(req: NextRequest) {
   // not be a capability — authorize the mutation itself).
   if ((doc.doc_type ?? 'bol') !== 'bol' && !caller.poAccess) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Deleting a BOL first clears its DNs' signature-stamped copies — otherwise
+  // an OLDER surviving BOL row could make a stamp of the deleted file look
+  // valid again (created_at ordering). Aborts on failure, before any mutation.
+  if ((doc.doc_type ?? 'bol') === 'bol' && doc.po_number) {
+    try {
+      await invalidateSignedBolsForOrder(doc.customer ?? null, doc.po_number)
+    } catch (e) {
+      console.error('[po-automation] signed-BOL invalidation failed:', e)
+      return NextResponse.json(
+        { error: 'Could not clear the previously signed copy. Try again.' },
+        { status: 502 }
+      )
+    }
   }
 
   // Delete the DB row FIRST — a storage-removal failure then leaves an orphan
@@ -298,7 +331,7 @@ export async function PATCH(req: NextRequest) {
   const { data: existing } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
-    .select('file_url, po_number, doc_type, doc_number, file_name')
+    .select('file_url, po_number, doc_type, doc_number, file_name, customer')
     .eq('id', id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -353,6 +386,24 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
+  // A REPLACED file must first clear any signature-stamped copies — they were
+  // made from the OLD file and the row keeps its created_at, so nothing else
+  // can catch the swap. Runs BEFORE the row update and aborts on failure:
+  // clearing without swapping is harmless (crew re-stamps), swapping without
+  // clearing prints a signature on the wrong document.
+  if (newPath && (existing.doc_type ?? 'bol') === 'bol' && existing.po_number) {
+    try {
+      await invalidateSignedBolsForOrder(existing.customer ?? null, existing.po_number)
+    } catch (e) {
+      console.error('[po-automation] signed-BOL invalidation failed:', e)
+      await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([newPath])
+      return NextResponse.json(
+        { error: 'Could not clear the previously signed copy. Try again.' },
+        { status: 502 }
+      )
+    }
+  }
+
   const { data: row, error } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
@@ -368,6 +419,22 @@ export async function PATCH(req: NextRequest) {
 
   // Old object cleanup only after the row points at the new one (best-effort).
   if (oldPath) await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([oldPath])
+
+  // Re-attach the replaced file to the ERPNext SO (best-effort — the signed
+  // copies were already cleared before the swap above).
+  if (newPath && (existing.doc_type ?? 'bol') === 'bol' && existing.po_number && file instanceof File) {
+    try {
+      await attachBolToSalesOrder({
+        customer: existing.customer ?? null,
+        poNumber: existing.po_number,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+        fileName: (update.file_name as string) ?? file.name,
+        contentType: file.type,
+      })
+    } catch (e) {
+      console.error('[po-automation] replaced-BOL ERPNext attach failed:', e)
+    }
+  }
 
   const actor = await resolvePoActor(userId)
   const field = newPath ? 'bol_replaced' : 'bol_edited'
