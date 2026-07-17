@@ -436,8 +436,10 @@ async function releaseOwnStaleReservations(
   const released: string[] = []
   // From the first cancel on, NOTHING may throw past this loop: cancels are
   // individually committed, so partial results must always reach the caller
-  // for auditing (codex round-2). Any per-SRE failure stops the sweep and
-  // returns what was already released.
+  // for auditing (codex round-2). A cancel error is reconciled against the
+  // SRE's actual docstatus — a timeout after a server-side commit still counts
+  // as released (codex round-3); only a confirmed-uncancelled failure stops
+  // the sweep.
   for (const s of sres) {
     try {
       const full = await erpnextGetDoc<{
@@ -451,8 +453,20 @@ async function releaseOwnStaleReservations(
         dnPairs.get(String(e.batch_no).toUpperCase())?.has(String(e.warehouse ?? ''))
       )
       if (!covered) continue
-      await erpnextCancel('Stock Reservation Entry', s.name)
-      released.push(s.name)
+      try {
+        await erpnextCancel('Stock Reservation Entry', s.name)
+        released.push(s.name)
+      } catch (cancelErr) {
+        const check = await erpnextGetDoc<{ docstatus?: number }>('Stock Reservation Entry', s.name).catch(
+          () => null
+        )
+        if (check?.docstatus === 2) {
+          released.push(s.name) // committed server-side despite the client error
+          continue
+        }
+        console.error(`releaseOwnStaleReservations ${soName}: cancel ${s.name} failed, stopping sweep:`, cancelErr)
+        break
+      }
     } catch (e) {
       console.error(`releaseOwnStaleReservations ${soName}: ${s.name} failed, stopping sweep:`, e)
       break
@@ -600,13 +614,38 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
   let releasedSres: string[] = []
   if (!alreadySubmitted) {
     const fresh = await erpnextGetDoc<{
-      items?: { batch_no?: string | null; warehouse?: string | null }[]
+      items?: { item_code?: string | null; qty?: number | null; batch_no?: string | null; warehouse?: string | null }[]
     }>('Delivery Note', dn)
     try {
       await erpnextSubmit(fresh)
     } catch (e) {
       const msg = parseErpErrorMessage(e instanceof Error ? e.message : String(e))
       if (!isReservedStockDeadlock(msg)) throw new ShipmentRejectedError(scrubMoney(msg))
+      // ERPNext appends the "reserved for sales orders" phrase to ANY
+      // negative-stock rejection when reservations exist — it does not prove
+      // the deadlock is self-caused (codex round-3). Only release when the
+      // PHYSICAL stock actually covers this DN per (item, warehouse): a real
+      // shortage rethrows untouched.
+      const needed = new Map<string, number>()
+      for (const i of fresh.items ?? []) {
+        const key = `${i.item_code ?? ''}||${i.warehouse ?? ''}`
+        needed.set(key, (needed.get(key) ?? 0) + (Number(i.qty) || 0))
+      }
+      for (const [key, qty] of needed) {
+        const [itemCode, warehouse] = key.split('||')
+        const bq = [
+          listParam('filters', [
+            ['item_code', '=', itemCode],
+            ['warehouse', '=', warehouse],
+          ]),
+          listParam('fields', ['actual_qty']),
+        ].join('&')
+        const bins = await erpnextGet<{ data: { actual_qty: number }[] }>(`/api/resource/Bin?${bq}`).catch(
+          () => null
+        )
+        const actual = Number(bins?.data?.[0]?.actual_qty ?? 0)
+        if (actual < qty) throw new ShipmentRejectedError(scrubMoney(msg)) // genuinely short — no release
+      }
       const dnPairs = new Map<string, Set<string>>()
       for (const i of fresh.items ?? []) {
         if (!i.batch_no) continue
@@ -629,13 +668,19 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
         const fresh2 = await erpnextGetDoc('Delivery Note', dn)
         await erpnextSubmit(fresh2)
       } catch (e2) {
-        const msg2 = parseErpErrorMessage(e2 instanceof Error ? e2.message : String(e2))
-        const err = new ShipmentRejectedError(
-          `${scrubMoney(msg2)} (auto-released reservations before retry: ${releasedSres.join(', ')} — tell the office)`
-        )
-        err.releasedSres = releasedSres
-        err.dn = dn
-        throw err
+        // a lost response is not a failed submit: the commit may have landed
+        // server-side. Reconcile against the DN's actual docstatus before
+        // rejecting (codex round-3) — a submitted DN continues as success.
+        const check = await erpnextGetDoc<{ docstatus?: number }>('Delivery Note', dn).catch(() => null)
+        if (check?.docstatus !== 1) {
+          const msg2 = parseErpErrorMessage(e2 instanceof Error ? e2.message : String(e2))
+          const err = new ShipmentRejectedError(
+            `${scrubMoney(msg2)} (auto-released reservations before retry: ${releasedSres.join(', ')} — tell the office)`
+          )
+          err.releasedSres = releasedSres
+          err.dn = dn
+          throw err
+        }
       }
     }
   }
