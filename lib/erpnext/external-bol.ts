@@ -121,9 +121,33 @@ function listParam(name: string, value: unknown): string {
   return `${name}=${encodeURIComponent(JSON.stringify(value))}`
 }
 
-/** SO names sharing a (non-canceled) truckload with the given SO. One carrier
- *  BOL covers the whole truck (Simon 2026-07-17) — uploading it on ANY member
- *  line makes it resolve for every member's DN. Released members don't count. */
+/** SO names sharing THE DN'S OWN truckload. One carrier BOL covers the whole
+ *  truck (Simon 2026-07-17) — uploading it on ANY member line makes it resolve
+ *  for every member's DN. Scoped by dn_number, NOT by SO: truckload membership
+ *  is per release line, and a multi-release SO can ride sequential trucks — an
+ *  SO-based lookup would leak a PRIOR truck's carrier BOL into a later
+ *  shipment (review panel 2026-07-17, grok). Released members don't count. */
+export async function truckloadSiblingSosForDn(dn: string, so: string): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('truckload_id, truckloads!inner(status)')
+    .eq('dn_number', dn)
+    .neq('status', 'released')
+    .neq('truckloads.status', 'canceled')
+  const tlIds = [...new Set((data ?? []).map((r) => r.truckload_id).filter(Boolean))]
+  if (tlIds.length === 0) return []
+  const { data: members } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('so_number')
+    .in('truckload_id', tlIds)
+    .neq('status', 'released')
+  return [...new Set((members ?? []).map((m) => m.so_number).filter((s) => s && s !== so))]
+}
+
+/** SO names sharing ANY (non-canceled) truckload with the given SO — used ONLY
+ *  for signed-copy INVALIDATION, where over-application is safe (clearing an
+ *  extra stamp just means re-stamping). Resolution must use the dn-scoped
+ *  variant above. */
 export async function truckloadSiblingSos(so: string): Promise<string[]> {
   const { data } = await supabaseAdmin
     .from('truckload_orders')
@@ -188,13 +212,14 @@ async function newestBolDoc(
   return best
 }
 
-/** Newest BOL upload among this SO's truckload siblings (null when the SO is
- *  not on a truckload or no member has one) — powers the "Carrier BOL" flag
- *  in views that only know the SO. */
+/** Newest BOL upload among the members of THIS DN's truckload (null when the
+ *  DN is not on a truckload or no member has one) — powers the "Carrier BOL"
+ *  flag per Delivery Note. */
 export async function truckloadSiblingBolDoc(
+  dn: string,
   so: string
 ): Promise<{ file_url: string; file_name: string | null; created_at: string | null } | null> {
-  const siblings = await truckloadSiblingSos(so)
+  const siblings = await truckloadSiblingSosForDn(dn, so)
   if (siblings.length === 0) return null
   return newestBolDoc(await docPairsForSos(siblings))
 }
@@ -242,8 +267,8 @@ export async function resolveOriginalSource(ref: DnShipmentRef): Promise<Externa
   }
 
   // One carrier BOL per truckload: an upload on ANY member line of this DN's
-  // truckload covers this DN too (Simon 2026-07-17).
-  const siblings = await truckloadSiblingSos(ref.so)
+  // OWN truckload covers this DN too (Simon 2026-07-17).
+  const siblings = await truckloadSiblingSosForDn(ref.dn, ref.so)
   if (siblings.length) {
     const doc = await newestBolDoc(await docPairsForSos(siblings))
     if (doc) {

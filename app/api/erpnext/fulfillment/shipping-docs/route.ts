@@ -86,13 +86,19 @@ export async function GET(req: NextRequest) {
     } catch {
       /* best-effort flag */
     }
+    // one carrier BOL per truckload — a sibling member's upload counts, scoped
+    // to each DN's OWN truckload (a multi-release SO can ride several trucks)
+    const tlBolDns = new Set<string>()
     if (!hasOrderBol) {
-      // one carrier BOL per truckload — a sibling member's upload counts
-      try {
-        hasOrderBol = !!(await truckloadSiblingBolDoc(so))
-      } catch {
-        /* best-effort flag */
-      }
+      await Promise.all(
+        names.map(async (n) => {
+          try {
+            if (await truckloadSiblingBolDoc(n, so)) tlBolDns.add(n)
+          } catch {
+            /* best-effort flag */
+          }
+        })
+      )
     }
     const [dnBols, signedLists] = await Promise.all([
       erpnextGet<{ data: { attached_to_name: string }[] }>(
@@ -113,7 +119,7 @@ export async function GET(req: NextRequest) {
         dn: d.name,
         date: d.posting_date,
         shipped: !!d.custom_shipped,
-        customerBol: hasOrderBol || dnBolSet.has(d.name) || signedSet.has(d.name),
+        customerBol: hasOrderBol || dnBolSet.has(d.name) || signedSet.has(d.name) || tlBolDns.has(d.name),
       }))
     return NextResponse.json({ documents }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
