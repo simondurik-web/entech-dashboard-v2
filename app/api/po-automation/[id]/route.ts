@@ -11,7 +11,10 @@ import {
   type PoChange,
   type PoLineItem,
 } from '@/lib/po-automation/edit'
-import { PO_DOC_BUCKET, MAX_DOC_BYTES, docPublicUrl, pathSlug } from '@/lib/po-automation/documents'
+import { MAX_DOC_BYTES, pathSlug } from '@/lib/po-automation/documents'
+
+// PO PDFs go to the PUBLIC screenshots bucket (accounting's static ERP links)
+const PO_SCREENSHOTS_BUCKET = 'po-screenshots'
 import type { ProcessedPo } from '@/lib/po-automation/types'
 import { requireUser } from '@/lib/require-user'
 
@@ -164,14 +167,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const poSlug = pathSlug(row.po_number, id)
     const path = `${poSlug}/po/${crypto.randomUUID()}.pdf`
     const buf = Buffer.from(await file.arrayBuffer())
+    // PO PDFs live in the PUBLIC po-screenshots bucket (where the PO bot files
+    // originals) — their URL is stored statically on the ERPNext Sales Order
+    // for accounting, so it must stay directly fetchable. po-documents is
+    // private (shipping/order docs) as of 2026-07-17.
     const up = await supabaseAdmin.storage
-      .from(PO_DOC_BUCKET)
+      .from(PO_SCREENSHOTS_BUCKET)
       .upload(path, buf, { contentType: 'application/pdf', upsert: true })
     if (up.error) {
       return NextResponse.json({ error: up.error.message }, { status: 500 })
     }
     uploadedPath = path
-    const newUrl = docPublicUrl(path)
+    const newUrl = supabaseAdmin.storage.from(PO_SCREENSHOTS_BUCKET).getPublicUrl(path).data.publicUrl
     update.po_pdf_url = newUrl
     changes.push({ field: 'po_pdf_url', old: row.po_pdf_url ?? null, new: newUrl })
   }
@@ -181,7 +188,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (changes.length === 0 && !note) {
     // Remove any orphaned PDF we may have uploaded (defensive; unreachable since
     // a file produces a change, but keep the bucket clean regardless).
-    if (uploadedPath) await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([uploadedPath])
+    if (uploadedPath) await supabaseAdmin.storage.from(PO_SCREENSHOTS_BUCKET).remove([uploadedPath])
     return NextResponse.json({ ok: true, changes: 0, message: 'No changes detected' })
   }
 
@@ -203,7 +210,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (rpcErr) {
     console.error('[po-automation] apply_po_edit error:', rpcErr)
     // The edit was NOT applied — remove the orphaned PDF if we uploaded one.
-    if (uploadedPath) await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove([uploadedPath])
+    if (uploadedPath) await supabaseAdmin.storage.from(PO_SCREENSHOTS_BUCKET).remove([uploadedPath])
     return NextResponse.json({ error: rpcErr.message }, { status: 500 })
   }
 
