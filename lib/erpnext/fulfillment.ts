@@ -418,7 +418,9 @@ function isReservedStockDeadlock(msg: string): boolean {
  *  ([] when nothing matched — caller rethrows the original error). */
 async function releaseOwnStaleReservations(
   soName: string,
-  dnPairs: Map<string, Set<string>> // UPPER(batch_no) -> warehouses it ships from on this DN
+  dnPairs: Map<string, Set<string>>, // UPPER(batch_no) -> warehouses it ships from on this DN
+  dnSoDetails: Set<string>, // SO Item rows this DN delivers — SREs of sibling lines are untouchable
+  dnBatchQty: Map<string, number> // UPPER(batch_no) -> total qty this DN ships of it
 ): Promise<string[]> {
   const qs = [
     listParam('filters', [
@@ -427,12 +429,16 @@ async function releaseOwnStaleReservations(
       ['status', 'in', ACTIVE_SRE_STATUS],
       ['docstatus', '=', 1],
     ]),
-    listParam('fields', ['name']),
+    listParam('fields', ['name', 'voucher_detail_no', 'reserved_qty', 'delivered_qty']),
     'limit_page_length=0',
   ].join('&')
   // The list read happens BEFORE any cancel — a failure here may safely throw.
   const sres =
-    (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Stock Reservation Entry?${qs}`)).data ?? []
+    (
+      await erpnextGet<{
+        data: { name: string; voucher_detail_no?: string | null; reserved_qty?: number; delivered_qty?: number }[]
+      }>(`/api/resource/Stock Reservation Entry?${qs}`)
+    ).data ?? []
   const released: string[] = []
   // From the first cancel on, NOTHING may throw past this loop: cancels are
   // individually committed, so partial results must always reach the caller
@@ -442,17 +448,30 @@ async function releaseOwnStaleReservations(
   // the sweep.
   for (const s of sres) {
     try {
+      // line scope: an SRE reserving for an SO line this DN does NOT deliver
+      // belongs to a sibling release — never touch it (codex round-4)
+      if (!s.voucher_detail_no || !dnSoDetails.has(s.voucher_detail_no)) continue
       const full = await erpnextGetDoc<{
+        warehouse?: string | null
         sb_entries?: { batch_no?: string | null; warehouse?: string | null }[]
       }>('Stock Reservation Entry', s.name)
       const entries = (full.sb_entries ?? []).filter((e) => e.batch_no)
       // qty-based (no batches) reservations are left alone — we can only prove
       // a batch-based reservation is covered by what's on the truck
       if (!entries.length) continue
+      // child rows may leave warehouse blank — fall back to the SRE's own
+      // warehouse (grok round-4: a blank child made coverage always false)
       const covered = entries.every((e) =>
-        dnPairs.get(String(e.batch_no).toUpperCase())?.has(String(e.warehouse ?? ''))
+        dnPairs.get(String(e.batch_no).toUpperCase())?.has(String(e.warehouse ?? full.warehouse ?? ''))
       )
       if (!covered) continue
+      // qty scope: never cancel a reservation holding MORE of these batches
+      // than this DN ships (codex round-4)
+      const dnQtyForSre = entries.reduce(
+        (sum, e) => sum + (dnBatchQty.get(String(e.batch_no).toUpperCase()) ?? 0),
+        0
+      )
+      if ((Number(s.reserved_qty) || 0) - (Number(s.delivered_qty) || 0) > dnQtyForSre) continue
       try {
         await erpnextCancel('Stock Reservation Entry', s.name)
         released.push(s.name)
@@ -614,7 +633,14 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
   let releasedSres: string[] = []
   if (!alreadySubmitted) {
     const fresh = await erpnextGetDoc<{
-      items?: { item_code?: string | null; qty?: number | null; batch_no?: string | null; warehouse?: string | null }[]
+      items?: {
+        item_code?: string | null
+        qty?: number | null
+        stock_qty?: number | null
+        batch_no?: string | null
+        warehouse?: string | null
+        so_detail?: string | null
+      }[]
     }>('Delivery Note', dn)
     try {
       await erpnextSubmit(fresh)
@@ -624,37 +650,53 @@ export async function completeShipment(input: CompleteShipmentInput): Promise<Co
       // ERPNext appends the "reserved for sales orders" phrase to ANY
       // negative-stock rejection when reservations exist — it does not prove
       // the deadlock is self-caused (codex round-3). Only release when the
-      // PHYSICAL stock actually covers this DN per (item, warehouse): a real
-      // shortage rethrows untouched.
-      const needed = new Map<string, number>()
+      // PHYSICAL stock covers this DN — per BATCH, reservations ignored
+      // (codex round-4: an aggregate bin check can hide a short batch): a
+      // real shortage rethrows untouched. Batch-less lines fall back to the
+      // warehouse-level Bin check.
       for (const i of fresh.items ?? []) {
-        const key = `${i.item_code ?? ''}||${i.warehouse ?? ''}`
-        needed.set(key, (needed.get(key) ?? 0) + (Number(i.qty) || 0))
-      }
-      for (const [key, qty] of needed) {
-        const [itemCode, warehouse] = key.split('||')
-        const bq = [
-          listParam('filters', [
-            ['item_code', '=', itemCode],
-            ['warehouse', '=', warehouse],
-          ]),
-          listParam('fields', ['actual_qty']),
-        ].join('&')
-        const bins = await erpnextGet<{ data: { actual_qty: number }[] }>(`/api/resource/Bin?${bq}`).catch(
-          () => null
-        )
-        const actual = Number(bins?.data?.[0]?.actual_qty ?? 0)
-        if (actual < qty) throw new ShipmentRejectedError(scrubMoney(msg)) // genuinely short — no release
+        const qty = Number(i.stock_qty ?? i.qty) || 0
+        if (!qty) continue
+        let physical = 0
+        if (i.batch_no) {
+          const p = new URLSearchParams({
+            batch_no: String(i.batch_no),
+            warehouse: String(i.warehouse ?? ''),
+            item_code: String(i.item_code ?? ''),
+            ignore_reserved_stock: '1',
+          })
+          const r = await erpnextGet<{ message?: number }>(
+            `/api/method/erpnext.stock.doctype.batch.batch.get_batch_qty?${p}`
+          ).catch(() => null)
+          physical = Number(r?.message ?? 0)
+        } else {
+          const bq = [
+            listParam('filters', [
+              ['item_code', '=', i.item_code ?? ''],
+              ['warehouse', '=', i.warehouse ?? ''],
+            ]),
+            listParam('fields', ['actual_qty']),
+          ].join('&')
+          const bins = await erpnextGet<{ data: { actual_qty: number }[] }>(`/api/resource/Bin?${bq}`).catch(
+            () => null
+          )
+          physical = Number(bins?.data?.[0]?.actual_qty ?? 0)
+        }
+        if (physical < qty) throw new ShipmentRejectedError(scrubMoney(msg)) // genuinely short — no release
       }
       const dnPairs = new Map<string, Set<string>>()
+      const dnBatchQty = new Map<string, number>()
+      const dnSoDetails = new Set<string>()
       for (const i of fresh.items ?? []) {
+        if (i.so_detail) dnSoDetails.add(String(i.so_detail))
         if (!i.batch_no) continue
         const key = String(i.batch_no).toUpperCase()
         if (!dnPairs.has(key)) dnPairs.set(key, new Set())
         dnPairs.get(key)!.add(String(i.warehouse ?? ''))
+        dnBatchQty.set(key, (dnBatchQty.get(key) ?? 0) + (Number(i.stock_qty ?? i.qty) || 0))
       }
       try {
-        releasedSres = await releaseOwnStaleReservations(soName, dnPairs)
+        releasedSres = await releaseOwnStaleReservations(soName, dnPairs, dnSoDetails, dnBatchQty)
       } catch (relErr) {
         // only the pre-cancel SRE list read can throw (per-SRE failures stop
         // the sweep and return partial results) — nothing was cancelled, so
