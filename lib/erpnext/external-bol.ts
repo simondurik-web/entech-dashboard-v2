@@ -36,12 +36,15 @@ export interface SignedBolObject {
 /** Locate the (single) signed copy for a DN, newest first. Matching is STRICT
  *  (<DN>-<uuid>.pdf) — a bare startsWith would let DN "X-1" match objects of
  *  DN "X-1-2" and even delete them on re-sign (review panel round 2). */
-export async function findSignedBolObjects(dn: string): Promise<SignedBolObject[]> {
-  const { data } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).list(SIGNED_BOL_FOLDER, {
+export async function findSignedBolObjects(dn: string, opts?: { strict?: boolean }): Promise<SignedBolObject[]> {
+  const { data, error } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).list(SIGNED_BOL_FOLDER, {
     search: `${dn}-`,
     limit: 20,
     sortBy: { column: 'created_at', order: 'desc' },
   })
+  // strict callers (invalidation) must not mistake a lookup failure for
+  // "nothing to remove"; read paths fail open to the unsigned original
+  if (error && opts?.strict) throw new Error(`signed copy lookup failed for ${dn}: ${error.message}`)
   const exact = new RegExp(
     `^${dn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\.pdf$`
   )
@@ -257,19 +260,23 @@ export async function attachBolToSalesOrder(input: {
   return soName
 }
 
-/** A replaced BOL file keeps its order_documents row (and created_at), so the
- *  timestamp staleness check alone can't see it — remove the stamped signed
- *  copies of every DN behind this order so the next print uses the NEW
- *  original until the crew re-stamps (review panel round 2, codex). Safe to
- *  over-apply; callers treat it as best-effort. */
+/** A replaced (or deleted) BOL file keeps/loses its order_documents row in
+ *  ways the created_at staleness check can't see — so before the mutation,
+ *  remove the stamped signed copies of every DN behind this order; the next
+ *  print uses the surviving original until the crew re-stamps (review panel
+ *  rounds 2-3, codex). Covers wrapper DNs (custom_ship_against_so) AND
+ *  natively-scanned DNs (item-linked). THROWS on lookup/delete failure — the
+ *  caller must abort its mutation rather than leave a stale signed copy
+ *  printable. Over-invalidation is safe; silence is not. */
 export async function invalidateSignedBolsForOrder(customer: string | null, poNumber: string | null): Promise<void> {
   const want = normName(customer)
   if (!want || !poNumber?.trim()) return
-  const { data } = await supabaseAdmin
+  const { data, error: qErr } = await supabaseAdmin
     .from('dashboard_orders')
     .select('if_number, customer')
     .ilike('po_number', escapeLike(poNumber.trim()))
     .limit(200)
+  if (qErr) throw new Error(`order lookup failed: ${qErr.message}`)
   const sos = [
     ...new Set(
       (data ?? [])
@@ -279,24 +286,28 @@ export async function invalidateSignedBolsForOrder(customer: string | null, poNu
     ),
   ]
   if (sos.length === 0) return
-  const dnQs = [
-    listParam('filters', [
-      ['docstatus', '=', 1],
-      ['custom_ship_against_so', 'in', sos],
-    ]),
-    listParam('fields', ['name']),
-    'limit_page_length=0',
-  ].join('&')
-  const dns = (
-    (await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Delivery%20Note?${dnQs}`).catch(() => ({
-      data: [],
-    }))).data ?? []
-  ).map((d) => d.name)
+  const [byField, byItems] = await Promise.all([
+    erpnextGet<{ data: { name: string }[] }>(
+      `/api/resource/Delivery%20Note?${listParam('filters', [
+        ['docstatus', '=', 1],
+        ['custom_ship_against_so', 'in', sos],
+      ])}&${listParam('fields', ['name'])}&limit_page_length=0`
+    ),
+    erpnextGet<{ data: { parent: string }[] }>(
+      `/api/resource/Delivery%20Note%20Item?parent=${encodeURIComponent('Delivery Note')}&${listParam('filters', [
+        ['against_sales_order', 'in', sos],
+        ['docstatus', '=', 1],
+      ])}&${listParam('fields', ['parent'])}&limit_page_length=0`
+    ),
+  ])
+  const dns = [
+    ...new Set([...(byField.data ?? []).map((d) => d.name), ...(byItems.data ?? []).map((d) => d.parent)]),
+  ]
   for (const dn of dns) {
-    const objs = await findSignedBolObjects(dn)
+    const objs = await findSignedBolObjects(dn, { strict: true })
     if (objs.length) {
       const { error } = await supabaseAdmin.storage.from(PO_DOC_BUCKET).remove(objs.map((o) => o.path))
-      if (error) console.error('signed BOL invalidation remove failed:', dn, error.message)
+      if (error) throw new Error(`signed copy remove failed for ${dn}: ${error.message}`)
     }
   }
 }

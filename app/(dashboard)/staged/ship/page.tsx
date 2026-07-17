@@ -1084,11 +1084,19 @@ function ShipOrderContent() {
   const doPrintAllDocuments = async () => {
     if (!printStation || printingAll || tlDocsList.length === 0) return
     // packing slip + our BOL always; the carrier's own BOL joins the batch when
-    // one is on file for that DN (outside trucking — Simon 2026-07-17)
+    // one is on file for that DN (outside trucking — Simon 2026-07-17). A DN
+    // whose presence lookup FAILED (no map entry) still gets an attempt — the
+    // server's 404 for a no-BOL order is tolerated, so a flaky lookup can only
+    // add a harmless try, never silently drop a document.
     const jobs = tlDocsList.flatMap((c) => {
-      const types: ('packing' | 'bol' | 'customer_bol')[] = ['packing', 'bol']
-      if (extBol[c.dn]?.exists) types.push('customer_bol')
-      return types.map((type) => ({ dn: c.dn, type }))
+      const known = extBol[c.dn]
+      const types: { type: 'packing' | 'bol' | 'customer_bol'; optional?: boolean }[] = [
+        { type: 'packing' },
+        { type: 'bol' },
+      ]
+      if (known?.exists) types.push({ type: 'customer_bol' })
+      else if (!known) types.push({ type: 'customer_bol', optional: true })
+      return types.map((t) => ({ dn: c.dn, ...t }))
     })
     setPrintingAll({ done: 0, total: jobs.length })
     setShipError(null)
@@ -1102,7 +1110,8 @@ function ShipOrderContent() {
           station: printStation,
           copies,
         })
-        if (!res.ok) throw new Error()
+        // optional attempt on an order with no carrier BOL → expected 404, not a failure
+        if (!res.ok && !(job.optional && res.status === 404)) throw new Error()
       } catch {
         failed.push(
           `${job.dn} (${
