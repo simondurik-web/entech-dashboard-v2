@@ -11,6 +11,7 @@ import {
 } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
+import { restoreReservation } from '@/lib/erpnext/staged-pallet-op'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -94,20 +95,21 @@ export async function POST(req: NextRequest) {
     // Same-pallet concurrency guard (the partial unique index on `family` is the atomic one).
     const { data: inflight } = await supabaseAdmin
       .from('inventory_ops_log')
-      .select('idempotency_key, status, action, error')
+      .select('idempotency_key')
       .eq('family', palletBase(batch))
-      .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
+      .in('status', ['pending', 'erp_committed'])
+      // stage-lock markers are arbitrated by runInventoryOp, not here: a LIVE one still
+      // blocks (its family conflicts on insert), but a STALE one — a crashed staging
+      // request — must reach the retire logic instead of 409ing forever in this pre-check.
+      .neq('action', 'stage-lock')
       .neq('idempotency_key', idempotencyKey)
       .limit(1)
     if (inflight && inflight.length) {
-      // Say WHY the pallet is held: a lingering FAILED op reads very differently
-      // from a genuinely concurrent one (Abel's 5TJQ, 2026-07-08 — a failed
-      // reprint held the family and every retry just said "in progress").
-      const held = inflight[0]
-      const msg = held.status === 'failed_pre_erp'
-        ? `A previous ${held.action} on this pallet failed and is holding it (${(held.error ?? 'unknown error').slice(0, 160)}). Ask an admin to clear it from the ops log.`
-        : 'Another operation is in progress for this pallet; try again shortly.'
-      return NextResponse.json({ error: msg }, { status: 409 })
+      // Only genuinely ACTIVE ops block. A failed_pre_erp holder is intentionally NOT in
+      // the filter above: it's a dead op (ERP never committed) and runInventoryOp
+      // supersedes it atomically on the next attempt — before 2026-07-14 it jammed the
+      // family forever ("ask an admin to clear it": Joseles's 4JA5 + 10 more pallets).
+      return NextResponse.json({ error: 'Another operation is in progress for this pallet; try again shortly.' }, { status: 409 })
     }
 
     if (willReissue) newBatch = await reserveNextSerial(batch)
@@ -144,6 +146,14 @@ export async function POST(req: NextRequest) {
       result_batch: willReissue ? newBatch : null,
     },
     erp: () => restorePallet({ batch, itemCode, requestedQty: qty, warehouse, newBatch, opKey: idempotencyKey }),
+    // Restore never un-stages anything itself, but it CAN take over a dead operation that
+    // did — and inherit its debt. Without a finalize() the inherited snapshot would just sit
+    // there: the pallet comes back, the op reports done, and the Sales Order it was reserved
+    // to is quietly short. Re-stage whatever this op actually put back. (codex BLOCKER.)
+    finalize: (c) => restoreReservation(idempotencyKey, c.batch ?? target, itemCode),
+    // Proof required before superseding a dead op that holds this pallet family:
+    // did ERP commit any stock document under THAT op's key? (see runInventoryOp)
+    erpTouchedKey: (k) => reconcileStockEntry(k).then(Boolean),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
       return se ? { batch: target, stockEntry: se } : null

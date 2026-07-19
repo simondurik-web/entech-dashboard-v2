@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveNextSerial, reissuePallet, verifyReissue, removeInventory, reconcileStockEntry, assertBatchItem, getBatchLocation, palletBase } from '@/lib/erpnext/inventory'
-import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } from '@/lib/erpnext/staging'
+import { snapshotAndRelease, restoreReservation } from '@/lib/erpnext/staged-pallet-op'
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
@@ -105,20 +105,21 @@ export async function POST(req: NextRequest) {
     // reject if any serial in this pallet's family already has an active op.
     const { data: inflight } = await supabaseAdmin
       .from('inventory_ops_log')
-      .select('idempotency_key, status, action, error')
+      .select('idempotency_key')
       .eq('family', palletBase(batch))
-      .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
+      .in('status', ['pending', 'erp_committed'])
+      // stage-lock markers are arbitrated by runInventoryOp, not here: a LIVE one still
+      // blocks (its family conflicts on insert), but a STALE one — a crashed staging
+      // request — must reach the retire logic instead of 409ing forever in this pre-check.
+      .neq('action', 'stage-lock')
       .neq('idempotency_key', idempotencyKey)
       .limit(1)
     if (inflight && inflight.length) {
-      // Say WHY the pallet is held: a lingering FAILED op reads very differently
-      // from a genuinely concurrent one (Abel's 5TJQ, 2026-07-08 — a failed
-      // reprint held the family and every retry just said "in progress").
-      const held = inflight[0]
-      const msg = held.status === 'failed_pre_erp'
-        ? `A previous ${held.action} on this pallet failed and is holding it (${(held.error ?? 'unknown error').slice(0, 160)}). Ask an admin to clear it from the ops log.`
-        : 'Another operation is in progress for this pallet; try again shortly.'
-      return NextResponse.json({ error: msg }, { status: 409 })
+      // Only genuinely ACTIVE ops block. A failed_pre_erp holder is intentionally NOT in
+      // the filter above: it's a dead op (ERP never committed) and runInventoryOp
+      // supersedes it atomically on the next attempt — before 2026-07-14 it jammed the
+      // family forever ("ask an admin to clear it": Joseles's 4JA5 + 10 more pallets).
+      return NextResponse.json({ error: 'Another operation is in progress for this pallet; try again shortly.' }, { status: 409 })
     }
   }
 
@@ -135,11 +136,26 @@ export async function POST(req: NextRequest) {
       createdBy: userId,
       meta: { item_code: itemCode, qty: 0, station_id: station, batch, family: palletBase(batch) },
       erp: async () => {
-        // Same rule as the remove route: a staged pallet's reservation dies
-        // WITH the pallet, or the order keeps a phantom (bug-hunt 2026-07-04).
-        await releaseBatchReservation(batch)
-        return removeInventory({ batch, itemCode, reason: 'adjusted to 0', opKey: idempotencyKey })
+        // Same rule as the remove route: a staged pallet's reservation dies WITH the pallet,
+        // or the order keeps a phantom (bug-hunt 2026-07-04). Snapshot it first so a removal
+        // that fails AFTER the cancel can put the reservation back — otherwise the op looks
+        // ERP-clean, gets superseded, and the pallet's order link is lost silently.
+        try {
+          await snapshotAndRelease(idempotencyKey, batch, itemCode)
+          return await removeInventory({ batch, itemCode, reason: 'adjusted to 0', opKey: idempotencyKey })
+        } catch (e) {
+          const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+          if (w) {
+            throw new Error(
+              `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+            )
+          }
+          throw e
+        }
       },
+      // Same jam fix as every other family-locked op: a dead holder must be supersedable
+      // here too, or adjust-to-0 (soft remove) stays stuck behind it.
+      erpTouchedKey: (k) => reconcileStockEntry(k).then(Boolean),
       reconcile: async () => {
         const se = await reconcileStockEntry(idempotencyKey)
         return se ? { batch, stockEntry: se } : null
@@ -161,27 +177,42 @@ export async function POST(req: NextRequest) {
       // change, capped at the NEW qty — same rule as the reprint route
       // (bug-hunt 2026-07-04: adjust reissued via the identical engine but
       // stranded the reservation on the drained old serial).
-      const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
-      const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
-      if (reservation) {
-        try {
-          await releaseBatchReservation(batch)
-          const loc = await getBatchLocation(newBatch, itemCode)
-          if (loc && loc.qty > 0) {
-            await reserveBatchesToSO({
-              soName: reservation.so,
-              items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
-            })
-          }
-        } catch (e) {
-          console.error(`adjust: reservation transfer ${batch} -> ${newBatch} failed:`, e)
-          return { ...committed, extra: { ...committed.extra, warning: 'reservation_transfer_failed' } }
+      // Look up AND RELEASE **BEFORE** the reissue — ERPNext v15 refuses to issue
+      // reserved stock (NegativeStockError). The reprint route got this order on
+      // 2026-07-08 (Abel's 5TJQ) but adjust kept releasing AFTER reissuePallet, so
+      // adjusting any fully-staged pallet failed and jammed it (Joseles's 4JA5,
+      // 2026-07-10). On a retry the reservation is already gone — reservationsForBatches
+      // returns nothing and the reissue just re-runs.
+      // Record the reservation on the op row, THEN release — so any later attempt can put
+      // it back even though this closure is long gone by then.
+      try {
+        // Inside the try: the release can fail mid-way (it cancels the SRE, then updates the
+        // SO), which would otherwise leave the pallet un-staged with no restore attempted.
+        await snapshotAndRelease(idempotencyKey, batch, itemCode)
+        return await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
+      } catch (e) {
+        // Restore what we un-staged; if the pallet is no longer backing its order, say so IN
+        // the error rather than letting a generic failure hide it. (codex BLOCKER.)
+        const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+        if (w) {
+          // Warning FIRST: the runner truncates the error to 200 chars for the response, and
+          // an ERPNext message alone routinely exceeds that — appending buried it. (codex.)
+          throw new Error(
+            `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+          )
         }
+        throw e
       }
-      return committed
     },
+    // The qty change reissues the pallet under a NEW serial, so the reservation follows the
+    // stock there. Runs on fresh commits AND resumes — a retry that skips erp() must still
+    // re-stage, or the pallet quietly leaves its order.
+    finalize: (c) => restoreReservation(idempotencyKey, c.batch ?? newBatch, itemCode),
     // reconcile is READ-ONLY (see reprint route): reports done only if already complete,
     // else null and the state machine re-runs erp() (reissuePallet) under its CAS claim.
+    // Proof required before superseding a dead op that holds this pallet family:
+    // did ERP commit any stock document under THAT op's key? (see runInventoryOp)
+    erpTouchedKey: (k) => reconcileStockEntry(k).then(Boolean),
     reconcile: () => verifyReissue({ oldBatch: batch, newBatch, itemCode, targetQty: target }),
     label: async (committed) => {
       const printBatch = committed.batch ?? newBatch

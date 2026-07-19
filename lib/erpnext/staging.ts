@@ -285,10 +285,21 @@ export async function reservationsForBatches(
  *  staged order back to Open so it shows as needing staging again. Used by the
  *  move-to-another-order flow (Simon 2026-07-03). */
 export async function releaseBatchReservation(
-  batch: string
+  batch: string,
+  expectedSo?: string
 ): Promise<{ released: boolean; fromSo?: string; customer?: string | null }> {
   const res = (await reservationsForBatches([batch]))[batch]
   if (!res) return { released: false }
+  // Pass expectedSo when you have already decided WHICH reservation you mean to cancel.
+  // This function re-queries by batch, so without the check it would cancel whatever
+  // reservation the pallet happens to carry right now — and between a caller's snapshot and
+  // this call, another request can re-stage the pallet to a DIFFERENT order. Cancelling that
+  // one would silently take stock from an order nobody asked us to touch. (codex BLOCKER.)
+  if (expectedSo && res.so !== expectedSo) {
+    throw new Error(
+      `Pallet ${batch} is now staged to ${res.so}, not ${expectedSo}. Refusing to cancel another order's reservation.`
+    )
+  }
   await erpnextCancel('Stock Reservation Entry', res.sre)
 
   const fromSo = res.so
@@ -439,9 +450,23 @@ export async function reserveBatchesToSO(
     // turning it off makes ERPNext silently SKIP every per-pallet reservation
     // (verified live 2026-07-04). The whole-pallet rule is enforced HERE.
     const bound = (await reservationsForBatches([p.batch]).catch(() => ({} as Record<string, BatchReservation>)))[p.batch]
+    // OWNERSHIP CHECK (round-21 codex BLOCKER): what is bound MUST belong to THIS Sales Order.
+    // If the pallet was re-staged to a DIFFERENT order in a race — e.g. this op's stage-lock
+    // marker got stale-retired (15-min), freeing the family, and another request grabbed the
+    // pallet — then ERPNext binds nothing new for us and `bound` reflects the OTHER order's
+    // full reservation. The quantity check below would PASS against it and mark this order
+    // done while it is actually short: a silent short-ship, the exact failure this whole
+    // change exists to prevent. Fail loud instead of confirming against someone else's stock.
+    // (Do NOT release it — releaseBatchReservation(expectedSo) refuses to cancel another SO's
+    // reservation anyway; there is nothing of ours to undo.)
+    if (bound && bound.so !== soName) {
+      throw new Error(
+        `Pallet ${p.batch} is now reserved to ${bound.so}, not ${soName} — another order took it while this one was being staged. Re-scan and stage it fresh.`
+      )
+    }
     const boundQty = Number(bound?.reservedQty ?? 0)
     if (boundQty + 1e-6 < p.qty) {
-      await releaseBatchReservation(p.batch).catch(() => undefined)
+      await releaseBatchReservation(p.batch, soName).catch(() => undefined)
       throw new Error(
         `Pallet ${p.batch} could only be reserved for ${boundQty} of its ${p.qty} pcs — the order can't take the whole pallet. ` +
           `Whole pallets only: use a pallet that fits, or adjust/split the pallet to the needed quantity first.`

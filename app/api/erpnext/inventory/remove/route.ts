@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { removeInventory, reconcileStockEntry, palletBase, assertBatchItem, getBatchLocation } from '@/lib/erpnext/inventory'
-import { releaseBatchReservation } from '@/lib/erpnext/staging'
+import { snapshotAndRelease, restoreReservation } from '@/lib/erpnext/staged-pallet-op'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -70,17 +70,21 @@ export async function POST(req: NextRequest) {
     // a failed reprint held the family and delete attempts just said "in progress").
     const { data: inflight } = await supabaseAdmin
       .from('inventory_ops_log')
-      .select('idempotency_key, status, action, error')
+      .select('idempotency_key')
       .eq('family', palletBase(batch))
-      .in('status', ['pending', 'erp_committed', 'failed_pre_erp'])
+      .in('status', ['pending', 'erp_committed'])
+      // stage-lock markers are arbitrated by runInventoryOp, not here: a LIVE one still
+      // blocks (its family conflicts on insert), but a STALE one — a crashed staging
+      // request — must reach the retire logic instead of 409ing forever in this pre-check.
+      .neq('action', 'stage-lock')
       .neq('idempotency_key', idempotencyKey)
       .limit(1)
     if (inflight && inflight.length) {
-      const held = inflight[0]
-      const msg = held.status === 'failed_pre_erp'
-        ? `A previous ${held.action} on this pallet failed and is holding it (${(held.error ?? 'unknown error').slice(0, 160)}). Ask an admin to clear it from the ops log.`
-        : 'Another operation is in progress for this pallet; try again shortly.'
-      return NextResponse.json({ error: msg }, { status: 409 })
+      // Only genuinely ACTIVE ops block. A failed_pre_erp holder is intentionally NOT in
+      // the filter above: it's a dead op (ERP never committed) and runInventoryOp
+      // supersedes it atomically on the next attempt — before 2026-07-14 it jammed the
+      // family forever ("ask an admin to clear it": Joseles's 4JA5 + 10 more pallets).
+      return NextResponse.json({ error: 'Another operation is in progress for this pallet; try again shortly.' }, { status: 409 })
     }
   }
 
@@ -90,15 +94,35 @@ export async function POST(req: NextRequest) {
     createdBy: userId,
     meta: { item_code: itemCode, batch, family: palletBase(batch) },
     erp: async () => {
-      // A staged pallet's reservation must die WITH the pallet — otherwise the
-      // sales order keeps listing a phantom pallet and its coverage math stays
-      // inflated (Simon found SO-00013 showing deleted pallets, 2026-07-03).
-      // releaseBatchReservation no-ops when there is none, and recomputes the
-      // source SO's staging status when there is; retry-safe either way.
-      await releaseBatchReservation(batch)
-      const r = await removeInventory({ batch, itemCode, reason, opKey: idempotencyKey })
-      return { batch: r.batch, stockEntry: r.stockEntry }
+      // A staged pallet's reservation must die WITH the pallet — otherwise the sales order
+      // keeps listing a phantom pallet and its coverage math stays inflated (Simon found
+      // SO-00013 showing deleted pallets, 2026-07-03).
+      // Record it before cancelling, though: if the ISSUE-OUT then fails, the pallet still
+      // exists but is no longer staged, and the op ends "ERP-clean" (no Stock Entry) — so a
+      // later op would supersede this row and the Sales Order link would be lost silently.
+      // The snapshot lets us put it straight back. No finalize() on success: the pallet is
+      // meant to be gone, and re-staging a removed pallet is exactly what we don't want.
+      try {
+        await snapshotAndRelease(idempotencyKey, batch, itemCode)
+        const r = await removeInventory({ batch, itemCode, reason, opKey: idempotencyKey })
+        return { batch: r.batch, stockEntry: r.stockEntry }
+      } catch (e) {
+        // Restore what we un-staged; if the pallet is no longer backing its order, say so IN
+        // the error rather than letting a generic failure hide it. (codex BLOCKER.)
+        const w = await restoreReservation(idempotencyKey, batch, itemCode, true).catch(() => 'reservation_transfer_failed')
+        if (w) {
+          // Warning FIRST: the runner truncates the error to 200 chars for the response, and
+          // an ERPNext message alone routinely exceeds that — appending buried it. (codex.)
+          throw new Error(
+            `WARNING: pallet ${batch} may no longer be staged to its order; re-stage it before shipping. — ${(e as Error).message}`
+          )
+        }
+        throw e
+      }
     },
+    // Proof required before superseding a dead op that holds this pallet family:
+    // did ERP commit any stock document under THAT op's key? (see runInventoryOp)
+    erpTouchedKey: (k) => reconcileStockEntry(k).then(Boolean),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
       return se ? { batch, stockEntry: se } : null

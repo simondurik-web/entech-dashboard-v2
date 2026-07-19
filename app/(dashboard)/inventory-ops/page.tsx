@@ -106,6 +106,7 @@ interface PalletLookup {
   split: boolean
   superseded: boolean
   scanned: string
+  reservedFor?: string | null // SO the pallet is staged to; bulk transfer refuses it at scan
 }
 interface RemovedPallet {
   batch: string
@@ -760,6 +761,12 @@ export default function InventoryOpsPage() {
         showFlash('err', `${p.batch}: ${t('inventoryOps.transferSplit')}`)
         return
       }
+      // A staged pallet is refused at scan time with its order on screen. The server
+      // skips it at post time too (bulkTransfer), so this is UX, not the guarantee.
+      if (p.reservedFor) {
+        showFlash('err', `${p.batch}: ${t('inventoryOps.transferStaged').replace('{so}', p.reservedFor)}`)
+        return
+      }
       if (destBin && p.warehouse === destBin) {
         showFlash('err', `${p.batch} ${t('inventoryOps.transferAlreadyHere')}`)
         return
@@ -1380,7 +1387,18 @@ export default function InventoryOpsPage() {
       const serial = (d.batch as string) ?? batch
       // A qty change reissues the pallet as a new serial; follow it so the exact-pallet
       // view keeps showing the live pallet rather than the now-disabled old code.
-      showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
+      // The stock change succeeded but the pallet came off its order: say so, loudly and
+      // as an ERROR flash. A silent "adjusted ✓" on an unstaged pallet is how an order
+      // ships short (review 2026-07-14).
+      if (d.warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(d.unstagedFrom ?? '')))
+      } else if (d.finalizePending) {
+        // Stock committed, but another worker is still re-staging the pallet — this reply
+        // must not read as a confirmed clean finish. (review round 17)
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
+      } else {
+        showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
+      }
       setEditBatch(null)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       setHistoryOpen((h) => (h === batch ? null : h)) // old serial gone after reissue
@@ -1444,7 +1462,15 @@ export default function InventoryOpsPage() {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'move failed')
       clearOpKey('move', batch, moveWarehouse)
-      showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
+      // Moved, but the pallet fell off its order (re-reserve failed) — surface it as an
+      // error, not a quiet success. See submitAdjust.
+      if (d.warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', batch).replace('{so}', String(d.unstagedFrom ?? '')))
+      } else if (d.finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', batch))
+      } else {
+        showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
+      }
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')
@@ -1491,7 +1517,16 @@ export default function InventoryOpsPage() {
       clearOpKey('reprint', batch, station)
       const serial = (d.batch as string) ?? batch
       // A reprint reissues the pallet as a new serial (old label is voided); follow it.
-      showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      // Reprint un-stages the pallet to reissue it, so it carries the same risk as
+      // adjust/move: if the re-stage failed, the label printed but the pallet is off its
+      // order. Show that as an error, never a clean "reprinted ✓".
+      if (d.warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(d.unstagedFrom ?? '')))
+      } else if (d.finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
+      } else {
+        showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      }
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       refreshAfterMutation(itemCode)
       loadRecentLabels(recentExpanded) // a new label was printed
@@ -1528,7 +1563,16 @@ export default function InventoryOpsPage() {
     const d = await r.json()
     if (!r.ok) throw new Error(d.error || 'restore failed')
     clearOpKey('restore', p.batch, payload)
-    return { serial: (d.batch as string) ?? p.batch, newLabel: !!d.newLabel }
+    return {
+      serial: (d.batch as string) ?? p.batch,
+      newLabel: !!d.newLabel,
+      // A restore can inherit a dead op's staging debt; if the re-stage failed the pallet is
+      // back in stock but OFF its order. Hand that up — swallowing it here is how an order
+      // ships short while the operator sees a clean "restored". (codex BLOCKER.)
+      warning: (d.warning as string | undefined) ?? null,
+      unstagedFrom: (d.unstagedFrom as string | undefined) ?? null,
+      finalizePending: !!d.finalizePending,
+    }
   }
 
   // Return a removed/zeroed pallet's stock to inventory (scan path). A different qty reissues
@@ -1550,8 +1594,15 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setRestoring(true)
     try {
-      const { serial, newLabel } = await doRestore(removedPallet, qty, bin)
-      showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      const { serial, newLabel, warning, unstagedFrom, finalizePending } = await doRestore(removedPallet, qty, bin)
+      // Pallet is back in stock but off its order — an error, not a clean "restored ✓".
+      if (warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(unstagedFrom ?? '')))
+      } else if (finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
+      } else {
+        showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      }
       if (newLabel) loadRecentLabels(recentExpanded)
       loadDeletedLabels(deletedExpanded) // this deletion is now undone
       // Re-run the search on the (possibly new) serial so it now shows as stocked.
@@ -1586,8 +1637,15 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setDelRestoring(true)
     try {
-      const { serial, newLabel } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
-      showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      const { serial, newLabel, warning, unstagedFrom, finalizePending } = await doRestore({ batch: row.batch, itemCode: row.itemCode, labelQty }, qty, bin)
+      // Pallet is back in stock but off its order — an error, not a clean "restored ✓".
+      if (warning === 'reservation_transfer_failed') {
+        showFlash('err', t('inventoryOps.unstagedWarning').replace('{batch}', serial).replace('{so}', String(unstagedFrom ?? '')))
+      } else if (finalizePending) {
+        showFlash('err', t('inventoryOps.finalizePendingWarning').replace('{batch}', serial))
+      } else {
+        showFlash('ok', newLabel ? `${t('inventoryOps.restoredNew')} ${serial}` : `${t('inventoryOps.restored')} ${serial}`)
+      }
       if (newLabel) loadRecentLabels(recentExpanded)
       setDelRow(null)
       loadDeletedLabels(deletedExpanded)
