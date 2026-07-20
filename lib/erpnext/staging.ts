@@ -116,7 +116,8 @@ export interface StagingSalesOrder {
   reservedQty: number // already reserved for that item
   deliveryDate: string | null
   stagingStatus: string | null // custom_staging_status: Open | Staged | Shipped (or null)
-  lines: StagingSoLine[] // open (not fully consumed) reservable lines, soonest due first
+  lines: StagingSoLine[] // open (not fully consumed) lines, soonest due first; includes
+  // non-reservable ones flagged reservable:false (add-flow informational attach)
 }
 
 /** Open Sales Orders that include `itemCode` as a line, each with that item's ordered-vs-

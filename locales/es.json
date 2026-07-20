@@ -1384,7 +1384,7 @@
   "inventoryOps.palletWeightReq": "Peso (lb)",
   "inventoryOps.weightDimsRequired": "Esta tarima está asignada a una orden de venta. Todo producto terminado requiere peso y dimensiones antes de imprimir la etiqueta.",
   "inventoryOps.stageOnlyNeeds": "solo necesita {n} más — la cola no cabe",
-  "inventoryOps.stageMoveConfirm": "Estas tarimas están reservadas a OTRA orden. Prepararlas aquí las quitará de esa orden (que volverá a necesitar preparación):",
+  "inventoryOps.stageMoveConfirm": "Estas tarimas están reservadas a OTRA orden o línea. Prepararlas aquí las quitará de donde están (esa línea volverá a necesitar preparación):",
   "inventoryOps.stageMoveNeedsPrinter": "Elige una impresora primero — las tarimas movidas reciben una etiqueta NUEVA (la anterior deja de funcionar).",
   "inventoryOps.stageMoveRelabel": "Cada tarima movida recibe un código NUEVO y una etiqueta nueva se imprime en {printer}. Pega la etiqueta nueva y TIRA la anterior — ya no escaneará.",
   "inventoryOps.stageRelabeled": "reetiquetadas:",

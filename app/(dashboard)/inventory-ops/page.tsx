@@ -837,7 +837,7 @@ export default function InventoryOpsPage() {
   // locked to another order can be MOVED — release + re-reserve on confirm
   // (Simon 2026-07-03: emergency order needs a pallet staged for a later one).
   type StageQueueItem = PalletLookup & {
-    reservedTo?: { so: string; soItem: string | null; customer: string | null }
+    reservedTo?: { so: string; soItem: string | null; line: number | null; customer: string | null }
   }
   const [stageQueue, setStageQueue] = useState<StageQueueItem[]>([])
   const [stageScanInput, setStageScanInput] = useState('')
@@ -918,13 +918,19 @@ export default function InventoryOpsPage() {
       }
       // Already reserved to an order? Queue it flagged for a MOVE (amber row +
       // explicit confirmation at post time) instead of failing at ERPNext.
-      let reservedTo: { so: string; soItem: string | null; customer: string | null } | undefined
+      let reservedTo: { so: string; soItem: string | null; line: number | null; customer: string | null } | undefined
       try {
         const rr = await authedFetch(`/api/erpnext/inventory/reservations?batches=${encodeURIComponent(p.batch)}`)
         if (rr.ok) {
           const rd = await rr.json()
           const res = rd.reservations?.[p.batch]
-          if (res) reservedTo = { so: res.so, soItem: res.soItem ?? null, customer: res.customer ?? null }
+          if (res)
+            reservedTo = {
+              so: res.so,
+              soItem: res.soItem ?? null,
+              line: res.dashboardLine ?? null,
+              customer: res.customer ?? null,
+            }
         }
       } catch {
         /* reservation lookup is advisory — the server re-checks at post time */
@@ -957,8 +963,16 @@ export default function InventoryOpsPage() {
         return
       }
       const stationName = stations.find((s) => s.id === addStation)?.name ?? addStation
+      // Name the SOURCE line being released — a same-order line move must not
+      // read like a no-op in the confirm dialog (codex round-4).
       const list = moves
-        .map((m) => `${m.batch} — ${m.reservedTo!.so}${m.reservedTo!.customer ? ` (${m.reservedTo!.customer})` : ''}`)
+        .map((m) => {
+          const src =
+            m.reservedTo!.line != null
+              ? `${t('inventoryOps.stageLine')} ${m.reservedTo!.line} (${m.reservedTo!.so})`
+              : m.reservedTo!.so
+          return `${m.batch} — ${src}${m.reservedTo!.customer ? ` (${m.reservedTo!.customer})` : ''}`
+        })
         .join('\n')
       if (
         !window.confirm(
@@ -2342,9 +2356,11 @@ export default function InventoryOpsPage() {
                         setSalesOrder('')
                         setSalesOrderItem('')
                         setSalesOrderLineNo(null)
-                        // The target line is part of the add's identity — a retry
-                        // after changing it must not replay the old operation.
-                        addKeyRef.current = null
+                        // Deliberately NOT minting a new idempotency key here: if the
+                        // prior add committed but its response was lost, a fresh key
+                        // would receive the stock TWICE (codex round-4). A replayed
+                        // key attaches from LIVE state and warns loudly on any line
+                        // mismatch instead.
                       }}
                       className="text-muted-foreground hover:text-foreground"
                     >
@@ -2393,8 +2409,8 @@ export default function InventoryOpsPage() {
                                   setSalesOrderLineNo(s.dashboardLine)
                                   setSoOpen(false)
                                   setSoQuery('')
-                                  // New target line -> new op identity for the add.
-                                  addKeyRef.current = null
+                                  // Key kept on purpose — see the clear button's note
+                                  // (a fresh key after a lost response double-receives).
                                 }}
                                 className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
                               >

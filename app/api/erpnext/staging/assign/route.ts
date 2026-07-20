@@ -90,7 +90,10 @@ export async function POST(req: NextRequest) {
   // row (moves + pinned new serials) instead of recomputing — after a partial
   // run the old reservations are gone and recomputation would both miss the
   // moves and mint fresh serials (phantom reissues). New request -> plan now.
-  type MovePlan = { oldBatch: string; newBatch: string; fromSo: string; customer: string | null; itemCode: string; qty: number }
+  // sre pins the EXACT reservation the operator confirmed releasing — the
+  // destructive phase must not cancel whatever the batch happens to carry by
+  // then (codex round-4). Optional for plans stored before this field existed.
+  type MovePlan = { oldBatch: string; newBatch: string; fromSo: string; customer: string | null; itemCode: string; qty: number; sre?: string }
   const { data: priorOp } = await supabaseAdmin
     .from('inventory_ops_log')
     .select('item_code')
@@ -122,8 +125,8 @@ export async function POST(req: NextRequest) {
     if (conflicts.length > 0 && !body.allowMove) {
       return NextResponse.json(
         {
-          error: 'Some pallets are reserved to another order',
-          moves: conflicts.map(({ r }) => ({ batch: r.batch, so: r.so, customer: r.customer })),
+          error: 'Some pallets are reserved to another order or line',
+          moves: conflicts.map(({ r }) => ({ batch: r.batch, so: r.so, soItem: r.soItem, customer: r.customer })),
         },
         { status: 409 }
       )
@@ -180,6 +183,7 @@ export async function POST(req: NextRequest) {
         customer: r.customer,
         itemCode: p.itemCode,
         qty: p.qty,
+        sre: r.sre,
       })
     }
   }
@@ -234,16 +238,59 @@ export async function POST(req: NextRequest) {
       const soLive = await erpnextGetDoc<{
         docstatus: number
         status: string
-        items?: { name: string; item_code: string; reserve_stock?: number | null }[]
+        items?: {
+          name: string
+          item_code: string
+          qty: number
+          stock_qty?: number | null
+          stock_reserved_qty?: number | null
+          delivered_qty?: number | null
+          reserve_stock?: number | null
+        }[]
       }>('Sales Order', soName)
       if (soLive.docstatus !== 1 || ['Completed', 'Closed', 'Cancelled', 'On Hold'].includes(soLive.status)) {
         throw new Error(`Sales Order ${soName} is not open (status ${soLive.status})`)
       }
+      // Live reservations BEFORE the moves — feeds the capacity re-check and the
+      // per-move SRE pin verification below (still keyed by the ORIGINAL batch
+      // codes; a replay whose moves already ran simply finds them released).
+      const liveBefore = await reservationsForBatches(pallets.map((p) => p.batch)).catch(
+        () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
+      )
       if (salesOrderItem) {
         const pinLive = (soLive.items ?? []).find((l) => l.name === salesOrderItem)
         if (!pinLive || !pinLive.reserve_stock || pallets.some((p) => p.itemCode !== pinLive.item_code)) {
           throw new Error(
             `Sales Order ${soName} has no reservable line ${salesOrderItem} for the queued part — refresh and pick the line again`
+          )
+        }
+        // Capacity re-check IMMEDIATELY before the destructive phase — a
+        // concurrent reservation between preflight and here must fail the op
+        // while the source reservations still exist (codex round-4).
+        const needPcs = pallets
+          .filter((p) => {
+            const r = liveBefore[p.batch]
+            return !(r && r.so === soName && r.soItem === salesOrderItem && r.reservedQty + 1e-6 >= p.qty)
+          })
+          .reduce((s, p) => s + p.qty, 0)
+        const remainingLive =
+          (Number(pinLive.stock_qty ?? pinLive.qty) || 0) -
+          Math.max(Number(pinLive.stock_reserved_qty) || 0, Number(pinLive.delivered_qty) || 0)
+        if (needPcs > remainingLive + 1e-6) {
+          throw new Error(
+            `That line only needs ${Math.max(0, remainingLive).toLocaleString()} more — the queue holds ${needPcs.toLocaleString()}. Nothing was changed.`
+          )
+        }
+      }
+
+      // Every reservation being released must be the ONE the operator confirmed
+      // (pinned by SRE name). Checked for the WHOLE plan before releasing
+      // anything, so "nothing was changed" stays true on failure.
+      for (const m of moves) {
+        const cur = liveBefore[m.oldBatch]
+        if (cur && m.sre && cur.sre !== m.sre) {
+          throw new Error(
+            `Pallet ${m.oldBatch}'s reservation changed since the move was confirmed — re-scan and try again. Nothing was changed.`
           )
         }
       }

@@ -88,7 +88,13 @@ export async function dashboardLinesForSoItems(soItems: string[]): Promise<Recor
       console.error('dashboard line lookup failed:', error)
       return {}
     }
-    return Object.fromEntries((data ?? []).map((r) => [r.erp_so_item_name as string, Number(r.line)]))
+    // Only sane positive line numbers — a NaN/0 row must not print "Line NaN"
+    // on a physical label (grok round-4).
+    return Object.fromEntries(
+      (data ?? [])
+        .map((r) => [r.erp_so_item_name as string, Number(r.line)] as const)
+        .filter(([, n]) => Number.isFinite(n) && n > 0)
+    )
   } catch (e) {
     console.error('dashboard line lookup failed:', e)
     return {}
