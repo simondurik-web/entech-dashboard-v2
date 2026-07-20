@@ -1470,6 +1470,7 @@
   "inventoryOps.labelStale": "La tarima {batch} está asignada a {so}, pero la etiqueta impresa puede estar desactualizada — reimprímela.",
   "inventoryOps.reprintDetached": "La tarima {batch} se reimprimió pero su reserva de orden NO se pudo mover — vuelve a prepararla en \"Preparar para armado\".",
   "inventoryOps.labelPendingReprint": "La nueva etiqueta de {batch} NO se imprimió — presiona Reimprimir de nuevo.",
+  "inventoryOps.labelStaleReprint": "La etiqueta de {batch} puede estar desactualizada — presiona Reimprimir de nuevo.",
   "inventoryOps.adjusted": "Ajustado",
   "inventoryOps.removeReason": "Motivo para eliminar esta tarima:",
   "inventoryOps.confirmDeleteTitle": "¿Eliminar inventario?",

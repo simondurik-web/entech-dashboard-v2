@@ -383,11 +383,11 @@ export async function POST(req: NextRequest) {
           warning: `Could not verify the attachment of ${committedBatch} to ${salesOrder} — check it in Prepare for staging`,
         }
       }
-      // This request did not itself enqueue the label, so what the queued/printed label
-      // says is unverifiable — e.g. an SO-less label from a failed first attempt whose
-      // pallet was attached afterwards. Always route replays through the Reprint nudge
-      // (codex/grok round 4).
-      result.body.labelPending = true
+      // NOT forcing labelPending here: a plain duplicate of a fully-good add would
+      // push operators to void a good label (grok round 5). The duplicate path already
+      // carries labelPending when the original label genuinely failed. Residual gap
+      // (accepted): SO-less label from a failed first attempt + post-hoc attach +
+      // same-key replay reports attached without a reprint nudge.
     }
   }
 

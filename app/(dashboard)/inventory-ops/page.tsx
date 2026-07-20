@@ -1542,7 +1542,16 @@ export default function InventoryOpsPage() {
           20000
         )
       } else if (d.labelPending) {
-        showFlash('err', t('inventoryOps.labelPendingReprint').replace('{batch}', serial), 20000)
+        // Stale = a label exists but may show outdated order info; plain pending = no
+        // label printed. Different diagnosis, same recovery (Reprint) — say the right one.
+        showFlash(
+          'err',
+          t(d.labelMaybeStale ? 'inventoryOps.labelStaleReprint' : 'inventoryOps.labelPendingReprint').replace(
+            '{batch}',
+            serial
+          ),
+          20000
+        )
       } else {
         showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       }

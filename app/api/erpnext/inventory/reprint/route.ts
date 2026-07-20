@@ -114,6 +114,10 @@ export async function POST(req: NextRequest) {
   // Set when a retry couldn't refresh an already-enqueued job's ZPL — the physical
   // label may not match the reservation-dependent content computed by this attempt.
   const labelMaybeStaleRef = { current: false }
+  // Whether erp() executed in THIS request. When it didn't (erp_committed resume or a
+  // done duplicate), the two refs above carry no knowledge and the staging outcome must
+  // be recomputed fail-closed from live state instead (codex round-5 BLOCK).
+  const erpRanRef = { current: false }
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -121,6 +125,7 @@ export async function POST(req: NextRequest) {
     createdBy: userId,
     meta: { item_code: itemCode, qty: target, station_id: station, batch, family: palletBase(batch), result_batch: newBatch },
     erp: async () => {
+      erpRanRef.current = true
       // A staged (reserved) pallet keeps its reservation ACROSS a reprint: the
       // reservation moves to the new serial, so the order never shows a phantom
       // old code (Simon's SO-00013 report, 2026-07-03). Look up AND RELEASE
@@ -232,17 +237,41 @@ export async function POST(req: NextRequest) {
   })
 
   if (result.status >= 200 && result.status < 300) {
-    // A released-but-not-rebound reservation silently un-stages the pallet — say so;
-    // the client renders staging.attached:false as a loud re-stage instruction
-    // (codex round-4 BLOCK; previously only a server console.error).
-    if (hadReservationRef.current && transferFailedRef.current) {
-      result.body.staging = {
-        attached: false,
-        warning: 'The order reservation could not be moved to the new pallet code',
+    if (erpRanRef.current) {
+      // erp() ran this request — the refs are exact knowledge. A released-but-not-
+      // rebound reservation silently un-stages the pallet — say so; the client renders
+      // staging.attached:false as a loud re-stage instruction (codex round-4 BLOCK;
+      // previously only a server console.error).
+      if (hadReservationRef.current && transferFailedRef.current) {
+        result.body.staging = {
+          attached: false,
+          warning: 'The order reservation could not be moved to the new pallet code',
+        }
+      }
+    } else {
+      // erp() was skipped (erp_committed resume or done duplicate): the refs carry no
+      // knowledge, so recompute FAIL-CLOSED from live state — a crash between reissue
+      // and re-reserve must not come back green (codex round-5 BLOCK). A never-staged
+      // pallet's replay also lands here; the wording is conditional for that reason.
+      const finalBatch = (result.body?.batch as string | undefined) ?? newBatch
+      try {
+        const live = (await reservationsForBatches([finalBatch]))[finalBatch]
+        if (!(live && live.reservedQty + 1e-6 >= target)) {
+          result.body.staging = {
+            attached: false,
+            warning: `No full reservation is on ${finalBatch} — if this pallet was staged to an order, re-stage it in Prepare for staging`,
+          }
+        }
+      } catch {
+        result.body.staging = {
+          attached: false,
+          warning: `Could not verify the reservation on ${finalBatch} — check it in Prepare for staging`,
+        }
       }
     }
     if (labelMaybeStaleRef.current) {
       result.body.labelPending = true
+      result.body.labelMaybeStale = true
     }
   }
 
