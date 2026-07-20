@@ -108,11 +108,9 @@ export async function POST(req: NextRequest) {
     const conflicts = pallets
       .map((p) => ({ p, r: existing[p.batch] }))
       // A conflict is a reservation to another ORDER, or — when a target line is
-      // picked — to another LINE of the same order (a line-level restage must go
-      // through the move flow: release + reissue + relabel, so the printed line
-      // number never lies; codex review 2026-07-20). Same order + same line (or
-      // no line picked) stays a harmless no-op re-reserve.
-      // number never lies; codex review 2026-07-20). A reservation whose line is
+      // picked — to another LINE of the same order: a line-level restage must go
+      // through the move flow (release + reissue + relabel) so the printed line
+      // number never lies (codex review 2026-07-20). A reservation whose line is
       // UNKNOWN (soItem null) fails closed into the move flow too — it must not
       // be credited to the picked line. Same order + same line (or no line
       // picked) is dropped from the reserve list inside erp() instead.
@@ -154,9 +152,13 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         )
       }
-      // Whole-queue capacity: pallets already sitting on this line don't count.
+      // Whole-queue capacity: only pallets already FULLY reserved on this line
+      // don't count (a partial reservation still needs a real reserve pass).
       const newPcs = pallets
-        .filter((p) => existing[p.batch]?.soItem !== salesOrderItem)
+        .filter((p) => {
+          const r = existing[p.batch]
+          return !(r && r.soItem === salesOrderItem && r.reservedQty + 1e-6 >= p.qty)
+        })
         .reduce((s, p) => s + p.qty, 0)
       const remaining =
         (Number(pin.stock_qty ?? pin.qty) || 0) -
@@ -224,6 +226,28 @@ export async function POST(req: NextRequest) {
       // Every step is idempotent against the pinned plan: release no-ops when
       // already released, reissuePallet is resumable toward the same target.
       const printedBy = await resolveUserName(userId)
+
+      // LIVE destination check BEFORE any release/reissue — on fresh runs AND
+      // replays (the 400-preflight only runs on fresh requests). A closed/
+      // cancelled order or a vanished target line must fail here, not after the
+      // source reservations are gone and the pallets renamed (codex round-3).
+      const soLive = await erpnextGetDoc<{
+        docstatus: number
+        status: string
+        items?: { name: string; item_code: string; reserve_stock?: number | null }[]
+      }>('Sales Order', soName)
+      if (soLive.docstatus !== 1 || ['Completed', 'Closed', 'Cancelled', 'On Hold'].includes(soLive.status)) {
+        throw new Error(`Sales Order ${soName} is not open (status ${soLive.status})`)
+      }
+      if (salesOrderItem) {
+        const pinLive = (soLive.items ?? []).find((l) => l.name === salesOrderItem)
+        if (!pinLive || !pinLive.reserve_stock || pallets.some((p) => p.itemCode !== pinLive.item_code)) {
+          throw new Error(
+            `Sales Order ${soName} has no reservable line ${salesOrderItem} for the queued part — refresh and pick the line again`
+          )
+        }
+      }
+
       for (const m of moves) {
         const entry = pallets.find((p) => p.batch === m.oldBatch)
         const rel = await releaseBatchReservation(m.oldBatch)
@@ -258,9 +282,17 @@ export async function POST(req: NextRequest) {
       const live = await reservationsForBatches(pallets.map((p) => p.batch)).catch(
         () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
       )
+      // Skip ONLY a FULL reservation on the target — a partial one must go
+      // through reserveBatchesToSO so the whole-pallet rule can reject it
+      // (codex round-3: skipping partials bypassed that check).
       const toReserve = pallets.filter((p) => {
         const r = live[p.batch]
-        return !(r && r.so === soName && (!salesOrderItem || r.soItem === salesOrderItem))
+        return !(
+          r &&
+          r.so === soName &&
+          (!salesOrderItem || r.soItem === salesOrderItem) &&
+          r.reservedQty + 1e-6 >= p.qty
+        )
       })
       const committed = await reserveBatchesToSO({
         soName,
@@ -276,8 +308,13 @@ export async function POST(req: NextRequest) {
 
       // Fresh labels for the moved pallets, printed with the NEW order on them.
       // Line numbers for the labels: which release line each moved batch bound to.
+      // A replayed op may find a moved batch already reserved (absent from this
+      // run's allocations) — fall back to the live reservation's line (codex
+      // round-3), then to the explicit target.
+      const moveSoItemOf = (batch: string): string | undefined =>
+        committed.allocations[batch] ?? live[batch]?.soItem ?? salesOrderItem
       const moveLineNos = await dashboardLinesForSoItems(
-        moves.map((m) => committed.allocations[m.newBatch]).filter(Boolean)
+        moves.map((m) => moveSoItemOf(m.newBatch)).filter((v): v is string => !!v)
       )
       for (const r of moves) {
         try {
@@ -295,7 +332,7 @@ export async function POST(req: NextRequest) {
             batch: r.newBatch,
             salesOrder: soName,
             lineNo: (() => {
-              const soItem = committed.allocations[r.newBatch]
+              const soItem = moveSoItemOf(r.newBatch)
               const n = soItem ? moveLineNos[soItem] : undefined
               return n != null ? String(n) : undefined
             })(),

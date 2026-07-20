@@ -5,6 +5,7 @@ import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getIte
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
+import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { reserveBatchesToSO, reservationsForBatches } from '@/lib/erpnext/staging'
 import { flipDashboardStatus, dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -138,11 +139,24 @@ export async function POST(req: NextRequest) {
         // code). One copy per box (^PQ via `copies`). The label quantity is the item's
         // custom_pieces_per_pack when set, else 1 (a pack is itself one assembly).
         // Line number: informational like the SO itself (no reservation concept) —
-        // the picked line, when it maps (codex review round 2, 2026-07-20).
-        const genericLineNo =
-          salesOrder && salesOrderItem
-            ? (await dashboardLinesForSoItems([salesOrderItem]))[salesOrderItem]
-            : undefined
+        // but only printed after verifying the line actually belongs to THIS
+        // order and item, so a crafted request can't mint a materially false
+        // label (codex round-3). Verification failure just omits it.
+        let genericLineNo: number | undefined
+        if (salesOrder && salesOrderItem) {
+          try {
+            const soDoc = await erpnextGetDoc<{ items?: { name: string; item_code: string }[] }>(
+              'Sales Order',
+              salesOrder
+            )
+            const line = (soDoc.items ?? []).find((l) => l.name === salesOrderItem)
+            if (line && line.item_code === itemCode) {
+              genericLineNo = (await dashboardLinesForSoItems([salesOrderItem]))[salesOrderItem]
+            }
+          } catch {
+            /* informational only — omit on lookup failure */
+          }
+        }
         const zpl = buildPalletZpl({
           itemCode,
           itemName: itemInfo.itemName,
@@ -223,6 +237,14 @@ export async function POST(req: NextRequest) {
           return { ...none, warning: `Pallet ${committedBatch} is reserved to ${existing.so}, not ${soName}` }
         }
         if (existing.reservedQty + 1e-6 >= qty) {
+          // A pinned line must actually be the reserved line — a full reservation
+          // on some OTHER line is not the pick the operator made (codex round-3).
+          if (salesOrderItem && existing.soItem !== salesOrderItem) {
+            return {
+              ...none,
+              warning: `Pallet ${committedBatch} is reserved to a different release line of ${soName} — fix it in Prepare for staging`,
+            }
+          }
           return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [], soItem: existing.soItem }
         }
         return {
@@ -251,7 +273,11 @@ export async function POST(req: NextRequest) {
       // labeled) as unattached.
       try {
         const now = (await reservationsForBatches([committedBatch]))[committedBatch]
-        if (now?.so === soName && now.reservedQty + 1e-6 >= qty) {
+        if (
+          now?.so === soName &&
+          now.reservedQty + 1e-6 >= qty &&
+          (!salesOrderItem || now.soItem === salesOrderItem)
+        ) {
           return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [], soItem: now.soItem }
         }
       } catch {

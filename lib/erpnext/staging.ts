@@ -104,6 +104,8 @@ export interface StagingSoLine {
   deliveryDate: string | null
   orderedQty: number
   reservedQty: number // reserved OR delivered (whichever is larger) for this line
+  reservable: boolean // reserve_stock — staging targets only; a non-reservable
+  // line is still listed for the add flow's informational SO attach
 }
 
 export interface StagingSalesOrder {
@@ -160,6 +162,7 @@ export async function listOpenSalesOrdersForItem(itemCode: string): Promise<Stag
           deliveryDate: it.delivery_date ?? null,
           orderedQty: lineOrdered,
           reservedQty: lineUsed,
+          reservable: !!it.reserve_stock,
         })
       }
     }

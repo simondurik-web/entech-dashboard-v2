@@ -88,6 +88,7 @@ interface StagingSoLine {
   deliveryDate: string | null
   orderedQty: number
   reservedQty: number
+  reservable: boolean // staging targets only; add flow also lists non-reservable lines
   dashboardLine: number | null // the floor's unique release handle (packing-sheet line number)
 }
 interface StagingSalesOrder {
@@ -944,10 +945,11 @@ export default function InventoryOpsPage() {
     // fresh label with the new order; the old label stops scanning).
     // A move is a reservation to another ORDER — or to another LINE of the same
     // order (line-level restage relabels too, so the printed line never lies).
+    // MUST match the server's conflict rule exactly, including soItem null
+    // (unknown line ownership = move) — a mismatch loops the operator into
+    // 409s with no confirm dialog (gemini/codex round-3).
     const moves = stageQueue.filter(
-      (p) =>
-        p.reservedTo &&
-        (p.reservedTo.so !== selectedSo || (p.reservedTo.soItem != null && p.reservedTo.soItem !== selectedSoItem))
+      (p) => p.reservedTo && (p.reservedTo.so !== selectedSo || p.reservedTo.soItem !== selectedSoItem)
     )
     if (moves.length > 0) {
       if (!addStation) {
@@ -3233,14 +3235,16 @@ export default function InventoryOpsPage() {
             {/* One card per release LINE (soonest due first), identified by its
                 dashboard line number — the floor's unique handle; the SO name only
                 shows as a fallback for an unmapped line (Simon 2026-07-20). */}
-            {!stageOrdersLoading && stageOrders.every((o) => o.lines.length === 0) ? (
+            {!stageOrdersLoading && stageOrders.every((o) => o.lines.every((l) => !l.reservable)) ? (
               <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
                 {t('inventoryOps.stageNoOrders')}
               </div>
             ) : (
               <ul className="space-y-2">
                 {stageOrders
-                  .flatMap((o) => o.lines.map((l) => ({ o, l })))
+                  // Staging reserves stock — only reservable lines are targets
+                  // (the add flow's informational attach still sees all lines).
+                  .flatMap((o) => o.lines.filter((l) => l.reservable).map((l) => ({ o, l })))
                   .sort(
                     (a, b) =>
                       (a.l.deliveryDate ?? '9999-12-31').localeCompare(b.l.deliveryDate ?? '9999-12-31') ||
