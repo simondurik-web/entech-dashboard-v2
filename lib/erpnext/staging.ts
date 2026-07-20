@@ -149,8 +149,12 @@ export async function listOpenSalesOrdersForItem(itemCode: string): Promise<Stag
       const lineUsed = Math.max(reservedOf(it), Number(it.delivered_qty) || 0)
       ordered += lineOrdered
       used += lineUsed
-      // Pickable lines only: reservable (reserve_stock) and not fully consumed.
-      if (it.reserve_stock && lineOrdered - lineUsed > 1e-6) {
+      // Pickable lines only: not fully consumed. NOT filtered on reserve_stock —
+      // non-serialized items attach an SO as label text only (no reservation),
+      // and their lines may not be reservable; hiding them would empty the
+      // add-pallet dropdown for those items. A reserve attempt against a
+      // non-reservable line is caught by the whole-pallet verification.
+      if (lineOrdered - lineUsed > 1e-6) {
         lines.push({
           soItem: it.name,
           deliveryDate: it.delivery_date ?? null,
@@ -423,8 +427,16 @@ export async function reserveBatchesToSO(
   for (const p of items) {
     let line: SOItemRow | undefined
     if (p.salesOrderItem) {
-      line = (so.items ?? []).find((l) => l.name === p.salesOrderItem)
-      if (line && p.qty > remainingOf(line) + 1e-6) line = undefined
+      // A pinned line must satisfy the SAME invariants the auto path enforces:
+      // right item and reservable — a crafted request must not aim a pallet at
+      // another SKU's line or a non-reservable row (codex review, 2026-07-20).
+      const pinned = (so.items ?? []).find((l) => l.name === p.salesOrderItem)
+      if (!pinned || pinned.item_code !== p.itemCode || !pinned.reserve_stock) {
+        throw new Error(
+          `Sales Order ${soName} has no reservable line ${p.salesOrderItem} for item ${p.itemCode}`
+        )
+      }
+      line = p.qty > remainingOf(pinned) + 1e-6 ? undefined : pinned
     } else {
       // SOONEST-DUE line of this item that can take the WHOLE pallet — never
       // child-table row order (see byLineDueDate; line 2491 stuck MAKING while
@@ -492,6 +504,18 @@ export async function reserveBatchesToSO(
     // (verified live 2026-07-04). The whole-pallet rule is enforced HERE.
     const bound = (await reservationsForBatches([p.batch]).catch(() => ({} as Record<string, BatchReservation>)))[p.batch]
     const boundQty = Number(bound?.reservedQty ?? 0)
+    // WRONG-LINE backstop: a batch that already carried a reservation on a
+    // DIFFERENT line answers this lookup with that pre-existing entry while our
+    // reserve bound nothing (ERPNext silently skips an already-reserved batch) —
+    // without this check that read as success and even dashboard-flipped the
+    // wrong line (codex review, 2026-07-20). Do NOT release: the reservation
+    // found is not ours.
+    const wantLine = allocations.get(p.batch)
+    if (bound && bound.soItem && wantLine && bound.soItem !== wantLine) {
+      throw new Error(
+        `Pallet ${p.batch} is already reserved to a different release line of ${bound.so} — move it explicitly or release it first`
+      )
+    }
     if (boundQty + 1e-6 < p.qty) {
       await releaseBatchReservation(p.batch).catch(() => undefined)
       throw new Error(

@@ -78,10 +78,16 @@ export async function dashboardLinesForSoItems(soItems: string[]): Promise<Recor
   const uniq = [...new Set(soItems.filter(Boolean))]
   if (uniq.length === 0) return {}
   try {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('erp_order_line_map')
       .select('erp_so_item_name, line')
       .in('erp_so_item_name', uniq)
+    // supabase-js reports failures via `error`, it rarely throws — an ignored
+    // error would silently drop every line number (gemini/codex review).
+    if (error) {
+      console.error('dashboard line lookup failed:', error)
+      return {}
+    }
     return Object.fromEntries((data ?? []).map((r) => [r.erp_so_item_name as string, Number(r.line)]))
   } catch (e) {
     console.error('dashboard line lookup failed:', e)

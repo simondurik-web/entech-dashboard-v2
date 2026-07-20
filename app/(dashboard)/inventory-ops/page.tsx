@@ -835,7 +835,9 @@ export default function InventoryOpsPage() {
   // Queue items carry the pallet's EXISTING reservation (if any) so a pallet
   // locked to another order can be MOVED — release + re-reserve on confirm
   // (Simon 2026-07-03: emergency order needs a pallet staged for a later one).
-  type StageQueueItem = PalletLookup & { reservedTo?: { so: string; customer: string | null } }
+  type StageQueueItem = PalletLookup & {
+    reservedTo?: { so: string; soItem: string | null; customer: string | null }
+  }
   const [stageQueue, setStageQueue] = useState<StageQueueItem[]>([])
   const [stageScanInput, setStageScanInput] = useState('')
   const [stageQueueBusy, setStageQueueBusy] = useState(false)
@@ -915,13 +917,13 @@ export default function InventoryOpsPage() {
       }
       // Already reserved to an order? Queue it flagged for a MOVE (amber row +
       // explicit confirmation at post time) instead of failing at ERPNext.
-      let reservedTo: { so: string; customer: string | null } | undefined
+      let reservedTo: { so: string; soItem: string | null; customer: string | null } | undefined
       try {
         const rr = await authedFetch(`/api/erpnext/inventory/reservations?batches=${encodeURIComponent(p.batch)}`)
         if (rr.ok) {
           const rd = await rr.json()
           const res = rd.reservations?.[p.batch]
-          if (res) reservedTo = { so: res.so, customer: res.customer ?? null }
+          if (res) reservedTo = { so: res.so, soItem: res.soItem ?? null, customer: res.customer ?? null }
         }
       } catch {
         /* reservation lookup is advisory — the server re-checks at post time */
@@ -940,7 +942,13 @@ export default function InventoryOpsPage() {
     // Moves need an explicit operator confirmation listing what leaves which
     // order — and a printer, because a moved pallet is RELABELED (new code +
     // fresh label with the new order; the old label stops scanning).
-    const moves = stageQueue.filter((p) => p.reservedTo && p.reservedTo.so !== selectedSo)
+    // A move is a reservation to another ORDER — or to another LINE of the same
+    // order (line-level restage relabels too, so the printed line never lies).
+    const moves = stageQueue.filter(
+      (p) =>
+        p.reservedTo &&
+        (p.reservedTo.so !== selectedSo || (p.reservedTo.soItem != null && p.reservedTo.soItem !== selectedSoItem))
+    )
     if (moves.length > 0) {
       if (!addStation) {
         showFlash('err', t('inventoryOps.stageMoveNeedsPrinter'))
@@ -977,7 +985,7 @@ export default function InventoryOpsPage() {
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'staging failed')
-      clearOpKey('stage-reserve', selectedSo, batches)
+      clearOpKey('stage-reserve', `${selectedSo}:${selectedSoItem}`, batches)
       const reserved = typeof d.reserved === 'number' ? d.reserved : stageQueue.length
       const relabels = (d.relabels ?? []) as { oldBatch: string; newBatch: string }[]
       const relabelNote = relabels.length
@@ -1277,7 +1285,7 @@ export default function InventoryOpsPage() {
           )
           .sort(
             (a, b) =>
-              (a.deliveryDate ?? '9999').localeCompare(b.deliveryDate ?? '9999') || a.soItem.localeCompare(b.soItem)
+              (a.deliveryDate ?? '9999-12-31').localeCompare(b.deliveryDate ?? '9999-12-31') || a.soItem.localeCompare(b.soItem)
           )
         setSoOptions(lines)
       })
@@ -2332,6 +2340,9 @@ export default function InventoryOpsPage() {
                         setSalesOrder('')
                         setSalesOrderItem('')
                         setSalesOrderLineNo(null)
+                        // The target line is part of the add's identity — a retry
+                        // after changing it must not replay the old operation.
+                        addKeyRef.current = null
                       }}
                       className="text-muted-foreground hover:text-foreground"
                     >
@@ -2380,6 +2391,8 @@ export default function InventoryOpsPage() {
                                   setSalesOrderLineNo(s.dashboardLine)
                                   setSoOpen(false)
                                   setSoQuery('')
+                                  // New target line -> new op identity for the add.
+                                  addKeyRef.current = null
                                 }}
                                 className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
                               >
@@ -3230,7 +3243,7 @@ export default function InventoryOpsPage() {
                   .flatMap((o) => o.lines.map((l) => ({ o, l })))
                   .sort(
                     (a, b) =>
-                      (a.l.deliveryDate ?? '9999').localeCompare(b.l.deliveryDate ?? '9999') ||
+                      (a.l.deliveryDate ?? '9999-12-31').localeCompare(b.l.deliveryDate ?? '9999-12-31') ||
                       a.l.soItem.localeCompare(b.l.soItem)
                   )
                   .map(({ o, l }) => {

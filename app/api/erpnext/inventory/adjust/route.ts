@@ -170,7 +170,18 @@ export async function POST(req: NextRequest) {
           if (loc && loc.qty > 0) {
             await reserveBatchesToSO({
               soName: reservation.so,
-              items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
+              // Pin the transfer to the ORIGINAL release line — auto-allocation
+              // is soonest-due and could rebind the adjusted pallet to a
+              // different release (grok/codex review, 2026-07-20).
+              items: [
+                {
+                  batch: newBatch,
+                  itemCode,
+                  warehouse: loc.warehouse,
+                  qty: loc.qty,
+                  salesOrderItem: reservation.soItem ?? undefined,
+                },
+              ],
             })
           }
         } catch (e) {

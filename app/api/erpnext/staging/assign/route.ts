@@ -107,7 +107,16 @@ export async function POST(req: NextRequest) {
     const existing = await reservationsForBatches(pallets.map((p) => p.batch))
     const conflicts = pallets
       .map((p) => ({ p, r: existing[p.batch] }))
-      .filter((x): x is { p: (typeof pallets)[number]; r: NonNullable<(typeof existing)[string]> } => !!x.r && x.r.so !== soName)
+      // A conflict is a reservation to another ORDER, or — when a target line is
+      // picked — to another LINE of the same order (a line-level restage must go
+      // through the move flow: release + reissue + relabel, so the printed line
+      // number never lies; codex review 2026-07-20). Same order + same line (or
+      // no line picked) stays a harmless no-op re-reserve.
+      .filter(
+        (x): x is { p: (typeof pallets)[number]; r: NonNullable<(typeof existing)[string]> } =>
+          !!x.r &&
+          (x.r.so !== soName || (!!salesOrderItem && !!x.r.soItem && x.r.soItem !== salesOrderItem))
+      )
     if (conflicts.length > 0 && !body.allowMove) {
       return NextResponse.json(
         {
