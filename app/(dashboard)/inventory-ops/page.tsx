@@ -517,10 +517,12 @@ export default function InventoryOpsPage() {
   // ─── flash + refresh helper ───
   const [flash, setFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const showFlash = (kind: 'ok' | 'err', msg: string) => {
+  // durationMs: critical errors the operator must act on (e.g. label printed but the
+  // sales-order attach failed) stay up longer than the default toast.
+  const showFlash = (kind: 'ok' | 'err', msg: string, durationMs = 5000) => {
     setFlash({ kind, msg })
     if (flashRef.current) clearTimeout(flashRef.current)
-    flashRef.current = setTimeout(() => setFlash(null), 5000)
+    flashRef.current = setTimeout(() => setFlash(null), durationMs)
   }
 
   // ─── Confirmation dialog (delete + reprint) ───
@@ -1330,7 +1332,23 @@ export default function InventoryOpsPage() {
       }
       addKeyRef.current = null // success -> next add gets a fresh key
       const addedItemCode = addItem.itemCode
-      showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
+      // The server attaches the pallet to the picked SO BEFORE printing; if the attach
+      // failed, the label printed WITHOUT the order — that must be a loud, long-lived
+      // error, not a green toast (silent-attach-failure incident, pallet DQ0N 2026-07-16).
+      const staging = d.staging as { attached?: boolean; warning?: string } | undefined
+      if (salesOrder && staging && staging.attached === false) {
+        showFlash(
+          'err',
+          t('inventoryOps.soAttachFailed')
+            .replace('{batch}', String(d.batch ?? ''))
+            .replace('{so}', salesOrder) + (staging.warning ? ` — ${staging.warning}` : ''),
+          20000
+        )
+      } else {
+        const attachedNote =
+          salesOrder && staging?.attached ? ` — ${t('inventoryOps.soAttached').replace('{so}', salesOrder)}` : ''
+        showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${attachedNote}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
+      }
       setAddItem(null)
       setItemQuery('')
       setAddQty('')

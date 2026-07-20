@@ -4,9 +4,8 @@ import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
-import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
-import { reserveBatchesToSO } from '@/lib/erpnext/staging'
+import { reserveBatchesToSO, reservationsForBatches } from '@/lib/erpnext/staging'
 import { flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -178,6 +177,41 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   const batch: string = priorOp?.batch ?? (await generatePalletId())
 
+  // Outcome of the SO-attach attempt made inside the label step. Stays null when the
+  // label step doesn't run (replayed op) — the post-op block below then reads the truth
+  // from ERPNext instead of guessing.
+  type AttachOutcome = {
+    attached: boolean
+    reserved: number
+    staged: boolean
+    fullyReservedSoItems: string[]
+    warning?: string
+  }
+  const attachRef: { current: AttachOutcome | null } = { current: null }
+
+  // Reserve the pallet's batch to the chosen Sales Order. Returns rather than throws:
+  // the label must still print (SO-less) when the order can't take the pallet.
+  // Retry-safe: a batch already reserved to this SO counts as attached.
+  const attachToSO = async (soName: string, committedBatch: string) => {
+    try {
+      const existing = (await reservationsForBatches([committedBatch]))[committedBatch]
+      if (existing?.so === soName) {
+        return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+      }
+    } catch {
+      // Lookup failure: fall through to a fresh reserve attempt, which decides for real.
+    }
+    try {
+      const r = await reserveBatchesToSO({
+        soName,
+        items: [{ itemCode, warehouse, batch: committedBatch, qty }],
+      })
+      return { attached: true, reserved: r.reserved, staged: r.staged, fullyReservedSoItems: r.fullyReservedSoItems }
+    } catch (e) {
+      return { attached: false, reserved: 0, staged: false, fullyReservedSoItems: [], warning: (e as Error).message }
+    }
+  }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'add',
@@ -189,6 +223,15 @@ export async function POST(req: NextRequest) {
       return se ? { batch, stockEntry: se } : null
     },
     label: async (committed) => {
+      // Attach BEFORE printing — a label naming a Sales Order must only exist if the
+      // reservation actually bound. The old order (print, then best-effort reserve)
+      // produced a label that read "SO-00135" on a pallet the order never got: the
+      // DQ0N incident, 2026-07-16 — the line sat Work in Progress for 4 days while
+      // the floor believed it was staged.
+      if (salesOrder) {
+        attachRef.current = await attachToSO(salesOrder, committed.batch ?? batch)
+      }
+      const attachedSo = attachRef.current?.attached ? salesOrder : undefined
       const zpl = buildPalletZpl({
         itemCode,
         itemName: itemInfo.itemName,
@@ -197,9 +240,9 @@ export async function POST(req: NextRequest) {
         batch: committed.batch ?? batch,
         customer,
         ref,
-        salesOrder,
-        customerPartNo: (await customerPartNoP) ?? undefined,
-        customerPo: (await customerPoP) ?? undefined,
+        salesOrder: attachedSo,
+        customerPartNo: attachedSo ? ((await customerPartNoP) ?? undefined) : undefined,
+        customerPo: attachedSo ? ((await customerPoP) ?? undefined) : undefined,
         weight: weightLb ? `${weightLb} lb` : undefined,
         dimensions: dims,
         brand: brandForItemGroup(itemInfo.itemGroup),
@@ -236,27 +279,42 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // If the operator picked a Sales Order while adding this pallet, reserve the pallet's batch
-  // to that order (the "label + select SO" staging path — mirrors the "Prepare for staging"
-  // tab). Best-effort: the pallet + label already succeeded, so a reservation hiccup must not
-  // fail the request. Idempotent by nature — a retry re-reserving an already-reserved batch
-  // hits ERPNext's available-to-reserve cap and is reported as a warning, never a double-lock.
+  // Report the attach outcome. `attached: false` is rendered by the client as a loud
+  // error (the label printed WITHOUT the order) — never bury it in a 200 again.
   if (salesOrder && result.status >= 200 && result.status < 300) {
-    const committedBatch = (result.body?.batch as string | undefined) ?? batch
-    try {
-      const r = await reserveBatchesToSO({
-        soName: salesOrder,
-        items: [{ itemCode, warehouse, batch: committedBatch, qty }],
-      })
-      result.body.staging = { reserved: r.reserved, staged: r.staged }
+    const attach = attachRef.current
+    if (attach) {
+      result.body.staging = {
+        attached: attach.attached,
+        reserved: attach.reserved,
+        staged: attach.staged,
+        ...(attach.warning ? { warning: attach.warning } : {}),
+      }
       // Instant status flip for the lines this pallet fully covered — the
       // 5-min sync reaches the same answer, this just kills the lag window
       // (SO-00077 release 2 read Pending for minutes after staging, 2026-07-06).
-      if (r.fullyReservedSoItems.length > 0) {
-        flipDashboardStatus(salesOrder, 'staged', r.fullyReservedSoItems)
+      if (attach.attached && attach.fullyReservedSoItems.length > 0) {
+        flipDashboardStatus(salesOrder, 'staged', attach.fullyReservedSoItems)
       }
-    } catch (e) {
-      result.body.staging = { reserved: 0, staged: false, warning: (e as Error).message }
+    } else {
+      // Replayed op — the label step didn't run, so report the live reservation state.
+      const committedBatch = (result.body?.batch as string | undefined) ?? batch
+      const existing = (
+        await reservationsForBatches([committedBatch]).catch(
+          () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
+        )
+      )[committedBatch]
+      result.body.staging =
+        existing?.so === salesOrder
+          ? { attached: true, reserved: 0, staged: false }
+          : {
+              attached: false,
+              reserved: 0,
+              staged: false,
+              warning: existing
+                ? `Pallet ${committedBatch} is reserved to ${existing.so}, not ${salesOrder}`
+                : `Pallet ${committedBatch} is not attached to ${salesOrder}`,
+            }
     }
   }
 
