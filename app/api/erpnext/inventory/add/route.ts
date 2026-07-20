@@ -383,11 +383,16 @@ export async function POST(req: NextRequest) {
           warning: `Could not verify the attachment of ${committedBatch} to ${salesOrder} — check it in Prepare for staging`,
         }
       }
-      // NOT forcing labelPending here: a plain duplicate of a fully-good add would
-      // push operators to void a good label (grok round 5). The duplicate path already
-      // carries labelPending when the original label genuinely failed. Residual gap
-      // (accepted): SO-less label from a failed first attempt + post-hoc attach +
-      // same-key replay reports attached without a reprint nudge.
+      // labelPending mirrors the fresh-request contract: set on attach FAILURE (the
+      // stale-kiosk signal must survive a lost response — codex round 7), never on a
+      // plain duplicate of a good add (would push operators to void a good label —
+      // grok round 5). Residual gap (accepted): SO-less label from a failed first
+      // attempt + post-hoc attach + same-key replay reports attached without a
+      // reprint nudge.
+      const replayStaging = result.body.staging as { attached?: boolean } | undefined
+      if (replayStaging?.attached === false) {
+        result.body.labelPending = true
+      }
     }
   }
 

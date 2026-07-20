@@ -239,36 +239,47 @@ export async function POST(req: NextRequest) {
 
   if (result.status >= 200 && result.status < 300) {
     const finalBatch = (result.body?.batch as string | undefined) ?? newBatch
-    if (erpRanRef.current) {
-      // erp() ran this request — the refs are exact knowledge. A released-but-not-
-      // rebound reservation silently un-stages the pallet — say so; the client renders
-      // reason:'transfer_failed' as a loud re-stage instruction (codex round-4 BLOCK;
-      // previously only a server console.error). Reconcile against live state first:
-      // reservation creation can commit and STILL throw (timeout), in which case the
-      // label already printed the SO correctly and reporting a detach would be false
-      // (codex round-6).
+    // The refs are exact knowledge ONLY on a first-attempt run. On ANY retry
+    // (priorOp existed) the previous attempt may have released the old reservation
+    // and crashed before rebinding — this request's erp() then legitimately finds no
+    // reservation and the refs read "never staged" (codex round-7 BLOCK). Such runs
+    // fall through to the fail-closed live verification below.
+    const isRetry = Boolean(priorOp?.result_batch)
+    if (erpRanRef.current && !isRetry) {
+      // A released-but-not-rebound reservation silently un-stages the pallet — say so;
+      // the client renders reason:'transfer_failed' as a loud re-stage instruction
+      // (codex round-4 BLOCK; previously only a server console.error). Reconcile
+      // against live state first: reservation creation can commit and STILL throw
+      // (timeout), in which case the label already printed the SO correctly and
+      // reporting a hard detach would be false (codex round-6); if that reconcile
+      // itself fails, downgrade to 'unverified' rather than claiming a detach the
+      // server can't prove (grok round-7).
       if (hadReservationRef.current && transferFailedRef.current) {
-        let detached = true
+        let outcome: 'attached' | 'transfer_failed' | 'unverified' = 'transfer_failed'
         try {
           const live = (await reservationsForBatches([finalBatch]))[finalBatch]
-          if (live && live.reservedQty + 1e-6 >= target) detached = false
+          if (live && live.reservedQty + 1e-6 >= target) outcome = 'attached'
         } catch {
-          // Can't verify — keep the fail-closed detach report.
+          outcome = 'unverified'
         }
-        if (detached) {
+        if (outcome !== 'attached') {
           result.body.staging = {
             attached: false,
-            reason: 'transfer_failed',
-            warning: 'The order reservation could not be moved to the new pallet code',
+            reason: outcome,
+            warning:
+              outcome === 'transfer_failed'
+                ? 'The order reservation could not be moved to the new pallet code'
+                : `Could not verify the reservation on ${finalBatch}`,
           }
         }
       }
     } else {
-      // erp() was skipped (erp_committed resume or done duplicate): the refs carry no
-      // knowledge, so recompute FAIL-CLOSED from live state — a crash between reissue
-      // and re-reserve must not come back green (codex round-5 BLOCK). A never-staged
-      // pallet's replay also lands here, hence reason:'unverified' — the client words
-      // it as a conditional check, not a detach claim (round-6 consensus should-fix).
+      // erp() skipped (erp_committed resume / done duplicate) OR any retry: the refs
+      // carry no reliable knowledge, so recompute FAIL-CLOSED from live state — a crash
+      // anywhere between release, reissue and re-reserve must not come back green
+      // (codex rounds 5+7). A never-staged pallet's retry also lands here, hence
+      // reason:'unverified' — the client words it as a conditional check, not a detach
+      // claim (round-6 consensus should-fix).
       try {
         const live = (await reservationsForBatches([finalBatch]))[finalBatch]
         if (!(live && live.reservedQty + 1e-6 >= target)) {
