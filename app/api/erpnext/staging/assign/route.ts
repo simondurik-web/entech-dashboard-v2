@@ -32,7 +32,11 @@ interface AssignBody {
   // operator picks a LINE, not an order — the line number is the floor's unique
   // handle (Simon 2026-07-20). Omitted -> soonest-due auto-allocation.
   salesOrderItem?: string
-  pallets?: { batch?: string; itemCode?: string; warehouse?: string; qty?: number }[]
+  // Per pallet, `sre` = the reservation the CLIENT showed the operator (from
+  // the reservations lookup). The move plan binds to it: if the live
+  // reservation differs at plan time, the request 409s instead of releasing a
+  // reservation nobody confirmed (codex round-6).
+  pallets?: { batch?: string; itemCode?: string; warehouse?: string; qty?: number; sre?: string }[]
   // Move pallets already reserved to ANOTHER order onto this one (release +
   // re-reserve). Without it, such pallets 409 with the conflict list so the UI
   // can ask the operator to confirm the move (Simon 2026-07-03).
@@ -73,6 +77,7 @@ export async function POST(req: NextRequest) {
       itemCode: (p.itemCode ?? '').trim(),
       warehouse: (p.warehouse ?? '').trim(),
       qty: Number(p.qty),
+      sre: p.sre?.trim() || undefined,
     }))
     .filter((p) => p.batch && p.itemCode && p.warehouse && Number.isFinite(p.qty) && p.qty > 0)
     // De-dupe by batch: a batch can only be reserved once per request.
@@ -127,6 +132,19 @@ export async function POST(req: NextRequest) {
         {
           error: 'Some pallets are reserved to another order or line',
           moves: conflicts.map(({ r }) => ({ batch: r.batch, so: r.so, soItem: r.soItem, customer: r.customer })),
+        },
+        { status: 409 }
+      )
+    }
+    // The reservation being moved must be the one the OPERATOR was shown when
+    // they confirmed — a reservation that changed between the client's lookup
+    // and this request must be re-confirmed, not silently released.
+    const drifted = conflicts.filter(({ p, r }) => p.sre && p.sre !== r.sre)
+    if (drifted.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Some pallet reservations changed since they were scanned — remove and re-scan them',
+          moves: drifted.map(({ r }) => ({ batch: r.batch, so: r.so, soItem: r.soItem, customer: r.customer })),
         },
         { status: 409 }
       )

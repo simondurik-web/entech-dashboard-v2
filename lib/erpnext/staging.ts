@@ -357,6 +357,21 @@ export async function releaseBatchReservation(
       `Pallet ${batch}'s reservation changed since the operation was confirmed — re-scan and try again`
     )
   }
+  // Never cancel an SRE that reserves MORE than this pallet — a manual ERPNext
+  // reservation can bundle several batches into one entry, and cancelling it
+  // would silently release sibling pallets nobody scanned (codex round-6).
+  const full = await erpnextGetDoc<{ sb_entries?: { batch_no?: string | null }[] }>(
+    'Stock Reservation Entry',
+    res.sre
+  )
+  const distinctBatches = new Set(
+    (full.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
+  )
+  if (distinctBatches.size > 1) {
+    throw new Error(
+      `Pallet ${batch}'s reservation (${res.sre}) covers ${distinctBatches.size} pallets — it must be handled in ERPNext directly`
+    )
+  }
   await erpnextCancel('Stock Reservation Entry', expectedSre ?? res.sre)
 
   const fromSo = res.so

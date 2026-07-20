@@ -152,6 +152,11 @@ export async function POST(req: NextRequest) {
   // Reserve the new serial once; reuse on retry.
   const newBatch: string = priorOp?.result_batch ?? (await reserveNextSerial(batch))
 
+  // Whether erp() saw a reservation on the pallet — the label step fails CLOSED
+  // (throws into labelPending) when it can't verify the post-transfer state of a
+  // pallet KNOWN to be staged, instead of quietly printing a bare label that
+  // loses the SO/line off the physical pallet (codex round-6).
+  const hadReservationRef = { current: false }
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'adjust',
@@ -163,6 +168,7 @@ export async function POST(req: NextRequest) {
       // (bug-hunt 2026-07-04: adjust reissued via the identical engine but
       // stranded the reservation on the drained old serial).
       const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
+      if (reservation) hadReservationRef.current = true
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
       if (reservation) {
         try {
@@ -203,11 +209,18 @@ export async function POST(req: NextRequest) {
       // not print bare (codex round-5). Same invariant as reprint: order info
       // only with a FULL live reservation; lookup failure prints bare (the op
       // separately warns reservation_transfer_failed).
+      let printLookupFailed = false
       const printReservation = (
-        await reservationsForBatches([printBatch]).catch(
-          () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
-        )
+        await reservationsForBatches([printBatch]).catch(() => {
+          printLookupFailed = true
+          return {} as Awaited<ReturnType<typeof reservationsForBatches>>
+        })
       )[printBatch]
+      if (printLookupFailed && hadReservationRef.current) {
+        // Known-staged pallet whose live state can't be read: don't guess what
+        // the label should say — labelPending's retry re-reads and decides.
+        throw new Error('reservation state unverifiable for the adjusted label — reprint required')
+      }
       const fullyReserved = !!printReservation && printReservation.reservedQty + 1e-6 >= target
       const printLineNo =
         fullyReserved && printReservation.soItem

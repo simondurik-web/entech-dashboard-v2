@@ -837,7 +837,7 @@ export default function InventoryOpsPage() {
   // locked to another order can be MOVED — release + re-reserve on confirm
   // (Simon 2026-07-03: emergency order needs a pallet staged for a later one).
   type StageQueueItem = PalletLookup & {
-    reservedTo?: { so: string; soItem: string | null; line: number | null; customer: string | null }
+    reservedTo?: { so: string; soItem: string | null; line: number | null; customer: string | null; sre: string | null }
   }
   const [stageQueue, setStageQueue] = useState<StageQueueItem[]>([])
   const [stageScanInput, setStageScanInput] = useState('')
@@ -918,7 +918,9 @@ export default function InventoryOpsPage() {
       }
       // Already reserved to an order? Queue it flagged for a MOVE (amber row +
       // explicit confirmation at post time) instead of failing at ERPNext.
-      let reservedTo: { so: string; soItem: string | null; line: number | null; customer: string | null } | undefined
+      let reservedTo:
+        | { so: string; soItem: string | null; line: number | null; customer: string | null; sre: string | null }
+        | undefined
       try {
         const rr = await authedFetch(`/api/erpnext/inventory/reservations?batches=${encodeURIComponent(p.batch)}`)
         if (rr.ok) {
@@ -930,6 +932,7 @@ export default function InventoryOpsPage() {
               soItem: res.soItem ?? null,
               line: res.dashboardLine ?? null,
               customer: res.customer ?? null,
+              sre: res.sre ?? null,
             }
         }
       } catch {
@@ -993,7 +996,15 @@ export default function InventoryOpsPage() {
         body: JSON.stringify({
           soName: selectedSo,
           salesOrderItem: selectedSoItem,
-          pallets: stageQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode, warehouse: p.warehouse, qty: p.qty })),
+          // sre = the reservation SHOWN to the operator (the one the move
+          // confirmation named) — the server refuses to release anything else.
+          pallets: stageQueue.map((p) => ({
+            batch: p.batch,
+            itemCode: p.itemCode,
+            warehouse: p.warehouse,
+            qty: p.qty,
+            sre: p.reservedTo?.sre ?? undefined,
+          })),
           allowMove: moves.length > 0,
           station: moves.length > 0 ? addStation : undefined,
           idempotencyKey: key,
