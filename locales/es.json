@@ -1465,7 +1465,7 @@
   "inventoryOps.addMissing": "Elige una pieza, cantidad, ubicación e impresora.",
   "inventoryOps.added": "Tarima agregada",
   "inventoryOps.labelPending": "etiqueta pendiente - reimprimir",
-  "inventoryOps.soAttachFailed": "La tarima {batch} se creó y su etiqueta se imprimió SIN la orden — NO quedó asignada a {so}. Asígnala en \"Preparar para armado\" y luego usa Reimprimir para una etiqueta completa.",
+  "inventoryOps.soAttachFailed": "La tarima {batch} NO quedó asignada a {so} — su etiqueta no muestra la orden. Asígnala en \"Preparar para armado\" y luego usa Reimprimir para una etiqueta completa.",
   "inventoryOps.soAttached": "asignada a {so}",
   "inventoryOps.adjusted": "Ajustado",
   "inventoryOps.removeReason": "Motivo para eliminar esta tarima:",

@@ -4,6 +4,7 @@ import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { getBatchLocation, assertBatchItem, reserveNextSerial, reissuePallet, verifyReissue, palletBase } from '@/lib/erpnext/inventory'
 import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } from '@/lib/erpnext/staging'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
+import { resolveCustomerPartNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -151,12 +152,31 @@ export async function POST(req: NextRequest) {
         'Batch',
         printBatch
       ).catch(() => null)
+      // The reprinted label carries order info ONLY if the new serial actually holds a
+      // reservation right now (same invariant as add: SO on a label ⟺ attached). This is
+      // read AFTER the erp() transfer, so a failed transfer honestly prints SO-less —
+      // and it's the recovery path for an attach-failed add: attach in Prepare for
+      // staging, then Reprint yields a full label (DQ0N incident, 2026-07-20).
+      const printReservation = (
+        await reservationsForBatches([printBatch]).catch(
+          () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
+        )
+      )[printBatch]
+      const customerPartNo = printReservation
+        ? await resolveCustomerPartNo(itemCode, {
+            salesOrder: printReservation.so,
+            customer: printReservation.customer ?? undefined,
+          }).catch(() => null)
+        : null
       const zpl = buildPalletZpl({
         itemCode,
         itemName: item.item_name ?? itemCode,
         qty: target,
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
+        salesOrder: printReservation?.so,
+        customerPartNo: customerPartNo ?? undefined,
+        customerPo: printReservation?.poNo ?? undefined,
         weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
         dimensions: batchDoc?.custom_pallet_dims || undefined,
         brand: brandForItemGroup(item.item_group),

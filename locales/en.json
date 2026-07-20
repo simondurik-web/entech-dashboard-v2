@@ -1465,7 +1465,7 @@
   "inventoryOps.addMissing": "Pick a part, quantity, bin and printer.",
   "inventoryOps.added": "Added pallet",
   "inventoryOps.labelPending": "label pending - reprint",
-  "inventoryOps.soAttachFailed": "Pallet {batch} was created and its label printed WITHOUT the order — it is NOT attached to {so}. Attach it in \"Prepare for staging\", then Reprint for a full label.",
+  "inventoryOps.soAttachFailed": "Pallet {batch} is NOT attached to {so} — its label does not show the order. Attach it in \"Prepare for staging\", then Reprint for a full label.",
   "inventoryOps.soAttached": "attached to {so}",
   "inventoryOps.adjusted": "Adjusted",
   "inventoryOps.removeReason": "Reason for removing this pallet:",

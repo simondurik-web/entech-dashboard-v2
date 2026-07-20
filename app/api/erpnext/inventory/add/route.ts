@@ -191,12 +191,24 @@ export async function POST(req: NextRequest) {
 
   // Reserve the pallet's batch to the chosen Sales Order. Returns rather than throws:
   // the label must still print (SO-less) when the order can't take the pallet.
-  // Retry-safe: a batch already reserved to this SO counts as attached.
-  const attachToSO = async (soName: string, committedBatch: string) => {
+  // Retry-safe via the LIVE state: same SO with the full quantity = attached; a partial
+  // bind or another SO is a hard fail — an SO label over a partial reservation would
+  // break the whole-pallet invariant (codex review, 2026-07-20).
+  const attachToSO = async (soName: string, committedBatch: string): Promise<AttachOutcome> => {
+    const none = { attached: false, reserved: 0, staged: false, fullyReservedSoItems: [] }
     try {
       const existing = (await reservationsForBatches([committedBatch]))[committedBatch]
-      if (existing?.so === soName) {
-        return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+      if (existing) {
+        if (existing.so !== soName) {
+          return { ...none, warning: `Pallet ${committedBatch} is reserved to ${existing.so}, not ${soName}` }
+        }
+        if (existing.reservedQty + 1e-6 >= qty) {
+          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+        }
+        return {
+          ...none,
+          warning: `Pallet ${committedBatch} is only partially reserved to ${soName} (${existing.reservedQty} of ${qty}) — fix it in Prepare for staging`,
+        }
       }
     } catch {
       // Lookup failure: fall through to a fresh reserve attempt, which decides for real.
@@ -208,7 +220,18 @@ export async function POST(req: NextRequest) {
       })
       return { attached: true, reserved: r.reserved, staged: r.staged, fullyReservedSoItems: r.fullyReservedSoItems }
     } catch (e) {
-      return { attached: false, reserved: 0, staged: false, fullyReservedSoItems: [], warning: (e as Error).message }
+      // The attempt may have committed before a timeout — reconcile against the live
+      // state before declaring failure, so a bound reservation is never reported (and
+      // labeled) as unattached.
+      try {
+        const now = (await reservationsForBatches([committedBatch]))[committedBatch]
+        if (now?.so === soName && now.reservedQty + 1e-6 >= qty) {
+          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+        }
+      } catch {
+        // Keep the original reserve error.
+      }
+      return { ...none, warning: (e as Error).message }
     }
   }
 
@@ -294,27 +317,38 @@ export async function POST(req: NextRequest) {
       // 5-min sync reaches the same answer, this just kills the lag window
       // (SO-00077 release 2 read Pending for minutes after staging, 2026-07-06).
       if (attach.attached && attach.fullyReservedSoItems.length > 0) {
-        flipDashboardStatus(salesOrder, 'staged', attach.fullyReservedSoItems)
+        // flipDashboardStatus never throws (internal catch); awaited so a serverless
+        // freeze after the response can't drop the update (gemini review).
+        await flipDashboardStatus(salesOrder, 'staged', attach.fullyReservedSoItems)
       }
     } else {
       // Replayed op — the label step didn't run, so report the live reservation state.
+      // A lookup outage is reported as "could not verify", not as a confident
+      // "not attached" (grok/gemini review) — still fail-closed on the client.
       const committedBatch = (result.body?.batch as string | undefined) ?? batch
-      const existing = (
-        await reservationsForBatches([committedBatch]).catch(
-          () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
-        )
-      )[committedBatch]
-      result.body.staging =
-        existing?.so === salesOrder
-          ? { attached: true, reserved: 0, staged: false }
-          : {
-              attached: false,
-              reserved: 0,
-              staged: false,
-              warning: existing
-                ? `Pallet ${committedBatch} is reserved to ${existing.so}, not ${salesOrder}`
-                : `Pallet ${committedBatch} is not attached to ${salesOrder}`,
-            }
+      try {
+        const existing = (await reservationsForBatches([committedBatch]))[committedBatch]
+        result.body.staging =
+          existing?.so === salesOrder && existing.reservedQty + 1e-6 >= qty
+            ? { attached: true, reserved: 0, staged: false }
+            : {
+                attached: false,
+                reserved: 0,
+                staged: false,
+                warning: existing
+                  ? existing.so === salesOrder
+                    ? `Pallet ${committedBatch} is only partially reserved to ${salesOrder} (${existing.reservedQty} of ${qty})`
+                    : `Pallet ${committedBatch} is reserved to ${existing.so}, not ${salesOrder}`
+                  : `Pallet ${committedBatch} is not attached to ${salesOrder}`,
+              }
+      } catch {
+        result.body.staging = {
+          attached: false,
+          reserved: 0,
+          staged: false,
+          warning: `Could not verify the attachment of ${committedBatch} to ${salesOrder} — check it in Prepare for staging`,
+        }
+      }
     }
   }
 

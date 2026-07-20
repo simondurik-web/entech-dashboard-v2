@@ -1336,12 +1336,17 @@ export default function InventoryOpsPage() {
       // failed, the label printed WITHOUT the order — that must be a loud, long-lived
       // error, not a green toast (silent-attach-failure incident, pallet DQ0N 2026-07-16).
       const staging = d.staging as { attached?: boolean; warning?: string } | undefined
-      if (salesOrder && staging && staging.attached === false) {
+      // Fail CLOSED: when an SO was picked, anything short of an explicit attached:true
+      // (missing field, unexpected shape, old server) is treated as an attach failure —
+      // a false alarm is recoverable, a false success was the DQ0N incident.
+      if (salesOrder && staging?.attached !== true) {
         showFlash(
           'err',
           t('inventoryOps.soAttachFailed')
             .replace('{batch}', String(d.batch ?? ''))
-            .replace('{so}', salesOrder) + (staging.warning ? ` — ${staging.warning}` : ''),
+            .replace('{so}', salesOrder) +
+            (d.labelPending ? ` (${t('inventoryOps.labelPending')})` : '') +
+            (staging?.warning ? ` — ${staging.warning}` : ''),
           20000
         )
       } else {
