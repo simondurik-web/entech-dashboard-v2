@@ -111,6 +111,16 @@ export async function POST(req: NextRequest) {
     } catch {
       moves = []
     }
+    // A stored plan that predates reservation pinning has no sre — replaying it
+    // would release whatever the batch carries NOW, unconfirmed. Fail the
+    // replay cleanly; the operator re-scans and gets a fresh pinned plan
+    // (codex round-8).
+    if (moves.some((m) => !m.sre)) {
+      return NextResponse.json(
+        { error: 'This staging attempt predates a safety upgrade — re-scan the pallets and try again' },
+        { status: 409 }
+      )
+    }
   } else {
     // Canonicalize each pallet's facts from ERPNext before ANY planning — the
     // client's qty/warehouse are display data. A stale or crafted qty would
@@ -257,7 +267,10 @@ export async function POST(req: NextRequest) {
     // Target release line is part of the op identity: the same pallet set aimed
     // at a different line is a different operation, not a retry.
     ...(salesOrderItem ? { soItem: salesOrderItem } : {}),
-    batches: [...new Set(pallets.map((p) => p.batch))].sort(),
+    // batch:qty pairs (canonical qtys on the fresh run) — a same-key retry with
+    // altered quantities mismatches and is rejected instead of replaying with
+    // the tampered numbers past the whole-pallet check (codex round-8).
+    batches: [...new Set(pallets.map((p) => `${p.batch}:${p.qty}`))].sort(),
     relabels: moves,
   })
 
@@ -346,14 +359,30 @@ export async function POST(req: NextRequest) {
       }
 
       // Every reservation being released must be the ONE the operator confirmed
-      // (pinned by SRE name). Checked for the WHOLE plan before releasing
-      // anything, so "nothing was changed" stays true on failure.
+      // (pinned by SRE name) and must cover ONLY its pallet — both checked for
+      // the WHOLE plan before releasing anything, so "nothing was changed"
+      // stays true on failure (bundled-SRE check hoisted out of the destructive
+      // loop, codex round-8).
       for (const m of moves) {
         const cur = liveBefore[m.oldBatch]
         if (cur && m.sre && cur.sre !== m.sre) {
           throw new Error(
             `Pallet ${m.oldBatch}'s reservation changed since the move was confirmed — re-scan and try again. Nothing was changed.`
           )
+        }
+        if (cur && m.sre) {
+          const sreDoc = await erpnextGetDoc<{ sb_entries?: { batch_no?: string | null }[] }>(
+            'Stock Reservation Entry',
+            m.sre
+          )
+          const batchCount = new Set(
+            (sreDoc.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
+          ).size
+          if (batchCount > 1) {
+            throw new Error(
+              `Pallet ${m.oldBatch}'s reservation covers ${batchCount} pallets — it must be handled in ERPNext directly. Nothing was changed.`
+            )
+          }
         }
       }
 

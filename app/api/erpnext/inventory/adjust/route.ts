@@ -157,6 +157,10 @@ export async function POST(req: NextRequest) {
   // pallet KNOWN to be staged, instead of quietly printing a bare label that
   // loses the SO/line off the physical pallet (codex round-6).
   const hadReservationRef = { current: false }
+  // Whether erp() ran in THIS request — on an erp_committed resume it didn't,
+  // hadReservationRef carries no knowledge, and a lookup failure must still
+  // fail closed rather than print bare (codex round-8, mirrors reprint).
+  const erpRanRef = { current: false }
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'adjust',
@@ -167,6 +171,7 @@ export async function POST(req: NextRequest) {
       // change, capped at the NEW qty — same rule as the reprint route
       // (bug-hunt 2026-07-04: adjust reissued via the identical engine but
       // stranded the reservation on the drained old serial).
+      erpRanRef.current = true
       const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
       if (reservation) hadReservationRef.current = true
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
@@ -216,9 +221,10 @@ export async function POST(req: NextRequest) {
           return {} as Awaited<ReturnType<typeof reservationsForBatches>>
         })
       )[printBatch]
-      if (printLookupFailed && hadReservationRef.current) {
-        // Known-staged pallet whose live state can't be read: don't guess what
-        // the label should say — labelPending's retry re-reads and decides.
+      if (printLookupFailed && (hadReservationRef.current || !erpRanRef.current)) {
+        // Known-staged pallet — or a resumed op with no knowledge either way —
+        // whose live state can't be read: don't guess what the label should
+        // say; labelPending's retry re-reads and decides.
         throw new Error('reservation state unverifiable for the adjusted label — reprint required')
       }
       const fullyReserved = !!printReservation && printReservation.reservedQty + 1e-6 >= target
