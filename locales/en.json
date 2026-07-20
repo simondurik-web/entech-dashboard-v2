@@ -1505,6 +1505,8 @@
   "inventoryOps.supersededGone": "which is no longer active (it was removed or fully superseded).",
   "inventoryOps.moved": "Moved pallet",
   "inventoryOps.reprint": "Reprint label",
+  "inventoryOps.printAt": "Print the new label at",
+  "inventoryOps.printedAtLabel": "label sent to",
   "inventoryOps.parts": "parts",
   "inventoryOps.pallets": "pallets",
   "inventoryOps.maxLabels": "Maximum {max} labels at a time.",

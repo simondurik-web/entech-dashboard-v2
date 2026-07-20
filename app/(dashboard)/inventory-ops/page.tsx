@@ -44,6 +44,7 @@ interface Pallet {
   qty: number
   weightLb?: number
   dims?: string
+  printedAt?: string | null // station name the label was LAST sent to
 }
 // A pallet's live reservation to a Sales Order (from ERPNext), surfaced as a badge.
 interface BatchReservation {
@@ -171,6 +172,7 @@ interface DeletedLabel {
 interface Station {
   id: string
   name: string
+  location?: string | null
 }
 
 // Max search results we auto-load pallet rows for (sorted by stock). Bounds the lazy
@@ -550,20 +552,27 @@ export default function InventoryOpsPage() {
     danger?: boolean // red confirm button (delete) vs amber (reprint)
     withReason?: boolean
     reasonLabel?: string
-    resolve: (v: { ok: boolean; reason: string }) => void
+    // Printer picker inside the dialog (reprint): the label goes wherever the
+    // OPERATOR says, not wherever it originally printed — a pallet made in one
+    // area often gets fixed in another (Simon 2026-07-20). Options are the
+    // user's allowed stations; the pick comes back in resolve().
+    stationPicker?: { label: string; initial: string }
+    resolve: (v: { ok: boolean; reason: string; station: string }) => void
   }
   const [confirmReq, setConfirmReq] = useState<ConfirmReq | null>(null)
   const [confirmReason, setConfirmReason] = useState('')
+  const [confirmStation, setConfirmStation] = useState('')
   // Ref mirrors confirmReq so resolveConfirm can clear it synchronously (no double-resolve race)
   // and askConfirm can abandon an in-flight request if a second one opens (rapid double-click).
   const confirmReqRef = useRef<ConfirmReq | null>(null)
   const askConfirm = useCallback(
     (opts: Omit<ConfirmReq, 'resolve'>) =>
-      new Promise<{ ok: boolean; reason: string }>((resolve) => {
-        confirmReqRef.current?.resolve({ ok: false, reason: '' }) // abandon any pending request
+      new Promise<{ ok: boolean; reason: string; station: string }>((resolve) => {
+        confirmReqRef.current?.resolve({ ok: false, reason: '', station: '' }) // abandon any pending request
         const req = { ...opts, resolve }
         confirmReqRef.current = req
         setConfirmReason('')
+        setConfirmStation(opts.stationPicker?.initial ?? '')
         setConfirmReq(req)
       }),
     []
@@ -572,9 +581,10 @@ export default function InventoryOpsPage() {
     const req = confirmReqRef.current
     if (!req) return
     confirmReqRef.current = null
-    req.resolve({ ok, reason: confirmReason.trim() })
+    req.resolve({ ok, reason: confirmReason.trim(), station: confirmStation })
     setConfirmReq(null)
     setConfirmReason('')
+    setConfirmStation('')
   }
   // Keyboard: Escape cancels; Enter confirms the reprint dialog (the delete dialog's reason
   // input owns its own Enter so typing a reason and hitting Enter submits there).
@@ -1477,6 +1487,10 @@ export default function InventoryOpsPage() {
   // ─── edit / remove ───
   const [editBatch, setEditBatch] = useState<string | null>(null)
   const [editQty, setEditQty] = useState('')
+  // Where the ADJUSTED label prints — the operator picks (a pallet made in one
+  // area often gets fixed in another; Simon 2026-07-20). Seeded from the user's
+  // default printer when the edit opens.
+  const [editStation, setEditStation] = useState('')
   const [busyBatch, setBusyBatch] = useState<string | null>(null)
 
   // ─── move (bin transfer) ───
@@ -1493,7 +1507,13 @@ export default function InventoryOpsPage() {
     try {
       const r = await authedFetch('/api/erpnext/inventory/adjust', {
         method: 'POST',
-        body: JSON.stringify({ batch, itemCode, newQty: qty, station: addStation || stations[0]?.id, idempotencyKey: opKey('adjust', batch, qty) }),
+        body: JSON.stringify({
+          batch,
+          itemCode,
+          newQty: qty,
+          station: editStation || defaultStationId || addStation || stations[0]?.id,
+          idempotencyKey: opKey('adjust', batch, qty),
+        }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'adjust failed')
@@ -1585,20 +1605,27 @@ export default function InventoryOpsPage() {
   }
 
   const submitReprint = async (itemCode: string, batch: string) => {
-    const station = addStation || stations[0]?.id
-    if (!station) {
+    const initialStation = defaultStationId || addStation || stations[0]?.id
+    if (!initialStation) {
       showFlash('err', t('inventoryOps.addMissing'))
       return
     }
     // Confirm first — a reprint voids the current label and issues a new pallet code, so the old
     // printed label must be discarded. Guards against an accidental tap on the reprint icon.
-    const { ok } = await askConfirm({
+    // The dialog also picks the PRINTER: the new label goes wherever the operator
+    // is, not wherever the original printed (Simon 2026-07-20).
+    const { ok, station } = await askConfirm({
       title: t('inventoryOps.confirmReprintTitle'),
       message: t('inventoryOps.confirmReprintMsg'),
       detail: batch,
       confirmLabel: t('inventoryOps.confirmReprintBtn'),
+      stationPicker: { label: t('inventoryOps.printAt'), initial: initialStation },
     })
     if (!ok) return
+    if (!station) {
+      showFlash('err', t('inventoryOps.addMissing'))
+      return
+    }
     if (busyRef.current) return
     busyRef.current = true
     setBusyBatch(batch)
@@ -1997,7 +2024,10 @@ export default function InventoryOpsPage() {
   // edit/move/history panels). Shared by the By-item search results AND the By-bin
   // Locations view so both have identical capabilities. `warehouse` is the pallet's
   // current bin (used to exclude it from the Move target list).
-  const renderPalletRow = (p: { batch: string; warehouse: string; qty: number; weightLb?: number; dims?: string }, itemCode: string) => (
+  const renderPalletRow = (
+    p: { batch: string; warehouse: string; qty: number; weightLb?: number; dims?: string; printedAt?: string | null },
+    itemCode: string
+  ) => (
     <li key={p.batch} className="px-2.5 py-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1 truncate font-mono text-xs">
@@ -2012,6 +2042,19 @@ export default function InventoryOpsPage() {
               onChange={(e) => setEditQty(e.target.value)}
               className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
             />
+            <select
+              value={editStation}
+              onChange={(e) => setEditStation(e.target.value)}
+              title={t('inventoryOps.printAt')}
+              aria-label={t('inventoryOps.printAt')}
+              className="max-w-32 rounded border border-border bg-background px-1.5 py-1 text-xs"
+            >
+              {stations.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => submitAdjust(itemCode, p.batch)}
               disabled={busyBatch === p.batch}
@@ -2056,6 +2099,7 @@ export default function InventoryOpsPage() {
               onClick={() => {
                 setEditBatch(p.batch)
                 setEditQty(String(p.qty))
+                setEditStation(defaultStationId || addStation || stations[0]?.id || '')
               }}
               title={t('inventoryOps.editQty')}
               className="text-muted-foreground hover:text-foreground"
@@ -2076,11 +2120,13 @@ export default function InventoryOpsPage() {
         )}
       </div>
 
-      {(p.weightLb || p.dims) && (
+      {(p.weightLb || p.dims || p.printedAt) && (
         <div className="mt-0.5 text-[11px] text-muted-foreground">
           {p.weightLb ? `${p.weightLb.toLocaleString()} lb` : ''}
           {p.weightLb && p.dims ? ' · ' : ''}
           {p.dims ? `${p.dims} in` : ''}
+          {(p.weightLb || p.dims) && p.printedAt ? ' · ' : ''}
+          {p.printedAt ? `${t('inventoryOps.printedAtLabel')} ${p.printedAt}` : ''}
         </div>
       )}
 
@@ -2240,6 +2286,26 @@ export default function InventoryOpsPage() {
                 )}
               </div>
             </div>
+            {confirmReq.stationPicker && (
+              <div className="mt-4">
+                <label htmlFor="confirm-station" className="mb-1 block text-xs text-muted-foreground">
+                  {confirmReq.stationPicker.label}
+                </label>
+                <select
+                  id="confirm-station"
+                  value={confirmStation}
+                  onChange={(e) => setConfirmStation(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  {stations.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.location ? ` — ${s.location}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {confirmReq.withReason && (
               <div className="mt-4">
                 <label htmlFor="confirm-reason" className="mb-1 block text-xs text-muted-foreground">{confirmReq.reasonLabel}</label>

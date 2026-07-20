@@ -1505,6 +1505,8 @@
   "inventoryOps.supersededGone": "que ya no está activa (fue eliminada o totalmente reemplazada).",
   "inventoryOps.moved": "Tarima movida",
   "inventoryOps.reprint": "Reimprimir etiqueta",
+  "inventoryOps.printAt": "Imprimir la nueva etiqueta en",
+  "inventoryOps.printedAtLabel": "etiqueta enviada a",
   "inventoryOps.parts": "piezas",
   "inventoryOps.pallets": "tarimas",
   "inventoryOps.maxLabels": "Máximo {max} etiquetas a la vez.",
