@@ -1533,25 +1533,25 @@ export default function InventoryOpsPage() {
       // 2xx is NOT blanket success: the reservation may have failed to move to the new
       // serial (pallet silently un-staged), or the new label may not have printed
       // (labelPending) — both need a loud, long-lived error (codex review round 4).
-      const reprintStaging = d.staging as { attached?: boolean; warning?: string } | undefined
+      const reprintStaging = d.staging as
+        | { attached?: boolean; warning?: string; reason?: string }
+        | undefined
       if (reprintStaging?.attached === false) {
+        // 'transfer_failed' = the server KNOWS the reservation didn't move (strong
+        // message); anything else = it couldn't be verified — could be a never-staged
+        // pallet's replay, so the wording is conditional (round-6 consensus). A label
+        // failure on top must not be masked by this branch (codex round-6).
+        const detachMsg =
+          reprintStaging.reason === 'transfer_failed'
+            ? t('inventoryOps.reprintDetached').replace('{batch}', serial)
+            : t('inventoryOps.reprintCheckStaging').replace('{batch}', serial)
         showFlash(
           'err',
-          t('inventoryOps.reprintDetached').replace('{batch}', serial) +
-            (reprintStaging.warning ? ` — ${reprintStaging.warning}` : ''),
+          detachMsg + (d.labelPending ? ` ${t('inventoryOps.labelPendingReprint').replace('{batch}', serial)}` : ''),
           20000
         )
       } else if (d.labelPending) {
-        // Stale = a label exists but may show outdated order info; plain pending = no
-        // label printed. Different diagnosis, same recovery (Reprint) — say the right one.
-        showFlash(
-          'err',
-          t(d.labelMaybeStale ? 'inventoryOps.labelStaleReprint' : 'inventoryOps.labelPendingReprint').replace(
-            '{batch}',
-            serial
-          ),
-          20000
-        )
+        showFlash('err', t('inventoryOps.labelPendingReprint').replace('{batch}', serial), 20000)
       } else {
         showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
       }

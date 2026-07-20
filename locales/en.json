@@ -1470,7 +1470,7 @@
   "inventoryOps.labelStale": "Pallet {batch} is attached to {so}, but the printed label may be outdated — Reprint it.",
   "inventoryOps.reprintDetached": "Pallet {batch} was reprinted but its order reservation could NOT be moved — re-stage it in \"Prepare for staging\".",
   "inventoryOps.labelPendingReprint": "The new label for {batch} did NOT print — press Reprint again.",
-  "inventoryOps.labelStaleReprint": "The label for {batch} may be outdated — press Reprint again.",
+  "inventoryOps.reprintCheckStaging": "Could not confirm an order reservation on {batch} — if this pallet was staged to an order, check it in \"Prepare for staging\".",
   "inventoryOps.adjusted": "Adjusted",
   "inventoryOps.removeReason": "Reason for removing this pallet:",
   "inventoryOps.confirmDeleteTitle": "Delete inventory?",
