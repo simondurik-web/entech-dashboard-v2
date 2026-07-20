@@ -548,8 +548,11 @@ export async function reserveBatchesToSO(
     }
     if (boundQty + 1e-6 < p.qty) {
       // Pinned to the short-bound SRE we just observed — never a reservation a
-      // concurrent request created meanwhile (grok round-10).
-      await releaseBatchReservation(p.batch, bound?.sre).catch(() => undefined)
+      // concurrent request created meanwhile (grok round-10). No observed SRE
+      // (transient lookup failure) -> DON'T release blind: a dangling partial
+      // the error message points at beats cancelling someone else's
+      // reservation (codex round-11).
+      if (bound) await releaseBatchReservation(p.batch, bound.sre).catch(() => undefined)
       throw new Error(
         `Pallet ${p.batch} could only be reserved for ${boundQty} of its ${p.qty} pcs — the order can't take the whole pallet. ` +
           `Whole pallets only: use a pallet that fits, or adjust/split the pallet to the needed quantity first.`
