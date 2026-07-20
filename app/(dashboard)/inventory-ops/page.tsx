@@ -1354,6 +1354,17 @@ export default function InventoryOpsPage() {
             (staging?.warning ? ` — ${staging.warning}` : ''),
           20000
         )
+      } else if (salesOrder && staging?.attached === true && d.labelPending) {
+        // Attached, but the physical label may not match (stale queued ZPL, or a
+        // replayed op whose original label content can't be verified) — the fix is a
+        // Reprint, said loudly rather than as a green-toast footnote (codex round 4).
+        showFlash(
+          'err',
+          t('inventoryOps.labelStale')
+            .replace('{batch}', String(d.batch ?? ''))
+            .replace('{so}', salesOrder),
+          20000
+        )
       } else {
         const attachedNote =
           salesOrder && staging?.attached ? ` — ${t('inventoryOps.soAttached').replace('{so}', salesOrder)}` : ''
@@ -1519,7 +1530,22 @@ export default function InventoryOpsPage() {
       clearOpKey('reprint', batch, station)
       const serial = (d.batch as string) ?? batch
       // A reprint reissues the pallet as a new serial (old label is voided); follow it.
-      showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      // 2xx is NOT blanket success: the reservation may have failed to move to the new
+      // serial (pallet silently un-staged), or the new label may not have printed
+      // (labelPending) — both need a loud, long-lived error (codex review round 4).
+      const reprintStaging = d.staging as { attached?: boolean; warning?: string } | undefined
+      if (reprintStaging?.attached === false) {
+        showFlash(
+          'err',
+          t('inventoryOps.reprintDetached').replace('{batch}', serial) +
+            (reprintStaging.warning ? ` — ${reprintStaging.warning}` : ''),
+          20000
+        )
+      } else if (d.labelPending) {
+        showFlash('err', t('inventoryOps.labelPendingReprint').replace('{batch}', serial), 20000)
+      } else {
+        showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      }
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       refreshAfterMutation(itemCode)
       loadRecentLabels(recentExpanded) // a new label was printed

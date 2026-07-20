@@ -111,6 +111,9 @@ export async function POST(req: NextRequest) {
   // (codex/grok round-3). Both refs stay false on a resumed op that skips erp().
   const hadReservationRef = { current: false }
   const transferFailedRef = { current: false }
+  // Set when a retry couldn't refresh an already-enqueued job's ZPL — the physical
+  // label may not match the reservation-dependent content computed by this attempt.
+  const labelMaybeStaleRef = { current: false }
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -212,10 +215,36 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
       if (error) throw new Error(error.message)
       if (job?.id) return job.id
+      // Conflict (job already queued by a crashed attempt): the ZPL is now
+      // reservation-dependent, so refresh a STILL-PENDING job to the freshly computed
+      // content; if the job is already claimed/printed (or the update fails) flag the
+      // label as possibly stale instead of silently returning it (codex round 4).
+      const { data: refreshed, error: refreshErr } = await supabaseAdmin
+        .from('print_jobs')
+        .update({ zpl })
+        .eq('idempotency_key', `print-${idempotencyKey}`)
+        .eq('status', 'pending')
+        .select('id')
+      if (refreshErr || (refreshed?.length ?? 0) === 0) labelMaybeStaleRef.current = true
       const { data: existing } = await supabaseAdmin.from('print_jobs').select('id').eq('idempotency_key', `print-${idempotencyKey}`).maybeSingle()
       return existing?.id ?? null
     },
   })
+
+  if (result.status >= 200 && result.status < 300) {
+    // A released-but-not-rebound reservation silently un-stages the pallet — say so;
+    // the client renders staging.attached:false as a loud re-stage instruction
+    // (codex round-4 BLOCK; previously only a server console.error).
+    if (hadReservationRef.current && transferFailedRef.current) {
+      result.body.staging = {
+        attached: false,
+        warning: 'The order reservation could not be moved to the new pallet code',
+      }
+    }
+    if (labelMaybeStaleRef.current) {
+      result.body.labelPending = true
+    }
+  }
 
   return NextResponse.json(result.body, { status: result.status })
 }

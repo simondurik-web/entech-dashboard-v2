@@ -383,6 +383,11 @@ export async function POST(req: NextRequest) {
           warning: `Could not verify the attachment of ${committedBatch} to ${salesOrder} — check it in Prepare for staging`,
         }
       }
+      // This request did not itself enqueue the label, so what the queued/printed label
+      // says is unverifiable — e.g. an SO-less label from a failed first attempt whose
+      // pallet was attached afterwards. Always route replays through the Reprint nudge
+      // (codex/grok round 4).
+      result.body.labelPending = true
     }
   }
 
