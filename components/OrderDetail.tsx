@@ -720,7 +720,12 @@ export function OrderDetail({
               />
             )}
 
-            {/* ── Bill of Lading — role-gated, sits beside PO & ERP Entry ── */}
+            {/* ── Bill of Lading — role-gated, sits beside PO & ERP Entry.
+                watermarkUntilShipped: a not-yet-shipped carrier BOL renders as a
+                watermarked, non-printable preview on EVERY surface — a clean copy
+                pulled from Orders Data pre-ship let crews ship on paper outside
+                the signature flow (Simon 2026-07-20, SO-00074 Toter BOL). The
+                clean copy unlocks once the load ships; uploads stay allowed. ── */}
             {showPoSection && (
               <BillOfLadingSection
                 key={`bol|${customer!.trim()}|${poNumber!.trim()}`}
@@ -729,6 +734,8 @@ export function OrderDetail({
                 userId={userId}
                 variant="card"
                 canManage
+                watermarkUntilShipped
+                shipped={isShipped}
               />
             )}
 
