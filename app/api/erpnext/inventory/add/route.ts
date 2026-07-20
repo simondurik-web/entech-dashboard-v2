@@ -4,9 +4,8 @@ import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { addInventory, generatePalletId, reconcileStockEntry, palletBase, getItemInfo, qtyReceive } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
-import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
-import { reserveBatchesToSO } from '@/lib/erpnext/staging'
+import { reserveBatchesToSO, reservationsForBatches } from '@/lib/erpnext/staging'
 import { flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -47,8 +46,10 @@ export async function POST(req: NextRequest) {
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
   const salesOrder = body.salesOrder?.trim() || undefined
   // Customer part number for the label — only when an SO is attached (Simon 2026-07-06).
-  const customerPartNoP = salesOrder && itemCode ? resolveCustomerPartNo(itemCode, { customer, salesOrder }) : Promise.resolve(null)
-  const customerPoP = salesOrder ? resolveSalesOrderPoNo(salesOrder) : Promise.resolve(null)
+  // .catch at creation: these may go UNAWAITED (attach failure prints an SO-less label),
+  // and an unawaited rejection would be an unhandled promise rejection (gemini review).
+  const customerPartNoP = salesOrder && itemCode ? resolveCustomerPartNo(itemCode, { customer, salesOrder }).catch(() => null) : Promise.resolve(null)
+  const customerPoP = salesOrder ? resolveSalesOrderPoNo(salesOrder).catch(() => null) : Promise.resolve(null)
   const qty = Number(body.qty)
   // Optional pallet weight/dims (Simon 2026-07-03): stored on the Batch and
   // printed on the label. Dims must be the normalized NxNxN the three-box UI
@@ -164,6 +165,13 @@ export async function POST(req: NextRequest) {
         return existing?.id ?? null
       },
     })
+    // Non-serialized items have no reservation concept — an SO here is informational
+    // text on the generic label (pre-existing contract). Say so explicitly, so the
+    // client's fail-closed serialized check doesn't misread the absence of a staging
+    // report as a failed attach (grok review round 3).
+    if (salesOrder && result.status >= 200 && result.status < 300) {
+      result.body.staging = { attached: false, reserved: 0, staged: false, informational: true }
+    }
     return NextResponse.json(result.body, { status: result.status })
   }
 
@@ -178,6 +186,64 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   const batch: string = priorOp?.batch ?? (await generatePalletId())
 
+  // Outcome of the SO-attach attempt made inside the label step. Stays null when the
+  // label step doesn't run (replayed op) — the post-op block below then reads the truth
+  // from ERPNext instead of guessing.
+  type AttachOutcome = {
+    attached: boolean
+    reserved: number
+    staged: boolean
+    fullyReservedSoItems: string[]
+    warning?: string
+  }
+  const attachRef: { current: AttachOutcome | null } = { current: null }
+
+  // Reserve the pallet's batch to the chosen Sales Order. Returns rather than throws:
+  // the label must still print (SO-less) when the order can't take the pallet.
+  // Retry-safe via the LIVE state: same SO with the full quantity = attached; a partial
+  // bind or another SO is a hard fail — an SO label over a partial reservation would
+  // break the whole-pallet invariant (codex review, 2026-07-20).
+  const attachToSO = async (soName: string, committedBatch: string): Promise<AttachOutcome> => {
+    const none = { attached: false, reserved: 0, staged: false, fullyReservedSoItems: [] }
+    try {
+      const existing = (await reservationsForBatches([committedBatch]))[committedBatch]
+      if (existing) {
+        if (existing.so !== soName) {
+          return { ...none, warning: `Pallet ${committedBatch} is reserved to ${existing.so}, not ${soName}` }
+        }
+        if (existing.reservedQty + 1e-6 >= qty) {
+          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+        }
+        return {
+          ...none,
+          warning: `Pallet ${committedBatch} is only partially reserved to ${soName} (${existing.reservedQty} of ${qty}) — fix it in Prepare for staging`,
+        }
+      }
+    } catch {
+      // Lookup failure: fall through to a fresh reserve attempt, which decides for real.
+    }
+    try {
+      const r = await reserveBatchesToSO({
+        soName,
+        items: [{ itemCode, warehouse, batch: committedBatch, qty }],
+      })
+      return { attached: true, reserved: r.reserved, staged: r.staged, fullyReservedSoItems: r.fullyReservedSoItems }
+    } catch (e) {
+      // The attempt may have committed before a timeout — reconcile against the live
+      // state before declaring failure, so a bound reservation is never reported (and
+      // labeled) as unattached.
+      try {
+        const now = (await reservationsForBatches([committedBatch]))[committedBatch]
+        if (now?.so === soName && now.reservedQty + 1e-6 >= qty) {
+          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+        }
+      } catch {
+        // Keep the original reserve error.
+      }
+      return { ...none, warning: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'add',
@@ -189,6 +255,15 @@ export async function POST(req: NextRequest) {
       return se ? { batch, stockEntry: se } : null
     },
     label: async (committed) => {
+      // Attach BEFORE printing — a label naming a Sales Order must only exist if the
+      // reservation actually bound. The old order (print, then best-effort reserve)
+      // produced a label that read "SO-00135" on a pallet the order never got: the
+      // DQ0N incident, 2026-07-16 — the line sat Work in Progress for 4 days while
+      // the floor believed it was staged.
+      if (salesOrder) {
+        attachRef.current = await attachToSO(salesOrder, committed.batch ?? batch)
+      }
+      const attachedSo = attachRef.current?.attached ? salesOrder : undefined
       const zpl = buildPalletZpl({
         itemCode,
         itemName: itemInfo.itemName,
@@ -197,9 +272,9 @@ export async function POST(req: NextRequest) {
         batch: committed.batch ?? batch,
         customer,
         ref,
-        salesOrder,
-        customerPartNo: (await customerPartNoP) ?? undefined,
-        customerPo: (await customerPoP) ?? undefined,
+        salesOrder: attachedSo,
+        customerPartNo: attachedSo ? ((await customerPartNoP) ?? undefined) : undefined,
+        customerPo: attachedSo ? ((await customerPoP) ?? undefined) : undefined,
         weight: weightLb ? `${weightLb} lb` : undefined,
         dimensions: dims,
         brand: brandForItemGroup(itemInfo.itemGroup),
@@ -226,7 +301,24 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
       if (error) throw new Error(error.message)
       if (job?.id) return job.id
-      // Conflict (job already queued): recover its id so the op log keeps the link.
+      // Conflict — a job was already queued, which in this branch means a CRASHED prior
+      // attempt (fresh ops never conflict). If it is STILL PENDING, refresh its ZPL —
+      // this resume can reach a different attach outcome than the attempt that enqueued
+      // it, and the physical label must match the final outcome. Claimed/printed jobs
+      // are never touched (that would reprint them); losing that race (0 rows) or an
+      // update error means the label content is UNKNOWABLE — throw, so the op machinery
+      // records a persistent `label:` failure and every replay keeps surfacing
+      // labelPending until the operator reprints (codex round-6: a request-local flag
+      // dies with a lost response).
+      const { data: refreshed, error: refreshErr } = await supabaseAdmin
+        .from('print_jobs')
+        .update({ zpl })
+        .eq('idempotency_key', `print-${idempotencyKey}`)
+        .eq('status', 'pending')
+        .select('id')
+      if (refreshErr || (refreshed?.length ?? 0) === 0) {
+        throw new Error('queued label may not match the final order attachment — reprint required')
+      }
       const { data: existing } = await supabaseAdmin
         .from('print_jobs')
         .select('id')
@@ -236,27 +328,71 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // If the operator picked a Sales Order while adding this pallet, reserve the pallet's batch
-  // to that order (the "label + select SO" staging path — mirrors the "Prepare for staging"
-  // tab). Best-effort: the pallet + label already succeeded, so a reservation hiccup must not
-  // fail the request. Idempotent by nature — a retry re-reserving an already-reserved batch
-  // hits ERPNext's available-to-reserve cap and is reported as a warning, never a double-lock.
+  // Report the attach outcome. `attached: false` is rendered by the client as a loud
+  // error (the label printed WITHOUT the order) — never bury it in a 200 again.
   if (salesOrder && result.status >= 200 && result.status < 300) {
-    const committedBatch = (result.body?.batch as string | undefined) ?? batch
-    try {
-      const r = await reserveBatchesToSO({
-        soName: salesOrder,
-        items: [{ itemCode, warehouse, batch: committedBatch, qty }],
-      })
-      result.body.staging = { reserved: r.reserved, staged: r.staged }
+    const attach = attachRef.current
+    if (attach) {
+      result.body.staging = {
+        attached: attach.attached,
+        reserved: attach.reserved,
+        staged: attach.staged,
+        ...(attach.warning ? { warning: attach.warning } : {}),
+      }
+      // Backward-compat loud-ish signal for STALE OPEN TABS (pre-deploy client bundles
+      // on long-lived floor kiosks never read `staging`): labelPending is a field old
+      // clients already render ("label pending - reprint"). It is also the literally
+      // correct instruction — after attaching in Prepare for staging, Reprint produces
+      // the full SO label (codex round-3 BLOCK).
+      if (!attach.attached) {
+        result.body.labelPending = true
+      }
       // Instant status flip for the lines this pallet fully covered — the
       // 5-min sync reaches the same answer, this just kills the lag window
       // (SO-00077 release 2 read Pending for minutes after staging, 2026-07-06).
-      if (r.fullyReservedSoItems.length > 0) {
-        flipDashboardStatus(salesOrder, 'staged', r.fullyReservedSoItems)
+      if (attach.attached && attach.fullyReservedSoItems.length > 0) {
+        // flipDashboardStatus never throws (internal catch); awaited so a serverless
+        // freeze after the response can't drop the update (gemini review).
+        await flipDashboardStatus(salesOrder, 'staged', attach.fullyReservedSoItems)
       }
-    } catch (e) {
-      result.body.staging = { reserved: 0, staged: false, warning: (e as Error).message }
+    } else {
+      // Replayed op — the label step didn't run, so report the live reservation state.
+      // A lookup outage is reported as "could not verify", not as a confident
+      // "not attached" (grok/gemini review) — still fail-closed on the client.
+      const committedBatch = (result.body?.batch as string | undefined) ?? batch
+      try {
+        const existing = (await reservationsForBatches([committedBatch]))[committedBatch]
+        result.body.staging =
+          existing?.so === salesOrder && existing.reservedQty + 1e-6 >= qty
+            ? { attached: true, reserved: 0, staged: false }
+            : {
+                attached: false,
+                reserved: 0,
+                staged: false,
+                warning: existing
+                  ? existing.so === salesOrder
+                    ? `Pallet ${committedBatch} is only partially reserved to ${salesOrder} (${existing.reservedQty} of ${qty})`
+                    : `Pallet ${committedBatch} is reserved to ${existing.so}, not ${salesOrder}`
+                  : `Pallet ${committedBatch} is not attached to ${salesOrder}`,
+              }
+      } catch {
+        result.body.staging = {
+          attached: false,
+          reserved: 0,
+          staged: false,
+          warning: `Could not verify the attachment of ${committedBatch} to ${salesOrder} — check it in Prepare for staging`,
+        }
+      }
+      // labelPending mirrors the fresh-request contract: set on attach FAILURE (the
+      // stale-kiosk signal must survive a lost response — codex round 7), never on a
+      // plain duplicate of a good add (would push operators to void a good label —
+      // grok round 5). Residual gap (accepted): SO-less label from a failed first
+      // attempt + post-hoc attach + same-key replay reports attached without a
+      // reprint nudge.
+      const replayStaging = result.body.staging as { attached?: boolean } | undefined
+      if (replayStaging?.attached === false) {
+        result.body.labelPending = true
+      }
     }
   }
 

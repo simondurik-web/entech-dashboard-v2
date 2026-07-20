@@ -4,6 +4,7 @@ import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { getBatchLocation, assertBatchItem, reserveNextSerial, reissuePallet, verifyReissue, palletBase } from '@/lib/erpnext/inventory'
 import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } from '@/lib/erpnext/staging'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
+import { resolveCustomerPartNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -103,12 +104,25 @@ export async function POST(req: NextRequest) {
     newBatch = await reserveNextSerial(batch)
   }
 
+  // Whether this reprint RELEASED a reservation it then failed (or never got) to
+  // re-bind to the new serial. Set inside erp(); read by the label step to tell
+  // "transfer legitimately failed → honest SO-less label" apart from "transfer should
+  // have happened but the live lookup can't see it → don't guess, go labelPending"
+  // (codex/grok round-3). Both refs stay false on a resumed op that skips erp().
+  const hadReservationRef = { current: false }
+  const transferFailedRef = { current: false }
+  // Whether erp() executed in THIS request. When it didn't (erp_committed resume or a
+  // done duplicate), the two refs above carry no knowledge and the staging outcome must
+  // be recomputed fail-closed from live state instead (codex round-5 BLOCK).
+  const erpRanRef = { current: false }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'reprint',
     createdBy: userId,
     meta: { item_code: itemCode, qty: target, station_id: station, batch, family: palletBase(batch), result_batch: newBatch },
     erp: async () => {
+      erpRanRef.current = true
       // A staged (reserved) pallet keeps its reservation ACROSS a reprint: the
       // reservation moves to the new serial, so the order never shows a phantom
       // old code (Simon's SO-00013 report, 2026-07-03). Look up AND RELEASE
@@ -119,6 +133,7 @@ export async function POST(req: NextRequest) {
       // the SO's staging status.
       const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
       if (reservation) {
+        hadReservationRef.current = true
         await releaseBatchReservation(batch)
       }
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
@@ -130,8 +145,11 @@ export async function POST(req: NextRequest) {
               soName: reservation.so,
               items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
             })
+          } else {
+            transferFailedRef.current = true
           }
         } catch (e) {
+          transferFailedRef.current = true
           console.error(`reprint: reservation transfer ${batch} -> ${newBatch} failed:`, e)
         }
       }
@@ -151,12 +169,38 @@ export async function POST(req: NextRequest) {
         'Batch',
         printBatch
       ).catch(() => null)
+      // The reprinted label carries order info ONLY if the new serial holds a FULL
+      // reservation right now (same invariant as add: SO on a label ⟺ attached for the
+      // pallet's whole quantity — a partial bind must not produce an SO-labeled whole
+      // pallet). Read AFTER the erp() transfer, so a failed transfer honestly prints
+      // SO-less — and this is the recovery path for an attach-failed add: attach in
+      // Prepare for staging, then Reprint yields a full label (DQ0N incident,
+      // 2026-07-20). NO catch on the lookup: if we can't verify the attachment we must
+      // not guess what the label should say — the throw lands in the op's labelPending
+      // flow ("label pending — reprint"), whose retry is exactly the right recovery.
+      const printReservation = (await reservationsForBatches([printBatch]))[printBatch]
+      const fullyReserved = printReservation && printReservation.reservedQty + 1e-6 >= target
+      if (hadReservationRef.current && !transferFailedRef.current && !fullyReserved) {
+        // The transfer was made (no failure recorded) yet the live lookup can't see a
+        // full reservation — could be a suppressed read inside the lookup. Don't guess
+        // what the label should say; labelPending's retry re-reads and decides.
+        throw new Error('reservation transfer to the new label is unverified — retry the reprint')
+      }
+      const customerPartNo = fullyReserved
+        ? await resolveCustomerPartNo(itemCode, {
+            salesOrder: printReservation.so,
+            customer: printReservation.customer ?? undefined,
+          }).catch(() => null)
+        : null
       const zpl = buildPalletZpl({
         itemCode,
         itemName: item.item_name ?? itemCode,
         qty: target,
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
+        salesOrder: fullyReserved ? printReservation.so : undefined,
+        customerPartNo: customerPartNo ?? undefined,
+        customerPo: fullyReserved ? (printReservation.poNo ?? undefined) : undefined,
         weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
         dimensions: batchDoc?.custom_pallet_dims || undefined,
         brand: brandForItemGroup(item.item_group),
@@ -173,10 +217,87 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
       if (error) throw new Error(error.message)
       if (job?.id) return job.id
+      // Conflict — a job was already queued by a CRASHED attempt. Refresh a
+      // STILL-PENDING job to the freshly computed reservation-dependent content; if the
+      // job is already claimed/printed (or the update fails) the label content is
+      // UNKNOWABLE — throw, so the op machinery records a persistent `label:` failure
+      // and every replay keeps surfacing labelPending until the operator reprints
+      // (codex round-6: a request-local flag dies with a lost response).
+      const { data: refreshed, error: refreshErr } = await supabaseAdmin
+        .from('print_jobs')
+        .update({ zpl })
+        .eq('idempotency_key', `print-${idempotencyKey}`)
+        .eq('status', 'pending')
+        .select('id')
+      if (refreshErr || (refreshed?.length ?? 0) === 0) {
+        throw new Error('queued label may not match the live reservation — reprint required')
+      }
       const { data: existing } = await supabaseAdmin.from('print_jobs').select('id').eq('idempotency_key', `print-${idempotencyKey}`).maybeSingle()
       return existing?.id ?? null
     },
   })
+
+  if (result.status >= 200 && result.status < 300) {
+    const finalBatch = (result.body?.batch as string | undefined) ?? newBatch
+    // The refs are exact knowledge ONLY on a first-attempt run. On ANY retry
+    // (priorOp existed) the previous attempt may have released the old reservation
+    // and crashed before rebinding — this request's erp() then legitimately finds no
+    // reservation and the refs read "never staged" (codex round-7 BLOCK). Such runs
+    // fall through to the fail-closed live verification below.
+    const isRetry = Boolean(priorOp?.result_batch)
+    if (erpRanRef.current && !isRetry) {
+      // A released-but-not-rebound reservation silently un-stages the pallet — say so;
+      // the client renders reason:'transfer_failed' as a loud re-stage instruction
+      // (codex round-4 BLOCK; previously only a server console.error). Reconcile
+      // against live state first: reservation creation can commit and STILL throw
+      // (timeout), in which case the label already printed the SO correctly and
+      // reporting a hard detach would be false (codex round-6); if that reconcile
+      // itself fails, downgrade to 'unverified' rather than claiming a detach the
+      // server can't prove (grok round-7).
+      if (hadReservationRef.current && transferFailedRef.current) {
+        let outcome: 'attached' | 'transfer_failed' | 'unverified' = 'transfer_failed'
+        try {
+          const live = (await reservationsForBatches([finalBatch]))[finalBatch]
+          if (live && live.reservedQty + 1e-6 >= target) outcome = 'attached'
+        } catch {
+          outcome = 'unverified'
+        }
+        if (outcome !== 'attached') {
+          result.body.staging = {
+            attached: false,
+            reason: outcome,
+            warning:
+              outcome === 'transfer_failed'
+                ? 'The order reservation could not be moved to the new pallet code'
+                : `Could not verify the reservation on ${finalBatch}`,
+          }
+        }
+      }
+    } else {
+      // erp() skipped (erp_committed resume / done duplicate) OR any retry: the refs
+      // carry no reliable knowledge, so recompute FAIL-CLOSED from live state — a crash
+      // anywhere between release, reissue and re-reserve must not come back green
+      // (codex rounds 5+7). A never-staged pallet's retry also lands here, hence
+      // reason:'unverified' — the client words it as a conditional check, not a detach
+      // claim (round-6 consensus should-fix).
+      try {
+        const live = (await reservationsForBatches([finalBatch]))[finalBatch]
+        if (!(live && live.reservedQty + 1e-6 >= target)) {
+          result.body.staging = {
+            attached: false,
+            reason: 'unverified',
+            warning: `No full reservation is on ${finalBatch}`,
+          }
+        }
+      } catch {
+        result.body.staging = {
+          attached: false,
+          reason: 'unverified',
+          warning: `Could not verify the reservation on ${finalBatch}`,
+        }
+      }
+    }
+  }
 
   return NextResponse.json(result.body, { status: result.status })
 }
