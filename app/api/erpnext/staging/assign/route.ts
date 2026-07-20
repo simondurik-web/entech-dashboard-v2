@@ -304,7 +304,10 @@ export async function POST(req: NextRequest) {
   let result: Awaited<ReturnType<typeof runInventoryOp>>
   try {
     result = await withLeases(
-      [`so:${soName}`, ...moves.map((m) => `pallet:${palletBase(m.oldBatch)}`)],
+      // EVERY submitted pallet's family, not just the moves — an unreserved
+      // pallet in this queue must not be grabbed by a concurrent request on
+      // another order mid-run (codex lock-review round 3).
+      [`so:${soName}`, ...pallets.map((p) => `pallet:${palletBase(p.batch)}`)],
       () =>
         runInventoryOp({
     key: idempotencyKey,
