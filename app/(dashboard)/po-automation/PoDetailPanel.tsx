@@ -159,7 +159,12 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
         </section>
       )}
 
-      {/* Bill of Lading — role-gated, full-width panel */}
+      {/* Bill of Lading — role-gated, full-width panel. ALWAYS watermarked here
+          (shipped={false}): the PO record carries entry-pipeline status, not
+          shipment status, and salesmen never print carrier BOLs — a clean copy
+          on this surface was the last pre-ship leak after PR #284 (Simon
+          2026-07-20 "yes, watermark it too"). Post-ship clean copies live on
+          Orders Data / Shipped. Uploading is unaffected. */}
       {canEdit && po.po_number && (
         <BillOfLadingSection
           key={`bol|${po.party ?? ''}|${po.po_number}`}
@@ -168,6 +173,8 @@ export function PoDetailPanel({ po, onChanged }: { po: ProcessedPo; onChanged?: 
           userId={userId}
           variant="panel"
           canManage
+          watermarkUntilShipped
+          shipped={false}
         />
       )}
 
