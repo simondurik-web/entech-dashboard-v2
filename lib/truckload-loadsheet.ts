@@ -12,6 +12,7 @@ export interface LoadSheetOrder {
   customer_part_number?: string | null
   pallet_ids?: string[]
   pallet_count: number | null
+  total_weight_lb?: number | null // summed pallet weights (Simon 2026-07-20: like the Pallet Load Report)
   status: 'pending' | 'shipped' | 'released'
   dn_number: string | null
 }
@@ -77,6 +78,12 @@ function sanitizeSvgMarkup(markup: string | null): string {
 
 export function buildLoadSheetHtml({ loadNumber, createdAt, createdByName, notes, svgMarkup, orders, t }: LoadSheetInput): string {
   const totalPallets = orders.reduce((s, o) => s + (o.pallet_count ?? 0), 0)
+  // Weight totals like the Pallet Load Report (Simon 2026-07-20). Shown only
+  // when at least one order carries a known weight — an all-unknown sheet
+  // prints dashes rather than a misleading 0.
+  const totalWeight = orders.reduce((s, o) => s + (o.total_weight_lb ?? 0), 0)
+  const lbs = (v: number | null | undefined) =>
+    v != null && Number.isFinite(v) && v > 0 ? `${Math.round(v).toLocaleString()} lbs` : '—'
   const rowsHtml =
     orders
       .map(
@@ -89,6 +96,7 @@ export function buildLoadSheetHtml({ loadNumber, createdAt, createdByName, notes
           <td style="font-weight:700;">${esc(o.customer_part_number ?? '') || '—'}</td>
           <td style="font-family:monospace;font-size:10px;">${esc((o.pallet_ids ?? []).join(', ')) || '—'}</td>
           <td style="text-align:center;font-weight:700;">${o.pallet_count ?? '—'}</td>
+          <td style="text-align:right;font-weight:700;white-space:nowrap;">${lbs(o.total_weight_lb)}</td>
           <td style="text-align:center;">${
             o.status === 'shipped'
               ? `${esc(t('truckload.chipShipped'))}${o.dn_number ? ` (${esc(o.dn_number)})` : ''}`
@@ -102,6 +110,7 @@ export function buildLoadSheetHtml({ loadNumber, createdAt, createdByName, notes
     `<tr style="background:#ede9fe;font-weight:700;">
       <td colspan="7" style="text-align:right;">${esc(t('truckload.palletsTotal'))}</td>
       <td style="text-align:center;">${totalPallets || '—'}</td>
+      <td style="text-align:right;white-space:nowrap;">${lbs(totalWeight)}</td>
       <td></td>
     </tr>`
 
@@ -134,7 +143,7 @@ export function buildLoadSheetHtml({ loadNumber, createdAt, createdByName, notes
     <div class="ref">📌 ${refNotice}</div>
     <div class="warn">${esc(t('truckload.sheetWarn')).replace('{count}', String(orders.length))}</div>
     ${notes ? `<div class="notes"><b>${esc(t('truckload.notes'))}:</b> ${esc(notes)}</div>` : ''}
-    <table><thead><tr><th>#</th><th>SO</th><th>${esc(t('truckload.line'))}</th><th>${esc(t('table.customer'))}</th><th>${esc(t('table.partNumber'))}</th><th>${esc(t('table.customerPart'))}</th><th>${esc(t('truckload.palletIds'))}</th><th>${esc(t('truckload.pallets'))}</th><th>${esc(t('truckload.orderStatus'))}</th></tr></thead>
+    <table><thead><tr><th>#</th><th>SO</th><th>${esc(t('truckload.line'))}</th><th>${esc(t('table.customer'))}</th><th>${esc(t('table.partNumber'))}</th><th>${esc(t('table.customerPart'))}</th><th>${esc(t('truckload.palletIds'))}</th><th>${esc(t('truckload.pallets'))}</th><th style="text-align:right;">${esc(t('truckload.weight'))}</th><th>${esc(t('truckload.orderStatus'))}</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>
     ${(() => {
       const safeSvg = sanitizeSvgMarkup(svgMarkup)

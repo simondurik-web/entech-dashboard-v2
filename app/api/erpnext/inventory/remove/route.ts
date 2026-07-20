@@ -3,6 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { removeInventory, reconcileStockEntry, palletBase, assertBatchItem, getBatchLocation } from '@/lib/erpnext/inventory'
 import { releaseBatchReservation } from '@/lib/erpnext/staging'
 import { runInventoryOp } from '@/lib/erpnext/operation'
+import { allowedStationIds } from '@/lib/erpnext/printer-access'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/remove
@@ -26,7 +27,15 @@ export async function POST(req: NextRequest) {
   const guard = await requireInventoryAccess(req)
   if (!guard.ok) return guard.res
   if (!OFFICE_ROLES.has(guard.role)) {
-    return NextResponse.json({ error: 'Removing a pallet is office-only' }, { status: 403 })
+    // Delete follows PRINT permission: anyone granted at least one print
+    // station (group leaders) can also delete labels — printing and fixing a
+    // bad label are the same job (Simon 2026-07-20). Users with neither an
+    // office role nor any printer stay locked out.
+    const allowed = await allowedStationIds(guard.userId, guard.role)
+    const canPrint = allowed === 'all' || allowed.size > 0
+    if (!canPrint) {
+      return NextResponse.json({ error: 'Deleting a label requires label-printing access' }, { status: 403 })
+    }
   }
 
   let body: RemoveBody

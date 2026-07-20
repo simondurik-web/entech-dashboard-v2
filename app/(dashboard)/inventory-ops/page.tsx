@@ -1900,7 +1900,10 @@ export default function InventoryOpsPage() {
                     >
                       <ArrowLeftRight className="h-3.5 w-3.5" />
                     </button>
-                    {isOffice && (
+                    {/* Delete follows PRINT permission (any allowed printer),
+                        not office role — group leaders who print labels also
+                        fix mistakes (Simon 2026-07-20). Restore stays office. */}
+                    {(isOffice || stations.length > 0) && (
                       <button
                         onClick={() => toggle('remove')}
                         title={t('inventoryOps.remove')}
@@ -2106,7 +2109,9 @@ export default function InventoryOpsPage() {
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
-            {isOffice && (
+            {/* Delete follows PRINT permission (Simon 2026-07-20) — see the
+                qty-remove gate above; restore remains office-only. */}
+            {(isOffice || stations.length > 0) && (
               <button
                 onClick={() => submitRemove(itemCode, p.batch)}
                 disabled={busyBatch === p.batch}

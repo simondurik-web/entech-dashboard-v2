@@ -5,6 +5,7 @@ import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { attachCustomerPartNumbers, conflictingOrderKeys, conflictingOrderLines, distinctCustomers, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
 import { getFulfillmentOrder } from '@/lib/erpnext/fulfillment'
+import { erpnextGetDoc } from '@/lib/erpnext/client'
 
 // One truckload — GET full (incl. calculator snapshot for the load sheet /
 // re-opening in the calculator), PATCH edit (notes, snapshot, add/remove
@@ -47,6 +48,35 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         ;(o as unknown as { pallet_ids?: string[] }).pallet_ids = o.so_item
           ? pallets.filter((p) => p.soDetail === o.so_item).map((p) => p.palletId)
           : pallets.map((p) => p.palletId)
+      }
+      // Per-order pallet weight for the load sheet (Simon 2026-07-20: the TL
+      // sheet should show weight like the Pallet Load Report). Weights live on
+      // the Batch docs (custom_pallet_weight, stamped at print); best-effort —
+      // an unreadable batch just contributes 0 and the sheet shows what it can.
+      const allIds = [
+        ...new Set(
+          truckload.truckload_orders.flatMap(
+            (o) => (o as unknown as { pallet_ids?: string[] }).pallet_ids ?? []
+          )
+        ),
+      ]
+      const weightOf = new Map<string, number>()
+      const CONC = 6
+      for (let i = 0; i < allIds.length; i += CONC) {
+        await Promise.all(
+          allIds.slice(i, i + CONC).map(async (b) => {
+            const doc = await erpnextGetDoc<{ custom_pallet_weight?: number }>('Batch', b).catch(() => null)
+            const w = Number(doc?.custom_pallet_weight)
+            if (Number.isFinite(w) && w > 0) weightOf.set(b, w)
+          })
+        )
+      }
+      for (const o of truckload.truckload_orders) {
+        const ids = (o as unknown as { pallet_ids?: string[] }).pallet_ids ?? []
+        const known = ids.filter((b) => weightOf.has(b))
+        ;(o as unknown as { total_weight_lb?: number | null }).total_weight_lb = known.length
+          ? known.reduce((s, b) => s + (weightOf.get(b) ?? 0), 0)
+          : null
       }
     }
     return NextResponse.json({ truckload }, { headers: { 'Cache-Control': 'no-store' } })
