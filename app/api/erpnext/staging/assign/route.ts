@@ -305,7 +305,6 @@ export async function POST(req: NextRequest) {
   try {
     result = await withLeases(
       [`so:${soName}`, ...moves.map((m) => `pallet:${palletBase(m.oldBatch)}`)],
-      idempotencyKey,
       () =>
         runInventoryOp({
     key: idempotencyKey,

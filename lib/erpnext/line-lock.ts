@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // Staging leases (see supabase/migrations/20260720_staging_line_locks.sql).
@@ -13,11 +14,12 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 // one lease per affected pallet family (`pallet:<base>`), covering the pallet
 // itself across whichever orders are fighting over it.
 //
-// Same-holder re-entry (holder = the op's idempotency key) is safe because
-// runInventoryOp already serializes per key: a retry while the original is
-// still running gets its 409 at the op layer and never reaches the lease; only
-// a CAS-claimed re-run of a failed/crashed op re-enters — exactly the case the
-// re-entry exists for (gemini lock-review round 1).
+// NO re-entry: the holder token is unique per REQUEST, minted here. Keying the
+// holder to the idempotency key let a same-key duplicate re-claim, take its
+// pending-op 409, and then RELEASE the lease its finally-block thought was its
+// own while the original request was still mutating (codex/grok lock-review
+// round 2). A duplicate now simply fails the claim and 409s "try again"; a
+// crashed holder's lease self-expires within the TTL.
 
 // Longer than the route's maxDuration (120s): a crashed holder's lease outlives
 // any request that could still be mutating, then self-expires.
@@ -51,12 +53,13 @@ async function release(key: string, holder: string): Promise<void> {
   if (error) console.error(`lease release failed for ${key} (self-expires in ${LOCK_TTL_SECONDS}s):`, error)
 }
 
-/** Run `fn` holding ALL the given leases. Keys are deduped and claimed in
- *  sorted order (stable global order -> no deadlock between concurrent
- *  multi-key claimers). All-or-nothing: any miss releases what was claimed and
- *  throws LineLockedError. Release is best-effort — a failed release leaves
- *  the lease to its TTL. */
-export async function withLeases<T>(keys: string[], holder: string, fn: () => Promise<T>): Promise<T> {
+/** Run `fn` holding ALL the given leases under a request-unique holder token.
+ *  Keys are deduped and claimed in sorted order (stable global order -> no
+ *  deadlock between concurrent multi-key claimers). All-or-nothing: any miss
+ *  releases what was claimed and throws LineLockedError. Release is
+ *  best-effort — a failed release leaves the lease to its TTL. */
+export async function withLeases<T>(keys: string[], fn: () => Promise<T>): Promise<T> {
+  const holder = randomUUID()
   const ordered = [...new Set(keys)].sort()
   const held: string[] = []
   try {
