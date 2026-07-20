@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveBatchesToSO, reservationsForBatches, releaseBatchReservation } from '@/lib/erpnext/staging'
-import { reserveNextSerial, reissuePallet } from '@/lib/erpnext/inventory'
+import { reserveNextSerial, reissuePallet, getBatchLocation, assertBatchItem } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
@@ -112,6 +112,32 @@ export async function POST(req: NextRequest) {
       moves = []
     }
   } else {
+    // Canonicalize each pallet's facts from ERPNext before ANY planning — the
+    // client's qty/warehouse are display data. A stale or crafted qty would
+    // otherwise become reissuePallet's target on a move (inventory create/
+    // delete) or reserve part of a physical pallet while the whole-pallet check
+    // passes against the claimed number (codex round-7). Replays skip this:
+    // their moved source batches are already drained, and the stored plan
+    // carries the canonical quantities.
+    try {
+      for (const p of pallets) {
+        await assertBatchItem(p.batch, p.itemCode)
+        const loc = await getBatchLocation(p.batch, p.itemCode)
+        if (!loc || !(loc.qty > 0)) {
+          return NextResponse.json({ error: `Pallet ${p.batch} has no on-hand stock` }, { status: 400 })
+        }
+        if (loc.split) {
+          return NextResponse.json(
+            { error: `Pallet ${p.batch} is split across bins — consolidate it before staging` },
+            { status: 400 }
+          )
+        }
+        p.qty = loc.qty
+        p.warehouse = loc.warehouse
+      }
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
+    }
     const existing = await reservationsForBatches(pallets.map((p) => p.batch))
     const conflicts = pallets
       .map((p) => ({ p, r: existing[p.batch] }))

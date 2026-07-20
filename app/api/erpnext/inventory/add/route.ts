@@ -185,6 +185,16 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
         if (error) throw new Error(error.message)
         if (job?.id) return job.id
+        // Conflict — a job was queued by a CRASHED attempt. Refresh a STILL-
+        // PENDING job to this request's content (the retry may carry a different
+        // line/SO after a lost response; codex round-7). Already claimed/printed
+        // -> the physical label may lag, which is acceptable for an
+        // informational generic label; the response's staging block stays honest.
+        await supabaseAdmin
+          .from('print_jobs')
+          .update({ zpl })
+          .eq('idempotency_key', `print-${idempotencyKey}`)
+          .eq('status', 'pending')
         const { data: existing } = await supabaseAdmin.from('print_jobs').select('id').eq('idempotency_key', `print-${idempotencyKey}`).maybeSingle()
         return existing?.id ?? null
       },
