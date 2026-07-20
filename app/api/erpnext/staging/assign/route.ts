@@ -112,10 +112,14 @@ export async function POST(req: NextRequest) {
       // through the move flow: release + reissue + relabel, so the printed line
       // number never lies; codex review 2026-07-20). Same order + same line (or
       // no line picked) stays a harmless no-op re-reserve.
+      // number never lies; codex review 2026-07-20). A reservation whose line is
+      // UNKNOWN (soItem null) fails closed into the move flow too — it must not
+      // be credited to the picked line. Same order + same line (or no line
+      // picked) is dropped from the reserve list inside erp() instead.
       .filter(
         (x): x is { p: (typeof pallets)[number]; r: NonNullable<(typeof existing)[string]> } =>
           !!x.r &&
-          (x.r.so !== soName || (!!salesOrderItem && !!x.r.soItem && x.r.soItem !== salesOrderItem))
+          (x.r.so !== soName || (!!salesOrderItem && x.r.soItem !== salesOrderItem))
       )
     if (conflicts.length > 0 && !body.allowMove) {
       return NextResponse.json(
@@ -125,6 +129,44 @@ export async function POST(req: NextRequest) {
         },
         { status: 409 }
       )
+    }
+    // With an explicit target line, validate it BEFORE anything destructive — a
+    // move releases reservations and reissues pallet codes; a stale dropdown or
+    // crafted line must die here as a clean 400, not mid-flight with the old
+    // reservations already gone (codex round-2 BLOCKER). reserveBatchesToSO
+    // re-validates authoritatively inside the op; this closes the common case.
+    if (salesOrderItem) {
+      const soDoc = await erpnextGetDoc<{
+        items?: {
+          name: string
+          item_code: string
+          qty: number
+          stock_qty?: number | null
+          stock_reserved_qty?: number | null
+          delivered_qty?: number | null
+          reserve_stock?: number | null
+        }[]
+      }>('Sales Order', soName)
+      const pin = (soDoc.items ?? []).find((l) => l.name === salesOrderItem)
+      if (!pin || !pin.reserve_stock || pallets.some((p) => p.itemCode !== pin.item_code)) {
+        return NextResponse.json(
+          { error: `Sales Order ${soName} has no reservable line ${salesOrderItem} for the queued part — refresh and pick the line again` },
+          { status: 400 }
+        )
+      }
+      // Whole-queue capacity: pallets already sitting on this line don't count.
+      const newPcs = pallets
+        .filter((p) => existing[p.batch]?.soItem !== salesOrderItem)
+        .reduce((s, p) => s + p.qty, 0)
+      const remaining =
+        (Number(pin.stock_qty ?? pin.qty) || 0) -
+        Math.max(Number(pin.stock_reserved_qty) || 0, Number(pin.delivered_qty) || 0)
+      if (newPcs > remaining + 1e-6) {
+        return NextResponse.json(
+          { error: `That line only needs ${Math.max(0, remaining).toLocaleString()} more — the queue holds ${newPcs.toLocaleString()}` },
+          { status: 400 }
+        )
+      }
     }
     // Pin each move's new serial NOW so a retry can never mint a second one.
     moves = []
@@ -207,9 +249,22 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Live truth AFTER the moves ran: drop pallets whose reservation already
+      // sits on the target (same SO; same line when one is picked). Re-reserving
+      // them binds nothing in ERPNext yet double-counts the line's coverage,
+      // which could flip a line staged without a real reservation (codex round
+      // 2). Lookup failure falls back to the full list — the wrong-line
+      // backstop inside reserveBatchesToSO still holds.
+      const live = await reservationsForBatches(pallets.map((p) => p.batch)).catch(
+        () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
+      )
+      const toReserve = pallets.filter((p) => {
+        const r = live[p.batch]
+        return !(r && r.so === soName && (!salesOrderItem || r.soItem === salesOrderItem))
+      })
       const committed = await reserveBatchesToSO({
         soName,
-        items: pallets.map((p) => ({ ...p, salesOrderItem })),
+        items: toReserve.map((p) => ({ ...p, salesOrderItem })),
       })
 
       // Instant status flip for the lines these pallets fully covered — the

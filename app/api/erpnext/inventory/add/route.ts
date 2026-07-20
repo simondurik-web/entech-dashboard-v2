@@ -137,6 +137,12 @@ export async function POST(req: NextRequest) {
         // Generic label: part # + label quantity + QR of the PART NUMBER (no unique pallet
         // code). One copy per box (^PQ via `copies`). The label quantity is the item's
         // custom_pieces_per_pack when set, else 1 (a pack is itself one assembly).
+        // Line number: informational like the SO itself (no reservation concept) —
+        // the picked line, when it maps (codex review round 2, 2026-07-20).
+        const genericLineNo =
+          salesOrder && salesOrderItem
+            ? (await dashboardLinesForSoItems([salesOrderItem]))[salesOrderItem]
+            : undefined
         const zpl = buildPalletZpl({
           itemCode,
           itemName: itemInfo.itemName,
@@ -148,6 +154,7 @@ export async function POST(req: NextRequest) {
           customer,
           ref,
           salesOrder,
+          lineNo: genericLineNo != null ? String(genericLineNo) : undefined,
           customerPartNo: (await customerPartNoP) ?? undefined,
           customerPo: (await customerPoP) ?? undefined,
           brand: brandForItemGroup(itemInfo.itemGroup),

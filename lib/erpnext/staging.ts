@@ -505,15 +505,16 @@ export async function reserveBatchesToSO(
     const bound = (await reservationsForBatches([p.batch]).catch(() => ({} as Record<string, BatchReservation>)))[p.batch]
     const boundQty = Number(bound?.reservedQty ?? 0)
     // WRONG-LINE backstop: a batch that already carried a reservation on a
-    // DIFFERENT line answers this lookup with that pre-existing entry while our
-    // reserve bound nothing (ERPNext silently skips an already-reserved batch) —
-    // without this check that read as success and even dashboard-flipped the
-    // wrong line (codex review, 2026-07-20). Do NOT release: the reservation
-    // found is not ours.
+    // DIFFERENT line (or one with UNKNOWN line ownership, soItem null) answers
+    // this lookup with that pre-existing entry while our reserve bound nothing
+    // (ERPNext silently skips an already-reserved batch) — without this check
+    // that read as success and even dashboard-flipped the wrong line (codex
+    // review, 2026-07-20; fail-closed on null soItem per round 2). Do NOT
+    // release: the reservation found is not ours.
     const wantLine = allocations.get(p.batch)
-    if (bound && bound.soItem && wantLine && bound.soItem !== wantLine) {
+    if (bound && wantLine && bound.soItem !== wantLine) {
       throw new Error(
-        `Pallet ${p.batch} is already reserved to a different release line of ${bound.so} — move it explicitly or release it first`
+        `Pallet ${p.batch} already carries a reservation on ${bound.so} that is not the targeted release line — move it explicitly or release it first`
       )
     }
     if (boundQty + 1e-6 < p.qty) {
