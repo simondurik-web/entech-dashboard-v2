@@ -6,7 +6,7 @@ import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { reserveBatchesToSO, reservationsForBatches } from '@/lib/erpnext/staging'
-import { flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
+import { flipDashboardStatus, dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/add
@@ -27,6 +27,8 @@ interface AddBody {
   customer?: string
   ref?: string
   salesOrder?: string // optional ERPNext Sales Order to attach (printed on the label)
+  salesOrderItem?: string // optional release line (SO Item child name) to reserve against —
+  // the operator picks a LINE; omitted -> soonest-due auto-allocation (Simon 2026-07-20)
   weightLb?: number // optional pallet weight (lb) — stored on the Batch + printed
   dims?: string // optional pallet dimensions (LxWxH in) — stored + printed
   idempotencyKey?: string
@@ -45,6 +47,7 @@ export async function POST(req: NextRequest) {
 
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
   const salesOrder = body.salesOrder?.trim() || undefined
+  const salesOrderItem = body.salesOrderItem?.trim() || undefined
   // Customer part number for the label — only when an SO is attached (Simon 2026-07-06).
   // .catch at creation: these may go UNAWAITED (attach failure prints an SO-less label),
   // and an unawaited rejection would be an unhandled promise rejection (gemini review).
@@ -194,6 +197,7 @@ export async function POST(req: NextRequest) {
     reserved: number
     staged: boolean
     fullyReservedSoItems: string[]
+    soItem?: string | null // release line the reservation bound to (for the label's line number)
     warning?: string
   }
   const attachRef: { current: AttachOutcome | null } = { current: null }
@@ -212,7 +216,7 @@ export async function POST(req: NextRequest) {
           return { ...none, warning: `Pallet ${committedBatch} is reserved to ${existing.so}, not ${soName}` }
         }
         if (existing.reservedQty + 1e-6 >= qty) {
-          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [], soItem: existing.soItem }
         }
         return {
           ...none,
@@ -225,9 +229,15 @@ export async function POST(req: NextRequest) {
     try {
       const r = await reserveBatchesToSO({
         soName,
-        items: [{ itemCode, warehouse, batch: committedBatch, qty }],
+        items: [{ itemCode, warehouse, batch: committedBatch, qty, salesOrderItem }],
       })
-      return { attached: true, reserved: r.reserved, staged: r.staged, fullyReservedSoItems: r.fullyReservedSoItems }
+      return {
+        attached: true,
+        reserved: r.reserved,
+        staged: r.staged,
+        fullyReservedSoItems: r.fullyReservedSoItems,
+        soItem: r.allocations[committedBatch] ?? null,
+      }
     } catch (e) {
       // The attempt may have committed before a timeout — reconcile against the live
       // state before declaring failure, so a bound reservation is never reported (and
@@ -235,7 +245,7 @@ export async function POST(req: NextRequest) {
       try {
         const now = (await reservationsForBatches([committedBatch]))[committedBatch]
         if (now?.so === soName && now.reservedQty + 1e-6 >= qty) {
-          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [] }
+          return { attached: true, reserved: 0, staged: false, fullyReservedSoItems: [], soItem: now.soItem }
         }
       } catch {
         // Keep the original reserve error.
@@ -264,6 +274,13 @@ export async function POST(req: NextRequest) {
         attachRef.current = await attachToSO(salesOrder, committed.batch ?? batch)
       }
       const attachedSo = attachRef.current?.attached ? salesOrder : undefined
+      // Dashboard line number of the release line the reservation actually bound to —
+      // printed with the SO so staging can match pallet → line (Simon 2026-07-20).
+      // Only ever printed alongside an attached SO; lookup failure just omits it.
+      const attachedSoItem = attachedSo ? attachRef.current?.soItem : undefined
+      const lineNo = attachedSoItem
+        ? (await dashboardLinesForSoItems([attachedSoItem]))[attachedSoItem]
+        : undefined
       const zpl = buildPalletZpl({
         itemCode,
         itemName: itemInfo.itemName,
@@ -273,6 +290,7 @@ export async function POST(req: NextRequest) {
         customer,
         ref,
         salesOrder: attachedSo,
+        lineNo: lineNo != null ? String(lineNo) : undefined,
         customerPartNo: attachedSo ? ((await customerPartNoP) ?? undefined) : undefined,
         customerPo: attachedSo ? ((await customerPoP) ?? undefined) : undefined,
         weight: weightLb ? `${weightLb} lb` : undefined,

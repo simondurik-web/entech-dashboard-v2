@@ -67,11 +67,14 @@ interface ItemOption {
   itemCode: string
   itemName: string
 }
-interface SalesOrderOption {
-  name: string
+// One release LINE of an open order — what the add-pallet dropdown offers. The
+// dashboard line number is the floor's unique handle (Simon 2026-07-20).
+interface SoLineOption {
+  so: string
+  soItem: string
   customer: string
-  status: string
   deliveryDate: string | null
+  dashboardLine: number | null
 }
 interface BinContentItem {
   itemCode: string
@@ -79,6 +82,13 @@ interface BinContentItem {
   uom: string
   qty: number
   pallets: { batch: string; qty: number }[]
+}
+interface StagingSoLine {
+  soItem: string // Sales Order Item child name — the reservation target
+  deliveryDate: string | null
+  orderedQty: number
+  reservedQty: number
+  dashboardLine: number | null // the floor's unique release handle (packing-sheet line number)
 }
 interface StagingSalesOrder {
   name: string
@@ -88,6 +98,7 @@ interface StagingSalesOrder {
   reservedQty: number
   deliveryDate: string | null
   stagingStatus: string | null
+  lines: StagingSoLine[]
 }
 interface InventoryRow {
   itemCode: string
@@ -832,6 +843,9 @@ export default function InventoryOpsPage() {
   const [stageOrders, setStageOrders] = useState<StagingSalesOrder[]>([])
   const [stageOrdersLoading, setStageOrdersLoading] = useState(false)
   const [selectedSo, setSelectedSo] = useState<string>('')
+  // The picked release LINE (SO Item child name) — operators pick a line, not an
+  // order; the line number is the floor's unique handle (Simon 2026-07-20).
+  const [selectedSoItem, setSelectedSoItem] = useState<string>('')
   const [staging, setStaging] = useState(false)
   const lastStageScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
 
@@ -866,6 +880,7 @@ export default function InventoryOpsPage() {
     if (!stageItemCode) {
       setStageOrders([])
       setSelectedSo('')
+      setSelectedSoItem('')
       return
     }
     loadStageOrders(stageItemCode)
@@ -921,7 +936,7 @@ export default function InventoryOpsPage() {
   }
 
   const postStage = async () => {
-    if (!selectedSo || stageQueue.length === 0 || staging || busyRef.current) return
+    if (!selectedSo || !selectedSoItem || stageQueue.length === 0 || staging || busyRef.current) return
     // Moves need an explicit operator confirmation listing what leaves which
     // order — and a printer, because a moved pallet is RELABELED (new code +
     // fresh label with the new order; the old label stops scanning).
@@ -945,12 +960,15 @@ export default function InventoryOpsPage() {
     busyRef.current = true
     setStaging(true)
     const batches = stageQueue.map((p) => p.batch).sort()
-    const key = opKey('stage-reserve', selectedSo, batches)
+    // The target LINE is part of the op identity — the same queue aimed at a
+    // different line must mint a new idempotency key, not replay the old op.
+    const key = opKey('stage-reserve', `${selectedSo}:${selectedSoItem}`, batches)
     try {
       const r = await authedFetch('/api/erpnext/staging/assign', {
         method: 'POST',
         body: JSON.stringify({
           soName: selectedSo,
+          salesOrderItem: selectedSoItem,
           pallets: stageQueue.map((p) => ({ batch: p.batch, itemCode: p.itemCode, warehouse: p.warehouse, qty: p.qty })),
           allowMove: moves.length > 0,
           station: moves.length > 0 ? addStation : undefined,
@@ -965,15 +983,21 @@ export default function InventoryOpsPage() {
       const relabelNote = relabels.length
         ? ` · ${t('inventoryOps.stageRelabeled')} ${relabels.map((x) => `${x.oldBatch}→${x.newBatch}`).join(', ')}`
         : ''
+      // Confirm with the LINE number when we have it — that's the handle the
+      // floor works by; the SO name is the fallback for unmapped lines.
+      const selLine = stageOrders.flatMap((o) => o.lines).find((l) => l.soItem === selectedSoItem)
+      const selLabel =
+        selLine?.dashboardLine != null ? `${t('inventoryOps.stageLine')} ${selLine.dashboardLine}` : selectedSo
       showFlash(
         'ok',
         (d.staged
-          ? `${t('inventoryOps.stageStaged')} ${selectedSo}`
-          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selectedSo}`) + relabelNote
+          ? `${t('inventoryOps.stageStaged')} ${selLabel}`
+          : `${t('inventoryOps.stageReserved')} ${reserved} → ${selLabel}`) + relabelNote
       )
       // Clearing the queue hides the orders panel and (via the item effect) resets selection.
       setStageQueue([])
       setSelectedSo('')
+      setSelectedSoItem('')
     } catch (e) {
       showFlash('err', (e as Error).message)
     } finally {
@@ -1213,27 +1237,49 @@ export default function InventoryOpsPage() {
   const [addDimL, setAddDimL] = useState('')
   const [addDimW, setAddDimW] = useState('')
   const [addDimH, setAddDimH] = useState('')
-  // Sales Order to attach to the label (optional). The list is filtered server-side to the
-  // open SOs that actually include the selected part, so the dropdown stays short.
+  // Release line to attach to the label (optional). The operator picks a LINE —
+  // shown by its dashboard line number, the floor's unique handle — not an SO
+  // (Simon 2026-07-20). The list is filtered server-side to the open lines that
+  // actually include the selected part, so the dropdown stays short.
   const [salesOrder, setSalesOrder] = useState('') // committed SO name ('' = none)
-  const [soOptions, setSoOptions] = useState<SalesOrderOption[]>([])
+  const [salesOrderItem, setSalesOrderItem] = useState('') // committed SO Item (release line)
+  const [salesOrderLineNo, setSalesOrderLineNo] = useState<number | null>(null) // committed line's display number
+  const [soOptions, setSoOptions] = useState<SoLineOption[]>([])
   const [soLoading, setSoLoading] = useState(false)
   const [soQuery, setSoQuery] = useState('') // typed filter text
   const [soOpen, setSoOpen] = useState(false)
 
-  // When the part changes, reset + reload the matching open Sales Orders.
+  // When the part changes, reset + reload the matching open release lines.
   useEffect(() => {
     setSalesOrder('')
+    setSalesOrderItem('')
+    setSalesOrderLineNo(null)
     setSoQuery('')
     setSoOpen(false)
     setSoOptions([])
     if (!addItem) return
     let cancelled = false
     setSoLoading(true)
-    authedFetch(`/api/erpnext/inventory/sales-orders?itemCode=${encodeURIComponent(addItem.itemCode)}`)
+    authedFetch(`/api/erpnext/staging/orders?itemCode=${encodeURIComponent(addItem.itemCode)}`)
       .then((r) => (r.ok ? r.json() : { salesOrders: [] }))
       .then((d) => {
-        if (!cancelled) setSoOptions(d.salesOrders ?? [])
+        if (cancelled) return
+        const orders = (d.salesOrders ?? []) as StagingSalesOrder[]
+        const lines: SoLineOption[] = orders
+          .flatMap((o) =>
+            o.lines.map((l) => ({
+              so: o.name,
+              soItem: l.soItem,
+              customer: o.customer,
+              deliveryDate: l.deliveryDate,
+              dashboardLine: l.dashboardLine,
+            }))
+          )
+          .sort(
+            (a, b) =>
+              (a.deliveryDate ?? '9999').localeCompare(b.deliveryDate ?? '9999') || a.soItem.localeCompare(b.soItem)
+          )
+        setSoOptions(lines)
       })
       .catch(() => {
         if (!cancelled) setSoOptions([])
@@ -1316,6 +1362,7 @@ export default function InventoryOpsPage() {
           warehouse: addWarehouse,
           station: addStation,
           salesOrder: salesOrder || undefined,
+          salesOrderItem: salesOrderItem || undefined,
           weightLb: Number(addWeight) > 0 ? Number(addWeight) : undefined,
           dims,
           idempotencyKey: addKeyRef.current,
@@ -2277,8 +2324,17 @@ export default function InventoryOpsPage() {
                 </label>
                 {salesOrder ? (
                   <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                    <span className="font-mono">{salesOrder}</span>
-                    <button onClick={() => setSalesOrder('')} className="text-muted-foreground hover:text-foreground">
+                    <span className="font-mono">
+                      {salesOrderLineNo != null ? `${t('inventoryOps.stageLine')} ${salesOrderLineNo}` : salesOrder}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSalesOrder('')
+                        setSalesOrderItem('')
+                        setSalesOrderLineNo(null)
+                      }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -2309,22 +2365,27 @@ export default function InventoryOpsPage() {
                             .filter(
                               (s) =>
                                 !soQuery.trim() ||
-                                s.name.toLowerCase().includes(soQuery.toLowerCase()) ||
+                                String(s.dashboardLine ?? '').includes(soQuery.trim()) ||
+                                s.so.toLowerCase().includes(soQuery.toLowerCase()) ||
                                 (s.customer || '').toLowerCase().includes(soQuery.toLowerCase())
                             )
                             .map((s) => (
                               <button
-                                key={s.name}
+                                key={s.soItem}
                                 type="button"
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
-                                  setSalesOrder(s.name)
+                                  setSalesOrder(s.so)
+                                  setSalesOrderItem(s.soItem)
+                                  setSalesOrderLineNo(s.dashboardLine)
                                   setSoOpen(false)
                                   setSoQuery('')
                                 }}
                                 className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
                               >
-                                <span className="font-mono">{s.name}</span>
+                                <span className="font-mono">
+                                  {s.dashboardLine != null ? `${t('inventoryOps.stageLine')} ${s.dashboardLine}` : s.so}
+                                </span>
                                 <span className="text-muted-foreground"> · {s.customer}</span>
                                 {s.deliveryDate && <span className="text-xs text-muted-foreground"> · {s.deliveryDate}</span>}
                               </button>
@@ -3156,66 +3217,79 @@ export default function InventoryOpsPage() {
               {t('inventoryOps.stagePickOrder')}
               {stageOrdersLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
-            {!stageOrdersLoading && stageOrders.length === 0 ? (
+            {/* One card per release LINE (soonest due first), identified by its
+                dashboard line number — the floor's unique handle; the SO name only
+                shows as a fallback for an unmapped line (Simon 2026-07-20). */}
+            {!stageOrdersLoading && stageOrders.every((o) => o.lines.length === 0) ? (
               <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
                 {t('inventoryOps.stageNoOrders')}
               </div>
             ) : (
               <ul className="space-y-2">
-                {stageOrders.map((o) => {
-                  const projected = o.reservedQty + stageQueuePcs
-                  const covers = o.orderedQty > 0 && projected >= o.orderedQty
-                  const isStaged = o.stagingStatus === 'Staged'
-                  // The queue must FIT: an order can't take more than it still
-                  // needs (over-staging loophole, Simon 2026-07-03).
-                  const remaining = o.orderedQty - o.reservedQty
-                  const fits = stageQueuePcs <= remaining
-                  return (
-                    <li key={o.name}>
-                      <button
-                        onClick={() => fits && setSelectedSo(o.name)}
-                        disabled={!fits}
-                        className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                          !fits
-                            ? 'border-border bg-card opacity-50 cursor-not-allowed'
-                            : selectedSo === o.name
-                              ? 'border-primary bg-primary/5'
-                              : 'border-border bg-card hover:bg-accent'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 text-sm font-medium">
-                              <span className="font-mono">{o.name}</span>
-                              {isStaged && (
-                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                                  {t('inventoryOps.stageStagedBadge')}
-                                </span>
-                              )}
-                            </div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {o.customer}
-                              {o.poNo ? ` · ${t('inventoryOps.stagePo')} ${o.poNo}` : ''}
-                              {o.deliveryDate ? ` · ${t('inventoryOps.stageDue')} ${o.deliveryDate}` : ''}
-                            </div>
-                          </div>
-                          <div className="shrink-0 text-right text-xs">
-                            <div className="font-medium">
-                              {o.reservedQty.toLocaleString()} / {o.orderedQty.toLocaleString()}
-                            </div>
-                            <div className={!fits ? 'text-amber-600' : covers ? 'text-emerald-600' : 'text-muted-foreground'}>
-                              {!fits
-                                ? t('inventoryOps.stageOnlyNeeds').replace('{n}', remaining.toLocaleString())
-                                : covers
-                                  ? t('inventoryOps.stageWillCover')
-                                  : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    </li>
+                {stageOrders
+                  .flatMap((o) => o.lines.map((l) => ({ o, l })))
+                  .sort(
+                    (a, b) =>
+                      (a.l.deliveryDate ?? '9999').localeCompare(b.l.deliveryDate ?? '9999') ||
+                      a.l.soItem.localeCompare(b.l.soItem)
                   )
-                })}
+                  .map(({ o, l }) => {
+                    const projected = l.reservedQty + stageQueuePcs
+                    const covers = l.orderedQty > 0 && projected >= l.orderedQty
+                    // The queue must FIT: a line can't take more than it still
+                    // needs (over-staging loophole, Simon 2026-07-03).
+                    const remaining = l.orderedQty - l.reservedQty
+                    const fits = stageQueuePcs <= remaining
+                    const selected = selectedSoItem === l.soItem
+                    return (
+                      <li key={l.soItem}>
+                        <button
+                          onClick={() => {
+                            if (!fits) return
+                            setSelectedSo(o.name)
+                            setSelectedSoItem(l.soItem)
+                          }}
+                          disabled={!fits}
+                          className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                            !fits
+                              ? 'border-border bg-card opacity-50 cursor-not-allowed'
+                              : selected
+                                ? 'border-primary bg-primary/5'
+                                : 'border-border bg-card hover:bg-accent'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <span className="font-mono">
+                                  {l.dashboardLine != null
+                                    ? `${t('inventoryOps.stageLine')} ${l.dashboardLine}`
+                                    : o.name}
+                                </span>
+                              </div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {o.customer}
+                                {o.poNo ? ` · ${t('inventoryOps.stagePo')} ${o.poNo}` : ''}
+                                {l.deliveryDate ? ` · ${t('inventoryOps.stageDue')} ${l.deliveryDate}` : ''}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right text-xs">
+                              <div className="font-medium">
+                                {l.reservedQty.toLocaleString()} / {l.orderedQty.toLocaleString()}
+                              </div>
+                              <div className={!fits ? 'text-amber-600' : covers ? 'text-emerald-600' : 'text-muted-foreground'}>
+                                {!fits
+                                  ? t('inventoryOps.stageOnlyNeeds').replace('{n}', remaining.toLocaleString())
+                                  : covers
+                                    ? t('inventoryOps.stageWillCover')
+                                    : `+${stageQueuePcs.toLocaleString()} → ${projected.toLocaleString()}`}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
               </ul>
             )}
           </div>
@@ -3225,7 +3299,7 @@ export default function InventoryOpsPage() {
         <div className="mb-4">
           <button
             onClick={postStage}
-            disabled={!selectedSo || stageQueue.length === 0 || staging}
+            disabled={!selectedSo || !selectedSoItem || stageQueue.length === 0 || staging}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {staging ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}

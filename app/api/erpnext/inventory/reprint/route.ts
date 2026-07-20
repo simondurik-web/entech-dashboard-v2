@@ -7,6 +7,7 @@ import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext
 import { resolveCustomerPartNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
+import { dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/reprint — reprint a pallet's label, SERIALIZED.
@@ -143,7 +144,18 @@ export async function POST(req: NextRequest) {
           if (loc && loc.qty > 0) {
             await reserveBatchesToSO({
               soName: reservation.so,
-              items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
+              // Pin the transfer to the ORIGINAL release line — auto-allocation
+              // could land the new serial on a different (soonest-due) line than
+              // the one the pallet was staged to (Simon 2026-07-20).
+              items: [
+                {
+                  batch: newBatch,
+                  itemCode,
+                  warehouse: loc.warehouse,
+                  qty: loc.qty,
+                  salesOrderItem: reservation.soItem ?? undefined,
+                },
+              ],
             })
           } else {
             transferFailedRef.current = true
@@ -192,6 +204,12 @@ export async function POST(req: NextRequest) {
             customer: printReservation.customer ?? undefined,
           }).catch(() => null)
         : null
+      // Dashboard line number of the reserved release line (Simon 2026-07-20);
+      // lookup failure just omits it from the label.
+      const printLineNo =
+        fullyReserved && printReservation.soItem
+          ? (await dashboardLinesForSoItems([printReservation.soItem]))[printReservation.soItem]
+          : undefined
       const zpl = buildPalletZpl({
         itemCode,
         itemName: item.item_name ?? itemCode,
@@ -199,6 +217,7 @@ export async function POST(req: NextRequest) {
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
         salesOrder: fullyReserved ? printReservation.so : undefined,
+        lineNo: printLineNo != null ? String(printLineNo) : undefined,
         customerPartNo: customerPartNo ?? undefined,
         customerPo: fullyReserved ? (printReservation.poNo ?? undefined) : undefined,
         weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,

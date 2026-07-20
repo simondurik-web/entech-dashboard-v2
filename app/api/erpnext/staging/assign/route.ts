@@ -7,7 +7,7 @@ import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
-import { logFulfillment, flipDashboardStatus } from '@/lib/erpnext/fulfillment-audit'
+import { logFulfillment, flipDashboardStatus, dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/staging/assign
@@ -28,6 +28,10 @@ const MAX_PALLETS = 200
 
 interface AssignBody {
   soName?: string
+  // Release line (SO Item child name) to reserve the whole queue against. The
+  // operator picks a LINE, not an order — the line number is the floor's unique
+  // handle (Simon 2026-07-20). Omitted -> soonest-due auto-allocation.
+  salesOrderItem?: string
   pallets?: { batch?: string; itemCode?: string; warehouse?: string; qty?: number }[]
   // Move pallets already reserved to ANOTHER order onto this one (release +
   // re-reserve). Without it, such pallets 409 with the conflict list so the UI
@@ -52,6 +56,7 @@ export async function POST(req: NextRequest) {
   }
 
   const soName = body.soName?.trim()
+  const salesOrderItem = body.salesOrderItem?.trim() || undefined
   const idempotencyKey = body.idempotencyKey
   const rawPallets = Array.isArray(body.pallets) ? body.pallets : []
   if (!soName || !idempotencyKey || rawPallets.length === 0) {
@@ -148,6 +153,9 @@ export async function POST(req: NextRequest) {
   // plan, so a retry replays the SAME releases/reissues instead of recomputing them.
   const fingerprint = JSON.stringify({
     so: soName,
+    // Target release line is part of the op identity: the same pallet set aimed
+    // at a different line is a different operation, not a retry.
+    ...(salesOrderItem ? { soItem: salesOrderItem } : {}),
     batches: [...new Set(pallets.map((p) => p.batch))].sort(),
     relabels: moves,
   })
@@ -190,7 +198,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const committed = await reserveBatchesToSO({ soName, items: pallets })
+      const committed = await reserveBatchesToSO({
+        soName,
+        items: pallets.map((p) => ({ ...p, salesOrderItem })),
+      })
 
       // Instant status flip for the lines these pallets fully covered — the
       // 5-min sync reaches the same answer, this just kills the lag window
@@ -200,6 +211,10 @@ export async function POST(req: NextRequest) {
       }
 
       // Fresh labels for the moved pallets, printed with the NEW order on them.
+      // Line numbers for the labels: which release line each moved batch bound to.
+      const moveLineNos = await dashboardLinesForSoItems(
+        moves.map((m) => committed.allocations[m.newBatch]).filter(Boolean)
+      )
       for (const r of moves) {
         try {
           const [item, batchDoc, custPartNo, custPo] = await Promise.all([
@@ -215,6 +230,11 @@ export async function POST(req: NextRequest) {
             uom: item.stock_uom ?? 'pcs',
             batch: r.newBatch,
             salesOrder: soName,
+            lineNo: (() => {
+              const soItem = committed.allocations[r.newBatch]
+              const n = soItem ? moveLineNos[soItem] : undefined
+              return n != null ? String(n) : undefined
+            })(),
             customerPartNo: custPartNo ?? undefined,
             customerPo: custPo ?? undefined,
             weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,

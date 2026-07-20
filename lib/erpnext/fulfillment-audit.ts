@@ -70,6 +70,25 @@ export async function listFulfillmentLog(so: string): Promise<FulfillmentLogRow[
   return (data ?? []) as FulfillmentLogRow[]
 }
 
+/** Dashboard line numbers for Sales Order Item child names, via erp_order_line_map.
+ *  The line number is the floor's unique handle for a release (it's on the packing
+ *  sheet); ERPNext doesn't know it, only the map does. Missing/unmapped items are
+ *  simply absent from the result. */
+export async function dashboardLinesForSoItems(soItems: string[]): Promise<Record<string, number>> {
+  const uniq = [...new Set(soItems.filter(Boolean))]
+  if (uniq.length === 0) return {}
+  try {
+    const { data } = await supabaseAdmin
+      .from('erp_order_line_map')
+      .select('erp_so_item_name, line')
+      .in('erp_so_item_name', uniq)
+    return Object.fromEntries((data ?? []).map((r) => [r.erp_so_item_name as string, Number(r.line)]))
+  } catch (e) {
+    console.error('dashboard line lookup failed:', e)
+    return {}
+  }
+}
+
 /** Flip the order's dashboard rows immediately. `mode` mirrors what the sync
  *  will compute on its next run. if_number is "SO-00075" or "SO-00075 (IF…)".
  *  `soItems` (Sales Order Item child names) scopes the flip to just those

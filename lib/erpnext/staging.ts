@@ -52,6 +52,7 @@ const RES_BATCH_CHUNK = 100
 
 interface SOItemRow {
   name: string
+  idx?: number
   item_code: string
   warehouse?: string | null
   qty: number
@@ -59,6 +60,19 @@ interface SOItemRow {
   stock_reserved_qty?: number | null
   reserve_stock?: number | null
   delivered_qty?: number | null
+  delivery_date?: string | null
+}
+
+/** Soonest per-line due date first (undated last), child-table order as tiebreak.
+ *  Multi-release orders enter their release lines in arbitrary row order —
+ *  SO-00016's row 1 was the October release while the July line sat at row 4,
+ *  so anything that walks items in row order binds pallets to the wrong
+ *  release (line 2491 stuck MAKING, Simon 2026-07-20). */
+function byLineDueDate(a: SOItemRow, b: SOItemRow): number {
+  return (
+    (a.delivery_date ?? '9999-12-31').localeCompare(b.delivery_date ?? '9999-12-31') ||
+    (a.idx ?? 0) - (b.idx ?? 0)
+  )
 }
 
 interface SODoc {
@@ -80,6 +94,18 @@ function reservedOf(it: SOItemRow): number {
   return Number(it.stock_reserved_qty) || 0
 }
 
+/** One reservable release LINE of an order — what the operator actually picks.
+ *  Multi-release orders carry the same item on several lines with different due
+ *  dates; picking at the SO level let pallets bind to the wrong release
+ *  (Simon 2026-07-20). `soItem` is the Sales Order Item child name, the exact
+ *  reservation target. */
+export interface StagingSoLine {
+  soItem: string
+  deliveryDate: string | null
+  orderedQty: number
+  reservedQty: number // reserved OR delivered (whichever is larger) for this line
+}
+
 export interface StagingSalesOrder {
   name: string
   customer: string
@@ -88,6 +114,7 @@ export interface StagingSalesOrder {
   reservedQty: number // already reserved for that item
   deliveryDate: string | null
   stagingStatus: string | null // custom_staging_status: Open | Staged | Shipped (or null)
+  lines: StagingSoLine[] // open (not fully consumed) reservable lines, soonest due first
 }
 
 /** Open Sales Orders that include `itemCode` as a line, each with that item's ordered-vs-
@@ -113,13 +140,30 @@ export async function listOpenSalesOrdersForItem(itemCode: string): Promise<Stag
     const doc = await erpnextGetDoc<SODoc>('Sales Order', name)
     let ordered = 0
     let used = 0
+    const lines: StagingSoLine[] = []
     for (const it of doc.items ?? []) {
       if (it.item_code !== itemCode) continue
-      ordered += orderedOf(it)
+      const lineOrdered = orderedOf(it)
       // per line, what's spoken for: reserved OR already delivered (a manual
       // ERPNext ship without a reservation still consumes the line)
-      used += Math.max(reservedOf(it), Number(it.delivered_qty) || 0)
+      const lineUsed = Math.max(reservedOf(it), Number(it.delivered_qty) || 0)
+      ordered += lineOrdered
+      used += lineUsed
+      // Pickable lines only: reservable (reserve_stock) and not fully consumed.
+      if (it.reserve_stock && lineOrdered - lineUsed > 1e-6) {
+        lines.push({
+          soItem: it.name,
+          deliveryDate: it.delivery_date ?? null,
+          orderedQty: lineOrdered,
+          reservedQty: lineUsed,
+        })
+      }
     }
+    lines.sort(
+      (a, b) =>
+        (a.deliveryDate ?? '9999-12-31').localeCompare(b.deliveryDate ?? '9999-12-31') ||
+        a.soItem.localeCompare(b.soItem)
+    )
     const order: StagingSalesOrder = {
       name: doc.name,
       customer: doc.customer,
@@ -128,6 +172,7 @@ export async function listOpenSalesOrdersForItem(itemCode: string): Promise<Stag
       reservedQty: used,
       deliveryDate: doc.delivery_date ?? null,
       stagingStatus: doc.custom_staging_status ?? null,
+      lines,
     }
     return order
   })
@@ -178,6 +223,7 @@ const ACTIVE_SRE_STATUS = ['Reserved', 'Partially Reserved', 'Partially Delivere
 export type BatchReservation = {
   batch: string
   so: string
+  soItem: string | null // Sales Order Item (release line) the reservation targets
   customer: string | null
   poNo: string | null
   reservedQty: number
@@ -213,10 +259,12 @@ export async function reservationsForBatches(
         ['status', 'in', ACTIVE_SRE_STATUS],
         ['docstatus', '=', 1],
       ]),
-      listParam('fields', ['name', 'voucher_no', 'reserved_qty', 'status']),
+      listParam('fields', ['name', 'voucher_no', 'voucher_detail_no', 'reserved_qty', 'status']),
       'limit_page_length=0',
     ].join('&')
-    return erpnextGet<{ data: { name: string; voucher_no: string; reserved_qty: number; status: string }[] }>(
+    return erpnextGet<{
+      data: { name: string; voucher_no: string; voucher_detail_no?: string | null; reserved_qty: number; status: string }[]
+    }>(
       `/api/resource/Stock Reservation Entry?${qs}`
     ).then((r) => r.data ?? [])
   })
@@ -227,7 +275,7 @@ export async function reservationsForBatches(
   // 2) Resolve each SRE back to the batch(es) it reserves (child table read via full doc).
   //    Concurrency-capped like the other ERPNext fan-outs so a big bin can't fire dozens
   //    of simultaneous full-doc GETs and blow the function timeout.
-  const byBatch: Record<string, { so: string; reservedQty: number; status: string; sre: string }> = {}
+  const byBatch: Record<string, { so: string; soItem: string | null; reservedQty: number; status: string; sre: string }> = {}
   await mapLimit(sres, SO_FETCH_CONCURRENCY, async (s) => {
     try {
       const full = await erpnextGetDoc<{ sb_entries?: { batch_no: string; qty: number }[] }>(
@@ -239,6 +287,7 @@ export async function reservationsForBatches(
         if (b && uniqSet.has(b) && !byBatch[b]) {
           byBatch[b] = {
             so: s.voucher_no,
+            soItem: s.voucher_detail_no ?? null,
             reservedQty: Number(e.qty) || Number(s.reserved_qty) || 0,
             status: s.status,
             sre: s.name,
@@ -270,6 +319,7 @@ export async function reservationsForBatches(
     out[batch] = {
       batch,
       so: v.so,
+      soItem: v.soItem,
       customer: soInfo[v.so]?.customer ?? null,
       poNo: soInfo[v.so]?.poNo ?? null,
       reservedQty: v.reservedQty,
@@ -343,10 +393,10 @@ export interface ReserveInput {
  *  and whether the order auto-staged. */
 export async function reserveBatchesToSO(
   input: ReserveInput
-): Promise<Committed & { reserved: number; staged: boolean; fullyReservedSoItems: string[] }> {
+): Promise<Committed & { reserved: number; staged: boolean; fullyReservedSoItems: string[]; allocations: Record<string, string> }> {
   const { soName, items } = input
   if (items.length === 0)
-    return { stockEntry: null, reserved: 0, staged: false, fullyReservedSoItems: [], extra: { reserved: 0, staged: false } }
+    return { stockEntry: null, reserved: 0, staged: false, fullyReservedSoItems: [], allocations: {}, extra: { reserved: 0, staged: false } }
 
   const so = await erpnextGetDoc<SODoc>('Sales Order', soName)
   if (so.docstatus !== 1 || OPEN_SO_EXCLUDE.includes(so.status)) {
@@ -376,10 +426,12 @@ export async function reserveBatchesToSO(
       line = (so.items ?? []).find((l) => l.name === p.salesOrderItem)
       if (line && p.qty > remainingOf(line) + 1e-6) line = undefined
     } else {
-      // first line of this item that can take the WHOLE pallet
-      line = (so.items ?? []).find(
-        (l) => l.item_code === p.itemCode && l.reserve_stock && p.qty <= remainingOf(l) + 1e-6
-      )
+      // SOONEST-DUE line of this item that can take the WHOLE pallet — never
+      // child-table row order (see byLineDueDate; line 2491 stuck MAKING while
+      // its pallets sat reserved to the October release, Simon 2026-07-20).
+      line = (so.items ?? [])
+        .filter((l) => l.item_code === p.itemCode && l.reserve_stock && p.qty <= remainingOf(l) + 1e-6)
+        .sort(byLineDueDate)[0]
     }
     if (!line) {
       const itemLines = (so.items ?? []).filter((l) => l.item_code === p.itemCode && l.reserve_stock)
@@ -476,7 +528,16 @@ export async function reserveBatchesToSO(
     staged = true
   }
 
-  return { stockEntry: null, reserved, staged, fullyReservedSoItems, extra: { reserved, staged } }
+  // allocations: which release line (SO Item) each batch actually bound to —
+  // callers print it on the pallet label so the floor can match pallet → line.
+  return {
+    stockEntry: null,
+    reserved,
+    staged,
+    fullyReservedSoItems,
+    allocations: Object.fromEntries(allocations),
+    extra: { reserved, staged },
+  }
 }
 
 /** ERPNext-friendly "now" (YYYY-MM-DD HH:MM:SS, local server tz per Frappe convention). */

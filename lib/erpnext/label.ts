@@ -41,6 +41,9 @@ export interface PalletLabel {
   customerPartNo?: string // the customer's own part number (from customer_part_mappings); printed when an SO is attached
   customerPo?: string // the customer's PO number (the SO's po_no); printed when an SO is attached
   salesOrder?: string // printed when the pallet is attached to a sales order
+  lineNo?: string // dashboard line number of the reserved release line — the floor's
+  // unique handle for a release (matches the packing sheet); printed with the SO
+  // so staging can match pallet → line (Simon 2026-07-20)
   weight?: string // optional, captured at print time
   dimensions?: string // optional, captured at print time
   generatedAt?: string // date+time the label was generated (printed in the scan zone)
@@ -129,6 +132,7 @@ export function buildPalletZpl(label: PalletLabel): string {
   const customerPartNo = z(label.customerPartNo, 24)
   const customerPo = z(label.customerPo, 28)
   const salesOrder = z(label.salesOrder, 34)
+  const lineNo = z(label.lineNo, 12)
   const weight = z(label.weight, 24)
   const dimensions = z(label.dimensions, 30)
   const batch = z(label.batch, 24)
@@ -180,7 +184,15 @@ export function buildPalletZpl(label: PalletLabel): string {
     lines.push(T(x, Y, 32, `Dimensions: ${dimensions}`))
     x -= 44
   }
-  if (salesOrder) {
+  // Line number + SO share one row, line first and a touch larger (38, like
+  // Cust P/N) — the line number is the floor's unique release handle (matches
+  // the packing sheet), the SO is context (Simon 2026-07-20). One row, not two:
+  // the left column's step-down budget can't fit an extra row when every
+  // optional field prints on a branded label.
+  if (lineNo && salesOrder) {
+    lines.push(T(x, Y, 38, `Line ${lineNo} · ${salesOrder}`))
+    x -= 50
+  } else if (salesOrder) {
     lines.push(T(x, Y, 32, `Sales Order: ${salesOrder}`))
     x -= 44
   }

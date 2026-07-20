@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { listOpenSalesOrdersForItem } from '@/lib/erpnext/staging'
+import { dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
 
 // GET /api/erpnext/staging/orders?itemCode=<code>
 // Open Sales Orders that include this item, each with ordered-vs-reserved qty so the operator
@@ -19,7 +20,17 @@ export async function GET(req: NextRequest) {
   }
   try {
     const salesOrders = await listOpenSalesOrdersForItem(itemCode)
-    return NextResponse.json({ salesOrders }, { headers: { 'Cache-Control': 'no-store' } })
+    // Stamp each release line with its dashboard line number — the floor's
+    // unique handle (it's what the packing sheet shows). Operators pick a LINE,
+    // not an SO (Simon 2026-07-20).
+    const lineMap = await dashboardLinesForSoItems(
+      salesOrders.flatMap((o) => o.lines.map((l) => l.soItem))
+    )
+    const withLines = salesOrders.map((o) => ({
+      ...o,
+      lines: o.lines.map((l) => ({ ...l, dashboardLine: lineMap[l.soItem] ?? null })),
+    }))
+    return NextResponse.json({ salesOrders: withLines }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('staging orders lookup failed:', error)
     return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })
