@@ -163,6 +163,13 @@ export async function POST(req: NextRequest) {
         return existing?.id ?? null
       },
     })
+    // Non-serialized items have no reservation concept — an SO here is informational
+    // text on the generic label (pre-existing contract). Say so explicitly, so the
+    // client's fail-closed serialized check doesn't misread the absence of a staging
+    // report as a failed attach (grok review round 3).
+    if (salesOrder && result.status >= 200 && result.status < 300) {
+      result.body.staging = { attached: false, reserved: 0, staged: false, informational: true }
+    }
     return NextResponse.json(result.body, { status: result.status })
   }
 
@@ -293,6 +300,15 @@ export async function POST(req: NextRequest) {
       if (error) throw new Error(error.message)
       if (job?.id) return job.id
       // Conflict (job already queued): recover its id so the op log keeps the link.
+      // If the job is STILL PENDING, refresh its ZPL — a resumed op can reach a
+      // different attach outcome than the crashed attempt that enqueued it, and the
+      // physical label must match the final outcome (grok review). Claimed/printed
+      // jobs are never touched (that would reprint them).
+      await supabaseAdmin
+        .from('print_jobs')
+        .update({ zpl })
+        .eq('idempotency_key', `print-${idempotencyKey}`)
+        .eq('status', 'pending')
       const { data: existing } = await supabaseAdmin
         .from('print_jobs')
         .select('id')

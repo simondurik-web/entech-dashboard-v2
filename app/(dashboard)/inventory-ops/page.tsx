@@ -1335,11 +1335,16 @@ export default function InventoryOpsPage() {
       // The server attaches the pallet to the picked SO BEFORE printing; if the attach
       // failed, the label printed WITHOUT the order — that must be a loud, long-lived
       // error, not a green toast (silent-attach-failure incident, pallet DQ0N 2026-07-16).
-      const staging = d.staging as { attached?: boolean; warning?: string } | undefined
+      const staging = d.staging as
+        | { attached?: boolean; warning?: string; informational?: boolean }
+        | undefined
       // Fail CLOSED: when an SO was picked, anything short of an explicit attached:true
-      // (missing field, unexpected shape, old server) is treated as an attach failure —
-      // a false alarm is recoverable, a false success was the DQ0N incident.
-      if (salesOrder && staging?.attached !== true) {
+      // is treated as an attach failure — a false alarm is recoverable, a false success
+      // was the DQ0N incident. The one exception is the server saying `informational`:
+      // non-serialized items have no reservation concept, their SO is label text only.
+      // (Client and API deploy atomically on Vercel, so the server always speaks this
+      // contract by the time this code runs.)
+      if (salesOrder && staging?.attached !== true && staging?.informational !== true) {
         showFlash(
           'err',
           t('inventoryOps.soAttachFailed')

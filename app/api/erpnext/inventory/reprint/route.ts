@@ -152,17 +152,18 @@ export async function POST(req: NextRequest) {
         'Batch',
         printBatch
       ).catch(() => null)
-      // The reprinted label carries order info ONLY if the new serial actually holds a
-      // reservation right now (same invariant as add: SO on a label ⟺ attached). This is
-      // read AFTER the erp() transfer, so a failed transfer honestly prints SO-less —
-      // and it's the recovery path for an attach-failed add: attach in Prepare for
-      // staging, then Reprint yields a full label (DQ0N incident, 2026-07-20).
-      const printReservation = (
-        await reservationsForBatches([printBatch]).catch(
-          () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
-        )
-      )[printBatch]
-      const customerPartNo = printReservation
+      // The reprinted label carries order info ONLY if the new serial holds a FULL
+      // reservation right now (same invariant as add: SO on a label ⟺ attached for the
+      // pallet's whole quantity — a partial bind must not produce an SO-labeled whole
+      // pallet). Read AFTER the erp() transfer, so a failed transfer honestly prints
+      // SO-less — and this is the recovery path for an attach-failed add: attach in
+      // Prepare for staging, then Reprint yields a full label (DQ0N incident,
+      // 2026-07-20). NO catch on the lookup: if we can't verify the attachment we must
+      // not guess what the label should say — the throw lands in the op's labelPending
+      // flow ("label pending — reprint"), whose retry is exactly the right recovery.
+      const printReservation = (await reservationsForBatches([printBatch]))[printBatch]
+      const fullyReserved = printReservation && printReservation.reservedQty + 1e-6 >= target
+      const customerPartNo = fullyReserved
         ? await resolveCustomerPartNo(itemCode, {
             salesOrder: printReservation.so,
             customer: printReservation.customer ?? undefined,
@@ -174,9 +175,9 @@ export async function POST(req: NextRequest) {
         qty: target,
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
-        salesOrder: printReservation?.so,
+        salesOrder: fullyReserved ? printReservation.so : undefined,
         customerPartNo: customerPartNo ?? undefined,
-        customerPo: printReservation?.poNo ?? undefined,
+        customerPo: fullyReserved ? (printReservation.poNo ?? undefined) : undefined,
         weight: batchDoc?.custom_pallet_weight ? `${batchDoc.custom_pallet_weight} lb` : undefined,
         dimensions: batchDoc?.custom_pallet_dims || undefined,
         brand: brandForItemGroup(item.item_group),
