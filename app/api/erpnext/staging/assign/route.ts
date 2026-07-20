@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { reserveBatchesToSO, reservationsForBatches, releaseBatchReservation } from '@/lib/erpnext/staging'
-import { reserveNextSerial, reissuePallet, getBatchLocation, assertBatchItem } from '@/lib/erpnext/inventory'
+import { reserveNextSerial, reissuePallet, getBatchLocation, assertBatchItem, palletBase } from '@/lib/erpnext/inventory'
 import { buildPalletZpl, labelTimestamp, brandForItemGroup } from '@/lib/erpnext/label'
 import { resolveCustomerPartNo, resolveSalesOrderPoNo } from '@/lib/erpnext/customer-part'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
 import { logFulfillment, flipDashboardStatus, dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
-import { withLineLock } from '@/lib/erpnext/line-lock'
+import { withLeases, LineLockedError } from '@/lib/erpnext/line-lock'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/staging/assign
@@ -295,19 +295,25 @@ export async function POST(req: NextRequest) {
     relabels: moves,
   })
 
-  const result = await runInventoryOp({
+  // Staging leases, claimed BEFORE the op row exists: one per Sales ORDER
+  // (auto and explicit-line requests contend on the same key) plus one per
+  // moved pallet's family (two requests fighting over the same pallet contend
+  // even across different orders). A lock miss is a clean 409 "try again", not
+  // a dirtied op row (grok lock-review). The lease spans the whole op — TTL
+  // 130s > maxDuration 120s.
+  let result: Awaited<ReturnType<typeof runInventoryOp>>
+  try {
+    result = await withLeases(
+      [`so:${soName}`, ...moves.map((m) => `pallet:${palletBase(m.oldBatch)}`)],
+      idempotencyKey,
+      () =>
+        runInventoryOp({
     key: idempotencyKey,
     action: 'stage-reserve',
     createdBy: userId,
     // family null: spans many pallets, no Stock Entry, so it sits outside the per-pallet lock.
     meta: { warehouse: soName, qty: pallets.length, item_code: fingerprint, batch: null, family: null },
-    // The WHOLE destructive phase runs under the per-line lease: two stations
-    // aiming at the same line (or same order, when auto-allocating) serialize
-    // instead of both passing the capacity check and stranding the loser's
-    // pallet released+reissued with no destination reservation (codex review
-    // residual, Simon-approved build 2026-07-20). Re-entrant per idempotency
-    // key, TTL-expiring, fail-closed on lock-service errors.
-    erp: () => withLineLock(salesOrderItem ? `${soName}:${salesOrderItem}` : soName, idempotencyKey, async () => {
+    erp: async () => {
       // Moved pallets: release the old reservation, REISSUE the pallet to its
       // PINNED new code (ERPNext rejects the old label natively, so the stale
       // physical label can never ship the wrong order — Simon 2026-07-03).
@@ -535,8 +541,15 @@ export async function POST(req: NextRequest) {
           relabels: moves.map((m) => ({ oldBatch: m.oldBatch, newBatch: m.newBatch })),
         },
       }
-    }),
-  })
+    },
+        })
+    )
+  } catch (e) {
+    if (e instanceof LineLockedError) {
+      return NextResponse.json({ error: e.message }, { status: 409 })
+    }
+    throw e
+  }
 
   return NextResponse.json(result.body, { status: result.status })
 }
