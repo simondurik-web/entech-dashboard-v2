@@ -46,8 +46,10 @@ export async function POST(req: NextRequest) {
   const { itemCode, warehouse, station, customer, ref, idempotencyKey } = body
   const salesOrder = body.salesOrder?.trim() || undefined
   // Customer part number for the label — only when an SO is attached (Simon 2026-07-06).
-  const customerPartNoP = salesOrder && itemCode ? resolveCustomerPartNo(itemCode, { customer, salesOrder }) : Promise.resolve(null)
-  const customerPoP = salesOrder ? resolveSalesOrderPoNo(salesOrder) : Promise.resolve(null)
+  // .catch at creation: these may go UNAWAITED (attach failure prints an SO-less label),
+  // and an unawaited rejection would be an unhandled promise rejection (gemini review).
+  const customerPartNoP = salesOrder && itemCode ? resolveCustomerPartNo(itemCode, { customer, salesOrder }).catch(() => null) : Promise.resolve(null)
+  const customerPoP = salesOrder ? resolveSalesOrderPoNo(salesOrder).catch(() => null) : Promise.resolve(null)
   const qty = Number(body.qty)
   // Optional pallet weight/dims (Simon 2026-07-03): stored on the Batch and
   // printed on the label. Dims must be the normalized NxNxN the three-box UI
@@ -195,6 +197,9 @@ export async function POST(req: NextRequest) {
     warning?: string
   }
   const attachRef: { current: AttachOutcome | null } = { current: null }
+  // Set when a retry couldn't refresh an already-enqueued job's ZPL (claimed mid-race
+  // or update error) — the physical label may not match the final attach outcome.
+  const labelMaybeStaleRef = { current: false }
 
   // Reserve the pallet's batch to the chosen Sales Order. Returns rather than throws:
   // the label must still print (SO-less) when the order can't take the pallet.
@@ -238,7 +243,7 @@ export async function POST(req: NextRequest) {
       } catch {
         // Keep the original reserve error.
       }
-      return { ...none, warning: (e as Error).message }
+      return { ...none, warning: e instanceof Error ? e.message : String(e) }
     }
   }
 
@@ -303,12 +308,16 @@ export async function POST(req: NextRequest) {
       // If the job is STILL PENDING, refresh its ZPL — a resumed op can reach a
       // different attach outcome than the crashed attempt that enqueued it, and the
       // physical label must match the final outcome (grok review). Claimed/printed
-      // jobs are never touched (that would reprint them).
-      await supabaseAdmin
+      // jobs are never touched (that would reprint them); when the refresh loses that
+      // race (0 rows) or errors, the possibly-stale label is flagged for reprint
+      // below instead of silently finalizing (codex/grok round-3).
+      const { data: refreshed, error: refreshErr } = await supabaseAdmin
         .from('print_jobs')
         .update({ zpl })
         .eq('idempotency_key', `print-${idempotencyKey}`)
         .eq('status', 'pending')
+        .select('id')
+      if (refreshErr || (refreshed?.length ?? 0) === 0) labelMaybeStaleRef.current = true
       const { data: existing } = await supabaseAdmin
         .from('print_jobs')
         .select('id')
@@ -328,6 +337,15 @@ export async function POST(req: NextRequest) {
         reserved: attach.reserved,
         staged: attach.staged,
         ...(attach.warning ? { warning: attach.warning } : {}),
+      }
+      // Backward-compat loud-ish signal for STALE OPEN TABS (pre-deploy client bundles
+      // on long-lived floor kiosks never read `staging`): labelPending is a field old
+      // clients already render ("label pending - reprint"). It is also the literally
+      // correct instruction — after attaching in Prepare for staging, Reprint produces
+      // the full SO label (codex round-3 BLOCK). Same flag when a retry may have left a
+      // stale ZPL in the queue.
+      if (!attach.attached || labelMaybeStaleRef.current) {
+        result.body.labelPending = true
       }
       // Instant status flip for the lines this pallet fully covered — the
       // 5-min sync reaches the same answer, this just kills the lag window

@@ -104,6 +104,14 @@ export async function POST(req: NextRequest) {
     newBatch = await reserveNextSerial(batch)
   }
 
+  // Whether this reprint RELEASED a reservation it then failed (or never got) to
+  // re-bind to the new serial. Set inside erp(); read by the label step to tell
+  // "transfer legitimately failed → honest SO-less label" apart from "transfer should
+  // have happened but the live lookup can't see it → don't guess, go labelPending"
+  // (codex/grok round-3). Both refs stay false on a resumed op that skips erp().
+  const hadReservationRef = { current: false }
+  const transferFailedRef = { current: false }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'reprint',
@@ -120,6 +128,7 @@ export async function POST(req: NextRequest) {
       // the SO's staging status.
       const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
       if (reservation) {
+        hadReservationRef.current = true
         await releaseBatchReservation(batch)
       }
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
@@ -131,8 +140,11 @@ export async function POST(req: NextRequest) {
               soName: reservation.so,
               items: [{ batch: newBatch, itemCode, warehouse: loc.warehouse, qty: loc.qty }],
             })
+          } else {
+            transferFailedRef.current = true
           }
         } catch (e) {
+          transferFailedRef.current = true
           console.error(`reprint: reservation transfer ${batch} -> ${newBatch} failed:`, e)
         }
       }
@@ -163,6 +175,12 @@ export async function POST(req: NextRequest) {
       // flow ("label pending — reprint"), whose retry is exactly the right recovery.
       const printReservation = (await reservationsForBatches([printBatch]))[printBatch]
       const fullyReserved = printReservation && printReservation.reservedQty + 1e-6 >= target
+      if (hadReservationRef.current && !transferFailedRef.current && !fullyReserved) {
+        // The transfer was made (no failure recorded) yet the live lookup can't see a
+        // full reservation — could be a suppressed read inside the lookup. Don't guess
+        // what the label should say; labelPending's retry re-reads and decides.
+        throw new Error('reservation transfer to the new label is unverified — retry the reprint')
+      }
       const customerPartNo = fullyReserved
         ? await resolveCustomerPartNo(itemCode, {
             salesOrder: printReservation.so,
