@@ -517,10 +517,12 @@ export default function InventoryOpsPage() {
   // ─── flash + refresh helper ───
   const [flash, setFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const showFlash = (kind: 'ok' | 'err', msg: string) => {
+  // durationMs: critical errors the operator must act on (e.g. label printed but the
+  // sales-order attach failed) stay up longer than the default toast.
+  const showFlash = (kind: 'ok' | 'err', msg: string, durationMs = 5000) => {
     setFlash({ kind, msg })
     if (flashRef.current) clearTimeout(flashRef.current)
-    flashRef.current = setTimeout(() => setFlash(null), 5000)
+    flashRef.current = setTimeout(() => setFlash(null), durationMs)
   }
 
   // ─── Confirmation dialog (delete + reprint) ───
@@ -1330,7 +1332,44 @@ export default function InventoryOpsPage() {
       }
       addKeyRef.current = null // success -> next add gets a fresh key
       const addedItemCode = addItem.itemCode
-      showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
+      // The server attaches the pallet to the picked SO BEFORE printing; if the attach
+      // failed, the label printed WITHOUT the order — that must be a loud, long-lived
+      // error, not a green toast (silent-attach-failure incident, pallet DQ0N 2026-07-16).
+      const staging = d.staging as
+        | { attached?: boolean; warning?: string; informational?: boolean }
+        | undefined
+      // Fail CLOSED: when an SO was picked, anything short of an explicit attached:true
+      // is treated as an attach failure — a false alarm is recoverable, a false success
+      // was the DQ0N incident. The one exception is the server saying `informational`:
+      // non-serialized items have no reservation concept, their SO is label text only.
+      // (Client and API deploy atomically on Vercel, so the server always speaks this
+      // contract by the time this code runs.)
+      if (salesOrder && staging?.attached !== true && staging?.informational !== true) {
+        showFlash(
+          'err',
+          t('inventoryOps.soAttachFailed')
+            .replace('{batch}', String(d.batch ?? ''))
+            .replace('{so}', salesOrder) +
+            (d.labelPending ? ` (${t('inventoryOps.labelPending')})` : '') +
+            (staging?.warning ? ` — ${staging.warning}` : ''),
+          20000
+        )
+      } else if (salesOrder && staging?.attached === true && d.labelPending) {
+        // Attached, but the physical label may not match (stale queued ZPL, or a
+        // replayed op whose original label content can't be verified) — the fix is a
+        // Reprint, said loudly rather than as a green-toast footnote (codex round 4).
+        showFlash(
+          'err',
+          t('inventoryOps.labelStale')
+            .replace('{batch}', String(d.batch ?? ''))
+            .replace('{so}', salesOrder),
+          20000
+        )
+      } else {
+        const attachedNote =
+          salesOrder && staging?.attached ? ` — ${t('inventoryOps.soAttached').replace('{so}', salesOrder)}` : ''
+        showFlash('ok', `${t('inventoryOps.added')} ${d.batch}${attachedNote}${d.labelPending ? ` (${t('inventoryOps.labelPending')})` : ''}`)
+      }
       setAddItem(null)
       setItemQuery('')
       setAddQty('')
@@ -1491,7 +1530,31 @@ export default function InventoryOpsPage() {
       clearOpKey('reprint', batch, station)
       const serial = (d.batch as string) ?? batch
       // A reprint reissues the pallet as a new serial (old label is voided); follow it.
-      showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      // 2xx is NOT blanket success: the reservation may have failed to move to the new
+      // serial (pallet silently un-staged), or the new label may not have printed
+      // (labelPending) — both need a loud, long-lived error (codex review round 4).
+      const reprintStaging = d.staging as
+        | { attached?: boolean; warning?: string; reason?: string }
+        | undefined
+      if (reprintStaging?.attached === false) {
+        // 'transfer_failed' = the server KNOWS the reservation didn't move (strong
+        // message); anything else = it couldn't be verified — could be a never-staged
+        // pallet's replay, so the wording is conditional (round-6 consensus). A label
+        // failure on top must not be masked by this branch (codex round-6).
+        const detachMsg =
+          reprintStaging.reason === 'transfer_failed'
+            ? t('inventoryOps.reprintDetached').replace('{batch}', serial)
+            : t('inventoryOps.reprintCheckStaging').replace('{batch}', serial)
+        showFlash(
+          'err',
+          detachMsg + (d.labelPending ? ` ${t('inventoryOps.labelPendingReprint').replace('{batch}', serial)}` : ''),
+          20000
+        )
+      } else if (d.labelPending) {
+        showFlash('err', t('inventoryOps.labelPendingReprint').replace('{batch}', serial), 20000)
+      } else {
+        showFlash('ok', `${t('inventoryOps.reprinted')} ${serial !== batch ? `${batch} -> ${serial}` : batch}`)
+      }
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       refreshAfterMutation(itemCode)
       loadRecentLabels(recentExpanded) // a new label was printed
