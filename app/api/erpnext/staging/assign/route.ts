@@ -189,13 +189,17 @@ export async function POST(req: NextRequest) {
       )
     }
     // The reservation being moved must be the one the OPERATOR was shown when
-    // they confirmed — a reservation that changed between the client's lookup
-    // and this request must be re-confirmed, not silently released.
-    const drifted = conflicts.filter(({ p, r }) => p.sre && p.sre !== r.sre)
+    // they confirmed — REQUIRED, not optional: a reservation that appeared
+    // after the client's scan arrives with no sre and would otherwise ride an
+    // allowMove=true request into release without ever being in the confirm
+    // dialog (codex round-12). Pre-upgrade tabs that can't send sre get a clean
+    // 409 and recover by refreshing.
+    const drifted = conflicts.filter(({ p, r }) => !p.sre || p.sre !== r.sre)
     if (drifted.length > 0) {
       return NextResponse.json(
         {
-          error: 'Some pallet reservations changed since they were scanned — remove and re-scan them',
+          error:
+            'Some pallet reservations changed since they were scanned — remove and re-scan them (or refresh the page)',
           moves: drifted.map(({ r }) => ({ batch: r.batch, so: r.so, soItem: r.soItem, customer: r.customer })),
         },
         { status: 409 }
