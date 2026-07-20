@@ -107,7 +107,23 @@ export async function POST(req: NextRequest) {
   let moves: MovePlan[]
   if (priorOp?.item_code) {
     try {
-      moves = (JSON.parse(priorOp.item_code).relabels ?? []) as MovePlan[]
+      const stored = JSON.parse(priorOp.item_code) as { relabels?: MovePlan[]; batches?: string[] }
+      moves = stored.relabels ?? []
+      // Rebuild pallet quantities from the STORED canonical identity, never the
+      // retry body: the fresh run canonicalized qtys from ERPNext, and a replay
+      // recomputing the fingerprint from client values 409'd the exact
+      // resume-after-partial-move this plan exists to survive (grok round-9).
+      // Doubles as the tamper guard — a crafted retry body can't change what
+      // gets reserved (codex round-8).
+      const storedQty = new Map<string, number>()
+      for (const s of stored.batches ?? []) {
+        const i = s.lastIndexOf(':')
+        if (i > 0) storedQty.set(s.slice(0, i), Number(s.slice(i + 1)))
+      }
+      for (const p of pallets) {
+        const q = storedQty.get(p.batch)
+        if (q != null && Number.isFinite(q) && q > 0) p.qty = q
+      }
     } catch {
       moves = []
     }

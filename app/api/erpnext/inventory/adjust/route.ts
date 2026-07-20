@@ -177,7 +177,9 @@ export async function POST(req: NextRequest) {
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
       if (reservation) {
         try {
-          await releaseBatchReservation(batch)
+          // Pin the release to the snapshotted SRE — a concurrent reassignment
+          // between the snapshot and here must not be cancelled (codex round-9).
+          await releaseBatchReservation(batch, reservation.sre)
           const loc = await getBatchLocation(newBatch, itemCode)
           if (loc && loc.qty > 0) {
             await reserveBatchesToSO({
