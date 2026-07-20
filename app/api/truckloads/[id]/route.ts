@@ -5,7 +5,7 @@ import { logFulfillment } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { attachCustomerPartNumbers, conflictingOrderKeys, conflictingOrderLines, distinctCustomers, getTruckload, ACTIVE_TL_STATUSES } from '@/lib/truckloads'
 import { getFulfillmentOrder } from '@/lib/erpnext/fulfillment'
-import { erpnextGetDoc } from '@/lib/erpnext/client'
+import { batchWeightDims } from '@/lib/erpnext/inventory'
 
 // One truckload — GET full (incl. calculator snapshot for the load sheet /
 // re-opening in the calculator), PATCH edit (notes, snapshot, add/remove
@@ -61,15 +61,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         ),
       ]
       const weightOf = new Map<string, number>()
-      const CONC = 6
-      for (let i = 0; i < allIds.length; i += CONC) {
-        await Promise.all(
-          allIds.slice(i, i + CONC).map(async (b) => {
-            const doc = await erpnextGetDoc<{ custom_pallet_weight?: number }>('Batch', b).catch(() => null)
-            const w = Number(doc?.custom_pallet_weight)
-            if (Number.isFinite(w) && w > 0) weightOf.set(b, w)
-          })
-        )
+      try {
+        // ONE chunked list query, not N doc reads (grok review) — same helper
+        // the label-history rows use.
+        for (const [b, wd] of await batchWeightDims(allIds)) {
+          const w = Number(wd.weightLb)
+          if (Number.isFinite(w) && w > 0) weightOf.set(b, w)
+        }
+      } catch (e) {
+        console.error('TL weight lookup failed (sheet prints dashes):', e)
       }
       for (const o of truckload.truckload_orders) {
         const ids = (o as unknown as { pallet_ids?: string[] }).pallet_ids ?? []

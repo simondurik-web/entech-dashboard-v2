@@ -32,7 +32,17 @@ export async function POST(req: NextRequest) {
     // bad label are the same job (Simon 2026-07-20). Users with neither an
     // office role nor any printer stay locked out.
     const allowed = await allowedStationIds(guard.userId, guard.role)
-    const canPrint = allowed === 'all' || allowed.size > 0
+    let canPrint = allowed === 'all'
+    if (!canPrint && allowed.size > 0) {
+      // The grant must point at an ENABLED station — a stale grant to a
+      // decommissioned printer is not printing ability (codex review).
+      const { data } = await supabaseAdmin
+        .from('print_stations')
+        .select('id')
+        .eq('enabled', true)
+        .in('id', [...allowed])
+      canPrint = (data ?? []).length > 0
+    }
     if (!canPrint) {
       return NextResponse.json({ error: 'Deleting a label requires label-printing access' }, { status: 403 })
     }
