@@ -413,8 +413,14 @@ export async function POST(req: NextRequest) {
       const committedBatch = (result.body?.batch as string | undefined) ?? batch
       try {
         const existing = (await reservationsForBatches([committedBatch]))[committedBatch]
+        // A pinned line must be THE reserved line — a replay after the operator
+        // changed lines must surface the mismatch, not claim attached to the
+        // new pick while the reservation (and printed label) sit on the old
+        // line (codex round-5).
         result.body.staging =
-          existing?.so === salesOrder && existing.reservedQty + 1e-6 >= qty
+          existing?.so === salesOrder &&
+          existing.reservedQty + 1e-6 >= qty &&
+          (!salesOrderItem || existing.soItem === salesOrderItem)
             ? { attached: true, reserved: 0, staged: false }
             : {
                 attached: false,
@@ -422,7 +428,9 @@ export async function POST(req: NextRequest) {
                 staged: false,
                 warning: existing
                   ? existing.so === salesOrder
-                    ? `Pallet ${committedBatch} is only partially reserved to ${salesOrder} (${existing.reservedQty} of ${qty})`
+                    ? existing.reservedQty + 1e-6 >= qty
+                      ? `Pallet ${committedBatch} is reserved to a different release line of ${salesOrder} — fix it in Prepare for staging`
+                      : `Pallet ${committedBatch} is only partially reserved to ${salesOrder} (${existing.reservedQty} of ${qty})`
                     : `Pallet ${committedBatch} is reserved to ${existing.so}, not ${salesOrder}`
                   : `Pallet ${committedBatch} is not attached to ${salesOrder}`,
               }

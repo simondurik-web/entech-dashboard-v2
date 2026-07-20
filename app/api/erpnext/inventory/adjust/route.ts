@@ -6,6 +6,7 @@ import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } f
 import { buildPalletZpl, labelTimestamp } from '@/lib/erpnext/label'
 import { erpnextGetDoc } from '@/lib/erpnext/client'
 import { runInventoryOp, resolveUserName } from '@/lib/erpnext/operation'
+import { dashboardLinesForSoItems } from '@/lib/erpnext/fulfillment-audit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/adjust — change a pallet's qty, SERIALIZED.
@@ -197,12 +198,29 @@ export async function POST(req: NextRequest) {
     label: async (committed) => {
       const printBatch = committed.batch ?? newBatch
       const item = await erpnextGetDoc<{ item_name?: string; stock_uom?: string }>('Item', itemCode)
+      // An adjusted STAGED pallet keeps its order across the reissue — the
+      // replacement label must carry the SO + release line the floor stages by,
+      // not print bare (codex round-5). Same invariant as reprint: order info
+      // only with a FULL live reservation; lookup failure prints bare (the op
+      // separately warns reservation_transfer_failed).
+      const printReservation = (
+        await reservationsForBatches([printBatch]).catch(
+          () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
+        )
+      )[printBatch]
+      const fullyReserved = !!printReservation && printReservation.reservedQty + 1e-6 >= target
+      const printLineNo =
+        fullyReserved && printReservation.soItem
+          ? (await dashboardLinesForSoItems([printReservation.soItem]))[printReservation.soItem]
+          : undefined
       const zpl = buildPalletZpl({
         itemCode,
         itemName: item.item_name ?? itemCode,
         qty: target,
         uom: item.stock_uom ?? 'pcs',
         batch: printBatch,
+        salesOrder: fullyReserved ? printReservation.so : undefined,
+        lineNo: printLineNo != null ? String(printLineNo) : undefined,
         generatedAt: labelTimestamp(),
         printedBy,
       })

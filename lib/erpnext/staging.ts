@@ -343,11 +343,21 @@ export async function reservationsForBatches(
  *  staged order back to Open so it shows as needing staging again. Used by the
  *  move-to-another-order flow (Simon 2026-07-03). */
 export async function releaseBatchReservation(
-  batch: string
+  batch: string,
+  expectedSre?: string
 ): Promise<{ released: boolean; fromSo?: string; customer?: string | null }> {
   const res = (await reservationsForBatches([batch]))[batch]
   if (!res) return { released: false }
-  await erpnextCancel('Stock Reservation Entry', res.sre)
+  // Pinned release: cancel ONLY the reservation the caller confirmed. A
+  // concurrent replacement reservation on the batch must never be cancelled
+  // without operator confirmation (codex round-5 TOCTOU). Cancelling by the
+  // PINNED name (not the re-resolved one) closes the check-to-cancel gap.
+  if (expectedSre && res.sre !== expectedSre) {
+    throw new Error(
+      `Pallet ${batch}'s reservation changed since the operation was confirmed — re-scan and try again`
+    )
+  }
+  await erpnextCancel('Stock Reservation Entry', expectedSre ?? res.sre)
 
   const fromSo = res.so
   const progress = await getStagingProgress(fromSo)

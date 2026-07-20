@@ -252,11 +252,29 @@ export async function POST(req: NextRequest) {
         throw new Error(`Sales Order ${soName} is not open (status ${soLive.status})`)
       }
       // Live reservations BEFORE the moves — feeds the capacity re-check and the
-      // per-move SRE pin verification below (still keyed by the ORIGINAL batch
-      // codes; a replay whose moves already ran simply finds them released).
-      const liveBefore = await reservationsForBatches(pallets.map((p) => p.batch)).catch(
-        () => ({}) as Awaited<ReturnType<typeof reservationsForBatches>>
-      )
+      // per-move SRE pin verification below. Includes the move plan's NEW batch
+      // codes: a retry after a partial run finds the reissued pallet already
+      // reserved and must not count it as new demand (codex round-5 — that
+      // deadlocked the retry permanently). FAIL-CLOSED when moves exist: with a
+      // destructive plan ahead, an unreadable reservation state must stop the op.
+      let liveBefore: Awaited<ReturnType<typeof reservationsForBatches>>
+      try {
+        liveBefore = await reservationsForBatches([
+          ...pallets.map((p) => p.batch),
+          ...moves.map((m) => m.newBatch),
+        ])
+      } catch {
+        if (moves.length > 0) {
+          throw new Error('Could not verify current reservations before the move — nothing was changed, try again')
+        }
+        liveBefore = {}
+      }
+      // A pallet's reservation may live under its ORIGINAL code or, after a
+      // partial run, under its reissued move code.
+      const liveOf = (batch: string) => {
+        const mv = moves.find((m) => m.oldBatch === batch)
+        return liveBefore[batch] ?? (mv ? liveBefore[mv.newBatch] : undefined)
+      }
       if (salesOrderItem) {
         const pinLive = (soLive.items ?? []).find((l) => l.name === salesOrderItem)
         if (!pinLive || !pinLive.reserve_stock || pallets.some((p) => p.itemCode !== pinLive.item_code)) {
@@ -269,7 +287,7 @@ export async function POST(req: NextRequest) {
         // while the source reservations still exist (codex round-4).
         const needPcs = pallets
           .filter((p) => {
-            const r = liveBefore[p.batch]
+            const r = liveOf(p.batch)
             return !(r && r.so === soName && r.soItem === salesOrderItem && r.reservedQty + 1e-6 >= p.qty)
           })
           .reduce((s, p) => s + p.qty, 0)
@@ -297,7 +315,9 @@ export async function POST(req: NextRequest) {
 
       for (const m of moves) {
         const entry = pallets.find((p) => p.batch === m.oldBatch)
-        const rel = await releaseBatchReservation(m.oldBatch)
+        // Pinned release: only the SRE the operator confirmed may be cancelled
+        // (releaseBatchReservation throws on a changed reservation).
+        const rel = await releaseBatchReservation(m.oldBatch, m.sre)
         await reissuePallet({
           oldBatch: m.oldBatch,
           newBatch: m.newBatch,
