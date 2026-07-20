@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     // office role nor any printer stay locked out.
     const allowed = await allowedStationIds(guard.userId, guard.role)
     let canPrint = allowed === 'all'
-    if (!canPrint && allowed.size > 0) {
+    if (allowed !== 'all' && allowed.size > 0) {
       // The grant must point at an ENABLED station — a stale grant to a
       // decommissioned printer is not printing ability (codex review).
       const { data } = await supabaseAdmin
