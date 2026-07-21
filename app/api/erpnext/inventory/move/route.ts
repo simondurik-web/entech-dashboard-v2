@@ -48,12 +48,17 @@ export async function POST(req: NextRequest) {
   // Deterministic preflight on the FIRST attempt, BEFORE the locked op row exists: bad
   // warehouse / split / no-stock / uncarryable reservation returns 400 here instead of
   // throwing inside erp() (which would leave the family locked in failed_pre_erp).
-  // Skipped on retry (the row exists and runInventoryOp resumes/reconciles).
-  const { data: priorOp } = await supabaseAdmin
+  // Skipped on retry (the row exists and runInventoryOp resumes/reconciles). A FAILED
+  // lookup is a hard 503 — treating it as "no prior op" would drop the retry context
+  // (sinceIso) that reservation recovery depends on.
+  const { data: priorOp, error: priorErr } = await supabaseAdmin
     .from('inventory_ops_log')
     .select('idempotency_key, created_at')
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle()
+  if (priorErr) {
+    return NextResponse.json({ error: 'Operation log unavailable; try again shortly.' }, { status: 503 })
+  }
   if (!priorOp) {
     try {
       await transferPreflight(batch, itemCode, toWarehouse)
@@ -76,12 +81,23 @@ export async function POST(req: NextRequest) {
       const se = await reconcileStockEntry(idempotencyKey)
       if (!se) return null
       // The stock entry committed on a previous attempt — make sure the reservation
-      // survived (or restore it) before reporting the op done; never silent-drop a
-      // staged pallet's SO binding (review 2026-07-21).
-      const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, sinceIso })
+      // survived (or restore it, bound to the [carried:...] stamp on that entry)
+      // before reporting the op done; never silent-drop a staged pallet's SO binding
+      // (review 2026-07-21).
+      const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, stockEntry: se, sinceIso })
       return { batch, stockEntry: se, ...(follow ? { extra: follow } : {}) }
     },
   })
+
+  // A 'done'-row replay (duplicate:true) reproduces only the core body — the original
+  // response's reservation extras are not persisted. Re-derive them so a client that
+  // lost the first response still learns whether the reservation survived (a lost
+  // reservation must never replay as a clean success).
+  if (result.status === 200 && (result.body as { duplicate?: boolean }).duplicate) {
+    const se = (result.body as { stockEntry?: string | null }).stockEntry ?? null
+    const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, stockEntry: se, sinceIso })
+    if (follow) result.body = { ...result.body, ...follow }
+  }
 
   return NextResponse.json(result.body, { status: result.status })
 }
