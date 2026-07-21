@@ -54,10 +54,26 @@ async function activeTruckloadMemberSos(so: string): Promise<{ sos: string[]; mu
     .eq('truckload_id', tlIds[0])
     .eq('status', 'pending')
   if (mErr) throw new Error(mErr.message)
-  return {
-    sos: [...new Set((members ?? []).map((m) => m.so_number).filter((s): s is string => !!s && s !== so))],
-    multi: false,
+  const candidates = [...new Set((members ?? []).map((m) => m.so_number).filter((s): s is string => !!s && s !== so))]
+  if (candidates.length === 0) return { sos: [], multi: false }
+  // A sibling can ALSO ride another active truck (line-scoped membership) —
+  // writing its schedule here would silently overwrite that other truck's
+  // schedule for it. Ambiguous siblings are excluded from the fan-out
+  // (review panel 2026-07-21, codex round 3).
+  const { data: memberTls, error: mtErr } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('so_number, truckload_id, truckloads!inner(status)')
+    .in('so_number', candidates)
+    .eq('status', 'pending')
+    .in('truckloads.status', [...ACTIVE_TL_STATUSES])
+  if (mtErr) throw new Error(mtErr.message)
+  const tlsBySo = new Map<string, Set<string>>()
+  for (const r of memberTls ?? []) {
+    const s = r.so_number as string
+    if (!tlsBySo.has(s)) tlsBySo.set(s, new Set())
+    if (r.truckload_id) tlsBySo.get(s)!.add(String(r.truckload_id))
   }
+  return { sos: candidates.filter((s) => (tlsBySo.get(s)?.size ?? 0) <= 1), multi: false }
 }
 
 async function guardAny(req: NextRequest) {
@@ -68,17 +84,19 @@ async function guardAny(req: NextRequest) {
   return guard
 }
 
-/** dashboard_orders row ids belonging to an SO (if_number first-token match). */
-async function lineIdsForSo(so: string): Promise<number[]> {
+/** dashboard_orders row ids belonging to an SO (if_number first-token match).
+ *  Shipped rows are excluded — a schedule is pre-ship planning data and must
+ *  not rewrite history after the load leaves (review panel 2026-07-21). */
+async function lineIdsForSo(so: string): Promise<{ ids: number[]; shippedOnly: boolean }> {
   const { data, error } = await supabaseAdmin
     .from('dashboard_orders')
-    .select('id, if_number')
+    .select('id, if_number, work_order_status')
     .ilike('if_number', `${escapeLike(so)}%`)
     .limit(1000)
   if (error) throw new Error(error.message)
-  return (data ?? [])
-    .filter((r) => String(r.if_number ?? '').trim().split(/\s+/)[0] === so)
-    .map((r) => r.id as number)
+  const rows = (data ?? []).filter((r) => String(r.if_number ?? '').trim().split(/\s+/)[0] === so)
+  const unshipped = rows.filter((r) => String(r.work_order_status ?? '') !== 'shipped')
+  return { ids: unshipped.map((r) => r.id as number), shippedOnly: rows.length > 0 && unshipped.length === 0 }
 }
 
 export async function GET(req: NextRequest) {
@@ -142,16 +160,17 @@ export async function POST(req: NextRequest) {
   const scheduledShipDate = dateRaw || null
 
   try {
-    const ownIds = await lineIdsForSo(so)
-    if (ownIds.length === 0) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    const own = await lineIdsForSo(so)
+    if (own.shippedOnly) return NextResponse.json({ error: 'Order already shipped' }, { status: 409 })
+    if (own.ids.length === 0) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
     // One truck, one schedule: ACTIVE-truckload members ride along (skipped —
     // with a notice — when the SO's lines span multiple active trucks).
     const tl = await activeTruckloadMemberSos(so)
-    const allIds = [...ownIds]
+    const allIds = [...own.ids]
     const sos = [so]
     for (const sib of tl.sos) {
-      const ids = await lineIdsForSo(sib)
+      const { ids } = await lineIdsForSo(sib)
       if (ids.length) {
         allIds.push(...ids)
         sos.push(sib)
@@ -170,10 +189,11 @@ export async function POST(req: NextRequest) {
       .in('id', allIds)
     if (error) throw new Error(error.message)
 
-    // The Shipping Overview blob is unstable_cache'd (60s) — bust it so a
-    // saved schedule shows there immediately, not a minute later. ('max' =
-    // this Next version's expire-now profile; the 1-arg form was removed.)
-    revalidateTag('shipping-overview', 'max')
+    // The Shipping Overview blob is unstable_cache'd (60s) — expire it NOW so
+    // a saved schedule shows there immediately. (This Next version's
+    // revalidateTag REQUIRES the 2nd arg — the 1-arg form fails tsc; a profile
+    // of {expire: 0} is immediate expiry, not stale-while-revalidate.)
+    revalidateTag('shipping-overview', { expire: 0 })
 
     return NextResponse.json(
       { ok: true, sos, updatedLines: allIds.length, carrier, scheduledShipDate, multiTruckload: tl.multi },

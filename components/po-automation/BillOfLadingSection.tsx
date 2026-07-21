@@ -225,9 +225,10 @@ export function BillOfLadingSection({
   return (
     <div className="space-y-2">
     {/* Shipment schedule (carrier + pickup date) rides the BOL surface — the
-        same people set both (Simon 2026-07-21). Per-SO surfaces only. */}
+        same people set both (Simon 2026-07-21). Per-SO surfaces only; a
+        shipped order's schedule is history, shown read-only. */}
     {soName && /^(SO|SAL-ORD)-/.test(soName) && (
-      <ShipmentScheduleEditor soName={soName} canManage={canManage} />
+      <ShipmentScheduleEditor soName={soName} canManage={canManage && !shipped} />
     )}
     <div
       className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5"
