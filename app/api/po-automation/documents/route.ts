@@ -14,7 +14,11 @@ import {
   type OrderDocType,
 } from '@/lib/po-automation/documents'
 import { requireUserOrService } from '@/lib/require-user'
-import { attachBolToSalesOrder, invalidateSignedBolsForOrder } from '@/lib/erpnext/external-bol'
+import {
+  attachBolToSalesOrder,
+  invalidateSignedBolsForOrder,
+  soNamesForCustomerPo,
+} from '@/lib/erpnext/external-bol'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +71,13 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams
   const customer = sp.get('customer')
   const po = sp.get('po')
+  // Optional per-SO scoping: only docs tagged to this SO plus untagged
+  // order-level ones. Filtered server-side so sibling SOs' BOLs never leave
+  // the server with signed URLs (review panel 2026-07-21, grok).
+  const so = sp.get('so')?.trim() ?? ''
+  if (so && !/^[A-Za-z0-9-]{1,40}$/.test(so)) {
+    return NextResponse.json({ error: 'Invalid sales order' }, { status: 400 })
+  }
   // Require both — never return all docs for a PO number across customers.
   if (!po?.trim() || !customer?.trim()) return NextResponse.json({ documents: [] })
 
@@ -89,6 +100,16 @@ export async function GET(req: NextRequest) {
   // "Service Caster Corporation") still matches; different parties never do.
   const wantCustomer = norm(customer)
   let rows = (data ?? []).filter((d) => norm(d.customer) === wantCustomer)
+
+  // Per-SO scoping: a BOL tagged to a DIFFERENT sales order of this PO belongs
+  // to that order's line. Non-BOL docs are PO-level and unaffected.
+  if (so) {
+    rows = rows.filter((d) => {
+      if ((d.doc_type ?? 'bol') !== 'bol') return true
+      const rowSo = String(d.so_number ?? '').trim()
+      return !rowSo || rowSo === so
+    })
+  }
 
   // Doc-type scoping: erp_entry docs are PO-side data — a shipping-BOL-only
   // caller gets BOLs only. Server-side, never left to the UI filters.
@@ -149,6 +170,15 @@ export async function POST(req: NextRequest) {
   const so = soRaw && docType === 'bol' ? soRaw.trim() : null
   if (so && !/^[A-Za-z0-9-]{1,40}$/.test(so)) {
     return NextResponse.json({ error: 'Invalid sales order' }, { status: 400 })
+  }
+  // The tag must belong to this (customer, PO) — a crafted or stale client
+  // could otherwise misfile a BOL under a foreign SO, hiding it from the right
+  // line and poisoning resolution preference (review panel 2026-07-21,
+  // codex+grok). Verified against the same dashboard_orders mirror the ERPNext
+  // attach uses; rejecting (not silently untagging) tells the crew something
+  // is off with the line they uploaded from.
+  if (so && !(await soNamesForCustomerPo(customer, po)).has(so)) {
+    return NextResponse.json({ error: 'Sales order does not match this customer/PO' }, { status: 400 })
   }
   if (!isAllowedDocType(file.type)) {
     return NextResponse.json({ error: 'Only PDF, PNG, JPEG or WebP files are allowed' }, { status: 400 })

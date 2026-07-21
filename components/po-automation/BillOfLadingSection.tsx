@@ -84,7 +84,9 @@ export function BillOfLadingSection({
     const active = () => seq === loadSeq.current
     setLoading(true)
     try {
-      const qs = new URLSearchParams({ customer, po: poNumber }).toString()
+      const qs = new URLSearchParams(
+        soName ? { customer, po: poNumber, so: soName } : { customer, po: poNumber }
+      ).toString()
       const res = await fetch(`/api/po-automation/documents?${qs}`, {
         headers: authHeaders(),
         cache: 'no-store',

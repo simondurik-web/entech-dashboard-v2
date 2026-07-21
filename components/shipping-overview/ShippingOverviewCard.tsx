@@ -210,7 +210,7 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
               {poBolOpen && (
                 <div className="px-4 pb-4">
                   <OrderPoBolSection
-                    key={`${order.customer.trim()}|${order.poNumber.trim()}`}
+                    key={`${order.customer.trim()}|${order.poNumber.trim()}|${(order.ifNumber || '').split(' ')[0]}`}
                     customer={order.customer.trim()}
                     poNumber={order.poNumber.trim()}
                     userId={userId ?? user?.id ?? null}

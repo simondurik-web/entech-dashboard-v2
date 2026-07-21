@@ -225,16 +225,24 @@ async function newestBolDoc(
 ): Promise<{ file_url: string; file_name: string | null; created_at: string | null } | null> {
   let best: { file_url: string; file_name: string | null; created_at: string | null; tier: number } | null = null
   for (const pair of pairs) {
-    const { data } = await supabaseAdmin
+    const want = normName(pair.customer)
+    const wantSo = (pair.so ?? '').trim()
+    // Eligibility is enforced IN the query — a busy multi-SO PO could otherwise
+    // push the target SO's BOL past the row limit with sibling-tagged rows
+    // (review panel 2026-07-21, codex+grok). The SO name is interpolated into a
+    // PostgREST or= filter, so it must match the strict doc-name charset; a
+    // non-conforming value falls back to untagged-only.
+    let q = supabaseAdmin
       .schema('po_automation')
       .from('order_documents')
       .select('file_url, file_name, customer, created_at, so_number')
       .eq('doc_type', 'bol')
       .ilike('po_number', escapeLike(pair.po.trim()))
-      .order('created_at', { ascending: false })
-      .limit(25)
-    const want = normName(pair.customer)
-    const wantSo = (pair.so ?? '').trim()
+    q =
+      wantSo && /^[A-Za-z0-9-]{1,40}$/.test(wantSo)
+        ? q.or(`so_number.is.null,so_number.eq.${wantSo}`)
+        : q.is('so_number', null)
+    const { data } = await q.order('created_at', { ascending: false }).limit(25)
     for (const d of data ?? []) {
       if (normName(d.customer) !== want || !d.file_url) continue
       const rowSo = String(d.so_number ?? '').trim()
@@ -447,6 +455,27 @@ export async function externalBolToPdf(bytes: Uint8Array, contentType: string): 
   return pdf.save()
 }
 
+/** ERPNext SO names belonging to a (customer, customer-PO) pair, via the
+ *  dashboard_orders mirror. Customer match is exact (normalized) — substring
+ *  matching would cross customers sharing a PO number. Empty customer → empty
+ *  set. The write path uses this to verify a caller-supplied SO tag really
+ *  belongs to the pair before persisting it (review panel 2026-07-21). */
+export async function soNamesForCustomerPo(customer: string | null, poNumber: string): Promise<Set<string>> {
+  const want = normName(customer)
+  if (!want || !poNumber.trim()) return new Set()
+  const { data } = await supabaseAdmin
+    .from('dashboard_orders')
+    .select('if_number, customer, po_number')
+    .ilike('po_number', escapeLike(poNumber.trim()))
+    .limit(200)
+  return new Set(
+    (data ?? [])
+      .filter((r) => normName(r.customer) === want && r.if_number)
+      .map((r) => String(r.if_number).trim().split(/\s+/)[0])
+      .filter(Boolean)
+  )
+}
+
 /** Best-effort push of a dashboard-uploaded carrier BOL into ERPNext: attach
  *  the file to the matching Sales Order (June-2026 prep fields) and mark the
  *  load Customer-Arranged. Returns the SO name, or null when no order matched.
@@ -468,19 +497,7 @@ export async function attachBolToSalesOrder(input: {
   // codex BLOCKER). Ambiguous or empty → skip the ERPNext push entirely.
   // Exception: an upload TAGGED with an SO that verifiably belongs to the pair
   // attaches to that SO even when the PO spans several (per-SO BOLs, 2026-07-21).
-  const want = normName(input.customer)
-  if (!want) return null
-  const { data } = await supabaseAdmin
-    .from('dashboard_orders')
-    .select('if_number, customer, po_number')
-    .ilike('po_number', escapeLike(input.poNumber.trim()))
-    .limit(200)
-  const soNames = new Set(
-    (data ?? [])
-      .filter((r) => normName(r.customer) === want && r.if_number)
-      .map((r) => String(r.if_number).trim().split(/\s+/)[0])
-      .filter(Boolean)
-  )
+  const soNames = await soNamesForCustomerPo(input.customer, input.poNumber)
   const tagged = (input.soName ?? '').trim()
   let soName: string
   if (tagged && soNames.has(tagged)) {
