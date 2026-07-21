@@ -177,23 +177,6 @@ export async function POST(req: NextRequest) {
     if (own.shippedOnly) return NextResponse.json({ error: 'Order already shipped' }, { status: 409 })
     if (own.ids.length === 0) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    // Optimistic concurrency: the editor echoes the schedule_set_at it loaded;
-    // a different current value means someone else saved in between — refuse
-    // rather than silently overwrite (review panel 2026-07-21, codex R4).
-    if ('expectedSetAt' in body) {
-      const { data: cur } = await supabaseAdmin
-        .from('dashboard_orders')
-        .select('schedule_set_at')
-        .in('id', own.ids)
-        .order('schedule_set_at', { ascending: false, nullsFirst: false })
-        .limit(1)
-      const curAt = cur?.[0]?.schedule_set_at ?? null
-      const expected = body.expectedSetAt == null ? null : String(body.expectedSetAt)
-      if (curAt !== expected) {
-        return NextResponse.json({ error: 'conflict' }, { status: 409 })
-      }
-    }
-
     // One truck, one schedule: ACTIVE-truckload members ride along (skipped —
     // with a notice — when the SO's lines span multiple active trucks).
     const tl = await activeTruckloadMemberSos(so)
@@ -208,20 +191,29 @@ export async function POST(req: NextRequest) {
     }
 
     const setBy = (await resolveUserName(guard.userId)) || guard.email || null
-    const setAt = new Date().toISOString()
-    const { error } = await supabaseAdmin
-      .from('dashboard_orders')
-      .update({
-        scheduled_carrier: carrier,
-        scheduled_ship_date: scheduledShipDate,
-        schedule_set_by: setBy,
-        schedule_set_at: setAt,
-      })
-      .in('id', allIds)
-      // Race belt: a row that shipped between lookup and update stays
-      // untouched (the sync writes exactly 'shipped' on that path).
-      .or('work_order_status.is.null,work_order_status.neq.shipped')
+    // Atomic compare-and-set in ONE transaction (scripts/dashboard-orders-
+    // schedule.sql): locks the token rows, re-reads max(schedule_set_at),
+    // refuses on mismatch, updates with a shipped-row guard. A plain
+    // check-then-write let two same-token saves both pass (review panel
+    // 2026-07-21, codex R5). The token compares/returns the STORED Postgres
+    // representation, so client echoes always round-trip exactly.
+    const enforce = 'expectedSetAt' in body
+    const expected = body.expectedSetAt == null ? null : String(body.expectedSetAt)
+    const { data: casRows, error } = await supabaseAdmin.rpc('set_order_schedule', {
+      p_check_ids: own.ids,
+      p_all_ids: allIds,
+      p_carrier: carrier,
+      p_date: scheduledShipDate,
+      p_set_by: setBy,
+      p_expected: expected,
+      p_enforce: enforce,
+    })
     if (error) throw new Error(error.message)
+    const cas = Array.isArray(casRows) ? casRows[0] : casRows
+    if (cas?.conflict) {
+      return NextResponse.json({ error: 'conflict' }, { status: 409 })
+    }
+    const setAt = cas?.new_set_at ?? null
 
     // The Shipping Overview blob is unstable_cache'd (60s) — expire it NOW so
     // a saved schedule shows there immediately. (This Next version's
@@ -234,7 +226,7 @@ export async function POST(req: NextRequest) {
         ok: true,
         sos,
         skippedSos: tl.skipped ?? [],
-        updatedLines: allIds.length,
+        updatedLines: cas?.updated ?? 0,
         carrier,
         scheduledShipDate,
         multiTruckload: tl.multi,

@@ -114,7 +114,7 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
     } finally {
       setSaving(false)
     }
-  }, [soName, carrierSel, carrierCustom, dateStr, t])
+  }, [soName, carrierSel, carrierCustom, dateStr, loadedSetAt, t])
 
   const overdue = !!dateStr && dateStr < todayIso()
   const carrierShown = carrierSel === OTHER ? carrierCustom : carrierSel
