@@ -103,12 +103,16 @@ export async function POST(req: NextRequest) {
   // reservation that actually bound despite a bookkeeping throw must not read as lost.
   if (result.status === 200) {
     const body = result.body as Record<string, unknown>
+    // Restores (and arming the restore checkpoint) are allowed when THIS request
+    // advanced the operation — a fresh run, or a resume that isn't a pure 'done'
+    // replay — or when the op row already records an unresolved reservation
+    // ('reservation:' checkpoint). A pure done-replay with a clean row is
+    // verify-ONLY, and its observations must NOT arm the checkpoint: an operator's
+    // deliberate later release would otherwise be resurrected by the next replay
+    // (review r7/r8, both directions).
+    const allowRestore =
+      !priorOp || body.duplicate !== true || String(priorOp.error ?? '').startsWith('reservation:')
     if (body.reservedTo === undefined) {
-      // Restores are allowed on a FRESH run (erp() just executed under the op lock) or
-      // on a replay whose op row records an unresolved reservation ('reservation:'
-      // checkpoint below). A replay of a long-done clean op is verify-ONLY — writing
-      // there could resurrect a reservation someone deliberately released later (r7).
-      const allowRestore = !priorOp || String(priorOp.error ?? '').startsWith('reservation:')
       const follow = await verifyOrRestoreMovedReservation({
         batch,
         itemCode,
@@ -128,20 +132,21 @@ export async function POST(req: NextRequest) {
     // Persist the reservation outcome on the op row so REPLAYS know whether this op
     // still owes a restore. 'reservation:' in `error` is inert to the state machine
     // (it only ever parses the 'label:' prefix on done rows) and move ops have no
-    // label phase. Best-effort — a lost write degrades to verify-only on replay.
+    // label phase. Best-effort but logged — a lost write degrades to verify-only on
+    // replay. Never armed from verify-only observations (see allowRestore above).
     const finalBody = result.body as Record<string, unknown>
-    if (finalBody.warning === 'reservation_transfer_failed') {
-      await supabaseAdmin
+    if (finalBody.warning === 'reservation_transfer_failed' && allowRestore) {
+      const { error: markErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({ error: 'reservation: transfer_failed' })
         .eq('idempotency_key', idempotencyKey)
-        .then(undefined, () => undefined)
+      if (markErr) console.error('move: persisting reservation checkpoint failed:', markErr)
     } else if (priorOp && String(priorOp.error ?? '').startsWith('reservation:') && finalBody.reservedTo !== undefined) {
-      await supabaseAdmin
+      const { error: clearErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({ error: null })
         .eq('idempotency_key', idempotencyKey)
-        .then(undefined, () => undefined)
+      if (clearErr) console.error('move: clearing reservation checkpoint failed:', clearErr)
     }
   }
 

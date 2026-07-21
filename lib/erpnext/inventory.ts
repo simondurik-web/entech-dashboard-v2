@@ -658,6 +658,14 @@ export async function reservedMoveGuard(batch: string, palletQty: number): Promi
       `Pallet ${batch} holds ${palletQty} but ${res.qty} is reserved to ${res.so} — fix the reservation in ERPNext before moving it`
     )
   }
+  if (!res.soItem) {
+    // No release line on the reservation — re-reserving would auto-allocate a line,
+    // which is exactly the ambiguity this feature exists to avoid (review r8). Fail
+    // closed; such a reservation is handled in ERPNext directly.
+    throw new Error(
+      `Pallet ${batch}'s reservation to ${res.so} has no release line — move it in ERPNext directly`
+    )
+  }
   return res
 }
 
@@ -706,12 +714,19 @@ async function findOpStockEntry(
  *  or was edited — it must be defused, never completed (review r6/r7). */
 async function validateMoveDraft(
   name: string,
-  expect: { batch: string; itemCode: string; toWarehouse: string; tagQty: number }
+  expect: { batch: string; itemCode: string; toWarehouse: string; tagQty: number; srcWarehouse: string }
 ): Promise<boolean> {
   const draft = await erpnextGetDoc<{
     stock_entry_type?: string
     company?: string
-    items?: { item_code?: string; batch_no?: string; qty?: number; t_warehouse?: string }[]
+    items?: {
+      item_code?: string
+      batch_no?: string
+      qty?: number
+      s_warehouse?: string
+      t_warehouse?: string
+      conversion_factor?: number
+    }[]
   }>('Stock Entry', name)
   const rows = draft.items ?? []
   return (
@@ -720,7 +735,9 @@ async function validateMoveDraft(
     rows.length === 1 &&
     rows[0].batch_no === expect.batch &&
     rows[0].item_code === expect.itemCode &&
+    rows[0].s_warehouse === expect.srcWarehouse &&
     rows[0].t_warehouse === expect.toWarehouse &&
+    (Number(rows[0].conversion_factor) || 1) === 1 &&
     Math.abs((Number(rows[0].qty) || 0) - expect.tagQty) <= 1e-6
   )
 }
@@ -792,9 +809,10 @@ export async function verifyOrRestoreMovedReservation(input: {
     }
     if (!intent) return null // untagged/absent SE = this op never carried a reservation
     const loc = await getBatchLocation(batch, itemCode)
-    // Restore exactly the STAMPED qty — and only when the pallet still holds it at the
-    // destination; anything else is a loud warning, never a guessed partial restore.
-    if (!loc || loc.warehouse !== toWarehouse || Math.abs(loc.qty - intent.qty) > 1e-6) {
+    // Restore exactly the STAMPED qty on the STAMPED line — and only when the pallet
+    // still holds it at the destination; anything else is a loud warning, never a
+    // guessed partial or auto-allocated restore (r5/r8).
+    if (!loc || loc.warehouse !== toWarehouse || Math.abs(loc.qty - intent.qty) > 1e-6 || !intent.soItem) {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
     if (!allowRestore) {
@@ -803,7 +821,7 @@ export async function verifyOrRestoreMovedReservation(input: {
     await reserveBatchesToSO({
       soName: intent.so,
       items: [
-        { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: toWarehouse, batch, qty: intent.qty },
+        { salesOrderItem: intent.soItem, itemCode, warehouse: toWarehouse, batch, qty: intent.qty },
       ],
     })
     return { reservedTo: intent.so, reservationRestored: true }
@@ -832,9 +850,17 @@ export async function resumeMoveDraft(input: {
   if (!se) return null
   if (se.docstatus === 1) return se.name
   // Only reserved carries create drafts — an untagged draft is not ours to complete;
-  // full content validation guards against stale, crafted, or edited drafts (r5-r7).
+  // full content validation (incl. current source bin) guards against stale, crafted,
+  // or edited drafts (r5-r8). A tag without a release line is unrestorable — refuse.
   const tag = parseCarriedTag(se.remarks)
-  if (!tag || !(await validateMoveDraft(se.name, { batch, itemCode, toWarehouse, tagQty: tag.qty }))) {
+  const locNow = await getBatchLocation(batch, itemCode)
+  if (
+    !tag ||
+    !tag.soItem ||
+    !locNow ||
+    locNow.qty <= 0 ||
+    !(await validateMoveDraft(se.name, { batch, itemCode, toWarehouse, tagQty: tag.qty, srcWarehouse: locNow.warehouse }))
+  ) {
     await defuseStaleDraft(se.name, se.remarks)
     return null
   }
@@ -862,9 +888,15 @@ export async function resumeMoveDraft(input: {
     }
     // Crash happened between draft creation and release: finish the release first.
     // Same post-cancel semantics as the erp() path: only a failure that left the
-    // reservation intact aborts the resume.
+    // reservation intact aborts the resume. A released:false result means the
+    // reservation vanished between snapshot and cancel (concurrent release) — abandon
+    // rather than complete a carry whose premise changed (review r8).
     try {
-      await releaseBatchReservation(batch, live.sre)
+      const rel = await releaseBatchReservation(batch, live.sre)
+      if (!rel.released) {
+        await defuseStaleDraft(se.name, se.remarks)
+        return null
+      }
     } catch (e) {
       const still = await liveReservationForMove(batch).catch(() => ({ sre: 'unverifiable' }))
       if (still) return null
@@ -992,7 +1024,7 @@ export async function transferInventory(input: {
     const priorTag = parseCarriedTag(priorDraft.remarks)
     const ok =
       priorTag &&
-      (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty }))
+      (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty, srcWarehouse: loc.warehouse }))
     if (!ok) {
       await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
@@ -1030,8 +1062,9 @@ export async function transferInventory(input: {
 
   // Step 2 — release (only when a live reservation exists).
   if (live) {
+    let released: boolean
     try {
-      await releaseBatchReservation(batch, live.sre)
+      released = (await releaseBatchReservation(batch, live.sre)).released
     } catch (e) {
       // The helper cancels the SRE first, then recomputes SO staging metadata — a
       // failure AFTER the cancel must not fail the move (the reservation is already
@@ -1042,6 +1075,16 @@ export async function transferInventory(input: {
       const still = await liveReservationForMove(batch).catch(() => ({ sre: 'unverifiable' }))
       if (still) throw e
       console.error(`move: release bookkeeping for ${batch} failed post-cancel (continuing):`, e)
+      released = true // the cancel itself committed
+    }
+    if (!released) {
+      // The reservation vanished between the snapshot and the cancel (someone released
+      // it concurrently) — the carry's premise changed. Defuse the stamped draft and
+      // abort; the operator re-initiates against the current state (review r8).
+      if (draftName) await defuseStaleDraft(draftName, String(seDoc.remarks))
+      throw new Error(
+        `Pallet ${batch}'s reservation changed while the move was starting — re-check the pallet and try again`
+      )
     }
   }
 
