@@ -1148,6 +1148,8 @@
   "schedule.saved": "Programación guardada",
   "schedule.savedTruckload": "Programación guardada — aplicada a toda la carga: {sos}",
   "schedule.savedMulti": "Guardado solo para este pedido — sus líneas están en más de una carga; programe las demás desde sus propios pedidos",
+  "schedule.conflict": "Alguien más acaba de cambiar esta programación — actualice la página e intente de nuevo",
+  "schedule.savedSkipped": "no aplicado a {sos} (está en otra carga)",
   "schedule.saveError": "No se pudo guardar la programación",
   "schedule.loadFailed": "No se pudo cargar la programación actual — actualice la página para poder guardar",
   "schedule.setBy": "Programado por",

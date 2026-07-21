@@ -36,6 +36,9 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
   const [carrierCustom, setCarrierCustom] = useState('')
   const [dateStr, setDateStr] = useState('')
   const [setBy, setSetBy] = useState<string | null>(null)
+  // schedule_set_at as loaded — echoed on save so a concurrent edit 409s
+  // instead of being silently overwritten
+  const [loadedSetAt, setLoadedSetAt] = useState<string | null>(null)
   const [tlSos, setTlSos] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
@@ -66,6 +69,7 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
         }
         setDateStr(String(body.scheduledShipDate ?? ''))
         setSetBy(body.setBy ?? null)
+        setLoadedSetAt(body.setAt ?? null)
         setTlSos(Array.isArray(body.truckloadSos) ? body.truckloadSos : [])
       } catch {
         if (active) setLoadFailed(true)
@@ -87,18 +91,23 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
       const res = await fetch('/api/orders/schedule', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ so: soName, carrier, scheduledShipDate: dateStr }),
+        body: JSON.stringify({ so: soName, carrier, scheduledShipDate: dateStr, expectedSetAt: loadedSetAt }),
       })
       const body = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(body?.error || t('schedule.saveError'))
+      if (!res.ok) {
+        if (res.status === 409 && body?.error === 'conflict') throw new Error(t('schedule.conflict'))
+        throw new Error(body?.error || t('schedule.saveError'))
+      }
+      setLoadedSetAt(body?.setAt ?? loadedSetAt)
       const sos: string[] = body?.sos ?? [soName]
-      setSavedMsg(
-        body?.multiTruckload
-          ? t('schedule.savedMulti')
-          : sos.length > 1
-            ? t('schedule.savedTruckload').replace('{sos}', sos.join(', '))
-            : t('schedule.saved')
-      )
+      const skipped: string[] = body?.skippedSos ?? []
+      let msg = body?.multiTruckload
+        ? t('schedule.savedMulti')
+        : sos.length > 1
+          ? t('schedule.savedTruckload').replace('{sos}', sos.join(', '))
+          : t('schedule.saved')
+      if (skipped.length) msg += ` — ${t('schedule.savedSkipped').replace('{sos}', skipped.join(', '))}`
+      setSavedMsg(msg)
       setTimeout(() => setSavedMsg(null), 8000)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('schedule.saveError'))

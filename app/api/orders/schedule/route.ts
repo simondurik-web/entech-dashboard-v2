@@ -5,6 +5,7 @@ import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { canManageShippingBol } from '@/lib/po-automation/guard'
 import { ACTIVE_TL_STATUSES } from '@/lib/truckloads'
+import { normalizeStatus } from '@/lib/google-sheets-shared'
 import { escapeLike } from '@/lib/po-automation/edit'
 
 // Shipment scheduling — planned carrier + scheduled ship date per Sales Order
@@ -37,7 +38,9 @@ function isValidDay(s: string): boolean {
  *  membership resolves to exactly ONE active truckload; otherwise the caller
  *  gets multi=true and schedules just the requested SO (review panel
  *  2026-07-21, codex BLOCKERs rounds 1-2). */
-async function activeTruckloadMemberSos(so: string): Promise<{ sos: string[]; multi: boolean }> {
+async function activeTruckloadMemberSos(
+  so: string
+): Promise<{ sos: string[]; skipped?: string[]; multi: boolean }> {
   const { data, error } = await supabaseAdmin
     .from('truckload_orders')
     .select('truckload_id, status, truckloads!inner(status)')
@@ -73,7 +76,11 @@ async function activeTruckloadMemberSos(so: string): Promise<{ sos: string[]; mu
     if (!tlsBySo.has(s)) tlsBySo.set(s, new Set())
     if (r.truckload_id) tlsBySo.get(s)!.add(String(r.truckload_id))
   }
-  return { sos: candidates.filter((s) => (tlsBySo.get(s)?.size ?? 0) <= 1), multi: false }
+  return {
+    sos: candidates.filter((s) => (tlsBySo.get(s)?.size ?? 0) <= 1),
+    skipped: candidates.filter((s) => (tlsBySo.get(s)?.size ?? 0) > 1),
+    multi: false,
+  }
 }
 
 async function guardAny(req: NextRequest) {
@@ -86,16 +93,22 @@ async function guardAny(req: NextRequest) {
 
 /** dashboard_orders row ids belonging to an SO (if_number first-token match).
  *  Shipped rows are excluded — a schedule is pre-ship planning data and must
- *  not rewrite history after the load leaves (review panel 2026-07-21). */
+ *  not rewrite history after the load leaves (review panel 2026-07-21).
+ *  "Shipped" uses the app-wide normalizeStatus (covers Invoiced / To Bill /
+ *  case variants) plus a shipped_date belt. */
 async function lineIdsForSo(so: string): Promise<{ ids: number[]; shippedOnly: boolean }> {
   const { data, error } = await supabaseAdmin
     .from('dashboard_orders')
-    .select('id, if_number, work_order_status')
+    .select('id, if_number, work_order_status, if_status_fusion, shipped_date')
     .ilike('if_number', `${escapeLike(so)}%`)
     .limit(1000)
   if (error) throw new Error(error.message)
   const rows = (data ?? []).filter((r) => String(r.if_number ?? '').trim().split(/\s+/)[0] === so)
-  const unshipped = rows.filter((r) => String(r.work_order_status ?? '') !== 'shipped')
+  const unshipped = rows.filter(
+    (r) =>
+      normalizeStatus(String(r.work_order_status ?? ''), String(r.if_status_fusion ?? '')) !== 'shipped' &&
+      !String(r.shipped_date ?? '').trim()
+  )
   return { ids: unshipped.map((r) => r.id as number), shippedOnly: rows.length > 0 && unshipped.length === 0 }
 }
 
@@ -145,7 +158,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  let body: { so?: string; carrier?: unknown; scheduledShipDate?: unknown }
+  let body: { so?: string; carrier?: unknown; scheduledShipDate?: unknown; expectedSetAt?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -164,6 +177,23 @@ export async function POST(req: NextRequest) {
     if (own.shippedOnly) return NextResponse.json({ error: 'Order already shipped' }, { status: 409 })
     if (own.ids.length === 0) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
+    // Optimistic concurrency: the editor echoes the schedule_set_at it loaded;
+    // a different current value means someone else saved in between — refuse
+    // rather than silently overwrite (review panel 2026-07-21, codex R4).
+    if ('expectedSetAt' in body) {
+      const { data: cur } = await supabaseAdmin
+        .from('dashboard_orders')
+        .select('schedule_set_at')
+        .in('id', own.ids)
+        .order('schedule_set_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+      const curAt = cur?.[0]?.schedule_set_at ?? null
+      const expected = body.expectedSetAt == null ? null : String(body.expectedSetAt)
+      if (curAt !== expected) {
+        return NextResponse.json({ error: 'conflict' }, { status: 409 })
+      }
+    }
+
     // One truck, one schedule: ACTIVE-truckload members ride along (skipped —
     // with a notice — when the SO's lines span multiple active trucks).
     const tl = await activeTruckloadMemberSos(so)
@@ -178,15 +208,19 @@ export async function POST(req: NextRequest) {
     }
 
     const setBy = (await resolveUserName(guard.userId)) || guard.email || null
+    const setAt = new Date().toISOString()
     const { error } = await supabaseAdmin
       .from('dashboard_orders')
       .update({
         scheduled_carrier: carrier,
         scheduled_ship_date: scheduledShipDate,
         schedule_set_by: setBy,
-        schedule_set_at: new Date().toISOString(),
+        schedule_set_at: setAt,
       })
       .in('id', allIds)
+      // Race belt: a row that shipped between lookup and update stays
+      // untouched (the sync writes exactly 'shipped' on that path).
+      .or('work_order_status.is.null,work_order_status.neq.shipped')
     if (error) throw new Error(error.message)
 
     // The Shipping Overview blob is unstable_cache'd (60s) — expire it NOW so
@@ -196,7 +230,16 @@ export async function POST(req: NextRequest) {
     revalidateTag('shipping-overview', { expire: 0 })
 
     return NextResponse.json(
-      { ok: true, sos, updatedLines: allIds.length, carrier, scheduledShipDate, multiTruckload: tl.multi },
+      {
+        ok: true,
+        sos,
+        skippedSos: tl.skipped ?? [],
+        updatedLines: allIds.length,
+        carrier,
+        scheduledShipDate,
+        multiTruckload: tl.multi,
+        setAt,
+      },
       { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (error) {
