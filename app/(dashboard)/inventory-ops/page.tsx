@@ -1585,7 +1585,13 @@ export default function InventoryOpsPage() {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'move failed')
       clearOpKey('move', batch, moveWarehouse)
-      showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}`)
+      if (d.warning === 'reservation_transfer_failed') {
+        // Stock moved but the pallet's SO reservation did NOT survive — the floor must
+        // re-stage it; never report this as a clean success.
+        showFlash('err', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse} — ${t('inventoryOps.moveReservationLost')}${d.reservationLostFrom ? ` ${d.reservationLostFrom}` : ''}`)
+      } else {
+        showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}${d.reservedTo ? ` · ${t('inventoryOps.movedStillReserved')} ${d.reservedTo}` : ''}`)
+      }
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')

@@ -1531,6 +1531,8 @@
   "inventoryOps.move": "Mover a otra ubicación",
   "inventoryOps.moveTo": "Mover esta tarima a:",
   "inventoryOps.moveKeepsReservation": "Tarima reservada — al moverla seguirá reservada para",
+  "inventoryOps.movedStillReserved": "sigue reservada para",
+  "inventoryOps.moveReservationLost": "la reserva NO se mantuvo — vuelva a preparar esta tarima para",
   "inventoryOps.moveConfirm": "Mover",
   "inventoryOps.noBins": "No hay ubicaciones que coincidan",
   "inventoryOps.palletSuperseded": "Esta tarima no tiene existencias activas - pudo haber sido eliminada o reemplazada por una reimpresión.",

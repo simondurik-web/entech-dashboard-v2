@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { transferInventory, transferPreflight, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
+import {
+  transferInventory,
+  transferPreflight,
+  reconcileStockEntry,
+  palletBase,
+  verifyOrRestoreMovedReservation,
+} from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -40,12 +46,12 @@ export async function POST(req: NextRequest) {
   const userId = guard.userId // verified from the session, not a client header
 
   // Deterministic preflight on the FIRST attempt, BEFORE the locked op row exists: bad
-  // warehouse / split / no-stock returns 400 here instead of throwing inside erp() (which
-  // would leave the family locked in failed_pre_erp). Skipped on retry (the row exists and
-  // runInventoryOp resumes/reconciles).
+  // warehouse / split / no-stock / uncarryable reservation returns 400 here instead of
+  // throwing inside erp() (which would leave the family locked in failed_pre_erp).
+  // Skipped on retry (the row exists and runInventoryOp resumes/reconciles).
   const { data: priorOp } = await supabaseAdmin
     .from('inventory_ops_log')
-    .select('idempotency_key')
+    .select('idempotency_key, created_at')
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle()
   if (!priorOp) {
@@ -55,16 +61,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 })
     }
   }
+  // On a retry, the first attempt may have released the pallet's reservation and died
+  // before restoring it — the cancelled-reservation trail is only searched from the op
+  // row's creation onward, so a deliberate earlier release can never be "restored".
+  const sinceIso: string | null = (priorOp?.created_at as string | undefined) ?? null
 
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'move',
     createdBy: userId,
     meta: { item_code: itemCode, warehouse: toWarehouse, batch, family: palletBase(batch) },
-    erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey }),
+    erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey, sinceIso }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
-      return se ? { batch, stockEntry: se } : null
+      if (!se) return null
+      // The stock entry committed on a previous attempt — make sure the reservation
+      // survived (or restore it) before reporting the op done; never silent-drop a
+      // staged pallet's SO binding (review 2026-07-21).
+      const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, sinceIso })
+      return { batch, stockEntry: se, ...(follow ? { extra: follow } : {}) }
     },
   })
 

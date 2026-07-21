@@ -579,8 +579,6 @@ export interface TransferResult extends Committed {
   fromWarehouse: string
   toWarehouse: string
   qty: number
-  /** Set when the pallet was reserved and the reservation was carried to the new bin. */
-  reservedTo?: string
 }
 
 /** If the pallet is reserved to a Sales Order, return that reservation — after refusing
@@ -617,6 +615,78 @@ export async function reservedMoveGuard(batch: string, palletQty: number): Promi
   return res
 }
 
+/** The reservation a crashed move released but never restored: the most recent CANCELLED
+ *  single-batch reservation of this batch, cancelled at/after `sinceIso` (the op row's
+ *  created_at — so only a release performed by THIS operation qualifies). Returns the
+ *  restore intent, or null when there is no such candidate. */
+async function cancelledReservationCandidate(
+  batch: string,
+  sinceIso: string
+): Promise<{ so: string; soItem: string | null; qty: number } | null> {
+  const qs = [
+    listParam('filters', [
+      ['Serial and Batch Entry', 'batch_no', '=', batch],
+      ['docstatus', '=', 2],
+      ['voucher_type', '=', 'Sales Order'],
+      ['modified', '>=', sinceIso],
+    ]),
+    listParam('fields', ['name', 'voucher_no', 'voucher_detail_no', 'reserved_qty', 'modified']),
+    `order_by=${encodeURIComponent('modified desc')}`,
+    'limit_page_length=1',
+  ].join('&')
+  const r = await erpnextGet<{
+    data: { name: string; voucher_no: string; voucher_detail_no?: string | null; reserved_qty: number }[]
+  }>(`/api/resource/Stock Reservation Entry?${qs}`)
+  const sre = (r.data ?? [])[0]
+  if (!sre) return null
+  // Only restore an entry that reserved THIS batch alone — same shape reservedMoveGuard
+  // allows for the carry in the first place.
+  const full = await erpnextGetDoc<{ sb_entries?: { batch_no?: string | null }[] }>(
+    'Stock Reservation Entry',
+    sre.name
+  )
+  const distinct = new Set(
+    (full.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
+  )
+  if (distinct.size !== 1) return null
+  return { so: sre.voucher_no, soItem: sre.voucher_detail_no ?? null, qty: Number(sre.reserved_qty) || 0 }
+}
+
+/** After a move's Stock Entry is known committed: make sure the pallet's reservation
+ *  survived the move. Returns extras for the response body — `{ reservedTo }` when the
+ *  reservation is in place (or was restored here), `{ warning }` when the pallet is
+ *  KNOWN to have lost its reservation and the operator must re-stage, and null when the
+ *  pallet was never reserved. Never throws: stock is already committed. */
+export async function verifyOrRestoreMovedReservation(input: {
+  batch: string
+  itemCode: string
+  toWarehouse: string
+  sinceIso: string | null
+}): Promise<Record<string, unknown> | null> {
+  const { batch, itemCode, toWarehouse, sinceIso } = input
+  try {
+    const live = (await reservationsForBatches([batch]))[batch]
+    if (live) return { reservedTo: live.so }
+    if (!sinceIso) return null
+    const intent = await cancelledReservationCandidate(batch, sinceIso)
+    if (!intent) return null
+    const loc = await getBatchLocation(batch, itemCode)
+    if (!loc || loc.qty <= 0 || loc.warehouse !== toWarehouse) {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
+    }
+    await reserveBatchesToSO({
+      soName: intent.so,
+      items: [
+        { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: toWarehouse, batch, qty: loc.qty },
+      ],
+    })
+    return { reservedTo: intent.so, reservationRestored: true }
+  } catch (e) {
+    console.error(`move: reservation follow for ${batch} failed:`, e)
+    return { warning: 'reservation_transfer_failed' }
+  }
+}
+
 /** Move a pallet between bins: a Material Transfer of the batch's full on-hand qty
  *  from its current warehouse to `toWarehouse`. Refuses split pallets (can't guess
  *  which bin to move) and no-op moves. */
@@ -641,8 +711,11 @@ export async function transferInventory(input: {
   itemCode: string
   toWarehouse: string
   opKey: string
+  /** The op row's created_at on a RETRY — lower bound for finding a reservation this
+   *  same operation released but never restored (crash between release and re-reserve). */
+  sinceIso?: string | null
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey } = input
+  const { batch, itemCode, toWarehouse, opKey, sinceIso } = input
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -652,9 +725,24 @@ export async function transferInventory(input: {
   if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
   if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
   // Already at the destination: treat as a no-op success so a timeout+retry of a
-  // move that already committed resolves cleanly instead of erroring.
+  // move that already committed resolves cleanly instead of erroring — but first make
+  // sure the committed move didn't strand the reservation (crash between release and
+  // re-reserve on the original attempt).
   if (loc.warehouse === toWarehouse) {
-    return { batch, stockEntry: null, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+    const follow = await verifyOrRestoreMovedReservation({
+      batch,
+      itemCode,
+      toWarehouse,
+      sinceIso: sinceIso ?? null,
+    })
+    return {
+      batch,
+      stockEntry: null,
+      fromWarehouse: loc.warehouse,
+      toWarehouse,
+      qty: loc.qty,
+      ...(follow ? { extra: follow } : {}),
+    }
   }
 
   const doTransfer = () =>
@@ -681,68 +769,77 @@ export async function transferInventory(input: {
   // Reserved pallet: ERPNext refuses to transfer a reserved batch, so carry the
   // reservation across the move — release it (pinned to the confirmed SRE), transfer,
   // then re-reserve in the destination bin pinned to the SAME release line (Simon
-  // 2026-07-21: "we do need to transfer reserved stock"). The three steps are not
-  // atomic; each failure path below restores or reports loudly rather than leaving a
-  // silently-unreserved pallet.
-  const reservation = await reservedMoveGuard(batch, loc.qty)
-  if (reservation) {
-    await releaseBatchReservation(batch, reservation.sre)
-    let stockEntry: string | null
-    try {
-      stockEntry = await doTransfer()
-    } catch (e) {
-      // Stock never moved — put the reservation back in the SOURCE bin.
+  // 2026-07-21: "we do need to transfer reserved stock"). The steps are not atomic:
+  // a pre-commit failure restores the source-bin reservation and fails the op; a
+  // post-commit failure NEVER throws (the ops-log row must record the committed stock
+  // entry) — it returns warning extras the route surfaces, and the retry/reconcile
+  // path restores from the cancelled-reservation trail.
+  const live = await reservedMoveGuard(batch, loc.qty)
+  // A retry can arrive with the reservation already released by the failed first
+  // attempt (live == null): recover the intent from the reservation this op cancelled.
+  const intent = live ?? (sinceIso ? await cancelledReservationCandidate(batch, sinceIso) : null)
+
+  if (live) {
+    await releaseBatchReservation(batch, live.sre)
+  }
+
+  let stockEntry: string | null
+  try {
+    stockEntry = await doTransfer()
+  } catch (e) {
+    if (intent) {
+      // Stock never moved — put the reservation back in the SOURCE bin so the pallet
+      // stays locked to its order while the operator retries.
       try {
         await reserveBatchesToSO({
-          soName: reservation.so,
+          soName: intent.so,
           items: [
-            {
-              salesOrderItem: reservation.soItem ?? undefined,
-              itemCode,
-              warehouse: loc.warehouse,
-              batch,
-              qty: loc.qty,
-            },
+            { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: loc.warehouse, batch, qty: loc.qty },
           ],
         })
-      } catch {
+      } catch (restoreErr) {
+        console.error(`move: source-bin reservation restore for ${batch} failed:`, restoreErr)
         throw new Error(
-          `Move of ${batch} failed AND its reservation to ${reservation.so} could not be restored — re-stage the pallet from the staging screen. Move error: ${(e as Error).message}`
+          `Move of ${batch} failed and its reservation to ${intent.so} could not be put back — retry the move (it will restore automatically), or re-stage from the staging screen. Move error: ${(e as Error).message}`
         )
       }
-      throw e
     }
-    try {
-      await reserveBatchesToSO({
-        soName: reservation.so,
-        items: [
-          {
-            salesOrderItem: reservation.soItem ?? undefined,
-            itemCode,
-            warehouse: toWarehouse,
-            batch,
-            qty: loc.qty,
-          },
-        ],
-      })
-    } catch (e) {
-      throw new Error(
-        `Pallet ${batch} moved to ${toWarehouse}, but re-reserving it to ${reservation.so} failed — re-stage it to ${reservation.so} from the staging screen. Error: ${(e as Error).message}`
-      )
-    }
+    throw e
+  }
+
+  if (!intent) {
+    return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+  }
+
+  try {
+    await reserveBatchesToSO({
+      soName: intent.so,
+      items: [
+        { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: toWarehouse, batch, qty: loc.qty },
+      ],
+    })
+  } catch (e) {
+    // Stock is committed — do NOT throw (the ops log must not record failed_pre_erp).
+    // Loud warning instead; reconcile/retry restores from the cancelled-SRE trail.
+    console.error(`move: dest-bin re-reserve for ${batch} -> ${intent.so} failed:`, e)
     return {
       batch,
       stockEntry,
       fromWarehouse: loc.warehouse,
       toWarehouse,
       qty: loc.qty,
-      reservedTo: reservation.so,
+      extra: { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so },
     }
   }
 
-  const stockEntry = await doTransfer()
-
-  return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+  return {
+    batch,
+    stockEntry,
+    fromWarehouse: loc.warehouse,
+    toWarehouse,
+    qty: loc.qty,
+    extra: { reservedTo: intent.so },
+  }
 }
 
 // ─── Bulk bin transfer (scan-to-queue) ───────────────────────────────────────────
@@ -803,10 +900,10 @@ export async function bulkTransfer(input: {
 
   // Reserved pallets are SKIPPED here, not failed: one reserved batch would reject the
   // whole (single, atomic) Stock Entry. Moving a reserved pallet carries its reservation
-  // and is a per-pallet operation — use the single-pallet move for those.
-  const reservedMap = await reservationsForBatches(uniq.map((l) => l.batch)).catch(
-    () => ({}) as Record<string, BatchReservation>
-  )
+  // and is a per-pallet operation — use the single-pallet move for those. A failed
+  // lookup FAILS the bulk (a swallowed error here would let a reserved batch poison the
+  // atomic transfer — or worse, race the reservation).
+  const reservedMap = await reservationsForBatches(uniq.map((l) => l.batch))
 
   const rows: Record<string, unknown>[] = []
   const skipped: { batch: string; reason: string }[] = []

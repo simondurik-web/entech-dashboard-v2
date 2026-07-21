@@ -1531,6 +1531,8 @@
   "inventoryOps.move": "Move to another bin",
   "inventoryOps.moveTo": "Move this pallet to:",
   "inventoryOps.moveKeepsReservation": "Reserved pallet — the move keeps it reserved for",
+  "inventoryOps.movedStillReserved": "still reserved for",
+  "inventoryOps.moveReservationLost": "the reservation was NOT carried — re-stage this pallet to",
   "inventoryOps.moveConfirm": "Move",
   "inventoryOps.noBins": "No matching bins",
   "inventoryOps.palletSuperseded": "This pallet has no active stock - it may have been removed or superseded by a reprint.",
