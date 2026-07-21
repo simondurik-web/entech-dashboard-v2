@@ -684,13 +684,29 @@ async function findOpStockEntry(
       ['docstatus', 'in', [0, 1]],
     ]),
     listParam('fields', ['name', 'docstatus', 'remarks']),
-    `order_by=${encodeURIComponent('docstatus desc')}`, // submitted wins over a stale draft
+    // Submitted wins over any draft; among drafts the NEWEST wins (older ones are
+    // defused stale drafts or race leftovers — deterministic pick, review r5).
+    `order_by=${encodeURIComponent('docstatus desc, modified desc')}`,
     'limit_page_length=1',
   ].join('&')
   const r = await erpnextGet<{ data: { name: string; docstatus: number; remarks: string | null }[] }>(
     `/api/resource/Stock Entry?${qs}`
   )
   return r.data?.[0] ?? null
+}
+
+/** Take a stale stamped DRAFT permanently out of recovery's sight: rewrite its tags so
+ *  the `[op:...]` LIKE never matches it again. Editing a draft's remarks is safe (it
+ *  never moved stock); leaving it armed lets a later recovery resurrect the WRONG order
+ *  (review r5, both legs). Best-effort — on failure the newest-draft ordering above
+ *  still prefers the fresh draft. */
+async function defuseStaleDraft(name: string, remarks: string | null | undefined): Promise<void> {
+  try {
+    const voided = (remarks ?? '').replace(/\[op:/g, '[void-op:').replace(/\[carried:/g, '[void-carried:')
+    await erpnextUpdate('Stock Entry', name, { remarks: voided })
+  } catch (e) {
+    console.error(`move: defusing stale draft ${name} failed:`, e)
+  }
 }
 
 /** After a move op reports success: make sure the pallet's reservation survived the
@@ -700,9 +716,12 @@ async function findOpStockEntry(
  *  `{ reservedTo }` when the reservation is in place (or was restored here),
  *  `{ warning }` when the pallet is KNOWN to have lost its reservation and the operator
  *  must re-stage, and null when the pallet was never reserved. Never throws: stock is
- *  already committed. Concurrent restores converge: reserveBatchesToSO's line-capacity
- *  math + whole-pallet verification let exactly ONE restore bind; the loser reports the
- *  warning and the pallet ends correctly reserved once. */
+ *  already committed. Concurrent restores CONVERGE without a lease: ERPNext itself caps
+ *  each Stock Reservation Entry at the line's remaining unreserved qty (verified live
+ *  2026-07-04, staging.ts whole-pallet notes), so of two racing restores one binds the
+ *  full pallet and the other gets capped short — reserveBatchesToSO detects the
+ *  shortfall, RELEASES its capped entry, and throws; the loser reports the warning
+ *  while the pallet ends correctly reserved exactly once. */
 export async function verifyOrRestoreMovedReservation(input: {
   batch: string
   itemCode: string
@@ -715,22 +734,32 @@ export async function verifyOrRestoreMovedReservation(input: {
     const intent = se ? parseCarriedTag(se.remarks) : null
     const live = await liveReservationForMove(batch)
     if (live) {
-      // Report the CURRENT binding. When it differs from what this op carried (an
-      // operator re-staged the pallet mid-recovery), flag it rather than certify the
-      // carry — the truth is the live reservation, not the stamp (review r4).
+      // Report the CURRENT binding — but never CERTIFY a carry the live state doesn't
+      // actually cover: same order at a SHORT qty is a partial carry, not success
+      // (review r5). A different order means the pallet was re-staged mid-recovery;
+      // the truth is the live reservation, not the stamp.
+      if (intent && intent.so === live.so && live.qty + 1e-6 < intent.qty) {
+        return {
+          warning: 'reservation_transfer_failed',
+          reservationLostFrom: intent.so,
+          partialReservedQty: live.qty,
+        }
+      }
       return intent && intent.so !== live.so
         ? { reservedTo: live.so, reservationDiffersFromCarried: intent.so }
         : { reservedTo: live.so }
     }
     if (!intent) return null // untagged/absent SE = this op never carried a reservation
     const loc = await getBatchLocation(batch, itemCode)
-    if (!loc || loc.qty <= 0 || loc.warehouse !== toWarehouse) {
+    // Restore exactly the STAMPED qty — and only when the pallet still holds it at the
+    // destination; anything else is a loud warning, never a guessed partial restore.
+    if (!loc || loc.warehouse !== toWarehouse || Math.abs(loc.qty - intent.qty) > 1e-6) {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
     await reserveBatchesToSO({
       soName: intent.so,
       items: [
-        { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: toWarehouse, batch, qty: loc.qty },
+        { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: toWarehouse, batch, qty: intent.qty },
       ],
     })
     return { reservedTo: intent.so, reservationRestored: true }
@@ -757,11 +786,35 @@ export async function resumeMoveDraft(input: {
   const se = await findOpStockEntry(opKey)
   if (!se) return null
   if (se.docstatus === 1) return se.name
+  // Validate the draft's CONTENT before touching anything: it must be this op's
+  // single-row transfer of exactly this pallet (a crafted or corrupted draft must not
+  // be submitted blind; review r5).
+  const draft = await erpnextGetDoc<{
+    items?: { item_code?: string; batch_no?: string; qty?: number; s_warehouse?: string; t_warehouse?: string }[]
+  }>('Stock Entry', se.name)
+  const rows = draft.items ?? []
   const tag = parseCarriedTag(se.remarks)
-  const live = await liveReservationForMove(batch).catch(() => null)
+  if (
+    rows.length !== 1 ||
+    rows[0].batch_no !== batch ||
+    rows[0].item_code !== itemCode ||
+    (tag && Math.abs((Number(rows[0].qty) || 0) - tag.qty) > 1e-6)
+  ) {
+    await defuseStaleDraft(se.name, se.remarks)
+    return null
+  }
+  // FAIL CLOSED on the reservation read: submitting while possibly-reserved would be
+  // rejected by ERPNext anyway, but releasing on bad data must never happen.
+  let live: MoveReservation | null
+  try {
+    live = await liveReservationForMove(batch)
+  } catch {
+    return null
+  }
   if (live) {
     if (!tag || live.so !== tag.so || (live.soItem ?? '') !== (tag.soItem ?? '')) {
-      // Deliberately re-staged (or unverifiable) — abandon the stale draft.
+      // Deliberately re-staged — this draft is stale; defuse so it can never win.
+      await defuseStaleDraft(se.name, se.remarks)
       return null
     }
     // Crash happened between draft creation and release: finish the release first.
@@ -856,11 +909,12 @@ export async function transferInventory(input: {
       : null
   // A stale draft whose stamped intent no longer matches the LIVE reservation (the
   // pallet was released and re-staged to another order between attempts) must not be
-  // reused — its tag would later "restore" the wrong order. Create a fresh stamped
-  // draft instead; the stale one stays an inert orphan (review r4).
+  // reused — its tag would later "restore" the wrong order. DEFUSE it (strip its op
+  // tags so no recovery path can ever pick it up) and create a fresh stamped draft.
   if (live && priorDraft) {
     const priorTag = parseCarriedTag(priorDraft.remarks)
     if (!priorTag || priorTag.so !== live.so || (priorTag.soItem ?? '') !== (live.soItem ?? '')) {
+      await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
     }
   }
