@@ -1141,6 +1141,7 @@
   "schedule.title": "Programación de Envío",
   "schedule.carrier": "Transportista",
   "schedule.date": "Fecha programada de envío",
+  "schedule.clearDate": "Borrar fecha",
   "schedule.noCarrier": "Sin transportista",
   "schedule.otherCarrier": "Otro…",
   "schedule.otherPlaceholder": "Escriba el transportista",

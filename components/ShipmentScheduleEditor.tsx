@@ -154,13 +154,28 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
               ))}
               <option value={OTHER}>{t('schedule.otherCarrier')}</option>
             </select>
-            <input
-              type="date"
-              value={dateStr}
-              onChange={(e) => setDateStr(e.target.value)}
-              className="rounded border bg-background px-2 py-1 text-xs"
-              aria-label={t('schedule.date')}
-            />
+            <span className="flex items-center gap-1">
+              <input
+                type="date"
+                value={dateStr}
+                onChange={(e) => setDateStr(e.target.value)}
+                className="rounded border bg-background px-2 py-1 text-xs"
+                aria-label={t('schedule.date')}
+              />
+              {/* iOS's native date input has no clear affordance — a mistaken
+                  tap left the date stuck (Simon 2026-07-21, iPhone). */}
+              {dateStr && (
+                <button
+                  type="button"
+                  onClick={() => setDateStr('')}
+                  aria-label={t('schedule.clearDate')}
+                  title={t('schedule.clearDate')}
+                  className="rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
+                >
+                  ✕
+                </button>
+              )}
+            </span>
           </div>
           {carrierSel === OTHER && (
             <input

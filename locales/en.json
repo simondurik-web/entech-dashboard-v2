@@ -1141,6 +1141,7 @@
   "schedule.title": "Shipment Schedule",
   "schedule.carrier": "Carrier",
   "schedule.date": "Scheduled ship date",
+  "schedule.clearDate": "Clear date",
   "schedule.noCarrier": "No carrier selected",
   "schedule.otherCarrier": "Other…",
   "schedule.otherPlaceholder": "Type carrier name",
