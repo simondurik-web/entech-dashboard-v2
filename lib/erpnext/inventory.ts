@@ -8,6 +8,12 @@ import {
   erpnextCallGet,
 } from './client'
 import type { Committed } from './operation'
+import {
+  reservationsForBatches,
+  releaseBatchReservation,
+  reserveBatchesToSO,
+  type BatchReservation,
+} from './staging'
 
 // ERPNext stock operations for the inventory-ops module. Company is fixed to
 // Molding (the only operating company). All writes are server-side only and
@@ -573,6 +579,42 @@ export interface TransferResult extends Committed {
   fromWarehouse: string
   toWarehouse: string
   qty: number
+  /** Set when the pallet was reserved and the reservation was carried to the new bin. */
+  reservedTo?: string
+}
+
+/** If the pallet is reserved to a Sales Order, return that reservation — after refusing
+ *  the shapes a bin move cannot carry safely: an entry that bundles several pallets
+ *  (cancelling it would unreserve pallets nobody touched), one that is partially
+ *  delivered (release would orphan the delivered linkage), or one whose reserved qty
+ *  doesn't match the pallet's on-hand qty (re-reserving would change what the order
+ *  holds). Returns null for an unreserved pallet. */
+export async function reservedMoveGuard(batch: string, palletQty: number): Promise<BatchReservation | null> {
+  const res = (await reservationsForBatches([batch]))[batch]
+  if (!res) return null
+  const full = await erpnextGetDoc<{
+    delivered_qty?: number
+    sb_entries?: { batch_no?: string | null }[]
+  }>('Stock Reservation Entry', res.sre)
+  const distinct = new Set(
+    (full.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
+  )
+  if (distinct.size > 1) {
+    throw new Error(
+      `Pallet ${batch} is reserved together with ${distinct.size - 1} other pallet(s) in ${res.sre} — move it in ERPNext directly`
+    )
+  }
+  if (Number(full.delivered_qty) > 0) {
+    throw new Error(
+      `Pallet ${batch}'s reservation to ${res.so} is partially delivered — resolve the delivery in ERPNext before moving it`
+    )
+  }
+  if (Math.abs(res.reservedQty - palletQty) > 1e-6) {
+    throw new Error(
+      `Pallet ${batch} holds ${palletQty} but ${res.reservedQty} is reserved to ${res.so} — fix the reservation in ERPNext before moving it`
+    )
+  }
+  return res
 }
 
 /** Move a pallet between bins: a Material Transfer of the batch's full on-hand qty
@@ -588,6 +630,10 @@ export async function transferPreflight(batch: string, itemCode: string, toWareh
   const loc = await getBatchLocation(batch, itemCode)
   if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
   if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
+  // Reserved pallets ARE movable (the reservation is carried across the move) — but only
+  // the shapes reservedMoveGuard accepts; anything else 400s here with a clear message
+  // instead of failing inside the locked op.
+  await reservedMoveGuard(batch, loc.qty)
 }
 
 export async function transferInventory(input: {
@@ -611,25 +657,90 @@ export async function transferInventory(input: {
     return { batch, stockEntry: null, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
   }
 
-  const stockEntry = await submitStockEntry({
-    stock_entry_type: 'Material Transfer',
-    company: COMPANY,
-    remarks: `Dashboard move [op:${opKey}]`,
-    items: [
-      {
-        item_code: itemCode,
-        qty: loc.qty,
-        s_warehouse: loc.warehouse,
-        t_warehouse: toWarehouse,
-        use_serial_batch_fields: 1,
-        batch_no: batch,
-        allow_zero_valuation_rate: 1,
-        uom,
-        stock_uom: uom,
-        conversion_factor: 1,
-      },
-    ],
-  })
+  const doTransfer = () =>
+    submitStockEntry({
+      stock_entry_type: 'Material Transfer',
+      company: COMPANY,
+      remarks: `Dashboard move [op:${opKey}]`,
+      items: [
+        {
+          item_code: itemCode,
+          qty: loc.qty,
+          s_warehouse: loc.warehouse,
+          t_warehouse: toWarehouse,
+          use_serial_batch_fields: 1,
+          batch_no: batch,
+          allow_zero_valuation_rate: 1,
+          uom,
+          stock_uom: uom,
+          conversion_factor: 1,
+        },
+      ],
+    })
+
+  // Reserved pallet: ERPNext refuses to transfer a reserved batch, so carry the
+  // reservation across the move — release it (pinned to the confirmed SRE), transfer,
+  // then re-reserve in the destination bin pinned to the SAME release line (Simon
+  // 2026-07-21: "we do need to transfer reserved stock"). The three steps are not
+  // atomic; each failure path below restores or reports loudly rather than leaving a
+  // silently-unreserved pallet.
+  const reservation = await reservedMoveGuard(batch, loc.qty)
+  if (reservation) {
+    await releaseBatchReservation(batch, reservation.sre)
+    let stockEntry: string | null
+    try {
+      stockEntry = await doTransfer()
+    } catch (e) {
+      // Stock never moved — put the reservation back in the SOURCE bin.
+      try {
+        await reserveBatchesToSO({
+          soName: reservation.so,
+          items: [
+            {
+              salesOrderItem: reservation.soItem ?? undefined,
+              itemCode,
+              warehouse: loc.warehouse,
+              batch,
+              qty: loc.qty,
+            },
+          ],
+        })
+      } catch {
+        throw new Error(
+          `Move of ${batch} failed AND its reservation to ${reservation.so} could not be restored — re-stage the pallet from the staging screen. Move error: ${(e as Error).message}`
+        )
+      }
+      throw e
+    }
+    try {
+      await reserveBatchesToSO({
+        soName: reservation.so,
+        items: [
+          {
+            salesOrderItem: reservation.soItem ?? undefined,
+            itemCode,
+            warehouse: toWarehouse,
+            batch,
+            qty: loc.qty,
+          },
+        ],
+      })
+    } catch (e) {
+      throw new Error(
+        `Pallet ${batch} moved to ${toWarehouse}, but re-reserving it to ${reservation.so} failed — re-stage it to ${reservation.so} from the staging screen. Error: ${(e as Error).message}`
+      )
+    }
+    return {
+      batch,
+      stockEntry,
+      fromWarehouse: loc.warehouse,
+      toWarehouse,
+      qty: loc.qty,
+      reservedTo: reservation.so,
+    }
+  }
+
+  const stockEntry = await doTransfer()
 
   return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
 }
@@ -690,9 +801,20 @@ export async function bulkTransfer(input: {
   await preflight(uniq[0].itemCode, destination)
   const meta = await itemNameMap([...new Set(uniq.map((l) => l.itemCode))])
 
+  // Reserved pallets are SKIPPED here, not failed: one reserved batch would reject the
+  // whole (single, atomic) Stock Entry. Moving a reserved pallet carries its reservation
+  // and is a per-pallet operation — use the single-pallet move for those.
+  const reservedMap = await reservationsForBatches(uniq.map((l) => l.batch)).catch(
+    () => ({}) as Record<string, BatchReservation>
+  )
+
   const rows: Record<string, unknown>[] = []
   const skipped: { batch: string; reason: string }[] = []
   for (const l of uniq) {
+    if (reservedMap[l.batch]) {
+      skipped.push({ batch: l.batch, reason: 'reserved' })
+      continue
+    }
     const loc = await getBatchLocation(l.batch, l.itemCode)
     if (!loc || loc.qty <= 0) {
       skipped.push({ batch: l.batch, reason: 'no-stock' })

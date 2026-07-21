@@ -2151,6 +2151,11 @@ export default function InventoryOpsPage() {
       {movingBatch === p.batch && (
         <div className="mt-2 rounded-md border border-border bg-background p-2">
           <div className="mb-1 text-xs font-medium">{t('inventoryOps.moveTo')}</div>
+          {reservations[p.batch] && (
+            <div className="mb-1 text-[11px] text-purple-400">
+              {t('inventoryOps.moveKeepsReservation')} {reservations[p.batch]!.so}
+            </div>
+          )}
           <input
             value={moveWhFilter}
             onChange={(e) => {
