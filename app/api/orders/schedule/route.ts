@@ -104,12 +104,13 @@ async function lineIdsForSo(so: string): Promise<{ ids: number[]; shippedOnly: b
     .limit(1000)
   if (error) throw new Error(error.message)
   const rows = (data ?? []).filter((r) => String(r.if_number ?? '').trim().split(/\s+/)[0] === so)
-  const unshipped = rows.filter(
-    (r) =>
-      normalizeStatus(String(r.work_order_status ?? ''), String(r.if_status_fusion ?? '')) !== 'shipped' &&
-      !String(r.shipped_date ?? '').trim()
-  )
-  return { ids: unshipped.map((r) => r.id as number), shippedOnly: rows.length > 0 && unshipped.length === 0 }
+  // Scheduling targets live orders: shipped is history, cancelled is dead —
+  // neither is writable (round-6 review).
+  const live = rows.filter((r) => {
+    const st = normalizeStatus(String(r.work_order_status ?? ''), String(r.if_status_fusion ?? ''))
+    return st !== 'shipped' && st !== 'cancelled' && !String(r.shipped_date ?? '').trim()
+  })
+  return { ids: live.map((r) => r.id as number), shippedOnly: rows.length > 0 && live.length === 0 }
 }
 
 export async function GET(req: NextRequest) {
@@ -169,6 +170,11 @@ export async function POST(req: NextRequest) {
   const dateRaw = String(body.scheduledShipDate ?? '').trim()
   if (!SO_NAME.test(so) || (dateRaw && !isValidDay(dateRaw))) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+  // Carrier lands in CSV exports — a leading =, +, -, @ or control char would
+  // execute as a formula when the export opens in Excel (round-6 review).
+  if (carrier && /^[=+\-@\t\r]/.test(carrier)) {
+    return NextResponse.json({ error: 'Carrier name cannot start with =, +, - or @' }, { status: 400 })
   }
   const scheduledShipDate = dateRaw || null
 

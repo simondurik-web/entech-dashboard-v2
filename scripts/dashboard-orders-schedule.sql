@@ -31,7 +31,12 @@ declare
   n integer;
   stamp timestamptz := now();
 begin
-  perform 1 from public.dashboard_orders where id = any(p_check_ids) for update;
+  -- Lock EVERY row this call may touch, in deterministic id order — two
+  -- concurrent saves from different member SOs of one truckload lock the
+  -- same rows in the same order instead of deadlocking (round-6 review).
+  perform 1 from (
+    select id from public.dashboard_orders where id = any(p_all_ids) order by id for update
+  ) locked;
   select max(schedule_set_at) into cur from public.dashboard_orders where id = any(p_check_ids);
   if p_enforce and cur is distinct from p_expected then
     return query select 0, true, cur;
