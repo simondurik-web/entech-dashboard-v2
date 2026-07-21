@@ -54,11 +54,18 @@ export async function POST(req: NextRequest) {
   // mid-carry pallet (whose reservation this op already released) and 400 the retry.
   const { data: priorOp, error: priorErr } = await supabaseAdmin
     .from('inventory_ops_log')
-    .select('idempotency_key')
+    .select('idempotency_key, batch, error')
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle()
   if (priorErr) {
     return NextResponse.json({ error: 'Operation log unavailable; try again shortly.' }, { status: 503 })
+  }
+  // Operation identity binds to the FAMILY, not the batch — but reservation
+  // verification below acts on the REQUEST's batch. A replayed key must reference the
+  // same pallet, or an old op's stamped intent could be applied to a different serial
+  // in the family (review r7).
+  if (priorOp && priorOp.batch && priorOp.batch !== batch) {
+    return NextResponse.json({ error: 'This idempotency key was already used for a different pallet.' }, { status: 409 })
   }
   if (!priorOp) {
     try {
@@ -97,7 +104,18 @@ export async function POST(req: NextRequest) {
   if (result.status === 200) {
     const body = result.body as Record<string, unknown>
     if (body.reservedTo === undefined) {
-      const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, opKey: idempotencyKey })
+      // Restores are allowed on a FRESH run (erp() just executed under the op lock) or
+      // on a replay whose op row records an unresolved reservation ('reservation:'
+      // checkpoint below). A replay of a long-done clean op is verify-ONLY — writing
+      // there could resurrect a reservation someone deliberately released later (r7).
+      const allowRestore = !priorOp || String(priorOp.error ?? '').startsWith('reservation:')
+      const follow = await verifyOrRestoreMovedReservation({
+        batch,
+        itemCode,
+        toWarehouse,
+        opKey: idempotencyKey,
+        allowRestore,
+      })
       if (follow) {
         if (follow.reservedTo !== undefined) {
           // Verified (or restored) — drop any stale lost-reservation warning.
@@ -106,6 +124,24 @@ export async function POST(req: NextRequest) {
         }
         result.body = { ...body, ...follow }
       }
+    }
+    // Persist the reservation outcome on the op row so REPLAYS know whether this op
+    // still owes a restore. 'reservation:' in `error` is inert to the state machine
+    // (it only ever parses the 'label:' prefix on done rows) and move ops have no
+    // label phase. Best-effort — a lost write degrades to verify-only on replay.
+    const finalBody = result.body as Record<string, unknown>
+    if (finalBody.warning === 'reservation_transfer_failed') {
+      await supabaseAdmin
+        .from('inventory_ops_log')
+        .update({ error: 'reservation: transfer_failed' })
+        .eq('idempotency_key', idempotencyKey)
+        .then(undefined, () => undefined)
+    } else if (priorOp && String(priorOp.error ?? '').startsWith('reservation:') && finalBody.reservedTo !== undefined) {
+      await supabaseAdmin
+        .from('inventory_ops_log')
+        .update({ error: null })
+        .eq('idempotency_key', idempotencyKey)
+        .then(undefined, () => undefined)
     }
   }
 
