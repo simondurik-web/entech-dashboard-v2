@@ -46,6 +46,8 @@ type DashboardOrderRow = {
   bearings: string | null
   assigned_to: string | null
   daily_capacity: number | null
+  scheduled_carrier: string | null
+  scheduled_ship_date: string | null
 }
 
 // Only pallet/shipping records from the last year are ever relevant to this
@@ -149,7 +151,7 @@ async function fetchDashboardOrders(): Promise<OrderWithShippingFields[]> {
     while (true) {
       const { data, error } = await supabaseAdmin
         .from('dashboard_orders')
-        .select('line, category, if_number, if_status_fusion, work_order_status, po_number, customer, part_number, order_qty, requested_completion_date, days_until_promise, shipped_date, revenue, ship_to_address, shipping_notes, internal_notes, shipping_cost, date_of_request, priority_level, urgent_override, packaging, parts_per_package, number_of_packages, fusion_inventory, hub_mold, tire, have_tire, hub, have_hub, bearings, assigned_to, daily_capacity')
+        .select('line, category, if_number, if_status_fusion, work_order_status, po_number, customer, part_number, order_qty, requested_completion_date, days_until_promise, shipped_date, revenue, ship_to_address, shipping_notes, internal_notes, shipping_cost, date_of_request, priority_level, urgent_override, packaging, parts_per_package, number_of_packages, fusion_inventory, hub_mold, tire, have_tire, hub, have_hub, bearings, assigned_to, daily_capacity, scheduled_carrier, scheduled_ship_date')
         .range(offset, offset + pageSize - 1)
 
       if (error) throw error
@@ -196,6 +198,8 @@ async function fetchDashboardOrders(): Promise<OrderWithShippingFields[]> {
         shippingNotes: str(row.shipping_notes),
         internalNotes: str(row.internal_notes),
         shippingCost: num(row.shipping_cost),
+        scheduledCarrier: str(row.scheduled_carrier),
+        scheduledShipDate: str(row.scheduled_ship_date),
       }))
       .filter((order) => order.line && order.customer)
       .filter((order) => normalizeStatus(order.internalStatus, order.ifStatus) !== 'cancelled')
@@ -463,6 +467,8 @@ const buildOverview = unstable_cache(
         palletWidth,
         palletLength,
         palletWeightEach,
+        scheduledCarrier: order.scheduledCarrier || '',
+        scheduledShipDate: order.scheduledShipDate || '',
       }
 
       if (status === 'staged') {

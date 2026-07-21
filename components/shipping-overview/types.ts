@@ -46,6 +46,9 @@ export interface ShippingOverviewOrder {
   shippingNotes: string
   internalNotes: string
   shippingCost: number
+  // Shipment scheduling (planned carrier + pickup date; dashboard-managed)
+  scheduledCarrier: string
+  scheduledShipDate: string
   pallets: ShippingOverviewPallet[]
   palletCount: number
   palletPhotoCount: number

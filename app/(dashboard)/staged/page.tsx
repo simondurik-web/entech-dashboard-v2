@@ -23,7 +23,31 @@ import { getEffectivePriority } from '@/lib/priority'
 import { buildPalletEnrichmentByLine, applyPalletEnrichment } from '@/lib/pallet-enrichment'
 
 type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
+type SchedKey = 'all' | 'today' | 'tomorrow' | 'week' | 'overdue'
 type OrderRow = Order & Record<string, unknown>
+
+// Local YYYY-MM-DD (matches the DB's date form; string compare == date compare)
+function isoDay(offset = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function isoWeekRange(): { from: string; to: string } {
+  const d = new Date()
+  const dow = (d.getDay() + 6) % 7 // Mon=0
+  const mon = new Date(d)
+  mon.setDate(d.getDate() - dow)
+  const sun = new Date(mon)
+  sun.setDate(mon.getDate() + 6)
+  const f = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  return { from: f(mon), to: f(sun) }
+}
+
+function fmtSched(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  return m ? `${Number(m[2])}/${Number(m[3])}/${m[1]}` : iso
+}
 
 function priorityColor(priority: string): string {
   if (priority === 'P1') return 'bg-red-500/20 text-red-600'
@@ -82,6 +106,11 @@ function StagedPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [search, setSearch] = useState('')
+  // Shipment-schedule filters (Simon 2026-07-21): quick chips + carrier + range
+  const [schedFilter, setSchedFilter] = useState<SchedKey>('all')
+  const [carrierFilter, setCarrierFilter] = useState('')
+  const [schedFrom, setSchedFrom] = useState('')
+  const [schedTo, setSchedTo] = useState('')
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
   const [showPLC, setShowPLC] = useState(false)
   // Multi-line order context ("2 of 3 lines ready") keyed by ERP SO name.
@@ -157,6 +186,33 @@ function StagedPageContent() {
         ),
     },
     {
+      key: 'scheduledShipDate' as keyof (Order & Record<string, unknown>) & string,
+      label: t('schedule.colDate'),
+      sortable: true,
+      render: (v) => {
+        const d = String(v ?? '')
+        if (!d) return <span className="text-muted-foreground">-</span>
+        const today = isoDay()
+        if (d < today) {
+          const late = Math.round((Date.parse(today) - Date.parse(d)) / 86400000)
+          return (
+            <span className="font-bold text-red-500">
+              {fmtSched(d)} <span className="text-[10px]">({t('schedule.late').replace('{n}', String(late))})</span>
+            </span>
+          )
+        }
+        if (d === today) return <span className="font-bold text-amber-600">{fmtSched(d)}</span>
+        return fmtSched(d)
+      },
+    },
+    {
+      key: 'scheduledCarrier' as keyof (Order & Record<string, unknown>) & string,
+      label: t('schedule.colCarrier'),
+      sortable: true,
+      filterable: true,
+      render: (v) => (v ? String(v) : <span className="text-muted-foreground">-</span>),
+    },
+    {
       key: 'effectivePriority' as keyof (Order & Record<string, unknown>) & string,
       label: t('table.priority'),
       sortable: true,
@@ -228,6 +284,7 @@ function StagedPageContent() {
     ...getExtraOrderColumns<Order & Record<string, unknown>>(new Set([
       'line', 'ifNumber', 'poNumber', 'truckloadNumber', 'effectivePriority', 'daysUntilDue',
       'customer', 'partNumber', 'orderQty', 'tire', 'hub', 'bearings',
+      'scheduledShipDate', 'scheduledCarrier',
     ])),
   ], [t])
 
@@ -307,7 +364,41 @@ function StagedPageContent() {
     fetchData()
   }, [fetchData])
 
-  const filtered = (filterOrders(orders, filter, search) as OrderRow[]).map((row) => ({
+  // Schedule-based filtering: chips are date windows over scheduledShipDate
+  // ("today" deliberately includes past-due unshipped loads — those are the
+  // ones the crew must not miss); carrier + range AND-combine with the chip.
+  const schedFiltered = useMemo(() => {
+    const today = isoDay()
+    const tomorrow = isoDay(1)
+    const week = isoWeekRange()
+    return orders.filter((o) => {
+      const d = o.scheduledShipDate || ''
+      if (schedFilter === 'today' && !(d && d <= today)) return false
+      if (schedFilter === 'overdue' && !(d && d < today)) return false
+      if (schedFilter === 'tomorrow' && d !== tomorrow) return false
+      if (schedFilter === 'week' && !(d && d >= week.from && d <= week.to)) return false
+      if (schedFrom && !(d && d >= schedFrom)) return false
+      if (schedTo && !(d && d <= schedTo)) return false
+      if (carrierFilter && (o.scheduledCarrier || '') !== carrierFilter) return false
+      return true
+    })
+  }, [orders, schedFilter, schedFrom, schedTo, carrierFilter])
+
+  const overdueCount = useMemo(() => {
+    const today = isoDay()
+    return orders.filter((o) => o.scheduledShipDate && o.scheduledShipDate < today).length
+  }, [orders])
+
+  const carrierOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const o of orders) {
+      const c = (o.scheduledCarrier || '').trim()
+      if (c) counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [orders])
+
+  const filtered = (filterOrders(schedFiltered, filter, search) as OrderRow[]).map((row) => ({
     ...row,
     truckloadNumber: truckloadFor(row as unknown as Order)?.load_number ?? '',
   }))
@@ -342,7 +433,7 @@ function StagedPageContent() {
       />
 
       {/* Filter chips */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+      <div className="flex gap-2 mb-2 overflow-x-auto pb-2">
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -356,6 +447,79 @@ function StagedPageContent() {
             {'emoji' in f ? `${f.emoji} ` : ''}{f.label}
           </button>
         ))}
+      </div>
+
+      {/* Shipment-schedule filters: quick date windows + carrier + custom range */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(
+          [
+            { key: 'all' as const, label: t('schedule.chipAll') },
+            { key: 'today' as const, label: `🚛 ${t('schedule.chipToday')}` },
+            { key: 'tomorrow' as const, label: t('schedule.chipTomorrow') },
+            { key: 'week' as const, label: t('schedule.chipWeek') },
+          ]
+        ).map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setSchedFilter((cur) => (cur === c.key ? 'all' : c.key))}
+            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
+              schedFilter === c.key ? 'bg-sky-600 text-white' : 'bg-muted hover:bg-muted/80'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+        {overdueCount > 0 && (
+          <button
+            onClick={() => setSchedFilter((cur) => (cur === 'overdue' ? 'all' : 'overdue'))}
+            className={`px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+              schedFilter === 'overdue' ? 'bg-red-600 text-white' : 'bg-red-500/15 text-red-600 hover:bg-red-500/25'
+            }`}
+          >
+            ⚠️ {t('schedule.chipOverdue').replace('{n}', String(overdueCount))}
+          </button>
+        )}
+        <select
+          value={carrierFilter}
+          onChange={(e) => setCarrierFilter(e.target.value)}
+          className="rounded-full border bg-muted px-3 py-1 text-sm"
+          aria-label={t('schedule.colCarrier')}
+        >
+          <option value="">{t('schedule.allCarriers')}</option>
+          {carrierOptions.map(([c, n]) => (
+            <option key={c} value={c}>
+              {c} ({n})
+            </option>
+          ))}
+        </select>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <input
+            type="date"
+            value={schedFrom}
+            onChange={(e) => setSchedFrom(e.target.value)}
+            className="rounded border bg-muted px-2 py-1 text-xs"
+            aria-label={t('schedule.rangeFrom')}
+          />
+          –
+          <input
+            type="date"
+            value={schedTo}
+            onChange={(e) => setSchedTo(e.target.value)}
+            className="rounded border bg-muted px-2 py-1 text-xs"
+            aria-label={t('schedule.rangeTo')}
+          />
+          {(schedFrom || schedTo) && (
+            <button
+              onClick={() => {
+                setSchedFrom('')
+                setSchedTo('')
+              }}
+              className="rounded px-1.5 py-0.5 text-xs hover:bg-muted"
+            >
+              ✕
+            </button>
+          )}
+        </span>
       </div>
 
       {/* Pallet Load Calculator + Truckloads — at the TOP so the shipping

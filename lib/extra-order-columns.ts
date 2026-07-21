@@ -33,6 +33,8 @@ export function getExtraOrderColumns<T extends Record<string, unknown>>(
     { key: 'dailyCapacity' as keyof T & string, label: 'Daily Capacity', sortable: true, render: (v) => v ? (v as number).toLocaleString() : '-' },
     { key: 'shippedDate' as keyof T & string, label: 'Shipped Date', sortable: true, render: (v) => { const d = v as string; return d || '-' } },
     { key: 'shipToAddress' as keyof T & string, label: 'Ship To', sortable: true, filterable: true, render: (v) => { const a = v as string; return a || '-' } },
+    { key: 'scheduledCarrier' as keyof T & string, label: 'Carrier', sortable: true, filterable: true, render: (v) => { const c = v as string; return c || '-' } },
+    { key: 'scheduledShipDate' as keyof T & string, label: 'Scheduled Ship', sortable: true, render: (v) => { const d = v as string; return d || '-' } },
   ]
 
   // Return only columns not already defined, marked as defaultHidden

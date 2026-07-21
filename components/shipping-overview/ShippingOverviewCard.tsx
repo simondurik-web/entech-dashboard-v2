@@ -116,11 +116,31 @@ export function ShippingOverviewCard({ order, expanded, onToggle }: ShippingOver
                 {badgeLabel}
               </span>
             )}
-            {order.shipping?.carrier && (
+            {/* Ship-time carrier; the PLANNED carrier fills in when no ship
+                record exists yet (shipment scheduling, Simon 2026-07-21) */}
+            {(order.shipping?.carrier || order.scheduledCarrier) && (
               <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
-                {order.shipping.carrier}
+                {order.shipping?.carrier || order.scheduledCarrier}
               </span>
             )}
+            {order.status === 'staged' && order.scheduledShipDate && (() => {
+              const today = new Date()
+              const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+              const d = order.scheduledShipDate
+              const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d)
+              const label = m ? `${Number(m[2])}/${Number(m[3])}/${m[1]}` : d
+              const tone =
+                d < todayIso
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
+                  : d === todayIso
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300'
+              return (
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone}`}>
+                  🚛 {label}
+                </span>
+              )
+            })()}
             {/* Multi-line order context: this line may be waiting on siblings */}
             {order.siblingLines && (
               <span

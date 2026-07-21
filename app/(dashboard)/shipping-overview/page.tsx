@@ -41,6 +41,48 @@ function matchesSearch(order: ShippingOverviewOrder, query: string): boolean {
   )
 }
 
+// ── Shipment-schedule filtering (Simon 2026-07-21) ──
+type SchedKey = 'all' | 'today' | 'tomorrow' | 'week' | 'overdue'
+
+function isoDay(offset = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function isoWeekRange(): { from: string; to: string } {
+  const d = new Date()
+  const dow = (d.getDay() + 6) % 7 // Mon=0
+  const mon = new Date(d)
+  mon.setDate(d.getDate() - dow)
+  const sun = new Date(mon)
+  sun.setDate(mon.getDate() + 6)
+  const f = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  return { from: f(mon), to: f(sun) }
+}
+
+function matchesSchedule(
+  order: ShippingOverviewOrder,
+  sched: SchedKey,
+  from: string,
+  to: string,
+  carrier: string
+): boolean {
+  const d = order.scheduledShipDate || ''
+  const today = isoDay()
+  if (sched === 'today' && !(d && d <= today)) return false
+  if (sched === 'overdue' && !(d && d < today)) return false
+  if (sched === 'tomorrow' && d !== isoDay(1)) return false
+  if (sched === 'week') {
+    const w = isoWeekRange()
+    if (!(d && d >= w.from && d <= w.to)) return false
+  }
+  if (from && !(d && d >= from)) return false
+  if (to && !(d && d <= to)) return false
+  if (carrier && (order.scheduledCarrier || '') !== carrier) return false
+  return true
+}
+
 export default function ShippingOverviewPage() {
   return (
     <Suspense>
@@ -97,6 +139,11 @@ function ShippingOverviewPageContent() {
   const [shippedSearch, setShippedSearch] = useState('')
   const [stagedCategories, setStagedCategories] = useState(DEFAULT_CATEGORIES)
   const [shippedCategories, setShippedCategories] = useState(DEFAULT_CATEGORIES)
+  // Shipment-schedule filters (Ready to Ship side only)
+  const [schedFilter, setSchedFilter] = useState<SchedKey>('all')
+  const [schedCarrier, setSchedCarrier] = useState('')
+  const [schedFrom, setSchedFrom] = useState('')
+  const [schedTo, setSchedTo] = useState('')
 
   const [days, setDays] = useState(10)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -180,9 +227,29 @@ function ShippingOverviewPageContent() {
   }
 
   const staged = useMemo(
-    () => filterByCategory((data?.staged ?? []).filter((o) => matchesSearch(o, stagedSearch)), stagedCategories),
-    [data?.staged, stagedSearch, stagedCategories],
+    () =>
+      filterByCategory(
+        (data?.staged ?? []).filter(
+          (o) => matchesSearch(o, stagedSearch) && matchesSchedule(o, schedFilter, schedFrom, schedTo, schedCarrier)
+        ),
+        stagedCategories
+      ),
+    [data?.staged, stagedSearch, stagedCategories, schedFilter, schedFrom, schedTo, schedCarrier],
   )
+
+  const stagedOverdueCount = useMemo(() => {
+    const today = isoDay()
+    return (data?.staged ?? []).filter((o) => o.scheduledShipDate && o.scheduledShipDate < today).length
+  }, [data?.staged])
+
+  const stagedCarrierOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const o of data?.staged ?? []) {
+      const c = (o.scheduledCarrier || '').trim()
+      if (c) counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [data?.staged])
   const shipped = useMemo(
     () => filterByCategory((data?.shipped ?? []).filter((o) => matchesSearch(o, shippedSearch)), shippedCategories),
     [data?.shipped, shippedSearch, shippedCategories],
@@ -440,6 +507,83 @@ function ShippingOverviewPageContent() {
               {/* Category filter */}
               <div className="mt-3">
                 <CategoryFilter value={stagedCategories} onChange={setStagedCategories} />
+              </div>
+
+              {/* Shipment-schedule filters: date-window chips + carrier + range */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    { key: 'all' as const, label: t('schedule.chipAll') },
+                    { key: 'today' as const, label: `🚛 ${t('schedule.chipToday')}` },
+                    { key: 'tomorrow' as const, label: t('schedule.chipTomorrow') },
+                    { key: 'week' as const, label: t('schedule.chipWeek') },
+                  ]
+                ).map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={() => setSchedFilter((cur) => (cur === c.key ? 'all' : c.key))}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      schedFilter === c.key
+                        ? 'bg-sky-600 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+                {stagedOverdueCount > 0 && (
+                  <button
+                    onClick={() => setSchedFilter((cur) => (cur === 'overdue' ? 'all' : 'overdue'))}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      schedFilter === 'overdue'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-red-500/15 text-red-600 hover:bg-red-500/25'
+                    }`}
+                  >
+                    ⚠️ {t('schedule.chipOverdue').replace('{n}', String(stagedOverdueCount))}
+                  </button>
+                )}
+                <select
+                  value={schedCarrier}
+                  onChange={(e) => setSchedCarrier(e.target.value)}
+                  className="rounded-full border bg-muted px-3 py-1 text-xs"
+                  aria-label={t('schedule.colCarrier')}
+                >
+                  <option value="">{t('schedule.allCarriers')}</option>
+                  {stagedCarrierOptions.map(([c, n]) => (
+                    <option key={c} value={c}>
+                      {c} ({n})
+                    </option>
+                  ))}
+                </select>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <input
+                    type="date"
+                    value={schedFrom}
+                    onChange={(e) => setSchedFrom(e.target.value)}
+                    className="rounded border bg-muted px-2 py-1 text-xs"
+                    aria-label={t('schedule.rangeFrom')}
+                  />
+                  –
+                  <input
+                    type="date"
+                    value={schedTo}
+                    onChange={(e) => setSchedTo(e.target.value)}
+                    className="rounded border bg-muted px-2 py-1 text-xs"
+                    aria-label={t('schedule.rangeTo')}
+                  />
+                  {(schedFrom || schedTo) && (
+                    <button
+                      onClick={() => {
+                        setSchedFrom('')
+                        setSchedTo('')
+                      }}
+                      className="rounded px-1.5 py-0.5 text-xs hover:bg-muted"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
               </div>
             </div>
 

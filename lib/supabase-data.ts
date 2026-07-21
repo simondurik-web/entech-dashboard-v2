@@ -158,6 +158,8 @@ function mapRowToOrder(row: Record<string, unknown>): Order {
     priorityChangedBy: row.priority_changed_by ? str(row.priority_changed_by) : null,
     priorityChangedAt: row.priority_changed_at ? str(row.priority_changed_at) : null,
     shipToAddress: str(row.ship_to_address),
+    scheduledCarrier: str(row.scheduled_carrier),
+    scheduledShipDate: str(row.scheduled_ship_date),
     // Dollar columns (raw text; the MCP layer parses). USD-suffixed names so
     // the dashboard's own Order literals (e.g. shipping-overview) are unaffected.
     unitPriceUSD: str(row.unit_price),

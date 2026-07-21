@@ -8,6 +8,7 @@ import { isSafeStorageUrl } from '@/lib/po-automation/safe-url'
 import { useI18n } from '@/lib/i18n'
 import { authHeaders } from '@/lib/session-token'
 import { compressImageForUpload } from '@/lib/compress-image'
+import { ShipmentScheduleEditor } from '@/components/ShipmentScheduleEditor'
 import type { OrderDocument } from '@/lib/po-automation/documents'
 
 function isPdf(doc: OrderDocument): boolean {
@@ -222,6 +223,12 @@ export function BillOfLadingSection({
   const watermarked = watermarkUntilShipped && !shipped
 
   return (
+    <div className="space-y-2">
+    {/* Shipment schedule (carrier + pickup date) rides the BOL surface — the
+        same people set both (Simon 2026-07-21). Per-SO surfaces only. */}
+    {soName && /^(SO|SAL-ORD)-/.test(soName) && (
+      <ShipmentScheduleEditor soName={soName} canManage={canManage} />
+    )}
     <div
       className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5"
       style={{ borderTopWidth: 2, borderTopColor: 'rgb(245, 158, 11)' }}
@@ -444,6 +451,7 @@ export function BillOfLadingSection({
             ))}
         </div>
       )}
+    </div>
     </div>
   )
 }

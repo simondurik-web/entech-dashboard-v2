@@ -61,6 +61,10 @@ export interface Order {
   computedPriority?: string | null
   // Ship-to shipping address (optional column; from dashboard_orders.ship_to_address)
   shipToAddress?: string
+  // Shipment scheduling (dashboard-managed; set from the BOL section, fans out
+  // per SO + truckload). Date is the DB's YYYY-MM-DD form.
+  scheduledCarrier?: string
+  scheduledShipDate?: string
   // Pallet calculator enrichment (from pallet records)
   palletWidth?: number
   palletLength?: number
