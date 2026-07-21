@@ -50,7 +50,8 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
           cache: 'no-store',
         })
         if (!res.ok) {
-          // 404 = order simply has no dashboard rows yet — saving is still safe
+          // 404 = no dashboard rows for this SO. Save stays enabled — a POST
+          // would 404 the same way (clean error, nothing to clobber).
           if (active && res.status !== 404) setLoadFailed(true)
           return
         }

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { canManageShippingBol } from '@/lib/po-automation/guard'
-import { truckloadSiblingSos } from '@/lib/erpnext/external-bol'
+import { activeTruckloadForSo } from '@/lib/truckloads'
 import { escapeLike } from '@/lib/po-automation/edit'
 
 // Shipment scheduling — planned carrier + scheduled ship date per Sales Order
@@ -19,7 +20,30 @@ import { escapeLike } from '@/lib/po-automation/edit'
 export const dynamic = 'force-dynamic'
 
 const SO_NAME = /^[A-Za-z0-9-]{1,40}$/
-const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Real calendar day in YYYY-MM-DD (shape + round-trip; rejects 2026-02-30). */
+function isValidDay(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const d = new Date(`${s}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
+}
+
+/** Pending member SOs of the SO's ACTIVE truckload (planned/loading), own SO
+ *  excluded. Deliberately NOT the broader truckloadSiblingSos used for BOL
+ *  invalidation — that one spans historical/shipped truckloads, and a schedule
+ *  write must never touch a truck that already left (review panel 2026-07-21,
+ *  codex BLOCKER). */
+async function activeTruckloadMemberSos(so: string): Promise<string[]> {
+  const tl = await activeTruckloadForSo(so)
+  if (!tl) return []
+  return [
+    ...new Set(
+      tl.truckload_orders
+        .filter((o) => o.status === 'pending' && o.so_number && o.so_number !== so)
+        .map((o) => o.so_number)
+    ),
+  ]
+}
 
 async function guardAny(req: NextRequest) {
   let guard = await requireMenuAccess(req, '/staged')
@@ -62,7 +86,7 @@ export async function GET(req: NextRequest) {
     // state can only come from rows added after a set; prefer the freshest set.
     const row =
       [...rows].sort((a, b) => String(b.schedule_set_at ?? '').localeCompare(String(a.schedule_set_at ?? '')))[0] ?? rows[0]
-    const truckloadSos = await truckloadSiblingSos(so)
+    const truckloadSos = await activeTruckloadMemberSos(so)
     return NextResponse.json(
       {
         carrier: row.scheduled_carrier ?? null,
@@ -96,7 +120,7 @@ export async function POST(req: NextRequest) {
   const so = String(body.so ?? '').trim()
   const carrier = String(body.carrier ?? '').trim().slice(0, 60) || null
   const dateRaw = String(body.scheduledShipDate ?? '').trim()
-  if (!SO_NAME.test(so) || (dateRaw && !DATE_SHAPE.test(dateRaw))) {
+  if (!SO_NAME.test(so) || (dateRaw && !isValidDay(dateRaw))) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
   const scheduledShipDate = dateRaw || null
@@ -105,8 +129,8 @@ export async function POST(req: NextRequest) {
     const ownIds = await lineIdsForSo(so)
     if (ownIds.length === 0) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    // One truck, one schedule: active-truckload members ride along.
-    const siblings = await truckloadSiblingSos(so)
+    // One truck, one schedule: ACTIVE-truckload members ride along.
+    const siblings = await activeTruckloadMemberSos(so)
     const allIds = [...ownIds]
     const sos = [so]
     for (const sib of siblings) {
@@ -128,6 +152,11 @@ export async function POST(req: NextRequest) {
       })
       .in('id', allIds)
     if (error) throw new Error(error.message)
+
+    // The Shipping Overview blob is unstable_cache'd (60s) — bust it so a
+    // saved schedule shows there immediately, not a minute later. ('max' =
+    // this Next version's expire-now profile; the 1-arg form was removed.)
+    revalidateTag('shipping-overview', 'max')
 
     return NextResponse.json(
       { ok: true, sos, updatedLines: allIds.length, carrier, scheduledShipDate },
