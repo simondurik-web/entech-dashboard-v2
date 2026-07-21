@@ -1136,6 +1136,8 @@
   "po.bol.reprintHint": "Shipped — printable copy",
   "po.bol.wmStamp": "NO VÁLIDO · NOT VALID",
   "po.bol.wmDisclaimer": "Load not completed in the system. Scan the load in ERPNext to release the BOL.",
+  "po.bol.soHint": "This BOL will be linked to order {so}",
+  "po.bol.soLinked": "Linked to sales order {so}",
   "po.shipping.poBol": "PO / BOL",
   "toter.section": "Toter Portal",
   "toter.enter": "Enter order in Toter portal",

@@ -728,9 +728,10 @@ export function OrderDetail({
                 clean copy unlocks once the load ships; uploads stay allowed. ── */}
             {showPoSection && (
               <BillOfLadingSection
-                key={`bol|${customer!.trim()}|${poNumber!.trim()}`}
+                key={`bol|${customer!.trim()}|${poNumber!.trim()}|${(ifNumber || '').split(' ')[0]}`}
                 customer={customer!.trim()}
                 poNumber={poNumber!.trim()}
+                soName={(ifNumber || '').split(' ')[0]}
                 userId={userId}
                 variant="card"
                 canManage

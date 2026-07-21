@@ -11,6 +11,8 @@ export interface OrderDocument {
   id: string
   customer: string | null
   po_number: string | null
+  /** ERPNext Sales Order this doc is scoped to; null = order-level (whole PO). */
+  so_number: string | null
   doc_type: string
   doc_number: string | null
   file_url: string | null

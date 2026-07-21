@@ -121,6 +121,9 @@ export async function POST(req: NextRequest) {
   const file = form.get('file')
   const customer = str(form.get('customer'))
   const po = str(form.get('po'))
+  // Optional ERPNext Sales Order tag — scopes a BOL to ONE sales order of a
+  // multi-SO PO (per-SO BOLs, Simon 2026-07-21). Absent = order-level (legacy).
+  const soRaw = str(form.get('so'))
   const docNumber = str(form.get('doc_number'))
   const notes = str(form.get('notes'))
   const docTypeRaw = str(form.get('doc_type')) ?? 'bol'
@@ -140,6 +143,12 @@ export async function POST(req: NextRequest) {
   }
   if (!po) {
     return NextResponse.json({ error: 'PO number is required' }, { status: 400 })
+  }
+  // Same shape as ERPNext doc names elsewhere (DN_NAME in the fulfillment
+  // routes). Only meaningful on BOLs; reject garbage rather than storing it.
+  const so = soRaw && docType === 'bol' ? soRaw.trim() : null
+  if (so && !/^[A-Za-z0-9-]{1,40}$/.test(so)) {
+    return NextResponse.json({ error: 'Invalid sales order' }, { status: 400 })
   }
   if (!isAllowedDocType(file.type)) {
     return NextResponse.json({ error: 'Only PDF, PNG, JPEG or WebP files are allowed' }, { status: 400 })
@@ -173,6 +182,7 @@ export async function POST(req: NextRequest) {
     .insert({
       customer,
       po_number: po,
+      so_number: so,
       doc_type: docType,
       doc_number: docNumber,
       file_url: fileUrl,
@@ -213,6 +223,7 @@ export async function POST(req: NextRequest) {
       erpSo = await attachBolToSalesOrder({
         customer,
         poNumber: po,
+        soName: so,
         bytes: new Uint8Array(buf),
         fileName,
         contentType: file.type,
@@ -337,7 +348,7 @@ export async function PATCH(req: NextRequest) {
   const { data: existing } = await supabaseAdmin
     .schema('po_automation')
     .from('order_documents')
-    .select('file_url, po_number, doc_type, doc_number, file_name, customer')
+    .select('file_url, po_number, so_number, doc_type, doc_number, file_name, customer')
     .eq('id', id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -433,6 +444,7 @@ export async function PATCH(req: NextRequest) {
       await attachBolToSalesOrder({
         customer: existing.customer ?? null,
         poNumber: existing.po_number,
+        soName: existing.so_number ?? null,
         bytes: new Uint8Array(await file.arrayBuffer()),
         fileName: (update.file_name as string) ?? file.name,
         contentType: file.type,

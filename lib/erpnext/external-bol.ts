@@ -187,10 +187,11 @@ export async function truckloadSiblingSos(so: string): Promise<string[]> {
   return [...new Set((members ?? []).map((m) => m.so_number).filter((s) => s && s !== so))]
 }
 
-/** The (customer, customer-PO) pairs the dashboard files documents under, for
- *  a set of SO names — via the dashboard_orders mirror (if_number startsWith). */
-async function docPairsForSos(sos: string[]): Promise<{ customer: string; po: string }[]> {
-  const pairs: { customer: string; po: string }[] = []
+/** The (customer, customer-PO, SO) triples the dashboard files documents under,
+ *  for a set of SO names — via the dashboard_orders mirror (if_number
+ *  startsWith). The SO rides along so BOL lookups can honor per-SO tagging. */
+async function docPairsForSos(sos: string[]): Promise<{ customer: string; po: string; so: string }[]> {
+  const pairs: { customer: string; po: string; so: string }[] = []
   for (const so of sos) {
     const { data } = await supabaseAdmin
       .from('dashboard_orders')
@@ -199,39 +200,56 @@ async function docPairsForSos(sos: string[]): Promise<{ customer: string; po: st
       .limit(20)
     for (const r of data ?? []) {
       if (String(r.if_number ?? '').trim().split(/\s+/)[0] !== so) continue
-      if (r.customer && r.po_number) pairs.push({ customer: r.customer, po: r.po_number })
+      if (r.customer && r.po_number) pairs.push({ customer: r.customer, po: r.po_number, so })
     }
   }
   const seen = new Set<string>()
   return pairs.filter((p) => {
-    const k = `${normName(p.customer)}||${normName(p.po)}`
+    const k = `${normName(p.customer)}||${normName(p.po)}||${p.so}`
     if (seen.has(k)) return false
     seen.add(k)
     return true
   })
 }
 
-/** Newest BOL order_document across a set of (customer, PO) pairs. */
+/** Best BOL order_document across a set of (customer, PO, target-SO) pairs.
+ *
+ *  Per-SO scoping (Simon 2026-07-21, Origen PO154 — three SOs on one PO, each
+ *  with its own Amazon-FBA destination BOL): a row TAGGED with so_number
+ *  belongs to that sales order ONLY. Eligibility per pair: rows tagged to the
+ *  pair's SO, plus untagged rows (legacy uploads and PO-panel uploads, which
+ *  stay order-level). A row tagged to a DIFFERENT SO is never eligible.
+ *  Selection: SO-tagged rows beat untagged rows; newest wins within a tier. */
 async function newestBolDoc(
-  pairs: { customer: string; po: string }[]
+  pairs: { customer: string; po: string; so?: string | null }[]
 ): Promise<{ file_url: string; file_name: string | null; created_at: string | null } | null> {
-  let best: { file_url: string; file_name: string | null; created_at: string | null } | null = null
+  let best: { file_url: string; file_name: string | null; created_at: string | null; tier: number } | null = null
   for (const pair of pairs) {
     const { data } = await supabaseAdmin
       .schema('po_automation')
       .from('order_documents')
-      .select('file_url, file_name, customer, created_at')
+      .select('file_url, file_name, customer, created_at, so_number')
       .eq('doc_type', 'bol')
       .ilike('po_number', escapeLike(pair.po.trim()))
       .order('created_at', { ascending: false })
       .limit(25)
     const want = normName(pair.customer)
-    const row = (data ?? []).find((d) => normName(d.customer) === want && d.file_url)
-    if (row && (!best || String(row.created_at ?? '') > String(best.created_at ?? ''))) {
-      best = { file_url: row.file_url, file_name: row.file_name ?? null, created_at: row.created_at ?? null }
+    const wantSo = (pair.so ?? '').trim()
+    for (const d of data ?? []) {
+      if (normName(d.customer) !== want || !d.file_url) continue
+      const rowSo = String(d.so_number ?? '').trim()
+      if (rowSo && rowSo !== wantSo) continue // tagged to another SO — not ours
+      const tier = rowSo ? 0 : 1
+      const better =
+        !best ||
+        tier < best.tier ||
+        (tier === best.tier && String(d.created_at ?? '') > String(best.created_at ?? ''))
+      if (better) {
+        best = { file_url: d.file_url, file_name: d.file_name ?? null, created_at: d.created_at ?? null, tier }
+      }
     }
   }
-  return best
+  return best ? { file_url: best.file_url, file_name: best.file_name, created_at: best.created_at } : null
 }
 
 /** Newest BOL upload among the members of THIS DN's truckload (null when the
@@ -282,7 +300,7 @@ export async function resolveOriginalSource(ref: DnShipmentRef): Promise<Externa
   }
 
   if (ref.customer && ref.poNo) {
-    const own = await newestBolDoc([{ customer: ref.customer, po: ref.poNo }])
+    const own = await newestBolDoc([{ customer: ref.customer, po: ref.poNo, so: ref.so }])
     if (own) {
       return { kind: 'dashboard', sourceKey: own.file_url, fileName: own.file_name, createdAt: own.created_at }
     }
@@ -439,12 +457,17 @@ export async function attachBolToSalesOrder(input: {
   bytes: Uint8Array
   fileName: string
   contentType: string
+  /** SO the upload was tagged with (per-SO BOL scoping). Must still belong to
+   *  the (customer, PO) pair — a caller-supplied SO is a hint, not a bypass. */
+  soName?: string | null
 }): Promise<string | null> {
   // dashboard_orders mirrors ERPNext — if_number's first token is the SO name.
   // A non-empty customer match is REQUIRED, and the (customer, PO) pair must
   // resolve to exactly ONE Sales Order — attaching to "the first PO match"
   // could file a BOL on another customer's order (review panel 2026-07-17,
   // codex BLOCKER). Ambiguous or empty → skip the ERPNext push entirely.
+  // Exception: an upload TAGGED with an SO that verifiably belongs to the pair
+  // attaches to that SO even when the PO spans several (per-SO BOLs, 2026-07-21).
   const want = normName(input.customer)
   if (!want) return null
   const { data } = await supabaseAdmin
@@ -458,8 +481,15 @@ export async function attachBolToSalesOrder(input: {
       .map((r) => String(r.if_number).trim().split(/\s+/)[0])
       .filter(Boolean)
   )
-  if (soNames.size !== 1) return null
-  const soName = [...soNames][0]
+  const tagged = (input.soName ?? '').trim()
+  let soName: string
+  if (tagged && soNames.has(tagged)) {
+    soName = tagged
+  } else if (!tagged && soNames.size === 1) {
+    soName = [...soNames][0]
+  } else {
+    return null
+  }
   const ext = input.fileName.includes('.') ? input.fileName.slice(input.fileName.lastIndexOf('.')) : ''
   const safeExt = /^\.[A-Za-z0-9]{1,5}$/.test(ext) ? ext : ''
   const up = await erpnextUploadFile({

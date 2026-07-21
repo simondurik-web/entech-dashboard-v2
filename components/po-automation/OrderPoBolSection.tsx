@@ -120,9 +120,10 @@ export function OrderPoBolSection({
 
       {/* BOL list + upload (reuses the shared section, full-width panel variant) */}
       <BillOfLadingSection
-        key={`bol|${customer}|${poNumber}`}
+        key={`bol|${customer}|${poNumber}|${soName}`}
         customer={customer}
         poNumber={poNumber}
+        soName={soName}
         userId={userId}
         variant="panel"
         watermarkUntilShipped

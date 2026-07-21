@@ -28,6 +28,7 @@ function isPdf(doc: OrderDocument): boolean {
 export function BillOfLadingSection({
   customer,
   poNumber,
+  soName = '',
   variant = 'card',
   shipped = false,
   canManage = false,
@@ -35,6 +36,15 @@ export function BillOfLadingSection({
 }: {
   customer: string
   poNumber: string
+  /**
+   * ERPNext Sales Order of the hosting order line. When set (per-SO surfaces:
+   * Orders Data, Shipping Overview) the list shows only this SO's BOLs plus
+   * untagged order-level ones, and new uploads are tagged to this SO — a
+   * multi-SO PO (e.g. Amazon FBA, one BOL per destination) files each BOL
+   * against its own sales order (Simon 2026-07-21). Empty (PO panel) keeps the
+   * PO-wide view and untagged uploads.
+   */
+  soName?: string
   /** Retained for caller compatibility; auth now rides the session token. */
   userId?: string | null
   /** 'card' = compact amber card (OrderDetail); 'panel' = wider (PoDetailPanel). */
@@ -82,14 +92,23 @@ export function BillOfLadingSection({
       const data = res.ok ? await res.json() : { documents: [] }
       // BOLs only — ERP-entry proofs (doc_type='erp_entry') belong to the
       // "PO & ERP Entry" section, not here. Legacy rows have doc_type='bol'.
+      // On a per-SO surface, a BOL tagged to a DIFFERENT sales order of the
+      // same PO belongs to that order's line, not this one.
       const rows: OrderDocument[] = Array.isArray(data?.documents) ? data.documents : []
-      if (active()) setDocs(rows.filter((d) => (d.doc_type ?? 'bol') === 'bol'))
+      if (active())
+        setDocs(
+          rows.filter(
+            (d) =>
+              (d.doc_type ?? 'bol') === 'bol' &&
+              (!soName || !d.so_number?.trim() || d.so_number.trim() === soName)
+          )
+        )
     } catch {
       if (active()) setDocs([])
     } finally {
       if (active()) setLoading(false)
     }
-  }, [customer, poNumber])
+  }, [customer, poNumber, soName])
 
   // The caller remounts via key on (customer, poNumber); initial state already
   // resets per lookup. State updates only happen in async callbacks.
@@ -112,6 +131,7 @@ export function BillOfLadingSection({
       fd.append('file', await compressImageForUpload(file))
       fd.append('customer', customer)
       fd.append('po', poNumber)
+      if (soName) fd.append('so', soName)
       fd.append('doc_type', 'bol')
       if (docNumber.trim()) fd.append('doc_number', docNumber.trim())
       if (note.trim()) fd.append('notes', note.trim())
@@ -135,7 +155,7 @@ export function BillOfLadingSection({
     } finally {
       setUploading(false)
     }
-  }, [customer, poNumber, docNumber, note, t, load])
+  }, [customer, poNumber, soName, docNumber, note, t, load])
 
   const openEdit = useCallback((doc: OrderDocument) => {
     setEditId(doc.id)
@@ -242,7 +262,17 @@ export function BillOfLadingSection({
                       <PoMediaThumbs items={media} size={isPanel ? 'md' : 'sm'} />
                     ) : null}
                     <div className="min-w-0 flex-1">
-                      <p className={`truncate font-medium ${isPanel ? 'text-xs' : 'text-[11px]'}`}>{label}</p>
+                      <p className={`flex items-center gap-1.5 font-medium ${isPanel ? 'text-xs' : 'text-[11px]'}`}>
+                        <span className="truncate">{label}</span>
+                        {doc.so_number?.trim() && (
+                          <span
+                            title={t('po.bol.soLinked').replace('{so}', doc.so_number.trim())}
+                            className="shrink-0 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-600 dark:text-cyan-300"
+                          >
+                            {doc.so_number.trim()}
+                          </span>
+                        )}
+                      </p>
                       {doc.notes && <p className={`truncate ${textXs} text-muted-foreground`}>{doc.notes}</p>}
                       {doc.uploaded_by_name && (
                         <p className={`${textXs} text-muted-foreground`}>
@@ -368,6 +398,11 @@ export function BillOfLadingSection({
                   placeholder={t('po.bol.notePlaceholder')}
                   className="w-full rounded border bg-background px-2 py-1 text-xs"
                 />
+                {soName && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('po.bol.soHint').replace('{so}', soName)}
+                  </p>
+                )}
                 {error && <p className="text-[10px] text-red-500">{error}</p>}
                 <div className="flex gap-2">
                   <button
