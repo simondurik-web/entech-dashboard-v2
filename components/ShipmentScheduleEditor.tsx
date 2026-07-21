@@ -93,11 +93,13 @@ export function ShipmentScheduleEditor({ soName, canManage }: { soName: string; 
       if (!res.ok) throw new Error(body?.error || t('schedule.saveError'))
       const sos: string[] = body?.sos ?? [soName]
       setSavedMsg(
-        sos.length > 1
-          ? t('schedule.savedTruckload').replace('{sos}', sos.join(', '))
-          : t('schedule.saved')
+        body?.multiTruckload
+          ? t('schedule.savedMulti')
+          : sos.length > 1
+            ? t('schedule.savedTruckload').replace('{sos}', sos.join(', '))
+            : t('schedule.saved')
       )
-      setTimeout(() => setSavedMsg(null), 6000)
+      setTimeout(() => setSavedMsg(null), 8000)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('schedule.saveError'))
     } finally {

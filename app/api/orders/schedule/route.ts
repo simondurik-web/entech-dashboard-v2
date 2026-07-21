@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { resolveUserName } from '@/lib/erpnext/operation'
 import { canManageShippingBol } from '@/lib/po-automation/guard'
-import { activeTruckloadForSo } from '@/lib/truckloads'
+import { ACTIVE_TL_STATUSES } from '@/lib/truckloads'
 import { escapeLike } from '@/lib/po-automation/edit'
 
 // Shipment scheduling — planned carrier + scheduled ship date per Sales Order
@@ -31,18 +31,33 @@ function isValidDay(s: string): boolean {
 /** Pending member SOs of the SO's ACTIVE truckload (planned/loading), own SO
  *  excluded. Deliberately NOT the broader truckloadSiblingSos used for BOL
  *  invalidation — that one spans historical/shipped truckloads, and a schedule
- *  write must never touch a truck that already left (review panel 2026-07-21,
- *  codex BLOCKER). */
-async function activeTruckloadMemberSos(so: string): Promise<string[]> {
-  const tl = await activeTruckloadForSo(so)
-  if (!tl) return []
-  return [
-    ...new Set(
-      tl.truckload_orders
-        .filter((o) => o.status === 'pending' && o.so_number && o.so_number !== so)
-        .map((o) => o.so_number)
-    ),
-  ]
+ *  write must never touch a truck that already left. Truckload membership is
+ *  line-scoped, so one SO's lines CAN ride different active trucks — that
+ *  state is ambiguous for a per-SO schedule, so fan-out only happens when the
+ *  membership resolves to exactly ONE active truckload; otherwise the caller
+ *  gets multi=true and schedules just the requested SO (review panel
+ *  2026-07-21, codex BLOCKERs rounds 1-2). */
+async function activeTruckloadMemberSos(so: string): Promise<{ sos: string[]; multi: boolean }> {
+  const { data, error } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('truckload_id, status, truckloads!inner(status)')
+    .eq('so_number', so)
+    .eq('status', 'pending')
+    .in('truckloads.status', [...ACTIVE_TL_STATUSES])
+  if (error) throw new Error(error.message)
+  const tlIds = [...new Set((data ?? []).map((r) => r.truckload_id).filter(Boolean))]
+  if (tlIds.length === 0) return { sos: [], multi: false }
+  if (tlIds.length > 1) return { sos: [], multi: true }
+  const { data: members, error: mErr } = await supabaseAdmin
+    .from('truckload_orders')
+    .select('so_number')
+    .eq('truckload_id', tlIds[0])
+    .eq('status', 'pending')
+  if (mErr) throw new Error(mErr.message)
+  return {
+    sos: [...new Set((members ?? []).map((m) => m.so_number).filter((s): s is string => !!s && s !== so))],
+    multi: false,
+  }
 }
 
 async function guardAny(req: NextRequest) {
@@ -59,7 +74,7 @@ async function lineIdsForSo(so: string): Promise<number[]> {
     .from('dashboard_orders')
     .select('id, if_number')
     .ilike('if_number', `${escapeLike(so)}%`)
-    .limit(200)
+    .limit(1000)
   if (error) throw new Error(error.message)
   return (data ?? [])
     .filter((r) => String(r.if_number ?? '').trim().split(/\s+/)[0] === so)
@@ -86,14 +101,15 @@ export async function GET(req: NextRequest) {
     // state can only come from rows added after a set; prefer the freshest set.
     const row =
       [...rows].sort((a, b) => String(b.schedule_set_at ?? '').localeCompare(String(a.schedule_set_at ?? '')))[0] ?? rows[0]
-    const truckloadSos = await activeTruckloadMemberSos(so)
+    const tl = await activeTruckloadMemberSos(so)
     return NextResponse.json(
       {
         carrier: row.scheduled_carrier ?? null,
         scheduledShipDate: row.scheduled_ship_date ?? null,
         setBy: row.schedule_set_by ?? null,
         setAt: row.schedule_set_at ?? null,
-        truckloadSos,
+        truckloadSos: tl.sos,
+        multiTruckload: tl.multi,
       },
       { headers: { 'Cache-Control': 'no-store' } }
     )
@@ -129,11 +145,12 @@ export async function POST(req: NextRequest) {
     const ownIds = await lineIdsForSo(so)
     if (ownIds.length === 0) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    // One truck, one schedule: ACTIVE-truckload members ride along.
-    const siblings = await activeTruckloadMemberSos(so)
+    // One truck, one schedule: ACTIVE-truckload members ride along (skipped —
+    // with a notice — when the SO's lines span multiple active trucks).
+    const tl = await activeTruckloadMemberSos(so)
     const allIds = [...ownIds]
     const sos = [so]
-    for (const sib of siblings) {
+    for (const sib of tl.sos) {
       const ids = await lineIdsForSo(sib)
       if (ids.length) {
         allIds.push(...ids)
@@ -159,7 +176,7 @@ export async function POST(req: NextRequest) {
     revalidateTag('shipping-overview', 'max')
 
     return NextResponse.json(
-      { ok: true, sos, updatedLines: allIds.length, carrier, scheduledShipDate },
+      { ok: true, sos, updatedLines: allIds.length, carrier, scheduledShipDate, multiTruckload: tl.multi },
       { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (error) {

@@ -1147,6 +1147,7 @@
   "schedule.save": "Save schedule",
   "schedule.saved": "Schedule saved",
   "schedule.savedTruckload": "Schedule saved — applied to the whole truckload: {sos}",
+  "schedule.savedMulti": "Saved for this order only — its lines are on more than one truckload, so set the others from their own orders",
   "schedule.saveError": "Could not save the schedule",
   "schedule.loadFailed": "Could not load the current schedule — refresh the page to enable saving",
   "schedule.setBy": "Set by",
