@@ -711,10 +711,17 @@ export async function verifyOrRestoreMovedReservation(input: {
 }): Promise<Record<string, unknown> | null> {
   const { batch, itemCode, toWarehouse, opKey } = input
   try {
-    const live = await liveReservationForMove(batch)
-    if (live) return { reservedTo: live.so }
     const se = await findOpStockEntry(opKey)
     const intent = se ? parseCarriedTag(se.remarks) : null
+    const live = await liveReservationForMove(batch)
+    if (live) {
+      // Report the CURRENT binding. When it differs from what this op carried (an
+      // operator re-staged the pallet mid-recovery), flag it rather than certify the
+      // carry — the truth is the live reservation, not the stamp (review r4).
+      return intent && intent.so !== live.so
+        ? { reservedTo: live.so, reservationDiffersFromCarried: intent.so }
+        : { reservedTo: live.so }
+    }
     if (!intent) return null // untagged/absent SE = this op never carried a reservation
     const loc = await getBatchLocation(batch, itemCode)
     if (!loc || loc.qty <= 0 || loc.warehouse !== toWarehouse) {
@@ -730,6 +737,46 @@ export async function verifyOrRestoreMovedReservation(input: {
   } catch (e) {
     console.error(`move: reservation follow for ${batch} failed:`, e)
     return { warning: 'reservation_transfer_failed' }
+  }
+}
+
+/** Route-reconcile completion for a move whose erp() died MID-CARRY: the op's stamped
+ *  DRAFT exists but the transfer never submitted (a pending row would otherwise wedge —
+ *  the state machine only re-runs erp() from failed_pre_erp, so the draft-resume logic
+ *  in erp() is unreachable from 'pending'; review r4). Validates the draft's stamped
+ *  intent against the live reservation before touching anything: a live reservation to
+ *  a DIFFERENT order means the pallet was deliberately re-staged — the stale draft must
+ *  not be completed. Returns the submitted Stock Entry name, or null when there is
+ *  nothing this path can safely do (the caller then reports the op still-pending). */
+export async function resumeMoveDraft(input: {
+  batch: string
+  itemCode: string
+  opKey: string
+}): Promise<string | null> {
+  const { batch, itemCode, opKey } = input
+  const se = await findOpStockEntry(opKey)
+  if (!se) return null
+  if (se.docstatus === 1) return se.name
+  const tag = parseCarriedTag(se.remarks)
+  const live = await liveReservationForMove(batch).catch(() => null)
+  if (live) {
+    if (!tag || live.so !== tag.so || (live.soItem ?? '') !== (tag.soItem ?? '')) {
+      // Deliberately re-staged (or unverifiable) — abandon the stale draft.
+      return null
+    }
+    // Crash happened between draft creation and release: finish the release first.
+    await releaseBatchReservation(batch, live.sre)
+  }
+  try {
+    const fresh = await erpnextGetDoc('Stock Entry', se.name)
+    const submitted = await erpnextSubmit<{ name?: string }>(fresh)
+    return submitted.name ?? se.name
+  } catch (e) {
+    // A concurrent retry may have submitted it first — re-check before giving up.
+    const again = await findOpStockEntry(opKey).catch(() => null)
+    if (again && again.docstatus === 1) return again.name
+    console.error(`move: draft resume submit for ${batch} failed:`, e)
+    return null
   }
 }
 
@@ -801,12 +848,22 @@ export async function transferInventory(input: {
   // This op's own prior document (retry): a submitted entry can't coexist with stock
   // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
   const prior = await findOpStockEntry(opKey)
-  const priorDraft = prior && prior.docstatus === 0 ? prior : null
+  let priorDraft = prior && prior.docstatus === 0 ? prior : null
   const intent: { so: string; soItem: string | null; qty: number } | null = live
     ? { so: live.so, soItem: live.soItem, qty: live.qty }
     : priorDraft
       ? parseCarriedTag(priorDraft.remarks)
       : null
+  // A stale draft whose stamped intent no longer matches the LIVE reservation (the
+  // pallet was released and re-staged to another order between attempts) must not be
+  // reused — its tag would later "restore" the wrong order. Create a fresh stamped
+  // draft instead; the stale one stays an inert orphan (review r4).
+  if (live && priorDraft) {
+    const priorTag = parseCarriedTag(priorDraft.remarks)
+    if (!priorTag || priorTag.so !== live.so || (priorTag.soItem ?? '') !== (live.soItem ?? '')) {
+      priorDraft = null
+    }
+  }
 
   const seDoc = {
     stock_entry_type: 'Material Transfer',
@@ -830,7 +887,8 @@ export async function transferInventory(input: {
     ],
   }
 
-  // Step 1 — durable intent before any mutation of the reservation.
+  // Step 1 — durable intent before any mutation of the reservation. (A prior stale
+  // draft was discarded above; only a tag-matching draft is reused.)
   let draftName: string | null = priorDraft?.name ?? null
   if (live && !draftName) {
     draftName = (await erpnextCreate<{ name: string }>('Stock Entry', seDoc)).name
@@ -988,8 +1046,10 @@ export async function bulkTransfer(input: {
   // Reserved pallets are SKIPPED here, not failed: one reserved batch would reject the
   // whole (single, atomic) Stock Entry. Moving a reserved pallet carries its reservation
   // and is a per-pallet operation — use the single-pallet move for those. A failed
-  // lookup FAILS the bulk (a swallowed error here would let a reserved batch poison the
-  // atomic transfer — or worse, race the reservation).
+  // LIST lookup fails the bulk (throw). NOTE: reservationsForBatches suppresses
+  // individual SRE document reads, so a reserved pallet with an unreadable SRE can slip
+  // past this skip — ERPNext then rejects the whole atomic Stock Entry with its
+  // reserved-batch error (loud failure, no partial move, no corruption).
   const reservedMap = await reservationsForBatches(uniq.map((l) => l.batch))
 
   const rows: Record<string, unknown>[] = []

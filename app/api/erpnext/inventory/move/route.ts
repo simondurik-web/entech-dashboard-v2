@@ -6,6 +6,7 @@ import {
   reconcileStockEntry,
   palletBase,
   verifyOrRestoreMovedReservation,
+  resumeMoveDraft,
 } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -74,7 +75,14 @@ export async function POST(req: NextRequest) {
     erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
-      return se ? { batch, stockEntry: se } : null
+      if (se) return { batch, stockEntry: se }
+      // No SUBMITTED entry — but a crash mid-carry leaves this op's stamped DRAFT and a
+      // 'pending' row, from which the state machine never re-runs erp(). Complete the
+      // interrupted carry here (validate stamped intent vs live reservation, release if
+      // still held, submit the draft); the post-op verification below re-reserves.
+      // Without this, the pallet family wedges AND the reservation stays lost (r4).
+      const resumed = await resumeMoveDraft({ batch, itemCode, opKey: idempotencyKey })
+      return resumed ? { batch, stockEntry: resumed } : null
     },
   })
 
@@ -83,13 +91,21 @@ export async function POST(req: NextRequest) {
   // the core body, so a lost reservation could otherwise replay as a clean success
   // (review r3, all legs). verifyOrRestoreMovedReservation is bound to this op's own
   // stamped Stock Entry: for a never-reserved move it answers null from one lookup, and
-  // when the carry was interrupted it restores (or warns loudly). Fresh erp() runs that
-  // already carry reservedTo/warning extras are passed through untouched.
+  // when the carry was interrupted it restores (or warns loudly). A fresh erp() WARNING
+  // is also re-verified (r4): the second attempt often restores immediately — and a
+  // reservation that actually bound despite a bookkeeping throw must not read as lost.
   if (result.status === 200) {
-    const body = result.body as { reservedTo?: unknown; warning?: unknown }
-    if (body.reservedTo === undefined && body.warning === undefined) {
+    const body = result.body as Record<string, unknown>
+    if (body.reservedTo === undefined) {
       const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, opKey: idempotencyKey })
-      if (follow) result.body = { ...result.body, ...follow }
+      if (follow) {
+        if (follow.reservedTo !== undefined) {
+          // Verified (or restored) — drop any stale lost-reservation warning.
+          delete body.warning
+          delete body.reservationLostFrom
+        }
+        result.body = { ...body, ...follow }
+      }
     }
   }
 

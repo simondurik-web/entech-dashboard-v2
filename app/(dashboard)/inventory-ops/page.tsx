@@ -1584,14 +1584,23 @@ export default function InventoryOpsPage() {
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'move failed')
-      clearOpKey('move', batch, moveWarehouse)
       if (d.warning === 'reservation_transfer_failed') {
-        // Stock moved but the pallet's SO reservation did NOT survive — the floor must
-        // re-stage it; never report this as a clean success.
+        // Stock moved but the pallet's SO reservation did NOT survive. KEEP the
+        // idempotency key and the open panel: tapping Move again replays the SAME op,
+        // whose post-op verification restores the reservation from the op's stamped
+        // Stock Entry. Clearing the key here would mint a fresh op that knows nothing
+        // and reports a clean (wrong) success (review r4).
         showFlash('err', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse} — ${t('inventoryOps.moveReservationLost')}${d.reservationLostFrom ? ` ${d.reservationLostFrom}` : ''}`)
-      } else {
-        showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}${d.reservedTo ? ` · ${t('inventoryOps.movedStillReserved')} ${d.reservedTo}` : ''}`)
+        refreshAfterMutation(itemCode)
+        setHistory((h) => {
+          const n = { ...h }
+          delete n[batch]
+          return n
+        })
+        return
       }
+      clearOpKey('move', batch, moveWarehouse)
+      showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}${d.reservedTo ? ` · ${t('inventoryOps.movedStillReserved')} ${d.reservedTo}` : ''}`)
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')
