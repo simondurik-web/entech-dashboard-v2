@@ -1600,7 +1600,14 @@ export default function InventoryOpsPage() {
         return
       }
       clearOpKey('move', batch, moveWarehouse)
-      showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}${d.reservedTo ? ` · ${t('inventoryOps.movedStillReserved')} ${d.reservedTo}` : ''}`)
+      if (d.reservationDiffersFromCarried) {
+        // The pallet ended up reserved to a DIFFERENT order than it started with
+        // (someone re-staged it mid-move) — true state, but say so explicitly rather
+        // than let it read like the original carry succeeded.
+        showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse} · ${t('inventoryOps.movedReservationChanged')} ${d.reservedTo} (${t('inventoryOps.movedReservationWas')} ${d.reservationDiffersFromCarried})`)
+      } else {
+        showFlash('ok', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse}${d.reservedTo ? ` · ${t('inventoryOps.movedStillReserved')} ${d.reservedTo}` : ''}`)
+      }
       setMovingBatch(null)
       setMoveWarehouse('')
       setMoveWhFilter('')

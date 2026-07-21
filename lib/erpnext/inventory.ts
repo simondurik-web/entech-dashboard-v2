@@ -780,25 +780,34 @@ export async function verifyOrRestoreMovedReservation(input: {
 export async function resumeMoveDraft(input: {
   batch: string
   itemCode: string
+  toWarehouse: string
   opKey: string
 }): Promise<string | null> {
-  const { batch, itemCode, opKey } = input
+  const { batch, itemCode, toWarehouse, opKey } = input
   const se = await findOpStockEntry(opKey)
   if (!se) return null
   if (se.docstatus === 1) return se.name
   // Validate the draft's CONTENT before touching anything: it must be this op's
-  // single-row transfer of exactly this pallet (a crafted or corrupted draft must not
-  // be submitted blind; review r5).
+  // single-row Material Transfer of exactly this pallet to exactly this destination,
+  // carrying a tag (only reserved carries create drafts — an untagged draft is not
+  // ours to complete). A crafted or corrupted draft must never be submitted blind
+  // (review r5/r6).
   const draft = await erpnextGetDoc<{
+    stock_entry_type?: string
+    company?: string
     items?: { item_code?: string; batch_no?: string; qty?: number; s_warehouse?: string; t_warehouse?: string }[]
   }>('Stock Entry', se.name)
   const rows = draft.items ?? []
   const tag = parseCarriedTag(se.remarks)
   if (
+    !tag ||
+    draft.stock_entry_type !== 'Material Transfer' ||
+    draft.company !== COMPANY ||
     rows.length !== 1 ||
     rows[0].batch_no !== batch ||
     rows[0].item_code !== itemCode ||
-    (tag && Math.abs((Number(rows[0].qty) || 0) - tag.qty) > 1e-6)
+    rows[0].t_warehouse !== toWarehouse ||
+    Math.abs((Number(rows[0].qty) || 0) - tag.qty) > 1e-6
   ) {
     await defuseStaleDraft(se.name, se.remarks)
     return null
@@ -812,8 +821,16 @@ export async function resumeMoveDraft(input: {
     return null
   }
   if (live) {
-    if (!tag || live.so !== tag.so || (live.soItem ?? '') !== (tag.soItem ?? '')) {
-      // Deliberately re-staged — this draft is stale; defuse so it can never win.
+    // Full shape revalidation before the destructive release — same invariants the
+    // original carry required. A reservation whose qty, delivery state, or bundling
+    // changed since the stamp is NOT the one this draft released-for (review r6).
+    if (
+      live.so !== tag.so ||
+      (live.soItem ?? '') !== (tag.soItem ?? '') ||
+      Math.abs(live.qty - tag.qty) > 1e-6 ||
+      live.batchCount !== 1 ||
+      live.deliveredQty > 0
+    ) {
       await defuseStaleDraft(se.name, se.remarks)
       return null
     }

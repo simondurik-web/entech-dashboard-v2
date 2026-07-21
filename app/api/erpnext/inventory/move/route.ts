@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       // interrupted carry here (validate stamped intent vs live reservation, release if
       // still held, submit the draft); the post-op verification below re-reserves.
       // Without this, the pallet family wedges AND the reservation stays lost (r4).
-      const resumed = await resumeMoveDraft({ batch, itemCode, opKey: idempotencyKey })
+      const resumed = await resumeMoveDraft({ batch, itemCode, toWarehouse, opKey: idempotencyKey })
       return resumed ? { batch, stockEntry: resumed } : null
     },
   })
