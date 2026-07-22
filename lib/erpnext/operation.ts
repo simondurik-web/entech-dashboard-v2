@@ -191,10 +191,15 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       const msg = e instanceof Error ? e.message : String(e)
       // Keep a 'reservation:' checkpoint prefix (move route) in front of the failure
       // message so the durable marker survives erp() failures (move review r14).
-      const { data: cur } = await LOG().select('error').eq('idempotency_key', key).maybeSingle()
+      const { data: cur, error: curErr } = await LOG().select('error').eq('idempotency_key', key).maybeSingle()
+      // Marker preservation fails CLOSED for move ops (r22): if the read failed we
+      // cannot prove there was no checkpoint — keep an (unverified) one rather than
+      // overwrite the only durable marker. No other action interprets this prefix.
       const prefix = String(cur?.error ?? '').startsWith('reservation:')
         ? `${String(cur?.error).split('|')[0].trim()} | `
-        : ''
+        : curErr && action === 'move'
+          ? 'reservation: unverified | '
+          : ''
       await LOG()
         .update({ status: 'failed_pre_erp', error: `${prefix}${msg}`.slice(0, 500) })
         .eq('idempotency_key', key)

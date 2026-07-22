@@ -859,6 +859,19 @@ export async function verifyOrRestoreMovedReservation(input: {
           ...(partial ? { reservationPartial: true } : {}),
         }
       }
+      if (!intent) {
+        // No stamp to compare against — certify ONLY a binding that provably covers
+        // the whole pallet at the DESTINATION; anything else carries the partial flag
+        // so the route never clears recovery state on it (r22).
+        const locN = await getBatchLocation(batch, itemCode).catch(() => null)
+        const full =
+          live.warehouse === toWarehouse &&
+          live.batchCount === 1 &&
+          live.deliveredQty === 0 &&
+          !!locN &&
+          live.qty + 1e-6 >= locN.qty
+        return full ? { reservedTo: live.so } : { reservedTo: live.so, reservationPartial: true }
+      }
       return { reservedTo: live.so }
     }
     if (!intent) return null // untagged/absent SE = this op never carried a reservation
@@ -1019,12 +1032,15 @@ export async function transferInventory(input: {
    *  refuses to carry a reservation on a DIFFERENT order — the lease snapshot would be
    *  stale and that order's capacity unserialized (review r19); the retry re-resolves. */
   leasedSo?: string | null
+  /** Server-side restore authority (the ops-log 'reservation:' marker) — the at-
+   *  destination no-op verify must honor the SAME gate as the route (review r22). */
+  restoreAuthorized?: boolean
   /** Called the moment a live reservation is confirmed for carrying, BEFORE any
    *  mutating step — the route uses it to arm the durable 'reservation:' checkpoint
    *  even when the reservation appeared after preflight (review r14). Best-effort. */
   onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey, leasedSo, onCarryStart } = input
+  const { batch, itemCode, toWarehouse, opKey, leasedSo, restoreAuthorized, onCarryStart } = input
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -1039,8 +1055,15 @@ export async function transferInventory(input: {
   // re-reserve on the original attempt). Intent comes from the op's own stamped Stock
   // Entry, so the check is bound to THIS operation.
   if (loc.warehouse === toWarehouse) {
-    // Running inside erp() under the op lock — this IS the operation, restore allowed.
-    const follow = await verifyOrRestoreMovedReservation({ batch, itemCode, toWarehouse, opKey, allowRestore: true })
+    const follow = await verifyOrRestoreMovedReservation({
+      batch,
+      itemCode,
+      toWarehouse,
+      opKey,
+      // NOT unconditional (r22): a fresh clean op that happens to target the current
+      // bin must never gain restore authority a forged draft could exploit.
+      allowRestore: restoreAuthorized === true,
+    })
     const se = await findOpStockEntry(opKey).catch(() => null)
     return {
       batch,

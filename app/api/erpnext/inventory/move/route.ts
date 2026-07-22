@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   // Same shape rule runInventoryOp enforces — checked HERE too so no bracket/pipe
   // payload can ever reach a remark or a LIKE pattern through any pre-op read
   // (defense-in-depth; r20).
-  if (typeof idempotencyKey === 'string' && !/^[A-Za-z0-9-]{8,64}$/.test(idempotencyKey)) {
+  if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(idempotencyKey)) {
     return NextResponse.json({ error: 'invalid idempotencyKey' }, { status: 400 })
   }
   if (!batch || !itemCode || !toWarehouse || !idempotencyKey) {
@@ -142,6 +142,8 @@ export async function POST(req: NextRequest) {
         toWarehouse,
         opKey: idempotencyKey,
         leasedSo: preflightSo,
+        // Server-side marker only — same rule as the route's own verify gate (r22).
+        restoreAuthorized: preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:'),
         // Arm the durable checkpoint the moment a carry is CONFIRMED inside erp() —
         // covers a reservation that appeared after the preflight snapshot (r14).
         onCarryStart: async () => {
