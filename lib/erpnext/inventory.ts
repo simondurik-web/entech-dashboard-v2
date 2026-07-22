@@ -1086,12 +1086,16 @@ export async function transferInventory(input: {
   /** Server-side restore authority (the ops-log 'reservation:' marker) — the at-
    *  destination no-op verify must honor the SAME gate as the route (review r22). */
   restoreAuthorized?: boolean
+  /** The row carries the fail-closed 'reservation: unverified' marker: resume is
+   *  allowed via full corroboration (never untagged continuation), but route-level
+   *  restores stay denied (review r25). */
+  unverifiedMarker?: boolean
   /** Called the moment a live reservation is confirmed for carrying, BEFORE any
    *  mutating step — the route uses it to arm the durable 'reservation:' checkpoint
    *  even when the reservation appeared after preflight (review r14). Best-effort. */
   onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey, leasedSo, restoreAuthorized, onCarryStart } = input
+  const { batch, itemCode, toWarehouse, opKey, leasedSo, restoreAuthorized, unverifiedMarker, onCarryStart } = input
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -1161,7 +1165,14 @@ export async function transferInventory(input: {
   // would otherwise resurrect a cancelled reservation. Unauthorized drafts are ignored
   // (not defused — an admin can inspect them; they can never act without the marker).
   if (!live && priorDraft && restoreAuthorized !== true) {
-    priorDraft = null
+    if (unverifiedMarker === true) {
+      // The marker could not be verified when it was written — NEVER continue with an
+      // untagged transfer that would shadow a real interrupted carry (r25). The
+      // corroboration gate downstream decides: confirmed resumes, refuted defuses,
+      // unknown aborts retryably.
+    } else {
+      priorDraft = null
+    }
   }
   // A stale draft whose stamped intent no longer matches the LIVE reservation (the
   // pallet was released and re-staged to another order between attempts) must not be
@@ -1332,6 +1343,7 @@ export async function transferInventory(input: {
         stock_entry_type?: string
         company?: string
         remarks?: string | null
+        additional_costs?: unknown[]
         items?: {
           item_code?: string
           batch_no?: string
@@ -1348,6 +1360,7 @@ export async function transferInventory(input: {
       if (
         fresh.stock_entry_type !== 'Material Transfer' ||
         fresh.company !== COMPANY ||
+        (fresh.additional_costs?.length ?? 0) > 0 ||
         !(fresh.remarks ?? '').includes(`[op:${opKey}]`) ||
         // The recovery intent must ride the submitted document unaltered: an edit that
         // erased or retargeted the carried tag in the release window must refuse (r12).

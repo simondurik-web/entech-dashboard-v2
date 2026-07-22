@@ -3,6 +3,7 @@ import { requireInventoryAccess } from '@/lib/erpnext/auth'
 import { bulkTransfer, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { withLeases, LineLockedError } from '@/lib/erpnext/line-lock'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/bulk-transfer
 // Move many pallets to one destination bin in a single atomic ERPNext Material Transfer.
@@ -62,10 +63,40 @@ export async function POST(req: NextRequest) {
   // PALLET LEASES (r19): bulk holds the same per-pallet leases as the single move and
   // staging/assign — without them, a bulk queued during a reserved move's cancel-
   // before-submit window could see the pallet as unreserved and move it first.
+  // RECOVERING-PALLET SKIP (r25): leases expire, but a crashed reserved move leaves an
+  // ACTIVE op row / armed 'reservation:' checkpoint — bulk must not move such a pallet
+  // (its recovery would later resume against a stale location/order).
+  const { data: busyRows, error: busyErr } = await supabaseAdmin
+    .from('inventory_ops_log')
+    .select('batch, status, error')
+    .eq('action', 'move')
+    .in('batch', [...new Set(lines.map((l) => l.batch))])
+  if (busyErr) {
+    return NextResponse.json({ error: 'Operation log unavailable; try again shortly.' }, { status: 503 })
+  }
+  const recovering = new Set(
+    (busyRows ?? [])
+      .filter(
+        (r) =>
+          ['pending', 'failed_pre_erp', 'erp_committed'].includes(String(r.status)) ||
+          String(r.error ?? '').startsWith('reservation:')
+      )
+      .map((r) => String(r.batch))
+  )
+  const movable = lines.filter((l) => !recovering.has(l.batch))
+  const recoveringSkips = lines
+    .filter((l) => recovering.has(l.batch))
+    .map((l) => ({ batch: l.batch, reason: 'recovering' }))
+  if (movable.length === 0 && recoveringSkips.length > 0) {
+    return NextResponse.json(
+      { ok: true, stockEntry: null, moved: 0, skipped: recoveringSkips, destination },
+      { status: 200 }
+    )
+  }
   let result: Awaited<ReturnType<typeof runInventoryOp>>
   try {
     result = await withLeases(
-      [...new Set(lines.map((l) => `pallet:${palletBase(l.batch)}`))],
+      [...new Set(movable.map((l) => `pallet:${palletBase(l.batch)}`))],
       () =>
         runInventoryOp({
     key: idempotencyKey,
@@ -77,7 +108,7 @@ export async function POST(req: NextRequest) {
     // make this transfer's atomic Stock Entry fail at submit (ERPNext rejects insufficient/
     // disabled-batch stock) — a clean failure to re-post, never a silent double-move.
     meta: { warehouse: destination, qty: lines.length, item_code: fingerprint },
-    erp: () => bulkTransfer({ destination, lines, opKey: idempotencyKey }),
+    erp: () => bulkTransfer({ destination, lines: movable, opKey: idempotencyKey }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
       return se ? { stockEntry: se } : null
@@ -98,5 +129,9 @@ export async function POST(req: NextRequest) {
   // queue is pre-validated at scan time, so skips are near-zero and queued == moved. The
   // fresh-post response still returns the exact moved/skipped counts to the UI.
 
+  if (result.status === 200 && recoveringSkips.length > 0) {
+    const b = result.body as { skipped?: { batch: string; reason: string }[] }
+    result.body = { ...result.body, skipped: [...(b.skipped ?? []), ...recoveringSkips] }
+  }
   return NextResponse.json(result.body, { status: result.status })
 }

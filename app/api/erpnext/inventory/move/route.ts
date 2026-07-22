@@ -153,6 +153,7 @@ export async function POST(req: NextRequest) {
         leasedSo: preflightSo,
         // Server-side marker only — same rule as the route's own verify gate (r22).
         restoreAuthorized: preflightReserved || markerAuthorizes(priorOp?.error),
+        unverifiedMarker: String(priorOp?.error ?? '').startsWith('reservation: unverified'),
         // Arm the durable checkpoint the moment a carry is CONFIRMED inside erp() —
         // covers a reservation that appeared after the preflight snapshot (r14).
         onCarryStart: async () => {
