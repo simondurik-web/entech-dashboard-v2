@@ -923,18 +923,20 @@ export async function transferInventory(input: {
   // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
   const prior = await findOpStockEntry(opKey)
   let priorDraft = prior && prior.docstatus === 0 ? prior : null
-  const intent: { so: string; soItem: string | null; qty: number } | null = live
-    ? { so: live.so, soItem: live.soItem, qty: live.qty }
-    : priorDraft
-      ? parseCarriedTag(priorDraft.remarks)
-      : null
   // A stale draft whose stamped intent no longer matches the LIVE reservation (the
   // pallet was released and re-staged to another order between attempts) must not be
   // reused — its tag would later "restore" the wrong order. DEFUSE it (strip its op
   // tags so no recovery path can ever pick it up) and create a fresh stamped draft.
   if (live && priorDraft) {
     const priorTag = parseCarriedTag(priorDraft.remarks)
-    if (!priorTag || priorTag.so !== live.so || (priorTag.soItem ?? '') !== (live.soItem ?? '')) {
+    if (
+      !priorTag ||
+      priorTag.so !== live.so ||
+      (priorTag.soItem ?? '') !== (live.soItem ?? '') ||
+      // Qty drift (pallet adjusted between attempts): submitting the old draft would
+      // SPLIT the pallet across bins while re-reserving the new qty (review r10).
+      Math.abs(priorTag.qty - live.qty) > 1e-6
+    ) {
       await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
     }
@@ -950,6 +952,26 @@ export async function transferInventory(input: {
       await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
     }
+  }
+
+  // Intent is derived only AFTER every draft-vetting step above (a defused draft must
+  // never contribute intent — review r10).
+  let intent: { so: string; soItem: string | null; qty: number } | null = live
+    ? { so: live.so, soItem: live.soItem, qty: live.qty }
+    : priorDraft
+      ? parseCarriedTag(priorDraft.remarks)
+      : null
+  // Resume without a live reservation: the pallet's on-hand must still match the
+  // stamped qty, or completing the old draft would SPLIT the pallet across bins.
+  // Serialized pallets change qty only via reissue (new serial), so this should be
+  // unreachable — but on mismatch: defuse, move the full current qty unreserved, and
+  // warn LOUDLY (the released reservation cannot be safely re-bound at a drifted qty).
+  let driftLostFrom: string | null = null
+  if (!live && intent && Math.abs(loc.qty - intent.qty) > 1e-6) {
+    if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+    priorDraft = null
+    driftLostFrom = intent.so
+    intent = null
   }
 
   const seDoc = {
@@ -1050,7 +1072,16 @@ export async function transferInventory(input: {
   }
 
   if (!intent) {
-    return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+    return {
+      batch,
+      stockEntry,
+      fromWarehouse: loc.warehouse,
+      toWarehouse,
+      qty: loc.qty,
+      ...(driftLostFrom
+        ? { extra: { warning: 'reservation_transfer_failed', reservationLostFrom: driftLostFrom } }
+        : {}),
+    }
   }
 
   // Step 4 — re-reserve in the destination bin.

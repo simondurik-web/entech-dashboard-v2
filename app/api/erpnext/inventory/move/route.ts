@@ -85,9 +85,17 @@ export async function POST(req: NextRequest) {
   if (priorOp?.status === 'pending') {
     const ageMs = Date.now() - new Date(priorOp.created_at as string).getTime()
     if (ageMs > 5 * 60_000) {
+      // created_at is REFRESHED by the reclaim: it is the age clock for this gate, and
+      // without the refresh a second retry arriving after the first retry's runner
+      // claim (which resets status to pending with the ORIGINAL created_at) would
+      // immediately "reclaim" the in-flight run and double-execute erp() (review r10).
       await supabaseAdmin
         .from('inventory_ops_log')
-        .update({ status: 'failed_pre_erp', error: 'stale-pending reclaim (move route)' })
+        .update({
+          status: 'failed_pre_erp',
+          error: 'stale-pending reclaim (move route)',
+          created_at: new Date().toISOString(),
+        })
         .eq('idempotency_key', idempotencyKey)
         .eq('status', 'pending')
         .then(undefined, () => undefined)
@@ -144,12 +152,16 @@ export async function POST(req: NextRequest) {
         result.body = { ...body, ...follow }
       }
     }
-    // ORPHANED-CHECKPOINT SWEEP (r9): the browser's idempotency key is volatile — a
-    // reload after a reservation-lost warning mints a NEW key, and that fresh op knows
-    // nothing about the older op's unresolved carry. Unresolved checkpoints are
-    // therefore discoverable by PALLET FAMILY: on a clean fresh success, look for an
-    // older move op on this family still flagged 'reservation:' and restore from THAT
-    // op's stamped entry (still operation-bound — the stamp, not a guess).
+    // ORPHANED-CHECKPOINT SWEEP (r9, made VERIFY-ONLY in r10): the browser's key is
+    // volatile — a reload after a reservation-lost warning mints a NEW key that knows
+    // nothing about the older op's unresolved carry, so unresolved checkpoints are
+    // discoverable by PALLET FAMILY. But the sweep NEVER writes ERP state (auto-restore
+    // here would resurrect deliberately released reservations and undo the r7/r8
+    // protections — r10, both legs). It only (a) clears checkpoints that resolved
+    // themselves (pallet reserved again, or nothing recoverable on the stamp) and
+    // (b) surfaces a LOUD standalone nag telling the floor to re-stage. The nag is a
+    // separate field: it must not read as THIS move failing, must not keep the retry
+    // key, and must never arm a checkpoint on this op's own row.
     const bodyAfter = result.body as Record<string, unknown>
     if (!priorOp && bodyAfter.reservedTo === undefined && bodyAfter.warning === undefined) {
       const { data: orphans } = await supabaseAdmin
@@ -168,15 +180,20 @@ export async function POST(req: NextRequest) {
           itemCode,
           toWarehouse,
           opKey: orphanKey,
-          allowRestore: true,
+          allowRestore: false,
         })
-        if (follow) result.body = { ...bodyAfter, ...follow }
-        if (follow?.reservedTo !== undefined) {
+        if (follow === null || follow.reservedTo !== undefined) {
+          // Resolved (reserved again) or nothing recoverable — retire the checkpoint.
           const { error: clrErr } = await supabaseAdmin
             .from('inventory_ops_log')
             .update({ error: null })
             .eq('idempotency_key', orphanKey)
           if (clrErr) console.error('move: clearing orphaned reservation checkpoint failed:', clrErr)
+        } else if (follow.warning === 'reservation_transfer_failed') {
+          result.body = {
+            ...bodyAfter,
+            orphanedReservationFrom: follow.reservationLostFrom ?? true,
+          }
         }
       }
     }

@@ -1600,7 +1600,11 @@ export default function InventoryOpsPage() {
         return
       }
       clearOpKey('move', batch, moveWarehouse)
-      if (d.reservationDiffersFromCarried) {
+      if (d.orphanedReservationFrom) {
+        // The move itself succeeded, but an EARLIER move of this pallet lost its
+        // reservation and it was never re-staged — keep nagging (never auto-fix).
+        showFlash('err', `${t('inventoryOps.moved')} ${batch} -> ${moveWarehouse} — ${t('inventoryOps.moveOrphanedReservation')}${typeof d.orphanedReservationFrom === 'string' ? ` ${d.orphanedReservationFrom}` : ''}`)
+      } else if (d.reservationDiffersFromCarried) {
         // The pallet ended up reserved to a DIFFERENT order than it started with
         // (someone re-staged it mid-move) — true state, but say so explicitly rather
         // than let it read like the original carry succeeded.

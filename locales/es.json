@@ -1535,6 +1535,7 @@
   "inventoryOps.moveReservationLost": "la reserva NO se mantuvo — vuelva a preparar esta tarima para",
   "inventoryOps.movedReservationChanged": "ahora reservada para",
   "inventoryOps.movedReservationWas": "antes",
+  "inventoryOps.moveOrphanedReservation": "NOTA: un movimiento anterior de esta tarima perdió su reserva — vuelva a prepararla para",
   "inventoryOps.moveConfirm": "Mover",
   "inventoryOps.noBins": "No hay ubicaciones que coincidan",
   "inventoryOps.palletSuperseded": "Esta tarima no tiene existencias activas - pudo haber sido eliminada o reemplazada por una reimpresión.",
