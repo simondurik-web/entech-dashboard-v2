@@ -41,6 +41,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
   const { batch, itemCode, toWarehouse, idempotencyKey } = body
+  // Same shape rule runInventoryOp enforces — checked HERE too so no bracket/pipe
+  // payload can ever reach a remark or a LIKE pattern through any pre-op read
+  // (defense-in-depth; r20).
+  if (typeof idempotencyKey === 'string' && !/^[A-Za-z0-9-]{8,64}$/.test(idempotencyKey)) {
+    return NextResponse.json({ error: 'invalid idempotencyKey' }, { status: 400 })
+  }
   if (!batch || !itemCode || !toWarehouse || !idempotencyKey) {
     return NextResponse.json(
       { error: 'batch, itemCode, toWarehouse, and idempotencyKey are required' },
@@ -139,12 +145,15 @@ export async function POST(req: NextRequest) {
         // Arm the durable checkpoint the moment a carry is CONFIRMED inside erp() —
         // covers a reservation that appeared after the preflight snapshot (r14).
         onCarryStart: async () => {
-          await supabaseAdmin
+          const { error: armErr } = await supabaseAdmin
             .from('inventory_ops_log')
             .update({ error: 'reservation: carrying' })
             .eq('idempotency_key', idempotencyKey)
             .eq('status', 'pending')
             .is('error', null)
+          // FAIL CLOSED (r20): if the crash-safety marker cannot be written, do not
+          // start the carry — nothing has been mutated yet, so failing here is clean.
+          if (armErr) throw new Error(`Could not arm the reservation checkpoint — try again (${armErr.message})`)
         },
       }),
     // Reconcile is strictly READ-ONLY (r9): it may only recognize an already-submitted
@@ -189,6 +198,14 @@ export async function POST(req: NextRequest) {
           delete body.reservationLostFrom
         }
         result.body = { ...body, ...follow }
+      } else if (
+        body.warning === undefined &&
+        (preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:'))
+      ) {
+        // The op is checkpoint-armed yet verification found neither a binding nor a
+        // recoverable stamp — a destroyed/forged tag must not produce a clean 200
+        // while the durable marker says a reservation was being carried (r20).
+        result.body = { ...body, orphanedReservationFrom: true }
       }
     }
     // ORPHANED-CHECKPOINT SWEEP (r9, made VERIFY-ONLY in r10): the browser's key is
@@ -224,17 +241,20 @@ export async function POST(req: NextRequest) {
           opKey: orphanKey,
           allowRestore: false,
         })
-        if (follow === null || follow.reservedTo !== undefined) {
-          // Resolved (reserved again) or nothing recoverable — retire the checkpoint.
+        if (follow?.reservedTo !== undefined) {
+          // Resolved (reserved again) — retire the checkpoint.
           const { error: clrErr } = await supabaseAdmin
             .from('inventory_ops_log')
             .update({ error: null })
             .eq('idempotency_key', orphanKey)
           if (clrErr) console.error('move: clearing orphaned reservation checkpoint failed:', clrErr)
-        } else if (follow.warning === 'reservation_transfer_failed') {
+        } else {
+          // Unresolved (loud warning) OR unrecoverable (null: the stamp is gone) —
+          // the checkpoint stays ARMED and the nag surfaces either way; clearing on
+          // null converted a destroyed recovery artifact into silence (r20).
           result.body = {
             ...bodyAfter,
-            orphanedReservationFrom: follow.reservationLostFrom ?? true,
+            orphanedReservationFrom: follow?.reservationLostFrom ?? true,
           }
         }
       }

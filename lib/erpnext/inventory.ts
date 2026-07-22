@@ -1074,7 +1074,9 @@ export async function transferInventory(input: {
     )
   }
   if (live && onCarryStart) {
-    await onCarryStart().catch((e) => console.error(`move: arming carry checkpoint for ${batch} failed:`, e))
+    // Propagates: a checkpoint that cannot be armed aborts the carry BEFORE any
+    // mutation (fail closed, r20).
+    await onCarryStart()
   }
   // This op's own prior document (retry): a submitted entry can't coexist with stock
   // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
@@ -1293,7 +1295,17 @@ export async function transferInventory(input: {
     // fails, restore nothing and rethrow — the armed draft + born checkpoint make the
     // retry resume the carry safely.
     const committedSe = await findOpStockEntry(opKey).catch(() => null)
-    if (committedSe && committedSe.docstatus === 1) {
+    const committedValid =
+      committedSe &&
+      committedSe.docstatus === 1 &&
+      (await validateMoveDraft(committedSe.name, {
+        batch,
+        itemCode,
+        toWarehouse,
+        tagQty: loc.qty,
+        srcWarehouse: loc.warehouse,
+      }).catch(() => false))
+    if (committedSe && committedSe.docstatus === 1 && committedValid) {
       stockEntry = committedSe.name
     } else {
       if (intent) {
