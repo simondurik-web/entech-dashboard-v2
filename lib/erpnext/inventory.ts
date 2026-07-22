@@ -583,6 +583,7 @@ interface MoveReservation {
   soItem: string | null
   qty: number
   sre: string
+  warehouse: string // the bin the SRE reserves in — must match where the stock actually is
   batchCount: number // distinct batches on the entry (carry requires exactly 1)
   deliveredQty: number
 }
@@ -619,6 +620,7 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
     voucher_detail_no?: string | null
     reserved_qty?: number
     delivered_qty?: number
+    warehouse?: string
     sb_entries?: { batch_no?: string | null }[]
   }>('Stock Reservation Entry', names[0])
   const distinct = new Set(
@@ -629,6 +631,7 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
     soItem: full.voucher_detail_no ?? null,
     qty: Number(full.reserved_qty) || 0,
     sre: names[0],
+    warehouse: String(full.warehouse ?? ''),
     batchCount: distinct.size,
     deliveredQty: Number(full.delivered_qty) || 0,
   }
@@ -640,9 +643,20 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
  *  delivered (release would orphan the delivered linkage), or one whose reserved qty
  *  doesn't match the pallet's on-hand qty (re-reserving would change what the order
  *  holds). Returns null for an unreserved pallet. */
-export async function reservedMoveGuard(batch: string, palletQty: number): Promise<MoveReservation | null> {
+export async function reservedMoveGuard(
+  batch: string,
+  palletQty: number,
+  palletWarehouse: string
+): Promise<MoveReservation | null> {
   const res = await liveReservationForMove(batch)
   if (!res) return null
+  if (res.warehouse !== palletWarehouse) {
+    // Reservation points at a bin the stock is NOT in — broken state a carry must not
+    // build on (review r9); fix the reservation in ERPNext first.
+    throw new Error(
+      `Pallet ${batch} sits in ${palletWarehouse} but its reservation to ${res.so} is bound to ${res.warehouse} — fix the reservation in ERPNext before moving it`
+    )
+  }
   if (res.batchCount > 1) {
     throw new Error(
       `Pallet ${batch} is reserved together with ${res.batchCount - 1} other pallet(s) in ${res.sre} — move it in ERPNext directly`
@@ -786,9 +800,17 @@ export async function verifyOrRestoreMovedReservation(input: {
     const live = await liveReservationForMove(batch)
     if (live) {
       // Report the CURRENT binding — but never CERTIFY a carry the live state doesn't
-      // actually cover: same order at a SHORT qty, or on a DIFFERENT release line than
-      // stamped, is not the carry succeeding (review r5/r7). A different order means
-      // the pallet was re-staged mid-recovery; the truth is the live reservation.
+      // actually cover: same order at a SHORT qty, on a DIFFERENT release line than
+      // stamped, or bound to a bin the stock is NOT in (stale source-bin SRE) is not
+      // the carry succeeding (review r5/r7/r9). A different order means the pallet was
+      // re-staged mid-recovery; the truth is the live reservation.
+      if (intent && live.warehouse !== toWarehouse) {
+        return {
+          warning: 'reservation_transfer_failed',
+          reservationLostFrom: intent.so,
+          reservationWrongWarehouse: live.warehouse,
+        }
+      }
       if (intent && intent.so === live.so && live.qty + 1e-6 < intent.qty) {
         return {
           warning: 'reservation_transfer_failed',
@@ -831,107 +853,6 @@ export async function verifyOrRestoreMovedReservation(input: {
   }
 }
 
-/** Route-reconcile completion for a move whose erp() died MID-CARRY: the op's stamped
- *  DRAFT exists but the transfer never submitted (a pending row would otherwise wedge —
- *  the state machine only re-runs erp() from failed_pre_erp, so the draft-resume logic
- *  in erp() is unreachable from 'pending'; review r4). Validates the draft's stamped
- *  intent against the live reservation before touching anything: a live reservation to
- *  a DIFFERENT order means the pallet was deliberately re-staged — the stale draft must
- *  not be completed. Returns the submitted Stock Entry name, or null when there is
- *  nothing this path can safely do (the caller then reports the op still-pending). */
-export async function resumeMoveDraft(input: {
-  batch: string
-  itemCode: string
-  toWarehouse: string
-  opKey: string
-}): Promise<string | null> {
-  const { batch, itemCode, toWarehouse, opKey } = input
-  const se = await findOpStockEntry(opKey)
-  if (!se) return null
-  if (se.docstatus === 1) return se.name
-  // Only reserved carries create drafts — an untagged draft is not ours to complete;
-  // full content validation (incl. current source bin) guards against stale, crafted,
-  // or edited drafts (r5-r8). A tag without a release line is unrestorable — refuse.
-  const tag = parseCarriedTag(se.remarks)
-  const locNow = await getBatchLocation(batch, itemCode)
-  if (
-    !tag ||
-    !tag.soItem ||
-    !locNow ||
-    locNow.qty <= 0 ||
-    !(await validateMoveDraft(se.name, { batch, itemCode, toWarehouse, tagQty: tag.qty, srcWarehouse: locNow.warehouse }))
-  ) {
-    await defuseStaleDraft(se.name, se.remarks)
-    return null
-  }
-  // FAIL CLOSED on the reservation read: submitting while possibly-reserved would be
-  // rejected by ERPNext anyway, but releasing on bad data must never happen.
-  let live: MoveReservation | null
-  try {
-    live = await liveReservationForMove(batch)
-  } catch {
-    return null
-  }
-  if (live) {
-    // Full shape revalidation before the destructive release — same invariants the
-    // original carry required. A reservation whose qty, delivery state, or bundling
-    // changed since the stamp is NOT the one this draft released-for (review r6).
-    if (
-      live.so !== tag.so ||
-      (live.soItem ?? '') !== (tag.soItem ?? '') ||
-      Math.abs(live.qty - tag.qty) > 1e-6 ||
-      live.batchCount !== 1 ||
-      live.deliveredQty > 0
-    ) {
-      await defuseStaleDraft(se.name, se.remarks)
-      return null
-    }
-    // Crash happened between draft creation and release: finish the release first.
-    // Same post-cancel semantics as the erp() path: only a failure that left the
-    // reservation intact aborts the resume. A released:false result means the
-    // reservation vanished between snapshot and cancel (concurrent release) — abandon
-    // rather than complete a carry whose premise changed (review r8).
-    try {
-      const rel = await releaseBatchReservation(batch, live.sre)
-      if (!rel.released) {
-        await defuseStaleDraft(se.name, se.remarks)
-        return null
-      }
-    } catch (e) {
-      const still = await liveReservationForMove(batch).catch(() => ({ sre: 'unverifiable' }))
-      if (still) return null
-      console.error(`move: resume release bookkeeping for ${batch} failed post-cancel (continuing):`, e)
-    }
-  }
-  try {
-    const fresh = await erpnextGetDoc('Stock Entry', se.name)
-    const submitted = await erpnextSubmit<{ name?: string }>(fresh)
-    return submitted.name ?? se.name
-  } catch (e) {
-    // A concurrent retry may have submitted it first — re-check before giving up.
-    const again = await findOpStockEntry(opKey).catch(() => null)
-    if (again && again.docstatus === 1) return again.name
-    // Nothing committed and the reservation was already released — put it back in the
-    // SOURCE bin so the pallet stays locked while the op stays pending (review r7:
-    // returning null here without compensation left unmoved stock silently unreserved).
-    try {
-      const loc = await getBatchLocation(batch, itemCode)
-      if (loc && loc.warehouse !== toWarehouse && Math.abs(loc.qty - tag.qty) <= 1e-6) {
-        await reserveBatchesToSO({
-          soName: tag.so,
-          items: [
-            { salesOrderItem: tag.soItem ?? undefined, itemCode, warehouse: loc.warehouse, batch, qty: tag.qty },
-          ],
-        })
-      }
-    } catch (restoreErr) {
-      console.error(`move: resume source-bin restore for ${batch} failed:`, restoreErr)
-    }
-    console.error(`move: draft resume submit for ${batch} failed:`, e)
-    return null
-  }
-}
-
 /** Move a pallet between bins: a Material Transfer of the batch's full on-hand qty
  *  from its current warehouse to `toWarehouse`. Refuses split pallets (can't guess
  *  which bin to move) and no-op moves. */
@@ -948,7 +869,7 @@ export async function transferPreflight(batch: string, itemCode: string, toWareh
   // Reserved pallets ARE movable (the reservation is carried across the move) — but only
   // the shapes reservedMoveGuard accepts; anything else 400s here with a clear message
   // instead of failing inside the locked op.
-  await reservedMoveGuard(batch, loc.qty)
+  await reservedMoveGuard(batch, loc.qty, loc.warehouse)
 }
 
 export async function transferInventory(input: {
@@ -997,7 +918,7 @@ export async function transferInventory(input: {
   // intent. A pre-commit failure restores the source-bin reservation and fails the op;
   // a post-commit failure NEVER throws (the ops-log row must record the committed
   // stock entry) — it returns warning extras the route surfaces.
-  const live = await reservedMoveGuard(batch, loc.qty)
+  const live = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
   // This op's own prior document (retry): a submitted entry can't coexist with stock
   // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
   const prior = await findOpStockEntry(opKey)

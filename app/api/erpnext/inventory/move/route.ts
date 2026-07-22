@@ -6,7 +6,6 @@ import {
   reconcileStockEntry,
   palletBase,
   verifyOrRestoreMovedReservation,
-  resumeMoveDraft,
 } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -54,7 +53,7 @@ export async function POST(req: NextRequest) {
   // mid-carry pallet (whose reservation this op already released) and 400 the retry.
   const { data: priorOp, error: priorErr } = await supabaseAdmin
     .from('inventory_ops_log')
-    .select('idempotency_key, batch, error')
+    .select('idempotency_key, batch, error, status, created_at')
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle()
   if (priorErr) {
@@ -74,22 +73,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 })
     }
   }
+
+  // STALE-PENDING RECLAIM: a crash mid-erp() leaves the row 'pending' forever — the
+  // runner re-runs erp() only from failed_pre_erp, so the mid-carry resume logic in
+  // erp() would be unreachable and the family would wedge (r4/r9). Instead of mutating
+  // ERP from reconcile (which runs WITHOUT ownership and raced the original request —
+  // r9 codex/grok), CAS the stale row to failed_pre_erp; the runner then claims it
+  // atomically and re-runs erp(), which owns the full resume path. The age gate keeps
+  // us from stealing a row whose original request is still in flight (serverless
+  // functions cap out well under 5 minutes).
+  if (priorOp?.status === 'pending') {
+    const ageMs = Date.now() - new Date(priorOp.created_at as string).getTime()
+    if (ageMs > 5 * 60_000) {
+      await supabaseAdmin
+        .from('inventory_ops_log')
+        .update({ status: 'failed_pre_erp', error: 'stale-pending reclaim (move route)' })
+        .eq('idempotency_key', idempotencyKey)
+        .eq('status', 'pending')
+        .then(undefined, () => undefined)
+    }
+  }
+
   const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'move',
     createdBy: userId,
     meta: { item_code: itemCode, warehouse: toWarehouse, batch, family: palletBase(batch) },
     erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey }),
+    // Reconcile is strictly READ-ONLY (r9): it may only recognize an already-submitted
+    // entry. All mutating recovery lives in erp(), which runs under the CAS claim.
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
-      if (se) return { batch, stockEntry: se }
-      // No SUBMITTED entry — but a crash mid-carry leaves this op's stamped DRAFT and a
-      // 'pending' row, from which the state machine never re-runs erp(). Complete the
-      // interrupted carry here (validate stamped intent vs live reservation, release if
-      // still held, submit the draft); the post-op verification below re-reserves.
-      // Without this, the pallet family wedges AND the reservation stays lost (r4).
-      const resumed = await resumeMoveDraft({ batch, itemCode, toWarehouse, opKey: idempotencyKey })
-      return resumed ? { batch, stockEntry: resumed } : null
+      return se ? { batch, stockEntry: se } : null
     },
   })
 
@@ -129,6 +144,43 @@ export async function POST(req: NextRequest) {
         result.body = { ...body, ...follow }
       }
     }
+    // ORPHANED-CHECKPOINT SWEEP (r9): the browser's idempotency key is volatile — a
+    // reload after a reservation-lost warning mints a NEW key, and that fresh op knows
+    // nothing about the older op's unresolved carry. Unresolved checkpoints are
+    // therefore discoverable by PALLET FAMILY: on a clean fresh success, look for an
+    // older move op on this family still flagged 'reservation:' and restore from THAT
+    // op's stamped entry (still operation-bound — the stamp, not a guess).
+    const bodyAfter = result.body as Record<string, unknown>
+    if (!priorOp && bodyAfter.reservedTo === undefined && bodyAfter.warning === undefined) {
+      const { data: orphans } = await supabaseAdmin
+        .from('inventory_ops_log')
+        .select('idempotency_key')
+        .eq('family', palletBase(batch))
+        .eq('action', 'move')
+        .eq('batch', batch)
+        .like('error', 'reservation:%')
+        .neq('idempotency_key', idempotencyKey)
+        .limit(1)
+      const orphanKey = orphans?.[0]?.idempotency_key as string | undefined
+      if (orphanKey) {
+        const follow = await verifyOrRestoreMovedReservation({
+          batch,
+          itemCode,
+          toWarehouse,
+          opKey: orphanKey,
+          allowRestore: true,
+        })
+        if (follow) result.body = { ...bodyAfter, ...follow }
+        if (follow?.reservedTo !== undefined) {
+          const { error: clrErr } = await supabaseAdmin
+            .from('inventory_ops_log')
+            .update({ error: null })
+            .eq('idempotency_key', orphanKey)
+          if (clrErr) console.error('move: clearing orphaned reservation checkpoint failed:', clrErr)
+        }
+      }
+    }
+
     // Persist the reservation outcome on the op row so REPLAYS know whether this op
     // still owes a restore. 'reservation:' in `error` is inert to the state machine
     // (it only ever parses the 'label:' prefix on done rows) and move ops have no
