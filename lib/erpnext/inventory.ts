@@ -885,7 +885,7 @@ export async function transferPreflight(
   batch: string,
   itemCode: string,
   toWarehouse: string
-): Promise<{ reserved: boolean }> {
+): Promise<{ reserved: boolean; so: string | null }> {
   await assertBatchItem(batch, itemCode)
   await preflight(itemCode, toWarehouse) // destination bin: exists, not a group, enabled, right company
   const loc = await getBatchLocation(batch, itemCode)
@@ -898,7 +898,7 @@ export async function transferPreflight(
   // 'reservation:' marker then exists before any mutating step, closing the crash gap
   // between the runner's terminal write and a post-hoc checkpoint.
   const guarded = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
-  return { reserved: guarded !== null }
+  return { reserved: guarded !== null, so: guarded?.so ?? null }
 }
 
 /** Independent corroboration that a `[carried:...]` tag describes the reservation this
@@ -1027,19 +1027,31 @@ export async function transferInventory(input: {
   // defused draft carried a CORROBORATED intent and the reservation is already gone,
   // that loss must surface loudly — a defuse must never convert a known loss into a
   // clean success (review r11).
-  let lostFrom: string | null = null
   let resumeIntent: CarriedIntent | null = null
+  let deferredDefuse: { name: string; remarks: string | null } | null = null
   if (priorDraft) {
     const priorTag = parseCarriedTag(priorDraft.remarks)
     const ok =
       priorTag &&
       (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty, srcWarehouse: loc.warehouse }))
     if (!ok) {
-      await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
-      // Keep the TAG as resume intent: after corroboration below, a FRESH stamped
-      // draft is minted and the carry COMPLETES reserved instead of degrading to an
-      // unreserved move + warning (review r14).
-      if (!live && priorTag) resumeIntent = priorTag
+      // ORDERING (r16): the armed draft is the ONLY durable recovery artifact — it is
+      // defused only once its fate is decided: refuted/live-superseded → defuse now;
+      // corroboration unknown → abort with it ARMED; confirmed → defuse DEFERRED until
+      // the fresh replacement draft exists (newest-wins lookup covers the overlap).
+      if (!live && priorTag) {
+        const cv = await corroborateCarriedIntent(batch, priorTag)
+        if (cv === 'unknown') {
+          throw new Error(
+            `Cannot verify pallet ${batch}'s interrupted reservation carry right now — try again shortly`
+          )
+        }
+        if (cv === 'confirmed') {
+          resumeIntent = priorTag
+          deferredDefuse = { name: priorDraft.name, remarks: priorDraft.remarks }
+        }
+      }
+      if (!deferredDefuse) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
     }
   }
@@ -1066,15 +1078,15 @@ export async function transferInventory(input: {
     }
   }
   // Resume without a live reservation: the pallet's on-hand must still match the
-  // stamped qty, or completing the old draft would SPLIT the pallet across bins.
-  // Serialized pallets change qty only via reissue (new serial), so this should be
-  // unreachable — but on mismatch: defuse, move the full current qty unreserved, and
-  // warn LOUDLY (the released reservation cannot be safely re-bound at a drifted qty).
+  // stamped qty, or completing the draft would SPLIT the pallet across bins. Should be
+  // unreachable (serialized pallets change qty only via reissue) — on mismatch FAIL
+  // the op with everything ARMED: an ephemeral warning on an untagged entry was
+  // silently droppable on replay (r16). The operator re-stages, which supersedes the
+  // stale draft via the SRE-identity check on the next move.
   if (!live && intent && Math.abs(loc.qty - intent.qty) > 1e-6) {
-    if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
-    priorDraft = null
-    lostFrom = intent.so
-    intent = null
+    throw new Error(
+      `Pallet ${batch}'s quantity changed while its move was interrupted (${intent.qty} reserved vs ${loc.qty} on hand) — re-stage the pallet to ${intent.so}, then move it again`
+    )
   }
 
   const seDoc = {
@@ -1104,6 +1116,10 @@ export async function transferInventory(input: {
   let draftName: string | null = priorDraft?.name ?? null
   if (intent && !draftName) {
     draftName = (await erpnextCreate<{ name: string }>('Stock Entry', seDoc)).name
+  }
+  if (deferredDefuse && draftName) {
+    // The replacement exists — NOW retire the superseded draft (r16 ordering).
+    await defuseStaleDraft(deferredDefuse.name, deferredDefuse.remarks)
   }
 
   // Step 2 — release (only when a live reservation exists).
@@ -1237,9 +1253,6 @@ export async function transferInventory(input: {
       fromWarehouse: loc.warehouse,
       toWarehouse,
       qty: loc.qty,
-      ...(lostFrom
-        ? { extra: { warning: 'reservation_transfer_failed', reservationLostFrom: lostFrom } }
-        : {}),
     }
   }
 

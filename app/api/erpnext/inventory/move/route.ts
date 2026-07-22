@@ -8,6 +8,7 @@ import {
   verifyOrRestoreMovedReservation,
 } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
+import { withLeases, LineLockedError } from '@/lib/erpnext/line-lock'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // POST /api/erpnext/inventory/move — transfer a pallet to a different bin.
@@ -67,9 +68,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This idempotency key was already used for a different pallet.' }, { status: 409 })
   }
   let preflightReserved = false
+  let preflightSo: string | null = null
   if (!priorOp) {
     try {
-      preflightReserved = (await transferPreflight(batch, itemCode, toWarehouse)).reserved
+      const pf = await transferPreflight(batch, itemCode, toWarehouse)
+      preflightReserved = pf.reserved
+      preflightSo = pf.so
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 })
     }
@@ -83,7 +87,17 @@ export async function POST(req: NextRequest) {
   // armed draft keep the carry fully recoverable when the admin unwedges the row to
   // failed_pre_erp, after which the runner re-runs erp() under its own claim.
 
-  const result = await runInventoryOp({
+  // STAGING LEASES (r16): the same primitive staging/assign holds. The pallet-family
+  // lease serializes this move against a concurrent staging assignment (or another
+  // mover) grabbing the pallet mid-carry; the so: lease (known on fresh reserved
+  // moves) additionally serializes against that order's capacity math. A miss is a
+  // clean 409 "try again"; a crashed holder self-expires within the TTL.
+  let result: Awaited<ReturnType<typeof runInventoryOp>>
+  try {
+    result = await withLeases(
+      [`pallet:${palletBase(batch)}`, ...(preflightSo ? [`so:${preflightSo}`] : [])],
+      () =>
+        runInventoryOp({
     key: idempotencyKey,
     action: 'move',
     createdBy: userId,
@@ -122,6 +136,13 @@ export async function POST(req: NextRequest) {
       return se ? { batch, stockEntry: se } : null
     },
   })
+    )
+  } catch (e) {
+    if (e instanceof LineLockedError) {
+      return NextResponse.json({ error: e.message }, { status: 409 })
+    }
+    throw e
+  }
 
   // EVERY successful response is reservation-verified before it leaves — resumed rows
   // (duplicate replays, erp_committed checkpoints, pending reconciles) reproduce only
