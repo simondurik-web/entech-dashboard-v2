@@ -163,6 +163,15 @@ export async function POST(req: NextRequest) {
             .eq('status', 'pending')
             .is('error', null)
           if (armErr) throw new Error(`Could not arm the reservation checkpoint — try again (${armErr.message})`)
+          // Upgrade a fail-closed 'unverified' marker to an authorizing one — leaving
+          // it would deny the durable authority a crash recovery needs (r24).
+          const { error: upErr } = await supabaseAdmin
+            .from('inventory_ops_log')
+            .update({ error: 'reservation: carrying' })
+            .eq('idempotency_key', idempotencyKey)
+            .eq('status', 'pending')
+            .like('error', 'reservation: unverified%')
+          if (upErr) throw new Error(`Could not arm the reservation checkpoint — try again (${upErr.message})`)
           // CONFIRMED arming (r21): a zero-row match is NOT an error — read back and
           // require the marker to actually be present before any mutation.
           const { data: armed, error: readErr } = await supabaseAdmin
@@ -170,7 +179,7 @@ export async function POST(req: NextRequest) {
             .select('error')
             .eq('idempotency_key', idempotencyKey)
             .maybeSingle()
-          if (readErr || !String(armed?.error ?? '').startsWith('reservation:')) {
+          if (readErr || !markerAuthorizes(armed?.error)) {
             throw new Error('Could not confirm the reservation checkpoint — try again')
           }
           armedThisRequest = true

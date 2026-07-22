@@ -8,7 +8,7 @@ import {
   erpnextCallGet,
 } from './client'
 import type { Committed } from './operation'
-import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO } from './staging'
+import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO, getStagingProgress } from './staging'
 
 // ERPNext stock operations for the inventory-ops module. Company is fixed to
 // Molding (the only operating company). All writes are server-side only and
@@ -783,6 +783,40 @@ async function defuseStaleDraft(name: string, remarks: string | null | undefined
   }
 }
 
+/** Re-derive the SO's staging status from live reservations — the release step drops a
+ *  fully staged order to Open, and reserveBatchesToSO's own trailing recompute can fail
+ *  AFTER the SRE bound (r24): the order would silently vanish from Ready to Ship.
+ *  Returns false when the reconciliation could not be completed (caller keeps warning). */
+async function reconcileStagingAfterCarry(soName: string): Promise<boolean> {
+  try {
+    const progress = await getStagingProgress(soName)
+    const qs = [
+      listParam('filters', [
+        ['voucher_type', '=', 'Sales Order'],
+        ['voucher_no', '=', soName],
+        ['status', 'in', ACTIVE_SRE_STATUS_MOVE],
+        ['docstatus', '=', 1],
+      ]),
+      listParam('fields', ['name']),
+      'limit_page_length=0',
+    ].join('&')
+    const r = await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Stock Reservation Entry?${qs}`)
+    const count = (r.data ?? []).length
+    if (progress.staged && progress.stagingStatus !== 'Staged') {
+      await erpnextUpdate('Sales Order', soName, {
+        custom_staging_status: 'Staged',
+        custom_staged_pallets: count,
+      })
+    } else {
+      await erpnextUpdate('Sales Order', soName, { custom_staged_pallets: count })
+    }
+    return true
+  } catch (e) {
+    console.error(`move: staging reconciliation for ${soName} failed:`, e)
+    return false
+  }
+}
+
 /** After a move op reports success: make sure the pallet's reservation survived the
  *  move. Intent resolution is STRICTLY operation-bound — the `[carried:...]` tag on the
  *  op's own Stock Entry (draft or submitted); an untagged entry means the pallet was
@@ -827,7 +861,10 @@ export async function verifyOrRestoreMovedReservation(input: {
       if (
         intent &&
         intent.so === live.so &&
-        (live.qty + 1e-6 < intent.qty || live.batchCount !== 1 || live.deliveredQty > 0)
+        (Math.abs(live.qty - intent.qty) > 1e-6 ||
+          live.batchCount !== 1 ||
+          live.deliveredQty > 0 ||
+          !live.soItem)
       ) {
         // Short qty, a bundled multi-pallet entry, or a partially delivered entry is
         // NOT the whole-pallet carry succeeding — never certify or clear on it (r19).
@@ -868,9 +905,20 @@ export async function verifyOrRestoreMovedReservation(input: {
           live.warehouse === toWarehouse &&
           live.batchCount === 1 &&
           live.deliveredQty === 0 &&
+          !!live.soItem &&
           !!locN &&
-          live.qty + 1e-6 >= locN.qty
-        return full ? { reservedTo: live.so } : { reservedTo: live.so, reservationPartial: true }
+          Math.abs(live.qty - locN.qty) <= 1e-6
+        if (!full) return { reservedTo: live.so, reservationPartial: true }
+        if (!(await reconcileStagingAfterCarry(live.so))) {
+          return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
+        }
+        return { reservedTo: live.so }
+      }
+      // Same-SO clean certify — the SRE matches the carry, but the order's staging
+      // state must be re-derived too: an order silently absent from Ready to Ship is
+      // a loss even with the reservation intact (r24).
+      if (!(await reconcileStagingAfterCarry(live.so))) {
+        return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
       }
       return { reservedTo: live.so }
     }
@@ -899,6 +947,9 @@ export async function verifyOrRestoreMovedReservation(input: {
         { salesOrderItem: intent.soItem, itemCode, warehouse: toWarehouse, batch, qty: intent.qty },
       ],
     })
+    if (!(await reconcileStagingAfterCarry(intent.so))) {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
+    }
     return { reservedTo: intent.so, reservationRestored: true }
   } catch (e) {
     console.error(`move: reservation follow for ${batch} failed:`, e)
