@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
     result = await withLeases(
       [`pallet:${palletBase(batch)}`, ...(preflightSo ? [`so:${preflightSo}`] : [])],
       async () => {
+        // Absolute mutation deadline anchored HERE, at lease acquisition (r36).
+        const leaseDeadline = Date.now() + 420_000
         const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'move',
@@ -152,6 +154,7 @@ export async function POST(req: NextRequest) {
         itemCode,
         toWarehouse,
         opKey: idempotencyKey,
+        deadlineMs: leaseDeadline,
         leasedSo: preflightSo,
         // Server-side marker only — same rule as the route's own verify gate (r22).
         restoreAuthorized: preflightReserved || markerAuthorizes(priorOp?.error),

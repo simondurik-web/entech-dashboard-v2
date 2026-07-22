@@ -1227,6 +1227,9 @@ export async function transferInventory(input: {
   itemCode: string
   toWarehouse: string
   opKey: string
+  /** Absolute epoch-ms deadline (lease acquisition + 420s) after which no mutating
+   *  step may begin (r36). */
+  deadlineMs?: number
   /** The Sales Order the route's so: lease covers (null = no so: lease held). erp()
    *  refuses to carry a reservation on a DIFFERENT order — the lease snapshot would be
    *  stale and that order's capacity unserialized (review r19); the retry re-resolves. */
@@ -1243,14 +1246,16 @@ export async function transferInventory(input: {
    *  even when the reservation appeared after preflight (review r14). Best-effort. */
   onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey, leasedSo, restoreAuthorized, unverifiedMarker, onCarryStart } = input
+  const { batch, itemCode, toWarehouse, opKey, deadlineMs, leasedSo, restoreAuthorized, unverifiedMarker, onCarryStart } = input
   // STEP DEADLINE (r26): self-hosted runtimes make maxDuration advisory, so the route
   // holds a 600s lease and every MUTATING step must begin within 420s (180s tail margin exceeds any helper's read chain before its write) of erp() start —
   // no destructive step can start in the lease's tail. (An individual ERP call
   // overrunning the tail is the same residual the staging flow itself carries.)
-  const erpStart = Date.now()
+  // Anchored at LEASE ACQUISITION when the route provides the absolute deadline —
+  // ops-log latency before erp() must not reset the clock (r36).
+  const hardDeadline = deadlineMs ?? Date.now() + 420_000
   const assertStepBudget = (step: string) => {
-    if (Date.now() - erpStart > 420_000) {
+    if (Date.now() > hardDeadline) {
       throw new Error(`Move of ${batch} ran out of its safety window before ${step} — try again`)
     }
   }
@@ -1505,6 +1510,24 @@ export async function transferInventory(input: {
       // retry).
       const still = await liveReservationForMove(batch).catch(() => ({ sre: 'unverifiable' }))
       if (still) throw e
+      // 'No live reservation' alone does not prove OUR cancel committed — an operator
+      // may have cancelled in this exact window; recreating their deliberately released
+      // reservation would undo them (r36). Verify the canceller identity.
+      let cancelledByUs = false
+      try {
+        const gone = await erpnextGetDoc<{ docstatus?: number; modified_by?: string }>(
+          'Stock Reservation Entry',
+          live.sre
+        )
+        cancelledByUs = gone.docstatus === 2 && (gone.modified_by ?? '') === (await serviceUser())
+      } catch {
+        cancelledByUs = false
+      }
+      if (!cancelledByUs) {
+        throw new Error(
+          `Pallet ${batch}'s reservation changed while the move was starting — re-check the pallet and try again`
+        )
+      }
       console.error(`move: release bookkeeping for ${batch} failed post-cancel (continuing):`, e)
       // The failed bookkeeping may have left the source SO marked Staged while
       // under-covered — reconcile (with demotion) best-effort before continuing (r26).
