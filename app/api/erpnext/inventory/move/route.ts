@@ -126,7 +126,23 @@ export async function POST(req: NextRequest) {
       family: palletBase(batch),
       ...(preflightReserved ? { error: 'reservation: carrying' } : {}),
     },
-    erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey }),
+    erp: () =>
+      transferInventory({
+        batch,
+        itemCode,
+        toWarehouse,
+        opKey: idempotencyKey,
+        // Arm the durable checkpoint the moment a carry is CONFIRMED inside erp() —
+        // covers a reservation that appeared after the preflight snapshot (r14).
+        onCarryStart: async () => {
+          await supabaseAdmin
+            .from('inventory_ops_log')
+            .update({ error: 'reservation: carrying' })
+            .eq('idempotency_key', idempotencyKey)
+            .eq('status', 'pending')
+            .is('error', null)
+        },
+      }),
     // Reconcile is strictly READ-ONLY (r9): it may only recognize an already-submitted
     // entry. All mutating recovery lives in erp(), which runs under the CAS claim.
     reconcile: async () => {

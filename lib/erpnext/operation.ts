@@ -146,7 +146,14 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
         // Atomically claim the retry (compare-and-swap on status) so two
         // concurrent retries can't both proceed to re-run ERP.
         const { data: claimed } = await LOG()
-          .update({ status: 'pending', error: null })
+          .update({
+            status: 'pending',
+            // Preserve a durable 'reservation:' checkpoint across the claim — for the
+            // move route it is the only marker of an unresolved reservation carry, and
+            // nulling it here reopened a crash-loss window (move review r14). No other
+            // action ever writes this prefix, so this is a no-op for them.
+            error: String(ex.error ?? '').startsWith('reservation:') ? ex.error : null,
+          })
           .eq('idempotency_key', key)
           .eq('status', 'failed_pre_erp')
           .select('idempotency_key')
@@ -182,7 +189,15 @@ export async function runInventoryOp(args: RunOpArgs): Promise<RunOpResult> {
       r = await erp()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      await LOG().update({ status: 'failed_pre_erp', error: msg.slice(0, 500) }).eq('idempotency_key', key)
+      // Keep a 'reservation:' checkpoint prefix (move route) in front of the failure
+      // message so the durable marker survives erp() failures (move review r14).
+      const { data: cur } = await LOG().select('error').eq('idempotency_key', key).maybeSingle()
+      const prefix = String(cur?.error ?? '').startsWith('reservation:')
+        ? `${String(cur?.error).split('|')[0].trim()} | `
+        : ''
+      await LOG()
+        .update({ status: 'failed_pre_erp', error: `${prefix}${msg}`.slice(0, 500) })
+        .eq('idempotency_key', key)
       return { status: 502, body: { error: `${action} failed: ${msg.slice(0, 200)}` } }
     }
     committed = r

@@ -947,8 +947,12 @@ export async function transferInventory(input: {
   itemCode: string
   toWarehouse: string
   opKey: string
+  /** Called the moment a live reservation is confirmed for carrying, BEFORE any
+   *  mutating step — the route uses it to arm the durable 'reservation:' checkpoint
+   *  even when the reservation appeared after preflight (review r14). Best-effort. */
+  onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey } = input
+  const { batch, itemCode, toWarehouse, opKey, onCarryStart } = input
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -989,6 +993,9 @@ export async function transferInventory(input: {
   // a post-commit failure NEVER throws (the ops-log row must record the committed
   // stock entry) — it returns warning extras the route surfaces.
   const live = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
+  if (live && onCarryStart) {
+    await onCarryStart().catch((e) => console.error(`move: arming carry checkpoint for ${batch} failed:`, e))
+  }
   // This op's own prior document (retry): a submitted entry can't coexist with stock
   // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
   const prior = await findOpStockEntry(opKey)
@@ -1021,6 +1028,7 @@ export async function transferInventory(input: {
   // that loss must surface loudly — a defuse must never convert a known loss into a
   // clean success (review r11).
   let lostFrom: string | null = null
+  let resumeIntent: CarriedIntent | null = null
   if (priorDraft) {
     const priorTag = parseCarriedTag(priorDraft.remarks)
     const ok =
@@ -1028,9 +1036,10 @@ export async function transferInventory(input: {
       (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty, srcWarehouse: loc.warehouse }))
     if (!ok) {
       await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
-      if (!live && priorTag && (await corroborateCarriedIntent(batch, priorTag)) !== 'refuted') {
-        lostFrom = priorTag.so
-      }
+      // Keep the TAG as resume intent: after corroboration below, a FRESH stamped
+      // draft is minted and the carry COMPLETES reserved instead of degrading to an
+      // unreserved move + warning (review r14).
+      if (!live && priorTag) resumeIntent = priorTag
       priorDraft = null
     }
   }
@@ -1041,9 +1050,7 @@ export async function transferInventory(input: {
   // must never mint a reservation by itself (review r11).
   let intent: CarriedIntent | null = live
     ? { so: live.so, soItem: live.soItem, qty: live.qty, sre: live.sre }
-    : priorDraft
-      ? parseCarriedTag(priorDraft.remarks)
-      : null
+    : (priorDraft ? parseCarriedTag(priorDraft.remarks) : null) ?? resumeIntent
   if (!live && intent) {
     const cv = await corroborateCarriedIntent(batch, intent)
     if (cv === 'refuted') {
@@ -1095,7 +1102,7 @@ export async function transferInventory(input: {
   // Step 1 — durable intent before any mutation of the reservation. (A prior stale
   // draft was discarded above; only a tag-matching draft is reused.)
   let draftName: string | null = priorDraft?.name ?? null
-  if (live && !draftName) {
+  if (intent && !draftName) {
     draftName = (await erpnextCreate<{ name: string }>('Stock Entry', seDoc)).name
   }
 
@@ -1184,26 +1191,38 @@ export async function transferInventory(input: {
     }
   } catch (e) {
     // A submit timeout can land AFTER ERPNext committed — verify before compensating,
-    // or the "restore" would re-reserve in a bin the stock just left (review r3).
+    // or the "restore" would re-reserve in a bin the stock just left (review r3). The
+    // compensation must FAIL CLOSED (r14): it runs only when the stock is VERIFIABLY
+    // still at the source; if either the stamped-entry check or the location read
+    // fails, restore nothing and rethrow — the armed draft + born checkpoint make the
+    // retry resume the carry safely.
     const committedSe = await findOpStockEntry(opKey).catch(() => null)
     if (committedSe && committedSe.docstatus === 1) {
       stockEntry = committedSe.name
     } else {
       if (intent) {
-        // Stock never moved — put the reservation back in the SOURCE bin so the pallet
-        // stays locked to its order while the operator retries. (A failed restore
-        // leaves the stamped draft in place; the retry resumes the carry from it.)
-        try {
-          await reserveBatchesToSO({
-            soName: intent.so,
-            items: [
-              { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: loc.warehouse, batch, qty: loc.qty },
-            ],
-          })
-        } catch (restoreErr) {
-          console.error(`move: source-bin reservation restore for ${batch} failed:`, restoreErr)
-          throw new Error(
-            `Move of ${batch} failed and its reservation to ${intent.so} could not be put back — retry the move (it resumes automatically), or re-stage from the staging screen. Move error: ${(e as Error).message}`
+        const locNow = await getBatchLocation(batch, itemCode).catch(() => null)
+        const verifiablyAtSource =
+          !!locNow && locNow.warehouse === loc.warehouse && Math.abs(locNow.qty - loc.qty) <= 1e-6
+        if (verifiablyAtSource) {
+          // Stock never moved — put the reservation back in the SOURCE bin so the
+          // pallet stays locked to its order while the operator retries.
+          try {
+            await reserveBatchesToSO({
+              soName: intent.so,
+              items: [
+                { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: loc.warehouse, batch, qty: loc.qty },
+              ],
+            })
+          } catch (restoreErr) {
+            console.error(`move: source-bin reservation restore for ${batch} failed:`, restoreErr)
+            throw new Error(
+              `Move of ${batch} failed and its reservation to ${intent.so} could not be put back — retry the move (it resumes automatically), or re-stage from the staging screen. Move error: ${(e as Error).message}`
+            )
+          }
+        } else {
+          console.error(
+            `move: submit outcome for ${batch} unverifiable — skipping source-bin restore (fail closed)`
           )
         }
       }
