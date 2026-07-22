@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
     // key, and must never arm a checkpoint on this op's own row.
     const bodyAfter = result.body as Record<string, unknown>
     if (!priorOp && bodyAfter.reservedTo === undefined && bodyAfter.warning === undefined) {
-      const { data: orphans } = await supabaseAdmin
+      const { data: orphans, error: orphanErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .select('idempotency_key')
         .eq('family', palletBase(batch))
@@ -276,6 +276,11 @@ export async function POST(req: NextRequest) {
         .like('error', 'reservation:%')
         .neq('idempotency_key', idempotencyKey)
         .limit(1)
+      if (orphanErr) {
+        // A failed orphan lookup must not read as "no orphan" — surface the generic
+        // nag so a known lost reservation is never silently unresolved (r33).
+        result.body = { ...bodyAfter, orphanedReservationFrom: true }
+      }
       const orphanKey = orphans?.[0]?.idempotency_key as string | undefined
       if (orphanKey) {
         const follow = await verifyOrRestoreMovedReservation({

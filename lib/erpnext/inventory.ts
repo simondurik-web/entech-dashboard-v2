@@ -797,6 +797,48 @@ async function validateMoveDraft(
   )
 }
 
+/** Header/item link fields whose presence makes a Stock Entry submission update OTHER
+ *  documents (work orders, pick lists, subcontracting, invoicing...). A dashboard move
+ *  never sets any of them; a fetched draft carrying one was edited to weaponize the
+ *  service account's submit and must be refused (r33). */
+const SE_SIDE_EFFECT_HEADER_FIELDS = [
+  'work_order',
+  'pick_list',
+  'purchase_order',
+  'subcontracting_order',
+  'delivery_note_no',
+  'sales_invoice_no',
+  'purchase_receipt_no',
+  'job_card',
+  'project',
+  'outgoing_stock_entry',
+  'add_to_transit',
+  'asset_repair',
+] as const
+const SE_SIDE_EFFECT_ITEM_FIELDS = [
+  'material_request',
+  'material_request_item',
+  'against_stock_entry',
+  'ste_detail',
+  'po_detail',
+  'sco_rm_detail',
+  'subcontracted_item',
+  'original_item',
+] as const
+
+function seHasSideEffects(doc: Record<string, unknown>): boolean {
+  for (const f of SE_SIDE_EFFECT_HEADER_FIELDS) {
+    if (doc[f]) return true
+  }
+  const items = (doc.items as Record<string, unknown>[] | undefined) ?? []
+  for (const row of items) {
+    for (const f of SE_SIDE_EFFECT_ITEM_FIELDS) {
+      if (row[f]) return true
+    }
+  }
+  return false
+}
+
 /** Take a stale stamped DRAFT permanently out of recovery's sight: rewrite its tags so
  *  the `[op:...]` LIKE never matches it again. Editing a draft's remarks is safe (it
  *  never moved stock); leaving it armed lets a later recovery resurrect the WRONG order
@@ -1120,10 +1162,9 @@ async function corroborateCarriedIntent(
       const qs = [
         listParam('filters', [
           ['Serial and Batch Entry', 'batch_no', '=', batch],
-          ['voucher_type', '=', 'Sales Order'],
-          // by MODIFIED, not creation: an older DRAFT submitted/cancelled after this
-          // carry is a deliberate later act; over-matching merely fails safe to a nag
-          // (r32).
+          // ANY voucher type counts as later reservation activity (r33); by MODIFIED,
+          // not creation: an older DRAFT submitted/cancelled after this carry is a
+          // deliberate later act; over-matching merely fails safe to a nag (r32).
           ['modified', '>', doc2.creation],
           ['name', '!=', intent.sre],
         ]),
@@ -1478,6 +1519,7 @@ export async function transferInventory(input: {
       const fr = fresh.items ?? []
       const freshTag = parseCarriedTag(fresh.remarks)
       if (
+        seHasSideEffects(fresh as unknown as Record<string, unknown>) ||
         fresh.stock_entry_type !== 'Material Transfer' ||
         fresh.company !== COMPANY ||
         !!fresh.set_posting_time ||
@@ -1755,6 +1797,7 @@ export async function bulkTransfer(input: {
       )
     })
   if (
+    seHasSideEffects(bulkFresh as unknown as Record<string, unknown>) ||
     bulkFresh.stock_entry_type !== 'Material Transfer' ||
     bulkFresh.company !== COMPANY ||
     !!bulkFresh.set_posting_time ||
