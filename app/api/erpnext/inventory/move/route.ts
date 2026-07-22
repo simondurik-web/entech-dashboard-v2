@@ -320,7 +320,8 @@ export async function POST(req: NextRequest) {
     } else if (
       finalBody.reservedTo !== undefined &&
       finalBody.reservationPartial === undefined &&
-      finalBody.reservationDiffersFromCarried === undefined
+      finalBody.reservationDiffersFromCarried === undefined &&
+      finalBody.reservationObserved === undefined
     ) {
       // SQL-guarded clear: the LIKE predicate confines this to reservation checkpoints
       // regardless of when the row was armed (born, late via onCarryStart, or by a
@@ -340,7 +341,8 @@ export async function POST(req: NextRequest) {
     if (
       finalBody.reservedTo !== undefined &&
       finalBody.reservationPartial === undefined &&
-      finalBody.reservationDiffersFromCarried === undefined
+      finalBody.reservationDiffersFromCarried === undefined &&
+      finalBody.reservationObserved === undefined
     ) {
       const { error: sweepErr } = await supabaseAdmin
         .from('inventory_ops_log')

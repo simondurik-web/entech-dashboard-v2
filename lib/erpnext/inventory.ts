@@ -951,7 +951,7 @@ export async function verifyOrRestoreMovedReservation(input: {
           !!locN &&
           Math.abs(live.qty - locN.qty) <= 1e-6
         if (!full) return { reservedTo: live.so, reservationPartial: true }
-        if (!mayWrite(live.so)) return { reservedTo: live.so } // observation only (r29)
+        if (!mayWrite(live.so)) return { reservedTo: live.so, reservationObserved: true } // no writes (r29/r32)
         if (!(await reconcileStagingAfterCarry(live.so))) {
           return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
         }
@@ -961,7 +961,7 @@ export async function verifyOrRestoreMovedReservation(input: {
       // state must be re-derived too: an order silently absent from Ready to Ship is
       // a loss even with the reservation intact (r24). Writes only under this order's
       // lease + restore authority (r29); otherwise report the observation.
-      if (!mayWrite(live.so)) return { reservedTo: live.so }
+      if (!mayWrite(live.so)) return { reservedTo: live.so, reservationObserved: true }
       if (!(await reconcileStagingAfterCarry(live.so))) {
         return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
       }
@@ -1121,7 +1121,10 @@ async function corroborateCarriedIntent(
         listParam('filters', [
           ['Serial and Batch Entry', 'batch_no', '=', batch],
           ['voucher_type', '=', 'Sales Order'],
-          ['creation', '>', doc2.creation],
+          // by MODIFIED, not creation: an older DRAFT submitted/cancelled after this
+          // carry is a deliberate later act; over-matching merely fails safe to a nag
+          // (r32).
+          ['modified', '>', doc2.creation],
           ['name', '!=', intent.sre],
         ]),
         listParam('fields', ['name', 'docstatus', 'status', 'reserved_qty']),
@@ -1491,6 +1494,7 @@ export async function transferInventory(input: {
             freshTag.sre !== intent.sre ||
             Math.abs(freshTag.qty - intent.qty) > 1e-6
           : freshTag !== null) ||
+        (intent ? !(fresh.remarks ?? '').includes(`[releasing:${intent.sre}]`) : false) ||
         fr.length !== 1 ||
         Number(fr[0].use_serial_batch_fields) !== 1 ||
         !!fr[0].serial_and_batch_bundle ||
@@ -1719,9 +1723,22 @@ export async function bulkTransfer(input: {
     set_posting_time?: number
     apply_putaway_rule?: number
     additional_costs?: unknown[]
-    items?: { item_code?: string; batch_no?: string; qty?: number; s_warehouse?: string; t_warehouse?: string }[]
+    remarks?: string | null
+    items?: {
+      item_code?: string
+      batch_no?: string
+      qty?: number
+      s_warehouse?: string
+      t_warehouse?: string
+      conversion_factor?: number
+      use_serial_batch_fields?: number
+      serial_and_batch_bundle?: string | null
+    }[]
   }>('Stock Entry', bulkDraft.name)
   const freshRows = bulkFresh.items ?? []
+  const remarksCanonical =
+    ((bulkFresh.remarks ?? '').match(/\[op:[^\]]*\]/g) ?? []).length === 1 &&
+    (bulkFresh.remarks ?? '').includes(`[op:${opKey}]`)
   const rowsMatch =
     freshRows.length === rows.length &&
     freshRows.every((fr, i) => {
@@ -1731,6 +1748,9 @@ export async function bulkTransfer(input: {
         fr.batch_no === want.batch_no &&
         fr.s_warehouse === want.s_warehouse &&
         fr.t_warehouse === want.t_warehouse &&
+        Number(fr.use_serial_batch_fields) === 1 &&
+        !fr.serial_and_batch_bundle &&
+        (Number(fr.conversion_factor) || 1) === 1 &&
         Math.abs((Number(fr.qty) || 0) - want.qty) <= 1e-6
       )
     })
@@ -1740,7 +1760,8 @@ export async function bulkTransfer(input: {
     !!bulkFresh.set_posting_time ||
     !!bulkFresh.apply_putaway_rule ||
     (bulkFresh.additional_costs?.length ?? 0) > 0 ||
-    !rowsMatch // every row field-for-field (r31)
+    !remarksCanonical ||
+    !rowsMatch // every row field-for-field incl. batch-source mode (r31/r32)
   ) {
     throw new Error('Bulk transfer draft changed before submit — refusing')
   }
