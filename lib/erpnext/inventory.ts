@@ -1105,6 +1105,13 @@ export async function transferInventory(input: {
   // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
   const prior = await findOpStockEntry(opKey)
   let priorDraft = prior && prior.docstatus === 0 ? prior : null
+  // A stamped draft may only RESUME a carry when the server-side checkpoint authorizes
+  // it (r23): without the marker, a crafted pre-created draft on a fresh unreserved op
+  // would otherwise resurrect a cancelled reservation. Unauthorized drafts are ignored
+  // (not defused — an admin can inspect them; they can never act without the marker).
+  if (!live && priorDraft && restoreAuthorized !== true) {
+    priorDraft = null
+  }
   // A stale draft whose stamped intent no longer matches the LIVE reservation (the
   // pallet was released and re-staged to another order between attempts) must not be
   // reused — its tag would later "restore" the wrong order. DEFUSE it (strip its op
@@ -1168,6 +1175,13 @@ export async function transferInventory(input: {
   let intent: CarriedIntent | null = live
     ? { so: live.so, soItem: live.soItem, qty: live.qty, sre: live.sre }
     : (priorDraft ? parseCarriedTag(priorDraft.remarks) : null) ?? resumeIntent
+  if (!live && intent && leasedSo !== undefined && intent.so !== leasedSo) {
+    // The so: lease this request holds does not cover the stamped order — refuse
+    // retryably; the retry resolves its lease from the draft (r23).
+    throw new Error(
+      `Pallet ${batch}'s interrupted carry targets a different order than this request locked — try again`
+    )
+  }
   if (!live && intent) {
     const cv = await corroborateCarriedIntent(batch, intent)
     if (cv === 'refuted') {

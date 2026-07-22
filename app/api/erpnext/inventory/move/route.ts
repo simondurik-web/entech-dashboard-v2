@@ -55,6 +55,15 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = guard.userId // verified from the session, not a client header
+  // 'reservation: unverified' (a fail-closed marker written when the ops-log could not
+  // be READ) warns and nags but never grants restore authority (r23).
+  const markerAuthorizes = (err: unknown) => {
+    const e = String(err ?? '')
+    return e.startsWith('reservation:') && !e.startsWith('reservation: unverified')
+  }
+  // Arming that happens DURING this request (onCarryStart) — tracked locally so an
+  // immediate in-request recovery isn't denied by stale preflight snapshots (r23).
+  let armedThisRequest = false
 
   // Deterministic preflight on the FIRST attempt, BEFORE the locked op row exists: bad
   // warehouse / split / no-stock / uncarryable reservation returns 400 here instead of
@@ -143,7 +152,7 @@ export async function POST(req: NextRequest) {
         opKey: idempotencyKey,
         leasedSo: preflightSo,
         // Server-side marker only — same rule as the route's own verify gate (r22).
-        restoreAuthorized: preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:'),
+        restoreAuthorized: preflightReserved || markerAuthorizes(priorOp?.error),
         // Arm the durable checkpoint the moment a carry is CONFIRMED inside erp() —
         // covers a reservation that appeared after the preflight snapshot (r14).
         onCarryStart: async () => {
@@ -164,6 +173,7 @@ export async function POST(req: NextRequest) {
           if (readErr || !String(armed?.error ?? '').startsWith('reservation:')) {
             throw new Error('Could not confirm the reservation checkpoint — try again')
           }
+          armedThisRequest = true
         },
       }),
     // Reconcile is strictly READ-ONLY (r9): it may only recognize an already-submitted
@@ -189,7 +199,7 @@ export async function POST(req: NextRequest) {
     // confirmed one). A fresh clean op can never restore — so a forged pre-created
     // tagged draft yields at most a verify nag, never a reservation write (r21). A
     // pure done-replay of a clean row remains verify-only (r7/r8).
-    const allowRestore = preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:')
+    const allowRestore = preflightReserved || armedThisRequest || markerAuthorizes(priorOp?.error)
     // EVERY 200 is LIVE-verified — including fresh carries whose erp() just claimed
     // reservedTo: the verifier gates on the live binding's warehouse/shape, so a
     // reservation still bound to the source bin can never certify or clear (r21).
