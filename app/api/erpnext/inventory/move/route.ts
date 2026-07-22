@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
     // pure done-replay of a clean row remains verify-only (r7/r8).
     // Restores are also budget-gated (r28): the post-op write must not begin in the
     // lease tail; beyond the window the verify runs observation-only.
-    const inBudget = Date.now() - routeStart < 540_000
+    const inBudget = Date.now() - routeStart < 420_000
     const allowRestore =
       inBudget && (preflightReserved || armedThisRequest || markerAuthorizes(priorOp?.error))
     // EVERY 200 is LIVE-verified — including fresh carries whose erp() just claimed

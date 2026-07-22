@@ -618,6 +618,7 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
   const full = await erpnextGetDoc<{
     docstatus?: number
     status?: string
+    company?: string
     voucher_no?: string
     voucher_detail_no?: string | null
     reserved_qty?: number
@@ -625,6 +626,12 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
     warehouse?: string
     sb_entries?: { batch_no?: string | null }[]
   }>('Stock Reservation Entry', names[0])
+  // Cross-company reservations are NEVER carried — cancelling one and touching its
+  // SO's metadata before ERPNext rejects the cross-company transfer would corrupt
+  // another company's state (r31).
+  if ((full.company ?? COMPANY) !== COMPANY) {
+    throw new Error(`Pallet ${batch}'s reservation belongs to another company — not movable here`)
+  }
   // The list read and the doc fetch are non-atomic — a cancellation between them must
   // not be certified as live (r27).
   if (full.docstatus !== 1 || !ACTIVE_SRE_STATUS_MOVE.includes(String(full.status))) {
@@ -1163,12 +1170,12 @@ export async function transferInventory(input: {
 }): Promise<TransferResult> {
   const { batch, itemCode, toWarehouse, opKey, leasedSo, restoreAuthorized, unverifiedMarker, onCarryStart } = input
   // STEP DEADLINE (r26): self-hosted runtimes make maxDuration advisory, so the route
-  // holds a 600s lease and every MUTATING step must begin within 540s of erp() start —
+  // holds a 600s lease and every MUTATING step must begin within 420s (180s tail margin exceeds any helper's read chain before its write) of erp() start —
   // no destructive step can start in the lease's tail. (An individual ERP call
   // overrunning the tail is the same residual the staging flow itself carries.)
   const erpStart = Date.now()
   const assertStepBudget = (step: string) => {
-    if (Date.now() - erpStart > 540_000) {
+    if (Date.now() - erpStart > 420_000) {
       throw new Error(`Move of ${batch} ran out of its safety window before ${step} — try again`)
     }
   }
@@ -1192,6 +1199,7 @@ export async function transferInventory(input: {
       itemCode,
       toWarehouse,
       opKey,
+      leasedSo: leasedSo ?? null, // writes confined to the leased order (r31)
       // NOT unconditional (r22): a fresh clean op that happens to target the current
       // bin must never gain restore authority a forged draft could exploit. An
       // 'unverified' marker MAY restore here — the corroboration chain (stamp +
@@ -1222,6 +1230,12 @@ export async function transferInventory(input: {
   // intent. A pre-commit failure restores the source-bin reservation and fails the op;
   // a post-commit failure NEVER throws (the ops-log row must record the committed
   // stock entry) — it returns warning extras the route surfaces.
+  // Source warehouse must belong to OUR company before any reservation mutation —
+  // destination is validated by preflight(); the source was not (r31).
+  const srcWh = await erpnextGetDoc<{ company?: string }>('Warehouse', loc.warehouse)
+  if ((srcWh.company ?? '') !== COMPANY) {
+    throw new Error(`Pallet ${batch}'s bin ${loc.warehouse} belongs to another company — not movable here`)
+  }
   const live = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
   if (live && leasedSo !== undefined && live.so !== leasedSo) {
     // The reservation appeared or changed AFTER the route chose its leases — its order
@@ -1705,15 +1719,28 @@ export async function bulkTransfer(input: {
     set_posting_time?: number
     apply_putaway_rule?: number
     additional_costs?: unknown[]
-    items?: unknown[]
+    items?: { item_code?: string; batch_no?: string; qty?: number; s_warehouse?: string; t_warehouse?: string }[]
   }>('Stock Entry', bulkDraft.name)
+  const freshRows = bulkFresh.items ?? []
+  const rowsMatch =
+    freshRows.length === rows.length &&
+    freshRows.every((fr, i) => {
+      const want = rows[i] as { item_code: string; batch_no: string; qty: number; s_warehouse: string; t_warehouse: string }
+      return (
+        fr.item_code === want.item_code &&
+        fr.batch_no === want.batch_no &&
+        fr.s_warehouse === want.s_warehouse &&
+        fr.t_warehouse === want.t_warehouse &&
+        Math.abs((Number(fr.qty) || 0) - want.qty) <= 1e-6
+      )
+    })
   if (
     bulkFresh.stock_entry_type !== 'Material Transfer' ||
     bulkFresh.company !== COMPANY ||
     !!bulkFresh.set_posting_time ||
     !!bulkFresh.apply_putaway_rule ||
     (bulkFresh.additional_costs?.length ?? 0) > 0 ||
-    (bulkFresh.items?.length ?? 0) !== rows.length
+    !rowsMatch // every row field-for-field (r31)
   ) {
     throw new Error('Bulk transfer draft changed before submit — refusing')
   }

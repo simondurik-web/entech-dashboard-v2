@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
         opKey: idempotencyKey,
         // Mutation must begin within 540s of the 600s lease (r28) — the per-pallet
         // location reads before the single atomic submit can be slow on big queues.
-        deadlineMs: bulkStart + 540_000,
+        deadlineMs: bulkStart + 420_000,
       }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
