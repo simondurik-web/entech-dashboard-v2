@@ -529,14 +529,14 @@ export default function InventoryOpsPage() {
   )
 
   // ─── flash + refresh helper ───
-  const [flash, setFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  const [flash, setFlash] = useState<{ kind: 'ok' | 'err' | 'warn' | 'info'; msg: string }[]>([])
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // durationMs: critical errors the operator must act on (e.g. label printed but the
   // sales-order attach failed) stay up longer than the default toast.
-  const showFlash = (kind: 'ok' | 'err', msg: string, durationMs = 5000) => {
-    setFlash({ kind, msg })
+  const showFlash = (kind: 'ok' | 'err' | 'warn' | 'info', msg: string, durationMs = 5000, append = false) => {
+    setFlash((current) => (append ? [...current, { kind, msg }] : [{ kind, msg }]))
     if (flashRef.current) clearTimeout(flashRef.current)
-    flashRef.current = setTimeout(() => setFlash(null), durationMs)
+    flashRef.current = setTimeout(() => setFlash([]), durationMs)
   }
 
   // ─── Confirmation dialog (delete + reprint) ───
@@ -1138,13 +1138,20 @@ export default function InventoryOpsPage() {
 
   // ─── full inventory export (.xlsx, By Bin + By Product tabs) ───
   const [fullReportLoading, setFullReportLoading] = useState(false)
+  const [reportDate, setReportDate] = useState('')
+  const reportDateMaxNow = new Date()
+  const reportDateMax = `${reportDateMaxNow.getFullYear()}-${String(reportDateMaxNow.getMonth() + 1).padStart(2, '0')}-${String(reportDateMaxNow.getDate()).padStart(2, '0')}`
   const downloadFullInventory = async () => {
     if (fullReportLoading) return
     setFullReportLoading(true)
     try {
-      const r = await authedFetch('/api/erpnext/inventory/report')
+      const r = await authedFetch(reportDate ? `/api/erpnext/inventory/report?date=${reportDate}` : '/api/erpnext/inventory/report')
       if (!r.ok) throw new Error('report failed')
       const d = await r.json()
+      if (d.legacyData) showFlash('warn', t('inventoryOps.repLegacyWarn'))
+      if (d.historical && !d.binsAvailable) {
+        showFlash('info', t('inventoryOps.repNoBinsNote'), 5000, Boolean(d.legacyData))
+      }
       const rows: InventoryRow[] = d.rows ?? []
       const { default: ExcelJS } = await import('exceljs')
       const wb = new ExcelJS.Workbook()
@@ -1161,39 +1168,97 @@ export default function InventoryOpsPage() {
 
       const palletStr = (x: InventoryRow) => x.pallets.map((p) => `${p.batch} (${p.qty})`).join(', ')
 
-      // Tab 1 — By Bin: pick a bin from the Bin column's filter dropdown.
-      const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
-      byBin.columns = [
-        { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
-        { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-        { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-        { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
-        { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-        { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
-      ]
-      ;[...rows]
-        .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
-        .forEach((x) => byBin.addRow({ ...x, pallets: palletStr(x) }))
-      styleHeader(byBin)
+      if (!d.historical) {
+        // Tab 1 — By Bin: pick a bin from the Bin column's filter dropdown.
+        const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
+        byBin.columns = [
+          { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
+          { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+          { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+          { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
+          { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+          { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
+        ]
+        ;[...rows]
+          .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
+          .forEach((x) => byBin.addRow({ ...x, pallets: palletStr(x) }))
+        styleHeader(byBin)
 
-      // Tab 2 — By Product: pick a product from the Item filter dropdown.
-      const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
-      byProd.columns = [
-        { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-        { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-        { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
-        { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
-        { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-        { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
-      ]
-      ;[...rows]
-        .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.warehouse.localeCompare(b.warehouse))
-        .forEach((x) => byProd.addRow({ ...x, pallets: palletStr(x) }))
-      styleHeader(byProd)
+        // Tab 2 — By Product: pick a product from the Item filter dropdown.
+        const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
+        byProd.columns = [
+          { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+          { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+          { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
+          { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
+          { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+          { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
+        ]
+        ;[...rows]
+          .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.warehouse.localeCompare(b.warehouse))
+          .forEach((x) => byProd.addRow({ ...x, pallets: palletStr(x) }))
+        styleHeader(byProd)
+      } else {
+        const styleHistoricalHeader = (ws: import('exceljs').Worksheet) => {
+          const headerRow = d.legacyData ? 2 : 1
+          const h = ws.getRow(headerRow)
+          h.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+          h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2B6CB0' } }
+          ws.views = [{ state: 'frozen', ySplit: headerRow }]
+          ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: Math.max(headerRow, ws.rowCount), column: ws.columnCount } }
+        }
+        const finishHistoricalSheet = (ws: import('exceljs').Worksheet) => {
+          if (d.legacyData) {
+            ws.insertRow(1, [t('inventoryOps.repLegacyWarn')])
+            ws.mergeCells(1, 1, 1, ws.columnCount)
+            ws.getRow(1).font = { bold: true, color: { argb: 'FFC53030' } }
+          }
+          styleHistoricalHeader(ws)
+        }
+
+        if (d.binsAvailable) {
+          const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
+          byBin.columns = [
+            { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
+            { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+            { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+            { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
+            { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+          ]
+          ;[...rows]
+            .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
+            .forEach((x) => byBin.addRow(x))
+          finishHistoricalSheet(byBin)
+
+          const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
+          byProd.columns = [
+            { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+            { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+            { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
+            { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
+            { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+          ]
+          ;[...rows]
+            .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.warehouse.localeCompare(b.warehouse))
+            .forEach((x) => byProd.addRow(x))
+          finishHistoricalSheet(byProd)
+        } else {
+          const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
+          byProd.columns = [
+            { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+            { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+            { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
+          ]
+          ;[...rows]
+            .sort((a, b) => a.itemName.localeCompare(b.itemName))
+            .forEach((x) => byProd.addRow({ itemCode: x.itemCode, itemName: x.itemName, qty: x.qty }))
+          finishHistoricalSheet(byProd)
+        }
+      }
 
       const buf = await wb.xlsx.writeBuffer()
       triggerDownload(
-        `inventory-${Date.now()}.xlsx`,
+        d.historical ? `inventory-${reportDate}.xlsx` : `inventory-${Date.now()}.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         new Blob([buf])
       )
@@ -2287,18 +2352,23 @@ export default function InventoryOpsPage() {
         </button>
       </header>
 
-      {flash && (
+      {flash.map((notice, index) => (
         <div
+          key={`${notice.kind}-${notice.msg}-${index}`}
           className={`mb-4 flex items-center gap-2 rounded-lg border p-3 text-sm ${
-            flash.kind === 'ok'
+            notice.kind === 'ok'
               ? 'border-green-300 bg-green-50 text-green-800'
-              : 'border-red-300 bg-red-50 text-red-700'
+              : notice.kind === 'warn'
+                ? 'border-amber-300 bg-amber-50 text-amber-800'
+                : notice.kind === 'info'
+                  ? 'border-blue-300 bg-blue-50 text-blue-800'
+                  : 'border-red-300 bg-red-50 text-red-700'
           }`}
         >
-          {flash.kind === 'ok' ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-          {flash.msg}
+          {notice.kind === 'ok' ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          {notice.msg}
         </div>
-      )}
+      ))}
 
       {/* Confirmation dialog — gates delete + reprint against accidental taps */}
       {confirmReq && (
@@ -2678,15 +2748,27 @@ export default function InventoryOpsPage() {
             {t('inventoryOps.stageTab')}
           </button>
         </div>
-        <button
-          onClick={downloadFullInventory}
-          disabled={fullReportLoading}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-          title={t('inventoryOps.fullReportHint')}
-        >
-          {fullReportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
-          {t('inventoryOps.fullReport')}
-        </button>
+        <div className="flex items-end gap-2">
+          <label className="flex flex-col gap-1">
+            <input
+              type="date"
+              value={reportDate}
+              max={reportDateMax}
+              onChange={(e) => setReportDate(e.target.value)}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <span className="text-[10px] text-muted-foreground">{t('inventoryOps.repDateHint')}</span>
+          </label>
+          <button
+            onClick={downloadFullInventory}
+            disabled={fullReportLoading}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            title={t('inventoryOps.fullReportHint')}
+          >
+            {fullReportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+            {t('inventoryOps.fullReport')}
+          </button>
+        </div>
       </div>
 
       {viewMode === 'item' && (
