@@ -1478,6 +1478,7 @@
   "inventoryOps.repDateHint": "Export as of a past date (blank = now)",
   "inventoryOps.repLegacyWarn": "⚠️ Data before Jul 21, 2026 comes from the old system and is NOT reliable",
   "inventoryOps.repNoBinsNote": "Bin detail not recorded for this date — product totals only",
+  "inventoryOps.repNoSnapshot": "No inventory snapshot exists for that date",
   "inventoryOps.scanStarting": "Starting camera...",
   "inventoryOps.scanDenied": "Camera access was blocked. Allow camera access in your browser settings, then try again.",
   "inventoryOps.scanNoCamera": "No camera was found on this device.",

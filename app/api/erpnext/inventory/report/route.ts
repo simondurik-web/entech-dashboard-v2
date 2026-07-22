@@ -13,14 +13,17 @@ export const runtime = 'nodejs'
 // can run long on a large inventory — allow up to 5 min (Vercel clamps to the plan max).
 export const maxDuration = 300
 
-async function fetchAllRows(table: string, date?: string): Promise<Record<string, unknown>[]> {
-  // PostgREST caps at 1000 rows by default — paginate to get all
+async function fetchAllRows(table: string, orderCols: string[], date?: string): Promise<Record<string, unknown>[]> {
+  // PostgREST caps at 1000 rows by default — paginate to get all. Stable
+  // ordering by unique key columns is required: without an explicit order,
+  // .range() pages can overlap or skip rows.
   const allRows: Record<string, unknown>[] = []
   const pageSize = 1000
   let offset = 0
   while (true) {
     let query = supabase.from(table).select('*')
     if (date) query = query.eq('date', date)
+    for (const col of orderCols) query = query.order(col, { ascending: true })
     const { data, error } = await query.range(offset, offset + pageSize - 1)
     if (error) throw new Error(`Supabase ${table} error: ${error.message}`)
     if (!data || data.length === 0) break
@@ -61,12 +64,17 @@ export async function GET(req: NextRequest) {
 
   try {
     if (date && date !== today) {
-      const binHistory = await fetchAllRows('inventory_bin_history', date)
+      const binHistory = await fetchAllRows('inventory_bin_history', ['part_number', 'warehouse'], date)
       const binsAvailable = binHistory.length >= 1
       const history = binsAvailable
         ? binHistory
-        : await fetchAllRows('inventory_history', date)
-      const reference = await fetchAllRows('inventory_reference')
+        : await fetchAllRows('inventory_history', ['part_number'], date)
+      // Valid snapshots include zero-qty rows, so a fully empty result means the
+      // snapshot never ran for that date — say so instead of exporting a blank file.
+      if (history.length === 0) {
+        return NextResponse.json({ error: 'no snapshot for date' }, { status: 404 })
+      }
+      const reference = await fetchAllRows('inventory_reference', ['fusion_id'])
       const names = new Map(
         reference.map((row) => {
           const partNumber = String(row.fusion_id ?? '')

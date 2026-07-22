@@ -1139,13 +1139,19 @@ export default function InventoryOpsPage() {
   // ─── full inventory export (.xlsx, By Bin + By Product tabs) ───
   const [fullReportLoading, setFullReportLoading] = useState(false)
   const [reportDate, setReportDate] = useState('')
-  const reportDateMaxNow = new Date()
-  const reportDateMax = `${reportDateMaxNow.getFullYear()}-${String(reportDateMaxNow.getMonth() + 1).padStart(2, '0')}-${String(reportDateMaxNow.getDate()).padStart(2, '0')}`
+  // ET, not browser-local: the server validates "not in the future" in
+  // America/New_York, so a browser in a timezone ahead of ET must not offer
+  // a "today" the API will 400. (en-CA formats as YYYY-MM-DD.)
+  const reportDateMax = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date())
   const downloadFullInventory = async () => {
     if (fullReportLoading) return
     setFullReportLoading(true)
     try {
       const r = await authedFetch(reportDate ? `/api/erpnext/inventory/report?date=${reportDate}` : '/api/erpnext/inventory/report')
+      if (r.status === 404 && reportDate) {
+        showFlash('err', t('inventoryOps.repNoSnapshot'))
+        return
+      }
       if (!r.ok) throw new Error('report failed')
       const d = await r.json()
       if (d.legacyData) showFlash('warn', t('inventoryOps.repLegacyWarn'))
