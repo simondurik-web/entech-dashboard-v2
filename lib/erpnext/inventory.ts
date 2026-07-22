@@ -747,6 +747,8 @@ async function validateMoveDraft(
       s_warehouse?: string
       t_warehouse?: string
       conversion_factor?: number
+      use_serial_batch_fields?: number
+      serial_and_batch_bundle?: string | null
     }[]
   }>('Stock Entry', name)
   const rows = draft.items ?? []
@@ -754,6 +756,10 @@ async function validateMoveDraft(
     draft.stock_entry_type === 'Material Transfer' &&
     draft.company === COMPANY &&
     rows.length === 1 &&
+    // The batch source must be the FIELD, not a linked bundle — a bundle can name a
+    // different batch while batch_no still reads as expected (review r13).
+    Number(rows[0].use_serial_batch_fields) === 1 &&
+    !rows[0].serial_and_batch_bundle &&
     rows[0].batch_no === expect.batch &&
     rows[0].item_code === expect.itemCode &&
     rows[0].s_warehouse === expect.srcWarehouse &&
@@ -848,9 +854,12 @@ export async function verifyOrRestoreMovedReservation(input: {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
     // The remark tag alone must never mint a reservation — require the cancelled-SRE
-    // corroboration before writing (review r11).
-    if (!(await corroborateCarriedIntent(batch, intent))) {
-      return null
+    // corroboration before writing (review r11). Refuted = forged/never carried (null);
+    // unknown = transient — report loudly, restore on a later attempt (r13).
+    const cv = await corroborateCarriedIntent(batch, intent)
+    if (cv === 'refuted') return null
+    if (cv === 'unknown') {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
     await reserveBatchesToSO({
       soName: intent.so,
@@ -898,21 +907,31 @@ export async function transferPreflight(
  *  single batch. Remarks are editable ERP-side; the cancelled document trail is not —
  *  a tag that doesn't match its named record is treated as forged/invalid and never
  *  restored (review r11/r12: identity-bound, not shape-matched against history). */
-async function corroborateCarriedIntent(batch: string, intent: CarriedIntent): Promise<boolean> {
-  if (!intent.soItem || !intent.sre) return false
-  const doc = await erpnextGetDoc<{
+async function corroborateCarriedIntent(
+  batch: string,
+  intent: CarriedIntent
+): Promise<'confirmed' | 'refuted' | 'unknown'> {
+  if (!intent.soItem || !intent.sre) return 'refuted'
+  let doc: {
     docstatus?: number
     voucher_type?: string
     voucher_no?: string
     voucher_detail_no?: string | null
     reserved_qty?: number
     sb_entries?: { batch_no?: string | null }[]
-  }>('Stock Reservation Entry', intent.sre).catch(() => null)
-  if (!doc) return false
+  }
+  try {
+    doc = await erpnextGetDoc('Stock Reservation Entry', intent.sre)
+  } catch (e) {
+    // Only a MISSING document refutes the tag (forged/invalid name). A transient
+    // lookup failure must NEVER read as refuted — that fail-open turned a brief ERP
+    // outage into defused recovery artifacts and silent SO-coverage loss (r13).
+    return / -> 404/.test((e as Error).message) ? 'refuted' : 'unknown'
+  }
   const batches = new Set(
     (doc.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
   )
-  return (
+  const ok =
     doc.docstatus === 2 &&
     doc.voucher_type === 'Sales Order' &&
     doc.voucher_no === intent.so &&
@@ -920,7 +939,7 @@ async function corroborateCarriedIntent(batch: string, intent: CarriedIntent): P
     Math.abs((Number(doc.reserved_qty) || 0) - intent.qty) <= 1e-6 &&
     batches.size === 1 &&
     batches.has(batch)
-  )
+  return ok ? 'confirmed' : 'refuted'
 }
 
 export async function transferInventory(input: {
@@ -984,6 +1003,10 @@ export async function transferInventory(input: {
       !priorTag ||
       priorTag.so !== live.so ||
       (priorTag.soItem ?? '') !== (live.soItem ?? '') ||
+      // SRE identity too: a source-bin restore after a failed submit mints a NEW SRE;
+      // reusing the old-SRE draft would then refuse pre-submit validation forever
+      // (retry livelock, r13). A fresh draft stamped with the live SRE resolves it.
+      priorTag.sre !== live.sre ||
       // Qty drift (pallet adjusted between attempts): submitting the old draft would
       // SPLIT the pallet across bins while re-reserving the new qty (review r10).
       Math.abs(priorTag.qty - live.qty) > 1e-6
@@ -1005,7 +1028,7 @@ export async function transferInventory(input: {
       (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty, srcWarehouse: loc.warehouse }))
     if (!ok) {
       await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
-      if (!live && priorTag && (await corroborateCarriedIntent(batch, priorTag))) {
+      if (!live && priorTag && (await corroborateCarriedIntent(batch, priorTag)) !== 'refuted') {
         lostFrom = priorTag.so
       }
       priorDraft = null
@@ -1021,10 +1044,19 @@ export async function transferInventory(input: {
     : priorDraft
       ? parseCarriedTag(priorDraft.remarks)
       : null
-  if (!live && intent && !(await corroborateCarriedIntent(batch, intent))) {
-    if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
-    priorDraft = null
-    intent = null // uncorroborated tag = nothing real was released; move clean
+  if (!live && intent) {
+    const cv = await corroborateCarriedIntent(batch, intent)
+    if (cv === 'refuted') {
+      if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+      priorDraft = null
+      intent = null // forged/invalid tag = nothing real was released; move clean
+    } else if (cv === 'unknown') {
+      // Transient — the interrupted carry cannot be verified right now. Abort with the
+      // draft ARMED; the retry resumes when ERP answers (fail closed, r13).
+      throw new Error(
+        `Cannot verify pallet ${batch}'s interrupted reservation carry right now — try again shortly`
+      )
+    }
   }
   // Resume without a live reservation: the pallet's on-hand must still match the
   // stamped qty, or completing the old draft would SPLIT the pallet across bins.
@@ -1114,6 +1146,8 @@ export async function transferInventory(input: {
           s_warehouse?: string
           t_warehouse?: string
           conversion_factor?: number
+          use_serial_batch_fields?: number
+          serial_and_batch_bundle?: string | null
         }[]
       }>('Stock Entry', draftName)
       const fr = fresh.items ?? []
@@ -1132,6 +1166,8 @@ export async function transferInventory(input: {
             Math.abs(freshTag.qty - intent.qty) > 1e-6
           : freshTag !== null) ||
         fr.length !== 1 ||
+        Number(fr[0].use_serial_batch_fields) !== 1 ||
+        !!fr[0].serial_and_batch_bundle ||
         fr[0].batch_no !== batch ||
         fr[0].item_code !== itemCode ||
         fr[0].s_warehouse !== loc.warehouse ||
