@@ -838,9 +838,22 @@ export async function verifyOrRestoreMovedReservation(input: {
           reservationWrongLine: true,
         }
       }
-      return intent && intent.so !== live.so
-        ? { reservedTo: live.so, reservationDiffersFromCarried: intent.so }
-        : { reservedTo: live.so }
+      if (intent && intent.so !== live.so) {
+        // Deliberate re-stage to another order — report the live truth, but flag
+        // partial coverage so the route never clears recovery state on a binding
+        // that does not cover the whole pallet (r17).
+        const locD = await getBatchLocation(batch, itemCode).catch(() => null)
+        const partial =
+          live.batchCount !== 1 ||
+          live.deliveredQty > 0 ||
+          (locD ? live.qty + 1e-6 < locD.qty : true)
+        return {
+          reservedTo: live.so,
+          reservationDiffersFromCarried: intent.so,
+          ...(partial ? { reservationPartial: true } : {}),
+        }
+      }
+      return { reservedTo: live.so }
     }
     if (!intent) return null // untagged/absent SE = this op never carried a reservation
     const loc = await getBatchLocation(batch, itemCode)
@@ -901,6 +914,21 @@ export async function transferPreflight(
   return { reserved: guarded !== null, so: guarded?.so ?? null }
 }
 
+/** The Sales Order a move of this pallet would touch — for the route's so: lease.
+ *  Reads the live reservation first, falling back to the op's own stamped draft (a
+ *  retry mid-carry has already released the reservation). Best-effort: null means no
+ *  so: lease, and the pallet: lease still serializes the pallet itself. */
+export async function moveLeaseSo(batch: string, opKey: string): Promise<string | null> {
+  try {
+    const live = await liveReservationForMove(batch)
+    if (live) return live.so
+    const se = await findOpStockEntry(opKey)
+    return se ? (parseCarriedTag(se.remarks)?.so ?? null) : null
+  } catch {
+    return null
+  }
+}
+
 /** Independent corroboration that a `[carried:...]` tag describes the reservation this
  *  op really released: the tag names the EXACT Stock Reservation Entry, and that
  *  document must exist CANCELLED with precisely the stamped SO, line, qty, and this
@@ -918,6 +946,7 @@ async function corroborateCarriedIntent(
     voucher_no?: string
     voucher_detail_no?: string | null
     reserved_qty?: number
+    creation?: string
     sb_entries?: { batch_no?: string | null }[]
   }
   try {
@@ -939,7 +968,33 @@ async function corroborateCarriedIntent(
     Math.abs((Number(doc.reserved_qty) || 0) - intent.qty) <= 1e-6 &&
     batches.size === 1 &&
     batches.has(batch)
-  return ok ? 'confirmed' : 'refuted'
+  if (!ok) return 'refuted'
+  // SUPERSESSION (r17): the stamp only authorizes a restore while it is the pallet's
+  // LATEST reservation event. Any newer reservation (active or since-cancelled) means
+  // an operator re-bound the pallet after this carry — restoring the old order would
+  // resurrect a superseded state.
+  const doc2 = doc as { creation?: string }
+  if (doc2.creation) {
+    try {
+      const qs = [
+        listParam('filters', [
+          ['Serial and Batch Entry', 'batch_no', '=', batch],
+          ['voucher_type', '=', 'Sales Order'],
+          ['creation', '>', doc2.creation],
+          ['name', '!=', intent.sre],
+        ]),
+        listParam('fields', ['name']),
+        'limit_page_length=1',
+      ].join('&')
+      const newer = await erpnextGet<{ data: { name: string }[] }>(
+        `/api/resource/Stock Reservation Entry?${qs}`
+      )
+      if ((newer.data ?? []).length > 0) return 'refuted'
+    } catch {
+      return 'unknown' // fail closed: cannot prove latest — do not restore now
+    }
+  }
+  return 'confirmed'
 }
 
 export async function transferInventory(input: {

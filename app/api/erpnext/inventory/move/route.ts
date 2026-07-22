@@ -6,6 +6,7 @@ import {
   reconcileStockEntry,
   palletBase,
   verifyOrRestoreMovedReservation,
+  moveLeaseSo,
 } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { withLeases, LineLockedError } from '@/lib/erpnext/line-lock'
@@ -18,6 +19,9 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+// Below the 130s lease TTL, matching staging/assign — a request can never outlive its
+// leases where the platform honors maxDuration (r17).
+export const maxDuration = 120
 
 interface MoveBody {
   batch?: string
@@ -87,17 +91,23 @@ export async function POST(req: NextRequest) {
   // armed draft keep the carry fully recoverable when the admin unwedges the row to
   // failed_pre_erp, after which the runner re-runs erp() under its own claim.
 
-  // STAGING LEASES (r16): the same primitive staging/assign holds. The pallet-family
-  // lease serializes this move against a concurrent staging assignment (or another
-  // mover) grabbing the pallet mid-carry; the so: lease (known on fresh reserved
-  // moves) additionally serializes against that order's capacity math. A miss is a
-  // clean 409 "try again"; a crashed holder self-expires within the TTL.
+  // STAGING LEASES (r16/r17): the same primitive staging/assign holds. The pallet-
+  // family lease serializes this move against a concurrent staging assignment (or
+  // another mover) grabbing the pallet mid-carry; the so: lease additionally
+  // serializes against that order's capacity math — resolved on FRESH runs from
+  // preflight and on RETRIES from the live reservation or the op's stamped draft.
+  // A miss is a clean 409 "try again"; a crashed holder self-expires within the TTL.
+  if (priorOp && !preflightSo) {
+    preflightSo = await moveLeaseSo(batch, idempotencyKey)
+  }
   let result: Awaited<ReturnType<typeof runInventoryOp>>
   try {
+    // The lease scope covers the op AND all post-op reservation verification/restore
+    // writes below — a restore outside the lease could race staging/assign (r17).
     result = await withLeases(
       [`pallet:${palletBase(batch)}`, ...(preflightSo ? [`so:${preflightSo}`] : [])],
-      () =>
-        runInventoryOp({
+      async () => {
+        const result = await runInventoryOp({
     key: idempotencyKey,
     action: 'move',
     createdBy: userId,
@@ -136,13 +146,6 @@ export async function POST(req: NextRequest) {
       return se ? { batch, stockEntry: se } : null
     },
   })
-    )
-  } catch (e) {
-    if (e instanceof LineLockedError) {
-      return NextResponse.json({ error: e.message }, { status: 409 })
-    }
-    throw e
-  }
 
   // EVERY successful response is reservation-verified before it leaves — resumed rows
   // (duplicate replays, erp_committed checkpoints, pending reconciles) reproduce only
@@ -241,10 +244,11 @@ export async function POST(req: NextRequest) {
         .update({ error: 'reservation: transfer_failed' })
         .eq('idempotency_key', idempotencyKey)
       if (markErr) console.error('move: persisting reservation checkpoint failed:', markErr)
-    } else if (finalBody.reservedTo !== undefined) {
+    } else if (finalBody.reservedTo !== undefined && finalBody.reservationPartial === undefined) {
       // SQL-guarded clear: the LIKE predicate confines this to reservation checkpoints
       // regardless of when the row was armed (born, late via onCarryStart, or by a
-      // warning) - no stale in-memory snapshot decides (r15).
+      // warning) - no stale in-memory snapshot decides (r15). A PARTIAL binding never
+      // clears recovery state (r17).
       const { error: clearErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({ error: null })
@@ -252,6 +256,30 @@ export async function POST(req: NextRequest) {
         .like('error', 'reservation:%')
       if (clearErr) console.error('move: clearing reservation checkpoint failed:', clearErr)
     }
+
+    // SWEEP on verified reservation (r17): the pallet's binding has been re-established
+    // — every OTHER move op's lingering checkpoint for this batch is now moot, and
+    // leaving one armed would let a stale key replay restore a superseded order.
+    if (finalBody.reservedTo !== undefined && finalBody.reservationPartial === undefined) {
+      const { error: sweepErr } = await supabaseAdmin
+        .from('inventory_ops_log')
+        .update({ error: null })
+        .eq('action', 'move')
+        .eq('batch', batch)
+        .neq('idempotency_key', idempotencyKey)
+        .like('error', 'reservation:%')
+      if (sweepErr) console.error('move: sweeping superseded checkpoints failed:', sweepErr)
+    }
+  }
+
+        return result
+      }
+    )
+  } catch (e) {
+    if (e instanceof LineLockedError) {
+      return NextResponse.json({ error: e.message }, { status: 409 })
+    }
+    throw e
   }
 
   return NextResponse.json(result.body, { status: result.status })
