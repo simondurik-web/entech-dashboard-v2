@@ -861,12 +861,17 @@ export async function verifyOrRestoreMovedReservation(input: {
   itemCode: string
   toWarehouse: string
   opKey: string
+  /** Writes (restore, staging reconcile) are confined to THIS order — any other SO is
+   *  observed, never mutated, because its lease is not held (r29). undefined = no
+   *  write confinement caller (in-erp() at-dest path, which holds the leases). */
+  leasedSo?: string | null
   /** false on replays whose op row does NOT record an unresolved reservation — a replay
    *  of a long-done op must never WRITE (it could resurrect a deliberately released
    *  reservation, review r7); it may still report what it sees. */
   allowRestore: boolean
 }): Promise<Record<string, unknown> | null> {
-  const { batch, itemCode, toWarehouse, opKey, allowRestore } = input
+  const { batch, itemCode, toWarehouse, opKey, allowRestore, leasedSo } = input
+  const mayWrite = (so: string) => allowRestore && (leasedSo === undefined || leasedSo === so)
   try {
     const se = await findOpStockEntry(opKey)
     const intent = se ? parseCarriedTag(se.remarks) : null
@@ -936,6 +941,7 @@ export async function verifyOrRestoreMovedReservation(input: {
           !!locN &&
           Math.abs(live.qty - locN.qty) <= 1e-6
         if (!full) return { reservedTo: live.so, reservationPartial: true }
+        if (!mayWrite(live.so)) return { reservedTo: live.so } // observation only (r29)
         if (!(await reconcileStagingAfterCarry(live.so))) {
           return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
         }
@@ -943,7 +949,9 @@ export async function verifyOrRestoreMovedReservation(input: {
       }
       // Same-SO clean certify — the SRE matches the carry, but the order's staging
       // state must be re-derived too: an order silently absent from Ready to Ship is
-      // a loss even with the reservation intact (r24).
+      // a loss even with the reservation intact (r24). Writes only under this order's
+      // lease + restore authority (r29); otherwise report the observation.
+      if (!mayWrite(live.so)) return { reservedTo: live.so }
       if (!(await reconcileStagingAfterCarry(live.so))) {
         return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
       }
@@ -957,7 +965,7 @@ export async function verifyOrRestoreMovedReservation(input: {
     if (!loc || loc.warehouse !== toWarehouse || Math.abs(loc.qty - intent.qty) > 1e-6 || !intent.soItem) {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
-    if (!allowRestore) {
+    if (!mayWrite(intent.so)) {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
     // The remark tag alone must never mint a reservation — require the cancelled-SRE
@@ -1175,6 +1183,7 @@ export async function transferInventory(input: {
   // re-reserve on the original attempt). Intent comes from the op's own stamped Stock
   // Entry, so the check is bound to THIS operation.
   if (loc.warehouse === toWarehouse) {
+    assertStepBudget('verifying the completed move')
     const follow = await verifyOrRestoreMovedReservation({
       batch,
       itemCode,
@@ -1672,15 +1681,20 @@ export async function bulkTransfer(input: {
   }
   if (rows.length === 0) return { stockEntry: null, extra: { moved: 0, skipped, destination } }
 
-  if (deadlineMs && Date.now() > deadlineMs) {
-    throw new Error('Bulk transfer ran out of its safety window before submitting — try again')
-  }
-  const stockEntry = await submitStockEntry({
+  // Deadline checked immediately before the SUBMIT itself (the only mutation) — the
+  // draft create/read that precede it are harmless in the lease tail (r29).
+  const bulkDraft = await erpnextCreate<{ name: string }>('Stock Entry', {
     stock_entry_type: 'Material Transfer',
     company: COMPANY,
     remarks: `Dashboard bulk transfer [op:${opKey}] -> ${destination} (${rows.length})`,
     items: rows,
   })
+  const bulkFresh = await erpnextGetDoc('Stock Entry', bulkDraft.name)
+  if (deadlineMs && Date.now() > deadlineMs) {
+    throw new Error('Bulk transfer ran out of its safety window before submitting — try again')
+  }
+  const submitted = await erpnextSubmit<{ name?: string }>(bulkFresh)
+  const stockEntry = submitted.name ?? bulkDraft.name
   return { stockEntry, extra: { moved: rows.length, skipped, destination } }
 }
 

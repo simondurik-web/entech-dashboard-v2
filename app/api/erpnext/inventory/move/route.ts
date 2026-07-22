@@ -225,6 +225,7 @@ export async function POST(req: NextRequest) {
         toWarehouse,
         opKey: idempotencyKey,
         allowRestore,
+        leasedSo: preflightSo, // writes confined to the leased order (r29)
       })
       if (follow) {
         if (follow.reservedTo !== undefined) {
@@ -283,6 +284,7 @@ export async function POST(req: NextRequest) {
           toWarehouse,
           opKey: orphanKey,
           allowRestore: false,
+          leasedSo: preflightSo,
         })
         if (follow?.reservedTo !== undefined) {
           // Resolved (reserved again) — retire the checkpoint.
