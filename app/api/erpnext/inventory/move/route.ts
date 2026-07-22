@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   // mid-carry pallet (whose reservation this op already released) and 400 the retry.
   const { data: priorOp, error: priorErr } = await supabaseAdmin
     .from('inventory_ops_log')
-    .select('idempotency_key, batch, error, status, created_at')
+    .select('idempotency_key, batch, error')
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle()
   if (priorErr) {
@@ -75,41 +75,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // STALE-PENDING RECLAIM: a crash mid-erp() leaves the row 'pending' forever — the
-  // runner re-runs erp() only from failed_pre_erp, so the mid-carry resume logic in
-  // erp() would be unreachable and the family would wedge (r4/r9). Instead of mutating
-  // ERP from reconcile (which runs WITHOUT ownership and raced the original request —
-  // r9 codex/grok), CAS the stale row to failed_pre_erp; the runner then claims it
-  // atomically and re-runs erp(), which owns the full resume path. The age gate keeps
-  // us from stealing a row whose original request is still in flight (serverless
-  // functions cap out well under 5 minutes).
-  if (priorOp?.status === 'pending') {
-    const ageMs = Date.now() - new Date(priorOp.created_at as string).getTime()
-    if (ageMs > 5 * 60_000) {
-      // created_at is REFRESHED by the reclaim: it is the age clock for this gate, and
-      // without the refresh a second retry arriving after the first retry's runner
-      // claim (which resets status to pending with the ORIGINAL created_at) would
-      // immediately "reclaim" the in-flight run and double-execute erp() (review r10).
-      const { error: casErr } = await supabaseAdmin
-        .from('inventory_ops_log')
-        .update({
-          status: 'failed_pre_erp',
-          // Preserve a live reservation checkpoint across the reclaim — overwriting it
-          // would destroy the only durable marker of an unresolved carry (r12).
-          error: String(priorOp.error ?? '').startsWith('reservation:')
-            ? priorOp.error
-            : 'stale-pending reclaim (move route)',
-          created_at: new Date().toISOString(),
-        })
-        .eq('idempotency_key', idempotencyKey)
-        .eq('status', 'pending')
-        // Full CAS: matching the OBSERVED created_at makes the reclaim single-winner —
-        // a second retry that read the pre-reclaim timestamp can no longer steal a run
-        // the first retry's runner has since re-claimed to 'pending' (r12).
-        .eq('created_at', priorOp.created_at as string)
-      if (casErr) console.error('move: stale-pending reclaim CAS failed:', casErr)
-    }
-  }
+  // NOTE (r15): there is deliberately NO stale-pending reclaim here. A crash mid-erp()
+  // leaves the row 'pending' and the family 409s until an admin clears it — the SAME
+  // operational model as every other inventory op (add/adjust/reprint). Every reclaim
+  // design reviewed (r9-r15) had an unprovable liveness assumption (no serverless
+  // maxDuration off-Vercel, no heartbeat); the born 'reservation:' checkpoint plus the
+  // armed draft keep the carry fully recoverable when the admin unwedges the row to
+  // failed_pre_erp, after which the runner re-runs erp() under its own claim.
 
   const result = await runInventoryOp({
     key: idempotencyKey,
@@ -204,6 +176,10 @@ export async function POST(req: NextRequest) {
         .select('idempotency_key')
         .eq('family', palletBase(batch))
         .eq('action', 'move')
+        // EXACT batch: family-wide matching could verify/clear against a different
+        // serial after a reissue (r15). A reissued pallet's orphaned checkpoint is
+        // admin-visible in the ops log rather than auto-swept.
+        .eq('batch', batch)
         .like('error', 'reservation:%')
         .neq('idempotency_key', idempotencyKey)
         .limit(1)
@@ -244,14 +220,15 @@ export async function POST(req: NextRequest) {
         .update({ error: 'reservation: transfer_failed' })
         .eq('idempotency_key', idempotencyKey)
       if (markErr) console.error('move: persisting reservation checkpoint failed:', markErr)
-    } else if (
-      (preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:')) &&
-      finalBody.reservedTo !== undefined
-    ) {
+    } else if (finalBody.reservedTo !== undefined) {
+      // SQL-guarded clear: the LIKE predicate confines this to reservation checkpoints
+      // regardless of when the row was armed (born, late via onCarryStart, or by a
+      // warning) - no stale in-memory snapshot decides (r15).
       const { error: clearErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({ error: null })
         .eq('idempotency_key', idempotencyKey)
+        .like('error', 'reservation:%')
       if (clearErr) console.error('move: clearing reservation checkpoint failed:', clearErr)
     }
   }
