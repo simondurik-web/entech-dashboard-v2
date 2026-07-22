@@ -310,7 +310,11 @@ export async function POST(req: NextRequest) {
         .update({ error: 'reservation: transfer_failed' })
         .eq('idempotency_key', idempotencyKey)
       if (markErr) console.error('move: persisting reservation checkpoint failed:', markErr)
-    } else if (finalBody.reservedTo !== undefined && finalBody.reservationPartial === undefined) {
+    } else if (
+      finalBody.reservedTo !== undefined &&
+      finalBody.reservationPartial === undefined &&
+      finalBody.reservationDiffersFromCarried === undefined
+    ) {
       // SQL-guarded clear: the LIKE predicate confines this to reservation checkpoints
       // regardless of when the row was armed (born, late via onCarryStart, or by a
       // warning) - no stale in-memory snapshot decides (r15). A PARTIAL binding never
@@ -326,7 +330,11 @@ export async function POST(req: NextRequest) {
     // SWEEP on verified reservation (r17): the pallet's binding has been re-established
     // — every OTHER move op's lingering checkpoint for this batch is now moot, and
     // leaving one armed would let a stale key replay restore a superseded order.
-    if (finalBody.reservedTo !== undefined && finalBody.reservationPartial === undefined) {
+    if (
+      finalBody.reservedTo !== undefined &&
+      finalBody.reservationPartial === undefined &&
+      finalBody.reservationDiffersFromCarried === undefined
+    ) {
       const { error: sweepErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({ error: null })
@@ -339,7 +347,10 @@ export async function POST(req: NextRequest) {
   }
 
         return result
-      }
+      },
+      // 600s TTL (r26): self-hosted runtimes treat maxDuration as advisory; erp()'s
+      // internal 540s step deadline guarantees no mutating step begins in the tail.
+      600
     )
   } catch (e) {
     if (e instanceof LineLockedError) {

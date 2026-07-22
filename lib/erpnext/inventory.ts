@@ -807,6 +807,14 @@ async function reconcileStagingAfterCarry(soName: string): Promise<boolean> {
         custom_staging_status: 'Staged',
         custom_staged_pallets: count,
       })
+    } else if (!progress.staged && progress.stagingStatus === 'Staged') {
+      // DEMOTE an under-covered order (r26): a cancel whose bookkeeping failed can
+      // leave 'Staged' without full coverage — shipping it would go out incomplete.
+      await erpnextUpdate('Sales Order', soName, {
+        custom_staging_status: 'Open',
+        custom_staged_at: null,
+        custom_staged_pallets: count,
+      })
     } else {
       await erpnextUpdate('Sales Order', soName, { custom_staged_pallets: count })
     }
@@ -889,7 +897,8 @@ export async function verifyOrRestoreMovedReservation(input: {
         const partial =
           live.batchCount !== 1 ||
           live.deliveredQty > 0 ||
-          (locD ? live.qty + 1e-6 < locD.qty : true)
+          !live.soItem ||
+          (locD ? Math.abs(live.qty - locD.qty) > 1e-6 : true)
         return {
           reservedTo: live.so,
           reservationDiffersFromCarried: intent.so,
@@ -1096,6 +1105,16 @@ export async function transferInventory(input: {
   onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
   const { batch, itemCode, toWarehouse, opKey, leasedSo, restoreAuthorized, unverifiedMarker, onCarryStart } = input
+  // STEP DEADLINE (r26): self-hosted runtimes make maxDuration advisory, so the route
+  // holds a 600s lease and every MUTATING step must begin within 540s of erp() start —
+  // no destructive step can start in the lease's tail. (An individual ERP call
+  // overrunning the tail is the same residual the staging flow itself carries.)
+  const erpStart = Date.now()
+  const assertStepBudget = (step: string) => {
+    if (Date.now() - erpStart > 540_000) {
+      throw new Error(`Move of ${batch} ran out of its safety window before ${step} — try again`)
+    }
+  }
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -1294,6 +1313,7 @@ export async function transferInventory(input: {
 
   // Step 1 — durable intent before any mutation of the reservation. (A prior stale
   // draft was discarded above; only a tag-matching draft is reused.)
+  assertStepBudget('creating the transfer draft')
   let draftName: string | null = priorDraft?.name ?? null
   if (intent && !draftName) {
     draftName = (await erpnextCreate<{ name: string }>('Stock Entry', seDoc)).name
@@ -1304,6 +1324,7 @@ export async function transferInventory(input: {
   }
 
   // Step 2 — release (only when a live reservation exists).
+  assertStepBudget('releasing the reservation')
   if (live) {
     let released: boolean
     try {
@@ -1318,6 +1339,9 @@ export async function transferInventory(input: {
       const still = await liveReservationForMove(batch).catch(() => ({ sre: 'unverifiable' }))
       if (still) throw e
       console.error(`move: release bookkeeping for ${batch} failed post-cancel (continuing):`, e)
+      // The failed bookkeeping may have left the source SO marked Staged while
+      // under-covered — reconcile (with demotion) best-effort before continuing (r26).
+      await reconcileStagingAfterCarry(live.so)
       released = true // the cancel itself committed
     }
     if (!released) {
@@ -1333,6 +1357,7 @@ export async function transferInventory(input: {
 
   // Step 3 — commit the transfer (submit the stamped draft; unreserved moves submit
   // directly).
+  assertStepBudget('submitting the transfer')
   let stockEntry: string | null
   try {
     if (draftName) {
@@ -1361,6 +1386,7 @@ export async function transferInventory(input: {
         fresh.stock_entry_type !== 'Material Transfer' ||
         fresh.company !== COMPANY ||
         (fresh.additional_costs?.length ?? 0) > 0 ||
+        ((fresh.remarks ?? '').match(/\[op:[^\]]*\]/g) ?? []).length !== 1 ||
         !(fresh.remarks ?? '').includes(`[op:${opKey}]`) ||
         // The recovery intent must ride the submitted document unaltered: an edit that
         // erased or retargeted the carried tag in the release window must refuse (r12).

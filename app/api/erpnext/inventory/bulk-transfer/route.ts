@@ -66,23 +66,20 @@ export async function POST(req: NextRequest) {
   // RECOVERING-PALLET SKIP (r25): leases expire, but a crashed reserved move leaves an
   // ACTIVE op row / armed 'reservation:' checkpoint — bulk must not move such a pallet
   // (its recovery would later resume against a stale location/order).
+  // Filter in SQL (status OR armed checkpoint) — an unfiltered scan silently truncates
+  // at PostgREST's 1000-row cap and could drop a recovering row (grok r26). The
+  // filtered result is tiny; a full page means something is deeply wrong — fail closed.
   const { data: busyRows, error: busyErr } = await supabaseAdmin
     .from('inventory_ops_log')
-    .select('batch, status, error')
+    .select('batch')
     .eq('action', 'move')
     .in('batch', [...new Set(lines.map((l) => l.batch))])
-  if (busyErr) {
+    .or('status.in.(pending,failed_pre_erp,erp_committed),error.like.reservation:%')
+    .limit(1000)
+  if (busyErr || (busyRows ?? []).length >= 1000) {
     return NextResponse.json({ error: 'Operation log unavailable; try again shortly.' }, { status: 503 })
   }
-  const recovering = new Set(
-    (busyRows ?? [])
-      .filter(
-        (r) =>
-          ['pending', 'failed_pre_erp', 'erp_committed'].includes(String(r.status)) ||
-          String(r.error ?? '').startsWith('reservation:')
-      )
-      .map((r) => String(r.batch))
-  )
+  const recovering = new Set((busyRows ?? []).map((r) => String(r.batch)))
   const movable = lines.filter((l) => !recovering.has(l.batch))
   const recoveringSkips = lines
     .filter((l) => recovering.has(l.batch))
