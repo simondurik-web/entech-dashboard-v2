@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { bulkTransfer, reconcileStockEntry } from '@/lib/erpnext/inventory'
+import { bulkTransfer, reconcileStockEntry, palletBase } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
+import { withLeases, LineLockedError } from '@/lib/erpnext/line-lock'
 
 // POST /api/erpnext/inventory/bulk-transfer
 // Move many pallets to one destination bin in a single atomic ERPNext Material Transfer.
@@ -58,7 +59,15 @@ export async function POST(req: NextRequest) {
   // JSON-encode the sorted set (not a comma-join) so the binding is delimiter-safe.
   const fingerprint = JSON.stringify([...new Set(lines.map((l) => l.batch))].sort())
 
-  const result = await runInventoryOp({
+  // PALLET LEASES (r19): bulk holds the same per-pallet leases as the single move and
+  // staging/assign — without them, a bulk queued during a reserved move's cancel-
+  // before-submit window could see the pallet as unreserved and move it first.
+  let result: Awaited<ReturnType<typeof runInventoryOp>>
+  try {
+    result = await withLeases(
+      [...new Set(lines.map((l) => `pallet:${palletBase(l.batch)}`))],
+      () =>
+        runInventoryOp({
     key: idempotencyKey,
     action: 'bulk-transfer',
     createdBy: userId,
@@ -74,6 +83,13 @@ export async function POST(req: NextRequest) {
       return se ? { stockEntry: se } : null
     },
   })
+    )
+  } catch (e) {
+    if (e instanceof LineLockedError) {
+      return NextResponse.json({ error: e.message }, { status: 409 })
+    }
+    throw e
+  }
 
   // NOTE: we deliberately do NOT overwrite inventory_ops_log.qty with the actual moved
   // count — qty is part of runInventoryOp's idempotency identity, so changing it would make

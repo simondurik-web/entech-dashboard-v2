@@ -824,7 +824,13 @@ export async function verifyOrRestoreMovedReservation(input: {
           reservationWrongWarehouse: live.warehouse,
         }
       }
-      if (intent && intent.so === live.so && live.qty + 1e-6 < intent.qty) {
+      if (
+        intent &&
+        intent.so === live.so &&
+        (live.qty + 1e-6 < intent.qty || live.batchCount !== 1 || live.deliveredQty > 0)
+      ) {
+        // Short qty, a bundled multi-pallet entry, or a partially delivered entry is
+        // NOT the whole-pallet carry succeeding — never certify or clear on it (r19).
         return {
           warning: 'reservation_transfer_failed',
           reservationLostFrom: intent.so,
@@ -1009,12 +1015,16 @@ export async function transferInventory(input: {
   itemCode: string
   toWarehouse: string
   opKey: string
+  /** The Sales Order the route's so: lease covers (null = no so: lease held). erp()
+   *  refuses to carry a reservation on a DIFFERENT order — the lease snapshot would be
+   *  stale and that order's capacity unserialized (review r19); the retry re-resolves. */
+  leasedSo?: string | null
   /** Called the moment a live reservation is confirmed for carrying, BEFORE any
    *  mutating step — the route uses it to arm the durable 'reservation:' checkpoint
    *  even when the reservation appeared after preflight (review r14). Best-effort. */
   onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey, onCarryStart } = input
+  const { batch, itemCode, toWarehouse, opKey, leasedSo, onCarryStart } = input
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -1055,6 +1065,14 @@ export async function transferInventory(input: {
   // a post-commit failure NEVER throws (the ops-log row must record the committed
   // stock entry) — it returns warning extras the route surfaces.
   const live = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
+  if (live && leasedSo !== undefined && live.so !== leasedSo) {
+    // The reservation appeared or changed AFTER the route chose its leases — its order
+    // is not serialized by this request. Refuse retryably; the retry leases the
+    // current order (r19).
+    throw new Error(
+      `Pallet ${batch}'s reservation changed while the move was starting — try again`
+    )
+  }
   if (live && onCarryStart) {
     await onCarryStart().catch((e) => console.error(`move: arming carry checkpoint for ${batch} failed:`, e))
   }

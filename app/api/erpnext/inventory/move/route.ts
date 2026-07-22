@@ -135,6 +135,7 @@ export async function POST(req: NextRequest) {
         itemCode,
         toWarehouse,
         opKey: idempotencyKey,
+        leasedSo: preflightSo,
         // Arm the durable checkpoint the moment a carry is CONFIRMED inside erp() —
         // covers a reservation that appeared after the preflight snapshot (r14).
         onCarryStart: async () => {
