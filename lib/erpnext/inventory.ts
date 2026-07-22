@@ -8,6 +8,7 @@ import {
   erpnextCallGet,
 } from './client'
 import type { Committed } from './operation'
+import { reservationsForBatches, releaseBatchReservation, reserveBatchesToSO, getStagingProgress } from './staging'
 
 // ERPNext stock operations for the inventory-ops module. Company is fixed to
 // Molding (the only operating company). All writes are server-side only and
@@ -575,6 +576,505 @@ export interface TransferResult extends Committed {
   qty: number
 }
 
+const ACTIVE_SRE_STATUS_MOVE = ['Reserved', 'Partially Reserved', 'Partially Delivered']
+
+interface MoveReservation {
+  so: string
+  soItem: string | null
+  qty: number
+  sre: string
+  warehouse: string // the bin the SRE reserves in — must match where the stock actually is
+  batchCount: number // distinct batches on the entry (carry requires exactly 1)
+  deliveredQty: number
+}
+
+/** The pallet's active reservation, read directly and FAILING CLOSED: any lookup
+ *  failure throws (unlike reservationsForBatches, which suppresses individual document
+ *  reads — a reserved pallet must never read as unreserved on a move path). Throws on
+ *  multiple active reservations (ambiguous). Null = genuinely unreserved. */
+async function liveReservationForMove(batch: string): Promise<MoveReservation | null> {
+  const qs = [
+    listParam('filters', [
+      ['Serial and Batch Entry', 'batch_no', '=', batch],
+      ['status', 'in', ACTIVE_SRE_STATUS_MOVE],
+      ['docstatus', '=', 1],
+      // Sales-Order reservations ONLY: the carry releases/re-reserves through the SO
+      // API and must never touch another voucher type's reservation (review r7). A
+      // non-SO reservation reads as unreserved here; ERPNext then rejects the transfer
+      // itself — clean failure, nothing cancelled.
+      ['voucher_type', '=', 'Sales Order'],
+    ]),
+    listParam('fields', ['name']),
+    'limit_page_length=0',
+  ].join('&')
+  const r = await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Stock Reservation Entry?${qs}`)
+  const names = [...new Set((r.data ?? []).map((x) => x.name))]
+  if (names.length === 0) return null
+  if (names.length > 1) {
+    throw new Error(
+      `Pallet ${batch} has ${names.length} active reservations (${names.join(', ')}) — resolve in ERPNext before moving it`
+    )
+  }
+  const full = await erpnextGetDoc<{
+    docstatus?: number
+    status?: string
+    company?: string
+    voucher_no?: string
+    voucher_detail_no?: string | null
+    reserved_qty?: number
+    delivered_qty?: number
+    warehouse?: string
+    sb_entries?: { batch_no?: string | null }[]
+  }>('Stock Reservation Entry', names[0])
+  // Cross-company reservations are NEVER carried — cancelling one and touching its
+  // SO's metadata before ERPNext rejects the cross-company transfer would corrupt
+  // another company's state (r31).
+  if ((full.company ?? COMPANY) !== COMPANY) {
+    throw new Error(`Pallet ${batch}'s reservation belongs to another company — not movable here`)
+  }
+  // The list read and the doc fetch are non-atomic — a cancellation between them must
+  // not be certified as live (r27).
+  if (full.docstatus !== 1 || !ACTIVE_SRE_STATUS_MOVE.includes(String(full.status))) {
+    return null
+  }
+  const distinct = new Set(
+    (full.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
+  )
+  return {
+    so: String(full.voucher_no ?? ''),
+    soItem: full.voucher_detail_no ?? null,
+    qty: Number(full.reserved_qty) || 0,
+    sre: names[0],
+    warehouse: String(full.warehouse ?? ''),
+    batchCount: distinct.size,
+    deliveredQty: Number(full.delivered_qty) || 0,
+  }
+}
+
+/** If the pallet is reserved to a Sales Order, return that reservation — after refusing
+ *  the shapes a bin move cannot carry safely: an entry that bundles several pallets
+ *  (cancelling it would unreserve pallets nobody touched), one that is partially
+ *  delivered (release would orphan the delivered linkage), or one whose reserved qty
+ *  doesn't match the pallet's on-hand qty (re-reserving would change what the order
+ *  holds). Returns null for an unreserved pallet. */
+export async function reservedMoveGuard(
+  batch: string,
+  palletQty: number,
+  palletWarehouse: string
+): Promise<MoveReservation | null> {
+  const res = await liveReservationForMove(batch)
+  if (!res) return null
+  if (res.warehouse !== palletWarehouse) {
+    // Reservation points at a bin the stock is NOT in — broken state a carry must not
+    // build on (review r9); fix the reservation in ERPNext first.
+    throw new Error(
+      `Pallet ${batch} sits in ${palletWarehouse} but its reservation to ${res.so} is bound to ${res.warehouse} — fix the reservation in ERPNext before moving it`
+    )
+  }
+  if (res.batchCount > 1) {
+    throw new Error(
+      `Pallet ${batch} is reserved together with ${res.batchCount - 1} other pallet(s) in ${res.sre} — move it in ERPNext directly`
+    )
+  }
+  if (res.deliveredQty > 0) {
+    throw new Error(
+      `Pallet ${batch}'s reservation to ${res.so} is partially delivered — resolve the delivery in ERPNext before moving it`
+    )
+  }
+  if (Math.abs(res.qty - palletQty) > 1e-6) {
+    throw new Error(
+      `Pallet ${batch} holds ${palletQty} but ${res.qty} is reserved to ${res.so} — fix the reservation in ERPNext before moving it`
+    )
+  }
+  if (!res.soItem) {
+    // No release line on the reservation — re-reserving would auto-allocate a line,
+    // which is exactly the ambiguity this feature exists to avoid (review r8). Fail
+    // closed; such a reservation is handled in ERPNext directly.
+    throw new Error(
+      `Pallet ${batch}'s reservation to ${res.so} has no release line — move it in ERPNext directly`
+    )
+  }
+  return res
+}
+
+/** Reservation intent stamped into the move's own Stock Entry remarks so a retry can
+ *  restore the EXACT reservation this operation released — no heuristics. Server-built
+ *  values only (ERPNext doc names + a number); user text never reaches this tag
+ *  (safeRemark strips brackets from user input). */
+interface CarriedIntent {
+  so: string
+  soItem: string | null
+  qty: number
+  sre: string // the EXACT reservation entry this op released — identity-binds recovery
+}
+
+function carriedTag(intent: CarriedIntent): string {
+  return `[carried:${intent.so}|${intent.soItem ?? ''}|${intent.qty}|${intent.sre}]`
+}
+
+function parseCarriedTag(remarks: string | null | undefined): CarriedIntent | null {
+  const m = /\[carried:([^|\]]+)\|([^|\]]*)\|([0-9.]+)\|([^|\]]+)\]/.exec(remarks ?? '')
+  if (!m) return null
+  return { so: m[1], soItem: m[2] || null, qty: Number(m[3]) || 0, sre: m[4] }
+}
+
+/** Reconcile-time validation of a SUBMITTED op-stamped entry: the source bin is
+ *  unknowable after the fact, so this checks the invariant subset — shape, identity,
+ *  destination, and absence of side-effecting links (r35). */
+export async function validateCommittedMoveEntry(
+  name: string,
+  expect: { batch: string; itemCode: string; toWarehouse: string }
+): Promise<boolean> {
+  try {
+    const doc = await erpnextGetDoc<{
+      stock_entry_type?: string
+      company?: string
+      items?: { item_code?: string; batch_no?: string; t_warehouse?: string }[]
+    }>('Stock Entry', name)
+    const rows = doc.items ?? []
+    return (
+      !seHasSideEffects(doc as unknown as Record<string, unknown>) &&
+      doc.stock_entry_type === 'Material Transfer' &&
+      doc.company === COMPANY &&
+      rows.length === 1 &&
+      rows[0].batch_no === expect.batch &&
+      rows[0].item_code === expect.itemCode &&
+      rows[0].t_warehouse === expect.toWarehouse
+    )
+  } catch {
+    return false
+  }
+}
+
+/** The op's own Stock Entry — submitted or DRAFT — stamped with `[op:<key>]`. The draft
+ *  is created (with the carried tag) BEFORE the reservation is released, so the carry
+ *  intent is durable from the first mutating step: every retry window recovers from a
+ *  document this operation itself wrote. */
+async function findOpStockEntry(
+  opKey: string
+): Promise<{ name: string; docstatus: number; remarks: string | null } | null> {
+  const safe = opKey.replace(/[\\%_]/g, '\\$&')
+  const qs = [
+    listParam('filters', [
+      ['remarks', 'like', `%[op:${safe}]%`],
+      ['docstatus', 'in', [0, 1]],
+    ]),
+    listParam('fields', ['name', 'docstatus', 'remarks']),
+    // Submitted wins over any draft; among drafts the NEWEST wins (older ones are
+    // defused stale drafts or race leftovers — deterministic pick, review r5).
+    `order_by=${encodeURIComponent('docstatus desc, modified desc')}`,
+    'limit_page_length=1',
+  ].join('&')
+  const r = await erpnextGet<{ data: { name: string; docstatus: number; remarks: string | null }[] }>(
+    `/api/resource/Stock Entry?${qs}`
+  )
+  return r.data?.[0] ?? null
+}
+
+/** Full content validation for an op-stamped move DRAFT before it may be reused or
+ *  submitted: this op's single-row Material Transfer of exactly this pallet to exactly
+ *  this destination at the stamped qty. Any mismatch means the draft is stale, crafted,
+ *  or was edited — it must be defused, never completed (review r6/r7). */
+async function validateMoveDraft(
+  name: string,
+  expect: { batch: string; itemCode: string; toWarehouse: string; tagQty: number; srcWarehouse: string },
+  // Submitted entries carry an AUTO-POPULATED serial_and_batch_bundle (ERPNext converts
+  // use_serial_batch_fields rows at submit) — the draft-only "no bundle" rule would
+  // refuse every legitimately committed entry and break post-timeout recovery (r27).
+  mode: 'draft' | 'submitted' = 'draft'
+): Promise<boolean> {
+  const draft = await erpnextGetDoc<{
+    stock_entry_type?: string
+    company?: string
+    set_posting_time?: number
+    apply_putaway_rule?: number
+    items?: {
+      item_code?: string
+      batch_no?: string
+      qty?: number
+      s_warehouse?: string
+      t_warehouse?: string
+      conversion_factor?: number
+      use_serial_batch_fields?: number
+      serial_and_batch_bundle?: string | null
+    }[]
+  }>('Stock Entry', name)
+  const rows = draft.items ?? []
+  const batchSourceOk =
+    mode === 'draft'
+      ? // The batch source must be the FIELD, not a linked bundle — a bundle can name a
+        // different batch while batch_no still reads as expected (review r13).
+        Number(rows[0]?.use_serial_batch_fields) === 1 && !rows[0]?.serial_and_batch_bundle
+      : true
+  return (
+    draft.stock_entry_type === 'Material Transfer' &&
+    draft.company === COMPANY &&
+    // Backdating needs set_posting_time=1 — a draft-writer must not have this endpoint
+    // submit a backdated transaction with service authority (r27). Putaway rules can
+    // rewrite destination rows during ERPNext validation (r30).
+    !draft.set_posting_time &&
+    !draft.apply_putaway_rule &&
+    rows.length === 1 &&
+    batchSourceOk &&
+    rows[0].batch_no === expect.batch &&
+    rows[0].item_code === expect.itemCode &&
+    rows[0].s_warehouse === expect.srcWarehouse &&
+    rows[0].t_warehouse === expect.toWarehouse &&
+    (Number(rows[0].conversion_factor) || 1) === 1 &&
+    Math.abs((Number(rows[0].qty) || 0) - expect.tagQty) <= 1e-6
+  )
+}
+
+/** Header/item link fields whose presence makes a Stock Entry submission update OTHER
+ *  documents (work orders, pick lists, subcontracting, invoicing...). A dashboard move
+ *  never sets any of them; a fetched draft carrying one was edited to weaponize the
+ *  service account's submit and must be refused (r33). */
+const SE_SIDE_EFFECT_HEADER_FIELDS = [
+  'inspection_required', // links Quality Inspection updates at submit (r35)
+  'work_order',
+  'pick_list',
+  'purchase_order',
+  'subcontracting_order',
+  'delivery_note_no',
+  'sales_invoice_no',
+  'purchase_receipt_no',
+  'job_card',
+  'project',
+  'outgoing_stock_entry',
+  'add_to_transit',
+  'asset_repair',
+] as const
+const SE_SIDE_EFFECT_ITEM_FIELDS = [
+  'quality_inspection', // linked QI updated at submit (r35)
+  'pick_list_item', // updates Pick List Item.transferred_qty on submit (r34)
+  'material_request',
+  'material_request_item',
+  'against_stock_entry',
+  'ste_detail',
+  'po_detail',
+  'sco_rm_detail',
+  'subcontracted_item',
+  'original_item',
+] as const
+
+function seHasSideEffects(doc: Record<string, unknown>): boolean {
+  for (const f of SE_SIDE_EFFECT_HEADER_FIELDS) {
+    if (doc[f]) return true
+  }
+  const items = (doc.items as Record<string, unknown>[] | undefined) ?? []
+  for (const row of items) {
+    for (const f of SE_SIDE_EFFECT_ITEM_FIELDS) {
+      if (row[f]) return true
+    }
+  }
+  return false
+}
+
+/** Take a stale stamped DRAFT permanently out of recovery's sight: rewrite its tags so
+ *  the `[op:...]` LIKE never matches it again. Editing a draft's remarks is safe (it
+ *  never moved stock); leaving it armed lets a later recovery resurrect the WRONG order
+ *  (review r5, both legs). Best-effort — on failure the newest-draft ordering above
+ *  still prefers the fresh draft. */
+async function defuseStaleDraft(name: string, remarks: string | null | undefined): Promise<void> {
+  try {
+    const voided = (remarks ?? '').replace(/\[op:/g, '[void-op:').replace(/\[carried:/g, '[void-carried:')
+    await erpnextUpdate('Stock Entry', name, { remarks: voided })
+  } catch (e) {
+    console.error(`move: defusing stale draft ${name} failed:`, e)
+  }
+}
+
+/** Re-derive the SO's staging status from live reservations — the release step drops a
+ *  fully staged order to Open, and reserveBatchesToSO's own trailing recompute can fail
+ *  AFTER the SRE bound (r24): the order would silently vanish from Ready to Ship.
+ *  Returns false when the reconciliation could not be completed (caller keeps warning). */
+async function reconcileStagingAfterCarry(soName: string): Promise<boolean> {
+  try {
+    const progress = await getStagingProgress(soName)
+    const qs = [
+      listParam('filters', [
+        ['voucher_type', '=', 'Sales Order'],
+        ['voucher_no', '=', soName],
+        ['status', 'in', ACTIVE_SRE_STATUS_MOVE],
+        ['docstatus', '=', 1],
+      ]),
+      listParam('fields', ['name']),
+      'limit_page_length=0',
+    ].join('&')
+    const r = await erpnextGet<{ data: { name: string }[] }>(`/api/resource/Stock Reservation Entry?${qs}`)
+    const count = (r.data ?? []).length
+    if (progress.staged && progress.stagingStatus !== 'Staged') {
+      await erpnextUpdate('Sales Order', soName, {
+        custom_staging_status: 'Staged',
+        custom_staged_pallets: count,
+      })
+    } else if (!progress.staged && progress.stagingStatus === 'Staged') {
+      // DEMOTE an under-covered order (r26): a cancel whose bookkeeping failed can
+      // leave 'Staged' without full coverage — shipping it would go out incomplete.
+      await erpnextUpdate('Sales Order', soName, {
+        custom_staging_status: 'Open',
+        custom_staged_at: null,
+        custom_staged_pallets: count,
+      })
+    } else {
+      await erpnextUpdate('Sales Order', soName, { custom_staged_pallets: count })
+    }
+    return true
+  } catch (e) {
+    console.error(`move: staging reconciliation for ${soName} failed:`, e)
+    return false
+  }
+}
+
+/** After a move op reports success: make sure the pallet's reservation survived the
+ *  move. Intent resolution is STRICTLY operation-bound — the `[carried:...]` tag on the
+ *  op's own Stock Entry (draft or submitted); an untagged entry means the pallet was
+ *  never reserved and NOTHING is restored. Returns extras for the response body —
+ *  `{ reservedTo }` when the reservation is in place (or was restored here),
+ *  `{ warning }` when the pallet is KNOWN to have lost its reservation and the operator
+ *  must re-stage, and null when the pallet was never reserved. Never throws: stock is
+ *  already committed. Concurrent restores CONVERGE without a lease: ERPNext itself caps
+ *  each Stock Reservation Entry at the line's remaining unreserved qty (verified live
+ *  2026-07-04, staging.ts whole-pallet notes), so of two racing restores one binds the
+ *  full pallet and the other gets capped short — reserveBatchesToSO detects the
+ *  shortfall, RELEASES its capped entry, and throws; the loser reports the warning
+ *  while the pallet ends correctly reserved exactly once. */
+export async function verifyOrRestoreMovedReservation(input: {
+  batch: string
+  itemCode: string
+  toWarehouse: string
+  opKey: string
+  /** Writes (restore, staging reconcile) are confined to THIS order — any other SO is
+   *  observed, never mutated, because its lease is not held (r29). undefined = no
+   *  write confinement caller (in-erp() at-dest path, which holds the leases). */
+  leasedSo?: string | null
+  /** false on replays whose op row does NOT record an unresolved reservation — a replay
+   *  of a long-done op must never WRITE (it could resurrect a deliberately released
+   *  reservation, review r7); it may still report what it sees. */
+  allowRestore: boolean
+}): Promise<Record<string, unknown> | null> {
+  const { batch, itemCode, toWarehouse, opKey, allowRestore, leasedSo } = input
+  const mayWrite = (so: string) => allowRestore && (leasedSo === undefined || leasedSo === so)
+  try {
+    const se = await findOpStockEntry(opKey)
+    const intent = se ? parseCarriedTag(se.remarks) : null
+    const live = await liveReservationForMove(batch)
+    if (live) {
+      // Report the CURRENT binding — but never CERTIFY a carry the live state doesn't
+      // actually cover: same order at a SHORT qty, on a DIFFERENT release line than
+      // stamped, or bound to a bin the stock is NOT in (stale source-bin SRE) is not
+      // the carry succeeding (review r5/r7/r9). A different order means the pallet was
+      // re-staged mid-recovery; the truth is the live reservation.
+      if (intent && live.warehouse !== toWarehouse) {
+        return {
+          warning: 'reservation_transfer_failed',
+          reservationLostFrom: intent.so,
+          reservationWrongWarehouse: live.warehouse,
+        }
+      }
+      if (
+        intent &&
+        intent.so === live.so &&
+        (Math.abs(live.qty - intent.qty) > 1e-6 ||
+          live.batchCount !== 1 ||
+          live.deliveredQty > 0 ||
+          !live.soItem)
+      ) {
+        // Short qty, a bundled multi-pallet entry, or a partially delivered entry is
+        // NOT the whole-pallet carry succeeding — never certify or clear on it (r19).
+        return {
+          warning: 'reservation_transfer_failed',
+          reservationLostFrom: intent.so,
+          partialReservedQty: live.qty,
+        }
+      }
+      if (intent && intent.so === live.so && intent.soItem && (live.soItem ?? '') !== intent.soItem) {
+        return {
+          warning: 'reservation_transfer_failed',
+          reservationLostFrom: intent.so,
+          reservationWrongLine: true,
+        }
+      }
+      if (intent && intent.so !== live.so) {
+        // Deliberate re-stage to another order — report the live truth, but flag
+        // partial coverage so the route never clears recovery state on a binding
+        // that does not cover the whole pallet (r17).
+        const locD = await getBatchLocation(batch, itemCode).catch(() => null)
+        const partial =
+          live.batchCount !== 1 ||
+          live.deliveredQty > 0 ||
+          !live.soItem ||
+          (locD ? Math.abs(live.qty - locD.qty) > 1e-6 : true)
+        return {
+          reservedTo: live.so,
+          reservationDiffersFromCarried: intent.so,
+          ...(partial ? { reservationPartial: true } : {}),
+        }
+      }
+      if (!intent) {
+        // No stamp to compare against — certify ONLY a binding that provably covers
+        // the whole pallet at the DESTINATION; anything else carries the partial flag
+        // so the route never clears recovery state on it (r22).
+        const locN = await getBatchLocation(batch, itemCode).catch(() => null)
+        const full =
+          live.warehouse === toWarehouse &&
+          live.batchCount === 1 &&
+          live.deliveredQty === 0 &&
+          !!live.soItem &&
+          !!locN &&
+          Math.abs(live.qty - locN.qty) <= 1e-6
+        if (!full) return { reservedTo: live.so, reservationPartial: true }
+        if (!mayWrite(live.so)) return { reservedTo: live.so, reservationObserved: true } // no writes (r29/r32)
+        if (!(await reconcileStagingAfterCarry(live.so))) {
+          return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
+        }
+        return { reservedTo: live.so }
+      }
+      // Same-SO clean certify — the SRE matches the carry, but the order's staging
+      // state must be re-derived too: an order silently absent from Ready to Ship is
+      // a loss even with the reservation intact (r24). Writes only under this order's
+      // lease + restore authority (r29); otherwise report the observation.
+      if (!mayWrite(live.so)) return { reservedTo: live.so, reservationObserved: true }
+      if (!(await reconcileStagingAfterCarry(live.so))) {
+        return { warning: 'reservation_transfer_failed', reservationLostFrom: live.so }
+      }
+      return { reservedTo: live.so }
+    }
+    if (!intent) return null // untagged/absent SE = this op never carried a reservation
+    const loc = await getBatchLocation(batch, itemCode)
+    // Restore exactly the STAMPED qty on the STAMPED line — and only when the pallet
+    // still holds it at the destination; anything else is a loud warning, never a
+    // guessed partial or auto-allocated restore (r5/r8).
+    if (!loc || loc.warehouse !== toWarehouse || Math.abs(loc.qty - intent.qty) > 1e-6 || !intent.soItem) {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
+    }
+    if (!mayWrite(intent.so)) {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
+    }
+    // The remark tag alone must never mint a reservation — require the cancelled-SRE
+    // corroboration before writing (review r11). Refuted = forged/never carried (null);
+    // unknown = transient — report loudly, restore on a later attempt (r13).
+    const cv = await corroborateCarriedIntent(batch, intent, se?.remarks ?? null)
+    if (cv === 'refuted') return null
+    if (cv === 'unknown') {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
+    }
+    await reserveBatchesToSO({
+      soName: intent.so,
+      items: [
+        { salesOrderItem: intent.soItem, itemCode, warehouse: toWarehouse, batch, qty: intent.qty },
+      ],
+    })
+    if (!(await reconcileStagingAfterCarry(intent.so))) {
+      return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
+    }
+    return { reservedTo: intent.so, reservationRestored: true }
+  } catch (e) {
+    console.error(`move: reservation follow for ${batch} failed:`, e)
+    return { warning: 'reservation_transfer_failed' }
+  }
+}
+
 /** Move a pallet between bins: a Material Transfer of the batch's full on-hand qty
  *  from its current warehouse to `toWarehouse`. Refuses split pallets (can't guess
  *  which bin to move) and no-op moves. */
@@ -582,12 +1082,144 @@ export interface TransferResult extends Committed {
  *  destination bin is valid, pallet has stock and isn't split. Throws on any violation.
  *  Call this in the route BEFORE the op-log row is inserted so a deterministic failure is
  *  a clean 400 — not a post-insert throw that would lock the family in failed_pre_erp. */
-export async function transferPreflight(batch: string, itemCode: string, toWarehouse: string): Promise<void> {
+export async function transferPreflight(
+  batch: string,
+  itemCode: string,
+  toWarehouse: string
+): Promise<{ reserved: boolean; so: string | null }> {
   await assertBatchItem(batch, itemCode)
   await preflight(itemCode, toWarehouse) // destination bin: exists, not a group, enabled, right company
   const loc = await getBatchLocation(batch, itemCode)
   if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
   if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
+  // Reserved pallets ARE movable (the reservation is carried across the move) — but only
+  // the shapes reservedMoveGuard accepts; anything else 400s here with a clear message
+  // instead of failing inside the locked op. Whether the pallet is reserved is returned
+  // so the route can arm the reservation checkpoint AT OP-ROW BIRTH (r11): the durable
+  // 'reservation:' marker then exists before any mutating step, closing the crash gap
+  // between the runner's terminal write and a post-hoc checkpoint.
+  const guarded = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
+  return { reserved: guarded !== null, so: guarded?.so ?? null }
+}
+
+/** The Sales Order a move of this pallet would touch — for the route's so: lease.
+ *  Reads the live reservation first, falling back to the op's own stamped draft (a
+ *  retry mid-carry has already released the reservation). Best-effort: null means no
+ *  so: lease, and the pallet: lease still serializes the pallet itself. */
+export async function moveLeaseSo(batch: string, opKey: string): Promise<string | null> {
+  // FAIL CLOSED (r18): a lookup failure THROWS — proceeding without the so: lease
+  // while later ERP reads succeed would mutate reservation capacity unserialized.
+  const live = await liveReservationForMove(batch)
+  if (live) return live.so
+  const se = await findOpStockEntry(opKey)
+  return se ? (parseCarriedTag(se.remarks)?.so ?? null) : null
+}
+
+/** Independent corroboration that a `[carried:...]` tag describes the reservation this
+ *  op really released: the tag names the EXACT Stock Reservation Entry, and that
+ *  document must exist CANCELLED with precisely the stamped SO, line, qty, and this
+ *  single batch. Remarks are editable ERP-side; the cancelled document trail is not —
+ *  a tag that doesn't match its named record is treated as forged/invalid and never
+ *  restored (review r11/r12: identity-bound, not shape-matched against history). */
+let cachedServiceUser: string | null = null
+async function serviceUser(): Promise<string> {
+  if (!cachedServiceUser) {
+    const r = await erpnextCallGet<{ message?: string }>('frappe.auth.get_logged_user', {})
+    cachedServiceUser = String(r?.message ?? '')
+    if (!cachedServiceUser) throw new Error('could not resolve the ERP service user')
+  }
+  return cachedServiceUser
+}
+
+async function corroborateCarriedIntent(
+  batch: string,
+  intent: CarriedIntent,
+  /** The op's own stamped document remarks — must contain the [releasing:<sre>] stamp
+   *  written immediately before OUR cancel; without it (or with a foreign canceller)
+   *  the cancelled record proves nothing about WHO cancelled (r27). */
+  opRemarks?: string | null
+): Promise<'confirmed' | 'refuted' | 'unknown'> {
+  if (!intent.soItem || !intent.sre) return 'refuted'
+  if (opRemarks !== undefined && !(opRemarks ?? '').includes(`[releasing:${intent.sre}]`)) {
+    return 'refuted'
+  }
+  let doc: {
+    docstatus?: number
+    voucher_type?: string
+    voucher_no?: string
+    voucher_detail_no?: string | null
+    reserved_qty?: number
+    creation?: string
+    modified_by?: string
+    sb_entries?: { batch_no?: string | null }[]
+  }
+  try {
+    doc = await erpnextGetDoc('Stock Reservation Entry', intent.sre)
+  } catch (e) {
+    // Only a MISSING document refutes the tag (forged/invalid name). A transient
+    // lookup failure must NEVER read as refuted — that fail-open turned a brief ERP
+    // outage into defused recovery artifacts and silent SO-coverage loss (r13).
+    return / -> 404/.test((e as Error).message) ? 'refuted' : 'unknown'
+  }
+  const batches = new Set(
+    (doc.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
+  )
+  let ok =
+    doc.docstatus === 2 &&
+    doc.voucher_type === 'Sales Order' &&
+    doc.voucher_no === intent.so &&
+    (doc.voucher_detail_no ?? null) === intent.soItem &&
+    Math.abs((Number(doc.reserved_qty) || 0) - intent.qty) <= 1e-6 &&
+    batches.size === 1 &&
+    batches.has(batch)
+  if (ok) {
+    // The canceller must be OUR service account — an operator's deliberate ERPNext
+    // cancel during a crash window must never be resurrected (r27).
+    try {
+      const doc3 = doc as { modified_by?: string }
+      ok = (doc3.modified_by ?? '') === (await serviceUser())
+    } catch {
+      return 'unknown'
+    }
+  }
+  if (!ok) return 'refuted'
+  // SUPERSESSION (r17): the stamp only authorizes a restore while it is the pallet's
+  // LATEST reservation event. Any newer reservation (active or since-cancelled) means
+  // an operator re-bound the pallet after this carry — restoring the old order would
+  // resurrect a superseded state.
+  const doc2 = doc as { creation?: string }
+  if (doc2.creation) {
+    try {
+      const qs = [
+        listParam('filters', [
+          ['Serial and Batch Entry', 'batch_no', '=', batch],
+          // ANY voucher type counts as later reservation activity (r33); by MODIFIED,
+          // not creation: an older DRAFT submitted/cancelled after this carry is a
+          // deliberate later act; over-matching merely fails safe to a nag (r32).
+          ['modified', '>', doc2.creation],
+          ['name', '!=', intent.sre],
+        ]),
+        listParam('fields', ['name', 'docstatus', 'status', 'reserved_qty']),
+        'limit_page_length=0',
+      ].join('&')
+      const newer = await erpnextGet<{
+        data: { name: string; docstatus: number; status: string; reserved_qty: number }[]
+      }>(`/api/resource/Stock Reservation Entry?${qs}`)
+      // Only a REAL later binding supersedes: an active entry, or a cancelled one at
+      // (at least) the stamped whole-pallet qty. A capped-SHORT cancelled entry is
+      // this flow's own aborted restore (reserveBatchesToSO releases on shortfall) —
+      // counting it poisoned the op's own replay into a clean-200 loss (r18).
+      const superseded = (newer.data ?? []).some(
+        (n) =>
+          (n.docstatus === 1 && ACTIVE_SRE_STATUS_MOVE.includes(n.status)) ||
+          (n.docstatus === 2 && (Number(n.reserved_qty) || 0) + 1e-6 >= intent.qty)
+      )
+      if (superseded) return 'refuted'
+    } catch {
+      return 'unknown' // fail closed: cannot prove latest — do not restore now
+    }
+  }
+  return 'confirmed'
 }
 
 export async function transferInventory(input: {
@@ -595,8 +1227,38 @@ export async function transferInventory(input: {
   itemCode: string
   toWarehouse: string
   opKey: string
+  /** Absolute epoch-ms deadline (lease acquisition + 420s) after which no mutating
+   *  step may begin (r36). */
+  deadlineMs?: number
+  /** The Sales Order the route's so: lease covers (null = no so: lease held). erp()
+   *  refuses to carry a reservation on a DIFFERENT order — the lease snapshot would be
+   *  stale and that order's capacity unserialized (review r19); the retry re-resolves. */
+  leasedSo?: string | null
+  /** Server-side restore authority (the ops-log 'reservation:' marker) — the at-
+   *  destination no-op verify must honor the SAME gate as the route (review r22). */
+  restoreAuthorized?: boolean
+  /** The row carries the fail-closed 'reservation: unverified' marker: resume is
+   *  allowed via full corroboration (never untagged continuation), but route-level
+   *  restores stay denied (review r25). */
+  unverifiedMarker?: boolean
+  /** Called the moment a live reservation is confirmed for carrying, BEFORE any
+   *  mutating step — the route uses it to arm the durable 'reservation:' checkpoint
+   *  even when the reservation appeared after preflight (review r14). Best-effort. */
+  onCarryStart?: () => Promise<void>
 }): Promise<TransferResult> {
-  const { batch, itemCode, toWarehouse, opKey } = input
+  const { batch, itemCode, toWarehouse, opKey, deadlineMs, leasedSo, restoreAuthorized, unverifiedMarker, onCarryStart } = input
+  // STEP DEADLINE (r26): self-hosted runtimes make maxDuration advisory, so the route
+  // holds a 600s lease and every MUTATING step must begin within 420s (180s tail margin exceeds any helper's read chain before its write) of erp() start —
+  // no destructive step can start in the lease's tail. (An individual ERP call
+  // overrunning the tail is the same residual the staging flow itself carries.)
+  // Anchored at LEASE ACQUISITION when the route provides the absolute deadline —
+  // ops-log latency before erp() must not reset the clock (r36).
+  const hardDeadline = deadlineMs ?? Date.now() + 420_000
+  const assertStepBudget = (step: string) => {
+    if (Date.now() > hardDeadline) {
+      throw new Error(`Move of ${batch} ran out of its safety window before ${step} — try again`)
+    }
+  }
   await assertBatchItem(batch, itemCode)
   // Validate the destination bin (exists, not a group, enabled, right company).
   const item = await preflight(itemCode, toWarehouse)
@@ -606,15 +1268,201 @@ export async function transferInventory(input: {
   if (!loc || loc.qty <= 0) throw new Error(`Pallet ${batch} has no stock to move`)
   if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
   // Already at the destination: treat as a no-op success so a timeout+retry of a
-  // move that already committed resolves cleanly instead of erroring.
+  // move that already committed resolves cleanly instead of erroring — but first make
+  // sure the committed move didn't strand the reservation (crash between release and
+  // re-reserve on the original attempt). Intent comes from the op's own stamped Stock
+  // Entry, so the check is bound to THIS operation.
   if (loc.warehouse === toWarehouse) {
-    return { batch, stockEntry: null, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+    assertStepBudget('verifying the completed move')
+    const follow = await verifyOrRestoreMovedReservation({
+      batch,
+      itemCode,
+      toWarehouse,
+      opKey,
+      leasedSo: leasedSo ?? null, // writes confined to the leased order (r31)
+      // NOT unconditional (r22): a fresh clean op that happens to target the current
+      // bin must never gain restore authority a forged draft could exploit. An
+      // 'unverified' marker MAY restore here — the corroboration chain (stamp +
+      // canceller identity + supersession) guards it, mirroring the main resume
+      // path; otherwise a committed move under an unverified marker strands (r30).
+      allowRestore: restoreAuthorized === true || unverifiedMarker === true,
+    })
+    const se = await findOpStockEntry(opKey).catch(() => null)
+    return {
+      batch,
+      stockEntry: se && se.docstatus === 1 ? se.name : null,
+      fromWarehouse: loc.warehouse,
+      toWarehouse,
+      qty: loc.qty,
+      ...(follow ? { extra: follow } : {}),
+    }
   }
 
-  const stockEntry = await submitStockEntry({
+  // Reserved pallet: ERPNext refuses to transfer a reserved batch, so carry the
+  // reservation across the move (Simon 2026-07-21: "we do need to transfer reserved
+  // stock"). Order of operations makes every window recoverable WITHOUT heuristics:
+  //   1. create the transfer as a DRAFT stamped [op:key] [carried:so|line|qty]
+  //   2. release the reservation (pinned to the confirmed SRE)
+  //   3. submit the draft
+  //   4. re-reserve in the destination bin on the SAME release line
+  // The durable carried tag exists from step 1, BEFORE anything is released — a retry
+  // resuming after any crash finds this op's own document and restores exactly that
+  // intent. A pre-commit failure restores the source-bin reservation and fails the op;
+  // a post-commit failure NEVER throws (the ops-log row must record the committed
+  // stock entry) — it returns warning extras the route surfaces.
+  // Source warehouse must belong to OUR company before any reservation mutation —
+  // destination is validated by preflight(); the source was not (r31).
+  const srcWh = await erpnextGetDoc<{ company?: string }>('Warehouse', loc.warehouse)
+  if ((srcWh.company ?? '') !== COMPANY) {
+    throw new Error(`Pallet ${batch}'s bin ${loc.warehouse} belongs to another company — not movable here`)
+  }
+  const live = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
+  if (live && leasedSo !== undefined && live.so !== leasedSo) {
+    // The reservation appeared or changed AFTER the route chose its leases — its order
+    // is not serialized by this request. Refuse retryably; the retry leases the
+    // current order (r19).
+    throw new Error(
+      `Pallet ${batch}'s reservation changed while the move was starting — try again`
+    )
+  }
+  if (live && onCarryStart) {
+    // Propagates: a checkpoint that cannot be armed aborts the carry BEFORE any
+    // mutation (fail closed, r20).
+    await onCarryStart()
+  }
+  // This op's own prior document (retry): a submitted entry can't coexist with stock
+  // still at the source; a DRAFT means the first attempt died mid-carry — resume it.
+  const prior = await findOpStockEntry(opKey)
+  let priorDraft = prior && prior.docstatus === 0 ? prior : null
+  // A stamped draft may only RESUME a carry when the server-side checkpoint authorizes
+  // it (r23): without the marker, a crafted pre-created draft on a fresh unreserved op
+  // would otherwise resurrect a cancelled reservation. Unauthorized drafts are ignored
+  // (not defused — an admin can inspect them; they can never act without the marker).
+  if (!live && priorDraft && restoreAuthorized !== true) {
+    if (unverifiedMarker === true) {
+      // The marker could not be verified when it was written — NEVER continue with an
+      // untagged transfer that would shadow a real interrupted carry (r25). The
+      // corroboration gate downstream decides: confirmed resumes, refuted defuses,
+      // unknown aborts retryably.
+    } else {
+      priorDraft = null
+    }
+  }
+  // A stale draft whose stamped intent no longer matches the LIVE reservation (the
+  // pallet was released and re-staged to another order between attempts) must not be
+  // reused — its tag would later "restore" the wrong order. DEFUSE it (strip its op
+  // tags so no recovery path can ever pick it up) and create a fresh stamped draft.
+  if (live && priorDraft) {
+    const priorTag = parseCarriedTag(priorDraft.remarks)
+    if (
+      !priorTag ||
+      priorTag.so !== live.so ||
+      (priorTag.soItem ?? '') !== (live.soItem ?? '') ||
+      // SRE identity too: a source-bin restore after a failed submit mints a NEW SRE;
+      // reusing the old-SRE draft would then refuse pre-submit validation forever
+      // (retry livelock, r13). A fresh draft stamped with the live SRE resolves it.
+      priorTag.sre !== live.sre ||
+      // Qty drift (pallet adjusted between attempts): submitting the old draft would
+      // SPLIT the pallet across bins while re-reserving the new qty (review r10).
+      Math.abs(priorTag.qty - live.qty) > 1e-6
+    ) {
+      await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+      priorDraft = null
+    }
+  }
+  // Any reused draft must also pass full CONTENT validation — same bar as the
+  // resume path; a stale or edited draft is defused and replaced (review r7). When the
+  // defused draft carried a CORROBORATED intent and the reservation is already gone,
+  // that loss must surface loudly — a defuse must never convert a known loss into a
+  // clean success (review r11).
+  let resumeIntent: CarriedIntent | null = null
+  let intentCorroborated = false
+  let deferredDefuse: { name: string; remarks: string | null } | null = null
+  if (priorDraft) {
+    const priorTag = parseCarriedTag(priorDraft.remarks)
+    const ok =
+      priorTag &&
+      (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty, srcWarehouse: loc.warehouse }))
+    if (!ok) {
+      // ORDERING (r16): the armed draft is the ONLY durable recovery artifact — it is
+      // defused only once its fate is decided: refuted/live-superseded → defuse now;
+      // corroboration unknown → abort with it ARMED; confirmed → defuse DEFERRED until
+      // the fresh replacement draft exists (newest-wins lookup covers the overlap).
+      if (!live && priorTag) {
+        const cv = await corroborateCarriedIntent(batch, priorTag, priorDraft.remarks)
+        intentCorroborated = cv === 'confirmed'
+        if (cv === 'unknown') {
+          throw new Error(
+            `Cannot verify pallet ${batch}'s interrupted reservation carry right now — try again shortly`
+          )
+        }
+        if (cv === 'confirmed') {
+          resumeIntent = priorTag
+          deferredDefuse = { name: priorDraft.name, remarks: priorDraft.remarks }
+        }
+      }
+      if (!deferredDefuse) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+      priorDraft = null
+    }
+  }
+
+  // Intent is derived only AFTER every draft-vetting step above (a defused draft must
+  // never contribute intent — review r10). A no-live intent must be CORROBORATED by
+  // the cancelled-reservation record — the remark tag alone is editable ERP-side and
+  // must never mint a reservation by itself (review r11).
+  let intent: CarriedIntent | null = live
+    ? { so: live.so, soItem: live.soItem, qty: live.qty, sre: live.sre }
+    : (priorDraft ? parseCarriedTag(priorDraft.remarks) : null) ?? resumeIntent
+  if (!live && intent && leasedSo !== undefined && intent.so !== leasedSo) {
+    // The so: lease this request holds does not cover the stamped order — refuse
+    // retryably; the retry resolves its lease from the draft (r23).
+    throw new Error(
+      `Pallet ${batch}'s interrupted carry targets a different order than this request locked — try again`
+    )
+  }
+  if (!live && intent && !intentCorroborated) {
+    // Corroborate with the remarks that actually CARRIED the intent — a nulled
+    // priorDraft after a deferred defuse must not refute a confirmed carry (r28).
+    const cv = await corroborateCarriedIntent(
+      batch,
+      intent,
+      priorDraft?.remarks ?? deferredDefuse?.remarks ?? null
+    )
+    if (cv === 'refuted') {
+      if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+      priorDraft = null
+      intent = null // forged/invalid tag = nothing real was released; move clean
+    } else if (cv === 'unknown') {
+      // Transient — the interrupted carry cannot be verified right now. Abort with the
+      // draft ARMED; the retry resumes when ERP answers (fail closed, r13).
+      throw new Error(
+        `Cannot verify pallet ${batch}'s interrupted reservation carry right now — try again shortly`
+      )
+    }
+  }
+  // Resume without a live reservation: the pallet's on-hand must still match the
+  // stamped qty, or completing the draft would SPLIT the pallet across bins. Should be
+  // unreachable (serialized pallets change qty only via reissue) — on mismatch FAIL
+  // the op with everything ARMED: an ephemeral warning on an untagged entry was
+  // silently droppable on replay (r16). The operator re-stages, which supersedes the
+  // stale draft via the SRE-identity check on the next move.
+  if (!live && intent && Math.abs(loc.qty - intent.qty) > 1e-6) {
+    throw new Error(
+      `Pallet ${batch}'s quantity changed while its move was interrupted (${intent.qty} reserved vs ${loc.qty} on hand) — re-stage the pallet to ${intent.so}, then move it again`
+    )
+  }
+
+  const seDoc = {
     stock_entry_type: 'Material Transfer',
     company: COMPANY,
-    remarks: `Dashboard move [op:${opKey}]`,
+    apply_putaway_rule: 0,
+    // The [carried:...] stamp makes the released reservation recoverable from this
+    // document itself — a retry restores exactly this intent, never a guess. The
+    // [releasing:...] stamp is written at CREATION (r28): for a live carry the draft
+    // precedes the cancel (proof preserved), and a REPLACEMENT draft for an already-
+    // released carry propagates the proof-chain its predecessor corroborated —
+    // without it, the next retry would refute a confirmed carry.
+    remarks: `Dashboard move [op:${opKey}]${intent ? ` ${carriedTag(intent)} [releasing:${intent.sre}]` : ''}`,
     items: [
       {
         item_code: itemCode,
@@ -629,9 +1477,229 @@ export async function transferInventory(input: {
         conversion_factor: 1,
       },
     ],
-  })
+  }
 
-  return { batch, stockEntry, fromWarehouse: loc.warehouse, toWarehouse, qty: loc.qty }
+  // Step 1 — durable intent before any mutation of the reservation. (A prior stale
+  // draft was discarded above; only a tag-matching draft is reused.) UNRESERVED moves
+  // also create a draft here: the single validated submit path below covers them —
+  // submitStockEntry's fetch-and-submit had no edit-window revalidation (r35).
+  assertStepBudget('creating the transfer draft')
+  let draftName: string | null = priorDraft?.name ?? null
+  if (!draftName) {
+    draftName = (await erpnextCreate<{ name: string }>('Stock Entry', seDoc)).name
+  }
+  if (deferredDefuse && draftName) {
+    // The replacement exists — NOW retire the superseded draft (r16 ordering).
+    await defuseStaleDraft(deferredDefuse.name, deferredDefuse.remarks)
+  }
+
+  // Step 2 — release (only when a live reservation exists). The [releasing:<sre>]
+  // stamp already rides the draft from creation (r28) — a REUSED prior draft carries
+  // its own from its creation, guaranteed by the SRE-identity stale check above.
+  assertStepBudget('releasing the reservation')
+  if (live) {
+    let released: boolean
+    try {
+      released = (await releaseBatchReservation(batch, live.sre)).released
+    } catch (e) {
+      // The helper cancels the SRE first, then recomputes SO staging metadata — a
+      // failure AFTER the cancel must not fail the move (the reservation is already
+      // gone; the intent is stamped in the draft). Only a failure that left the
+      // reservation intact is safe to propagate. That check fails CLOSED: if it can't
+      // be read, assume intact and propagate (the stamped draft is inert and reused on
+      // retry).
+      const still = await liveReservationForMove(batch).catch(() => ({ sre: 'unverifiable' }))
+      if (still) throw e
+      // 'No live reservation' alone does not prove OUR cancel committed — an operator
+      // may have cancelled in this exact window; recreating their deliberately released
+      // reservation would undo them (r36). Verify the canceller identity.
+      let cancelledByUs = false
+      try {
+        const gone = await erpnextGetDoc<{ docstatus?: number; modified_by?: string }>(
+          'Stock Reservation Entry',
+          live.sre
+        )
+        cancelledByUs = gone.docstatus === 2 && (gone.modified_by ?? '') === (await serviceUser())
+      } catch {
+        cancelledByUs = false
+      }
+      if (!cancelledByUs) {
+        throw new Error(
+          `Pallet ${batch}'s reservation changed while the move was starting — re-check the pallet and try again`
+        )
+      }
+      console.error(`move: release bookkeeping for ${batch} failed post-cancel (continuing):`, e)
+      // The failed bookkeeping may have left the source SO marked Staged while
+      // under-covered — reconcile (with demotion) best-effort before continuing (r26).
+      await reconcileStagingAfterCarry(live.so)
+      released = true // the cancel itself committed
+    }
+    if (!released) {
+      // The reservation vanished between the snapshot and the cancel (someone released
+      // it concurrently) — the carry's premise changed. Defuse the stamped draft and
+      // abort; the operator re-initiates against the current state (review r8).
+      if (draftName) await defuseStaleDraft(draftName, String(seDoc.remarks))
+      throw new Error(
+        `Pallet ${batch}'s reservation changed while the move was starting — re-check the pallet and try again`
+      )
+    }
+  }
+
+  // Step 3 — commit the transfer (submit the stamped draft; unreserved moves submit
+  // directly).
+  assertStepBudget('submitting the transfer')
+  let stockEntry: string | null
+  try {
+    if (!draftName) throw new Error('unreachable: move draft missing') // narrowing only
+    {
+      // Revalidate the EXACT fetched document before submitting it — the window after
+      // the release is where an ERP-side edit could retarget the transfer, and the
+      // service account must never submit a document it hasn't just verified (r11).
+      const fresh = await erpnextGetDoc<{
+        stock_entry_type?: string
+        company?: string
+        set_posting_time?: number
+        apply_putaway_rule?: number
+        remarks?: string | null
+        additional_costs?: unknown[]
+        items?: {
+          item_code?: string
+          batch_no?: string
+          qty?: number
+          s_warehouse?: string
+          t_warehouse?: string
+          conversion_factor?: number
+          use_serial_batch_fields?: number
+          serial_and_batch_bundle?: string | null
+        }[]
+      }>('Stock Entry', draftName)
+      const fr = fresh.items ?? []
+      const freshTag = parseCarriedTag(fresh.remarks)
+      if (
+        seHasSideEffects(fresh as unknown as Record<string, unknown>) ||
+        fresh.stock_entry_type !== 'Material Transfer' ||
+        fresh.company !== COMPANY ||
+        !!fresh.set_posting_time ||
+        !!fresh.apply_putaway_rule ||
+        (fresh.additional_costs?.length ?? 0) > 0 ||
+        ((fresh.remarks ?? '').match(/\[op:[^\]]*\]/g) ?? []).length !== 1 ||
+        !(fresh.remarks ?? '').includes(`[op:${opKey}]`) ||
+        // The recovery intent must ride the submitted document unaltered: an edit that
+        // erased or retargeted the carried tag in the release window must refuse (r12).
+        (intent
+          ? !freshTag ||
+            freshTag.so !== intent.so ||
+            (freshTag.soItem ?? '') !== (intent.soItem ?? '') ||
+            freshTag.sre !== intent.sre ||
+            Math.abs(freshTag.qty - intent.qty) > 1e-6
+          : freshTag !== null) ||
+        (intent ? !(fresh.remarks ?? '').includes(`[releasing:${intent.sre}]`) : false) ||
+        fr.length !== 1 ||
+        Number(fr[0].use_serial_batch_fields) !== 1 ||
+        !!fr[0].serial_and_batch_bundle ||
+        fr[0].batch_no !== batch ||
+        fr[0].item_code !== itemCode ||
+        fr[0].s_warehouse !== loc.warehouse ||
+        fr[0].t_warehouse !== toWarehouse ||
+        (Number(fr[0].conversion_factor) || 1) !== 1 ||
+        Math.abs((Number(fr[0].qty) || 0) - loc.qty) > 1e-6
+      ) {
+        throw new Error(`Draft ${draftName} changed since validation — refusing to submit it`)
+      }
+      const submitted = await erpnextSubmit<{ name?: string }>(fresh)
+      stockEntry = submitted.name ?? draftName
+    }
+  } catch (e) {
+    // A submit timeout can land AFTER ERPNext committed — verify before compensating,
+    // or the "restore" would re-reserve in a bin the stock just left (review r3). The
+    // compensation must FAIL CLOSED (r14): it runs only when the stock is VERIFIABLY
+    // still at the source; if either the stamped-entry check or the location read
+    // fails, restore nothing and rethrow — the armed draft + born checkpoint make the
+    // retry resume the carry safely.
+    const committedSe = await findOpStockEntry(opKey).catch(() => null)
+    const committedValid =
+      committedSe &&
+      committedSe.docstatus === 1 &&
+      (await validateMoveDraft(
+        committedSe.name,
+        { batch, itemCode, toWarehouse, tagQty: loc.qty, srcWarehouse: loc.warehouse },
+        'submitted'
+      ).catch(() => false))
+    if (committedSe && committedSe.docstatus === 1 && committedValid) {
+      stockEntry = committedSe.name
+    } else {
+      if (intent) {
+        const locNow = await getBatchLocation(batch, itemCode).catch(() => null)
+        const verifiablyAtSource =
+          !!locNow && locNow.warehouse === loc.warehouse && Math.abs(locNow.qty - loc.qty) <= 1e-6
+        if (verifiablyAtSource) {
+          // Stock never moved — put the reservation back in the SOURCE bin so the
+          // pallet stays locked to its order while the operator retries.
+          assertStepBudget('restoring the source-bin reservation')
+          try {
+            await reserveBatchesToSO({
+              soName: intent.so,
+              items: [
+                { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: loc.warehouse, batch, qty: loc.qty },
+              ],
+            })
+          } catch (restoreErr) {
+            console.error(`move: source-bin reservation restore for ${batch} failed:`, restoreErr)
+            throw new Error(
+              `Move of ${batch} failed and its reservation to ${intent.so} could not be put back — retry the move (it resumes automatically), or re-stage from the staging screen. Move error: ${(e as Error).message}`
+            )
+          }
+        } else {
+          console.error(
+            `move: submit outcome for ${batch} unverifiable — skipping source-bin restore (fail closed)`
+          )
+        }
+      }
+      throw e
+    }
+  }
+
+  if (!intent) {
+    return {
+      batch,
+      stockEntry,
+      fromWarehouse: loc.warehouse,
+      toWarehouse,
+      qty: loc.qty,
+    }
+  }
+
+  // Step 4 — re-reserve in the destination bin.
+  assertStepBudget('re-reserving at the destination')
+  try {
+    await reserveBatchesToSO({
+      soName: intent.so,
+      items: [
+        { salesOrderItem: intent.soItem ?? undefined, itemCode, warehouse: toWarehouse, batch, qty: loc.qty },
+      ],
+    })
+  } catch (e) {
+    // Stock is committed — do NOT throw (the ops log must not record failed_pre_erp).
+    // Loud warning instead; retry/reconcile restores from the stamped entry.
+    console.error(`move: dest-bin re-reserve for ${batch} -> ${intent.so} failed:`, e)
+    return {
+      batch,
+      stockEntry,
+      fromWarehouse: loc.warehouse,
+      toWarehouse,
+      qty: loc.qty,
+      extra: { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so },
+    }
+  }
+
+  return {
+    batch,
+    stockEntry,
+    fromWarehouse: loc.warehouse,
+    toWarehouse,
+    qty: loc.qty,
+    extra: { reservedTo: intent.so },
+  }
 }
 
 // ─── Bulk bin transfer (scan-to-queue) ───────────────────────────────────────────
@@ -680,8 +1748,10 @@ export async function bulkTransfer(input: {
   destination: string
   lines: { batch: string; itemCode: string }[]
   opKey: string
+  /** Epoch ms after which the atomic submit must NOT begin (lease-tail guard, r28). */
+  deadlineMs?: number
 }): Promise<Committed> {
-  const { destination, lines, opKey } = input
+  const { destination, lines, opKey, deadlineMs } = input
   const seen = new Set<string>()
   const uniq = lines.filter((l) => l.batch && l.itemCode && !seen.has(l.batch) && (seen.add(l.batch), true))
   if (uniq.length === 0) return { stockEntry: null, extra: { moved: 0, skipped: [], destination } }
@@ -690,9 +1760,22 @@ export async function bulkTransfer(input: {
   await preflight(uniq[0].itemCode, destination)
   const meta = await itemNameMap([...new Set(uniq.map((l) => l.itemCode))])
 
+  // Reserved pallets are SKIPPED here, not failed: one reserved batch would reject the
+  // whole (single, atomic) Stock Entry. Moving a reserved pallet carries its reservation
+  // and is a per-pallet operation — use the single-pallet move for those. A failed
+  // LIST lookup fails the bulk (throw). NOTE: reservationsForBatches suppresses
+  // individual SRE document reads, so a reserved pallet with an unreadable SRE can slip
+  // past this skip — ERPNext then rejects the whole atomic Stock Entry with its
+  // reserved-batch error (loud failure, no partial move, no corruption).
+  const reservedMap = await reservationsForBatches(uniq.map((l) => l.batch))
+
   const rows: Record<string, unknown>[] = []
   const skipped: { batch: string; reason: string }[] = []
   for (const l of uniq) {
+    if (reservedMap[l.batch]) {
+      skipped.push({ batch: l.batch, reason: 'reserved' })
+      continue
+    }
     const loc = await getBatchLocation(l.batch, l.itemCode)
     if (!loc || loc.qty <= 0) {
       skipped.push({ batch: l.batch, reason: 'no-stock' })
@@ -722,12 +1805,69 @@ export async function bulkTransfer(input: {
   }
   if (rows.length === 0) return { stockEntry: null, extra: { moved: 0, skipped, destination } }
 
-  const stockEntry = await submitStockEntry({
+  // Deadline checked immediately before the SUBMIT itself (the only mutation) — the
+  // draft create/read that precede it are harmless in the lease tail (r29).
+  const bulkDraft = await erpnextCreate<{ name: string }>('Stock Entry', {
     stock_entry_type: 'Material Transfer',
     company: COMPANY,
+    apply_putaway_rule: 0,
     remarks: `Dashboard bulk transfer [op:${opKey}] -> ${destination} (${rows.length})`,
     items: rows,
   })
+  const bulkFresh = await erpnextGetDoc<{
+    stock_entry_type?: string
+    company?: string
+    set_posting_time?: number
+    apply_putaway_rule?: number
+    additional_costs?: unknown[]
+    remarks?: string | null
+    items?: {
+      item_code?: string
+      batch_no?: string
+      qty?: number
+      s_warehouse?: string
+      t_warehouse?: string
+      conversion_factor?: number
+      use_serial_batch_fields?: number
+      serial_and_batch_bundle?: string | null
+    }[]
+  }>('Stock Entry', bulkDraft.name)
+  const freshRows = bulkFresh.items ?? []
+  const remarksCanonical =
+    ((bulkFresh.remarks ?? '').match(/\[op:[^\]]*\]/g) ?? []).length === 1 &&
+    (bulkFresh.remarks ?? '').includes(`[op:${opKey}]`)
+  const rowsMatch =
+    freshRows.length === rows.length &&
+    freshRows.every((fr, i) => {
+      const want = rows[i] as { item_code: string; batch_no: string; qty: number; s_warehouse: string; t_warehouse: string }
+      return (
+        fr.item_code === want.item_code &&
+        fr.batch_no === want.batch_no &&
+        fr.s_warehouse === want.s_warehouse &&
+        fr.t_warehouse === want.t_warehouse &&
+        Number(fr.use_serial_batch_fields) === 1 &&
+        !fr.serial_and_batch_bundle &&
+        (Number(fr.conversion_factor) || 1) === 1 &&
+        Math.abs((Number(fr.qty) || 0) - want.qty) <= 1e-6
+      )
+    })
+  if (
+    seHasSideEffects(bulkFresh as unknown as Record<string, unknown>) ||
+    bulkFresh.stock_entry_type !== 'Material Transfer' ||
+    bulkFresh.company !== COMPANY ||
+    !!bulkFresh.set_posting_time ||
+    !!bulkFresh.apply_putaway_rule ||
+    (bulkFresh.additional_costs?.length ?? 0) > 0 ||
+    !remarksCanonical ||
+    !rowsMatch // every row field-for-field incl. batch-source mode (r31/r32)
+  ) {
+    throw new Error('Bulk transfer draft changed before submit — refusing')
+  }
+  if (deadlineMs && Date.now() > deadlineMs) {
+    throw new Error('Bulk transfer ran out of its safety window before submitting — try again')
+  }
+  const submitted = await erpnextSubmit<{ name?: string }>(bulkFresh)
+  const stockEntry = submitted.name ?? bulkDraft.name
   return { stockEntry, extra: { moved: rows.length, skipped, destination } }
 }
 

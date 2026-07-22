@@ -36,11 +36,11 @@ export class LineLockedError extends Error {
   }
 }
 
-async function claim(key: string, holder: string): Promise<boolean> {
+async function claim(key: string, holder: string, ttlSeconds: number): Promise<boolean> {
   const { data, error } = await supabaseAdmin.rpc('claim_staging_line_lock', {
     p_key: key,
     p_holder: holder,
-    p_ttl_seconds: LOCK_TTL_SECONDS,
+    p_ttl_seconds: ttlSeconds,
   })
   // Fail CLOSED: if the lock service can't answer, the destructive phase must
   // not proceed unserialized.
@@ -58,13 +58,20 @@ async function release(key: string, holder: string): Promise<void> {
  *  deadlock between concurrent multi-key claimers). All-or-nothing: any miss
  *  releases what was claimed and throws LineLockedError. Release is
  *  best-effort — a failed release leaves the lease to its TTL. */
-export async function withLeases<T>(keys: string[], fn: () => Promise<T>): Promise<T> {
+export async function withLeases<T>(
+  keys: string[],
+  fn: () => Promise<T>,
+  // Optional per-flow TTL: self-hosted runtimes treat maxDuration as advisory, so a
+  // flow with a longer worst-case call chain (inventory move) passes a larger TTL and
+  // enforces its own step deadline inside it (move review r26). Default unchanged.
+  ttlSeconds: number = LOCK_TTL_SECONDS
+): Promise<T> {
   const holder = randomUUID()
   const ordered = [...new Set(keys)].sort()
   const held: string[] = []
   try {
     for (const key of ordered) {
-      if (!(await claim(key, holder))) throw new LineLockedError(key)
+      if (!(await claim(key, holder, ttlSeconds))) throw new LineLockedError(key)
       held.push(key)
     }
     return await fn()
