@@ -214,7 +214,14 @@ export async function POST(req: NextRequest) {
     // lease tail; beyond the window the verify runs observation-only.
     const inBudget = Date.now() - routeStart < 420_000
     const allowRestore =
-      inBudget && (preflightReserved || armedThisRequest || markerAuthorizes(priorOp?.error))
+      inBudget &&
+      (preflightReserved ||
+        armedThisRequest ||
+        markerAuthorizes(priorOp?.error) ||
+        // 'unverified' may restore here too — the corroboration chain (stamp +
+        // canceller identity + supersession) guards it, mirroring erp()'s at-dest
+        // decision; otherwise a reconciled committed carry warns forever (r34).
+        String(priorOp?.error ?? '').startsWith('reservation: unverified'))
     // EVERY 200 is LIVE-verified — including fresh carries whose erp() just claimed
     // reservedTo: the verifier gates on the live binding's warehouse/shape, so a
     // reservation still bound to the source bin can never certify or clear (r21).
@@ -291,8 +298,13 @@ export async function POST(req: NextRequest) {
           allowRestore: false,
           leasedSo: preflightSo,
         })
-        if (follow?.reservedTo !== undefined) {
-          // Resolved (reserved again) — retire the checkpoint.
+        if (
+          follow?.reservedTo !== undefined &&
+          follow.reservationPartial === undefined &&
+          follow.reservationObserved === undefined
+        ) {
+          // Resolved by a FULL binding — retire the checkpoint (a partial or merely
+          // observed binding keeps it armed; r34).
           const { error: clrErr } = await supabaseAdmin
             .from('inventory_ops_log')
             .update({ error: null })

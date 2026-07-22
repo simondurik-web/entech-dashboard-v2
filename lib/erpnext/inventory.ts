@@ -816,6 +816,7 @@ const SE_SIDE_EFFECT_HEADER_FIELDS = [
   'asset_repair',
 ] as const
 const SE_SIDE_EFFECT_ITEM_FIELDS = [
+  'pick_list_item', // updates Pick List Item.transferred_qty on submit (r34)
   'material_request',
   'material_request_item',
   'against_stock_entry',
