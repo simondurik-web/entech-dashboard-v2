@@ -5,6 +5,17 @@ import { OrderDetail } from '@/components/OrderDetail'
 import type { Order } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
 import { getEffectivePriority } from '@/lib/priority'
+import { useI18n } from '@/lib/i18n'
+
+/** Locale keys for normalized statuses — keeps card badges in sync with the table/chips */
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  pending: 'status.pending',
+  wip: 'status.wip',
+  completed: 'status.completed',
+  staged: 'status.readyToShip',
+  shipped: 'status.shipped',
+  cancelled: 'status.cancelled',
+}
 
 /** Category-based color coding */
 function categoryStyle(category: string) {
@@ -44,7 +55,7 @@ function priorityBadge(order: Order) {
   )
 }
 
-function statusBadge(status: string) {
+function statusBadge(status: string, label?: string) {
   const s = status.toLowerCase()
   let color = 'bg-muted text-muted-foreground'
   if (s === 'shipped' || s === 'invoiced' || s === 'to bill') color = 'bg-blue-500/20 text-blue-600'
@@ -52,7 +63,7 @@ function statusBadge(status: string) {
   else if (s === 'wip' || s === 'work in progress' || s === 'making' || s === 'released' || s === 'in production') color = 'bg-teal-500/20 text-teal-600'
   else if (s === 'pending' || s === 'need to make' || s === 'approved') color = 'bg-yellow-500/20 text-yellow-600'
   else if (s === 'cancelled') color = 'bg-gray-500/20 text-gray-500'
-  return <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${color}`}>{status ? status.charAt(0).toUpperCase() + status.slice(1) : 'N/A'}</span>
+  return <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${color}`}>{label || (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'N/A')}</span>
 }
 
 function dueDisplay(days: number | null) {
@@ -88,6 +99,7 @@ interface OrderCardProps {
 }
 
 export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, showShipDate, extraFields, expandedAction, expandedFields, partClassName, canEdit, userName }: OrderCardProps) {
+  const { t } = useI18n()
   const style = categoryStyle(order.category)
 
   return (
@@ -113,7 +125,10 @@ export function OrderCard({ order, index, isExpanded, onToggle, statusOverride, 
           {statusOverride ? (
             statusBadge(statusOverride)
           ) : (
-            statusBadge(normalizeStatus(order.internalStatus, order.ifStatus))
+            (() => {
+              const s = normalizeStatus(order.internalStatus, order.ifStatus)
+              return statusBadge(s, STATUS_LABEL_KEYS[s] ? t(STATUS_LABEL_KEYS[s]) : undefined)
+            })()
           )}
         </div>
       </CardHeader>

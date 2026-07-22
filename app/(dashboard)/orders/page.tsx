@@ -107,7 +107,7 @@ function statusColor(status: string): string {
   if (s === 'wip' || s === 'work in progress' || s === 'making' || s === 'released' || s === 'in production') return 'bg-teal-500/20 text-teal-600'
   // Pending/Need to Make - Yellow
   if (s === 'pending' || s === 'need to make' || s === 'approved') return 'bg-yellow-500/20 text-yellow-600'
-  // Cancelled - Red
+  // Cancelled - Grey (muted)
   if (s === 'cancelled') return 'bg-gray-500/20 text-gray-500'
   return 'bg-muted text-muted-foreground'
 }
