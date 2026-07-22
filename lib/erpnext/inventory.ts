@@ -1267,6 +1267,7 @@ export async function transferInventory(input: {
   // that loss must surface loudly — a defuse must never convert a known loss into a
   // clean success (review r11).
   let resumeIntent: CarriedIntent | null = null
+  let intentCorroborated = false
   let deferredDefuse: { name: string; remarks: string | null } | null = null
   if (priorDraft) {
     const priorTag = parseCarriedTag(priorDraft.remarks)
@@ -1280,6 +1281,7 @@ export async function transferInventory(input: {
       // the fresh replacement draft exists (newest-wins lookup covers the overlap).
       if (!live && priorTag) {
         const cv = await corroborateCarriedIntent(batch, priorTag, priorDraft.remarks)
+        intentCorroborated = cv === 'confirmed'
         if (cv === 'unknown') {
           throw new Error(
             `Cannot verify pallet ${batch}'s interrupted reservation carry right now — try again shortly`
@@ -1309,8 +1311,14 @@ export async function transferInventory(input: {
       `Pallet ${batch}'s interrupted carry targets a different order than this request locked — try again`
     )
   }
-  if (!live && intent) {
-    const cv = await corroborateCarriedIntent(batch, intent, priorDraft?.remarks ?? null)
+  if (!live && intent && !intentCorroborated) {
+    // Corroborate with the remarks that actually CARRIED the intent — a nulled
+    // priorDraft after a deferred defuse must not refute a confirmed carry (r28).
+    const cv = await corroborateCarriedIntent(
+      batch,
+      intent,
+      priorDraft?.remarks ?? deferredDefuse?.remarks ?? null
+    )
     if (cv === 'refuted') {
       if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
@@ -1339,8 +1347,12 @@ export async function transferInventory(input: {
     stock_entry_type: 'Material Transfer',
     company: COMPANY,
     // The [carried:...] stamp makes the released reservation recoverable from this
-    // document itself — a retry restores exactly this intent, never a guess.
-    remarks: `Dashboard move [op:${opKey}]${intent ? ` ${carriedTag(intent)}` : ''}`,
+    // document itself — a retry restores exactly this intent, never a guess. The
+    // [releasing:...] stamp is written at CREATION (r28): for a live carry the draft
+    // precedes the cancel (proof preserved), and a REPLACEMENT draft for an already-
+    // released carry propagates the proof-chain its predecessor corroborated —
+    // without it, the next retry would refute a confirmed carry.
+    remarks: `Dashboard move [op:${opKey}]${intent ? ` ${carriedTag(intent)} [releasing:${intent.sre}]` : ''}`,
     items: [
       {
         item_code: itemCode,
@@ -1369,18 +1381,10 @@ export async function transferInventory(input: {
     await defuseStaleDraft(deferredDefuse.name, deferredDefuse.remarks)
   }
 
-  // Step 2 — release (only when a live reservation exists). Stamp the draft with the
-  // SRE we are ABOUT to release — the cancelled record alone cannot prove WE cancelled
-  // it (an operator cancel during a crash window must not be resurrected; r27).
+  // Step 2 — release (only when a live reservation exists). The [releasing:<sre>]
+  // stamp already rides the draft from creation (r28) — a REUSED prior draft carries
+  // its own from its creation, guaranteed by the SRE-identity stale check above.
   assertStepBudget('releasing the reservation')
-  if (live && draftName) {
-    const cur = await erpnextGetDoc<{ remarks?: string | null }>('Stock Entry', draftName)
-    if (!(cur.remarks ?? '').includes(`[releasing:${live.sre}]`)) {
-      await erpnextUpdate('Stock Entry', draftName, {
-        remarks: `${cur.remarks ?? ''} [releasing:${live.sre}]`,
-      })
-    }
-  }
   if (live) {
     let released: boolean
     try {
@@ -1423,6 +1427,7 @@ export async function transferInventory(input: {
       const fresh = await erpnextGetDoc<{
         stock_entry_type?: string
         company?: string
+        set_posting_time?: number
         remarks?: string | null
         additional_costs?: unknown[]
         items?: {
@@ -1441,6 +1446,7 @@ export async function transferInventory(input: {
       if (
         fresh.stock_entry_type !== 'Material Transfer' ||
         fresh.company !== COMPANY ||
+        !!fresh.set_posting_time ||
         (fresh.additional_costs?.length ?? 0) > 0 ||
         ((fresh.remarks ?? '').match(/\[op:[^\]]*\]/g) ?? []).length !== 1 ||
         !(fresh.remarks ?? '').includes(`[op:${opKey}]`) ||
@@ -1609,8 +1615,10 @@ export async function bulkTransfer(input: {
   destination: string
   lines: { batch: string; itemCode: string }[]
   opKey: string
+  /** Epoch ms after which the atomic submit must NOT begin (lease-tail guard, r28). */
+  deadlineMs?: number
 }): Promise<Committed> {
-  const { destination, lines, opKey } = input
+  const { destination, lines, opKey, deadlineMs } = input
   const seen = new Set<string>()
   const uniq = lines.filter((l) => l.batch && l.itemCode && !seen.has(l.batch) && (seen.add(l.batch), true))
   if (uniq.length === 0) return { stockEntry: null, extra: { moved: 0, skipped: [], destination } }
@@ -1664,6 +1672,9 @@ export async function bulkTransfer(input: {
   }
   if (rows.length === 0) return { stockEntry: null, extra: { moved: 0, skipped, destination } }
 
+  if (deadlineMs && Date.now() > deadlineMs) {
+    throw new Error('Bulk transfer ran out of its safety window before submitting — try again')
+  }
   const stockEntry = await submitStockEntry({
     stock_entry_type: 'Material Transfer',
     company: COMPANY,

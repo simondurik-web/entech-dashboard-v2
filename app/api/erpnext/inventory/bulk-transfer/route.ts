@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
   }
   let result: Awaited<ReturnType<typeof runInventoryOp>>
   try {
+    const bulkStart = Date.now()
     result = await withLeases(
       [...new Set(movable.map((l) => `pallet:${palletBase(l.batch)}`))],
       () =>
@@ -105,12 +106,22 @@ export async function POST(req: NextRequest) {
     // make this transfer's atomic Stock Entry fail at submit (ERPNext rejects insufficient/
     // disabled-batch stock) — a clean failure to re-post, never a silent double-move.
     meta: { warehouse: destination, qty: lines.length, item_code: fingerprint },
-    erp: () => bulkTransfer({ destination, lines: movable, opKey: idempotencyKey }),
+    erp: () =>
+      bulkTransfer({
+        destination,
+        lines: movable,
+        opKey: idempotencyKey,
+        // Mutation must begin within 540s of the 600s lease (r28) — the per-pallet
+        // location reads before the single atomic submit can be slow on big queues.
+        deadlineMs: bulkStart + 540_000,
+      }),
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
       return se ? { stockEntry: se } : null
     },
   })
+    ,
+      600
     )
   } catch (e) {
     if (e instanceof LineLockedError) {

@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = guard.userId // verified from the session, not a client header
+  const routeStart = Date.now()
   // 'reservation: unverified' (a fail-closed marker written when the ops-log could not
   // be READ) warns and nags but never grants restore authority (r23).
   const markerAuthorizes = (err: unknown) => {
@@ -209,7 +210,11 @@ export async function POST(req: NextRequest) {
     // confirmed one). A fresh clean op can never restore — so a forged pre-created
     // tagged draft yields at most a verify nag, never a reservation write (r21). A
     // pure done-replay of a clean row remains verify-only (r7/r8).
-    const allowRestore = preflightReserved || armedThisRequest || markerAuthorizes(priorOp?.error)
+    // Restores are also budget-gated (r28): the post-op write must not begin in the
+    // lease tail; beyond the window the verify runs observation-only.
+    const inBudget = Date.now() - routeStart < 540_000
+    const allowRestore =
+      inBudget && (preflightReserved || armedThisRequest || markerAuthorizes(priorOp?.error))
     // EVERY 200 is LIVE-verified — including fresh carries whose erp() just claimed
     // reservedTo: the verifier gates on the live binding's warehouse/shape, so a
     // reservation still bound to the source bin can never certify or clear (r21).
