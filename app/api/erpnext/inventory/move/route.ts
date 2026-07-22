@@ -94,11 +94,19 @@ export async function POST(req: NextRequest) {
         .from('inventory_ops_log')
         .update({
           status: 'failed_pre_erp',
-          error: 'stale-pending reclaim (move route)',
+          // Preserve a live reservation checkpoint across the reclaim — overwriting it
+          // would destroy the only durable marker of an unresolved carry (r12).
+          error: String(priorOp.error ?? '').startsWith('reservation:')
+            ? priorOp.error
+            : 'stale-pending reclaim (move route)',
           created_at: new Date().toISOString(),
         })
         .eq('idempotency_key', idempotencyKey)
         .eq('status', 'pending')
+        // Full CAS: matching the OBSERVED created_at makes the reclaim single-winner —
+        // a second retry that read the pre-reclaim timestamp can no longer steal a run
+        // the first retry's runner has since re-claimed to 'pending' (r12).
+        .eq('created_at', priorOp.created_at as string)
       if (casErr) console.error('move: stale-pending reclaim CAS failed:', casErr)
     }
   }

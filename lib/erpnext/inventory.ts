@@ -687,14 +687,21 @@ export async function reservedMoveGuard(
  *  restore the EXACT reservation this operation released — no heuristics. Server-built
  *  values only (ERPNext doc names + a number); user text never reaches this tag
  *  (safeRemark strips brackets from user input). */
-function carriedTag(intent: { so: string; soItem: string | null; qty: number }): string {
-  return `[carried:${intent.so}|${intent.soItem ?? ''}|${intent.qty}]`
+interface CarriedIntent {
+  so: string
+  soItem: string | null
+  qty: number
+  sre: string // the EXACT reservation entry this op released — identity-binds recovery
 }
 
-function parseCarriedTag(remarks: string | null | undefined): { so: string; soItem: string | null; qty: number } | null {
-  const m = /\[carried:([^|\]]+)\|([^|\]]*)\|([0-9.]+)\]/.exec(remarks ?? '')
+function carriedTag(intent: CarriedIntent): string {
+  return `[carried:${intent.so}|${intent.soItem ?? ''}|${intent.qty}|${intent.sre}]`
+}
+
+function parseCarriedTag(remarks: string | null | undefined): CarriedIntent | null {
+  const m = /\[carried:([^|\]]+)\|([^|\]]*)\|([0-9.]+)\|([^|\]]+)\]/.exec(remarks ?? '')
   if (!m) return null
-  return { so: m[1], soItem: m[2] || null, qty: Number(m[3]) || 0 }
+  return { so: m[1], soItem: m[2] || null, qty: Number(m[3]) || 0, sre: m[4] }
 }
 
 /** The op's own Stock Entry — submitted or DRAFT — stamped with `[op:<key>]`. The draft
@@ -885,31 +892,35 @@ export async function transferPreflight(
   return { reserved: guarded !== null }
 }
 
-/** Independent corroboration that a `[carried:...]` tag describes a reservation this
- *  system really released: the matching CANCELLED Stock Reservation Entry must exist
- *  (same batch, SO, line, qty). Remarks are editable ERP-side; the cancelled document
- *  trail is not — a tag with no matching record is treated as forged/invalid and never
- *  restored (review r11). */
-async function corroborateCarriedIntent(
-  batch: string,
-  intent: { so: string; soItem: string | null; qty: number }
-): Promise<boolean> {
-  if (!intent.soItem) return false
-  const qs = [
-    listParam('filters', [
-      ['Serial and Batch Entry', 'batch_no', '=', batch],
-      ['docstatus', '=', 2],
-      ['voucher_type', '=', 'Sales Order'],
-      ['voucher_no', '=', intent.so],
-      ['voucher_detail_no', '=', intent.soItem],
-    ]),
-    listParam('fields', ['name', 'reserved_qty']),
-    'limit_page_length=0',
-  ].join('&')
-  const r = await erpnextGet<{ data: { name: string; reserved_qty: number }[] }>(
-    `/api/resource/Stock Reservation Entry?${qs}`
+/** Independent corroboration that a `[carried:...]` tag describes the reservation this
+ *  op really released: the tag names the EXACT Stock Reservation Entry, and that
+ *  document must exist CANCELLED with precisely the stamped SO, line, qty, and this
+ *  single batch. Remarks are editable ERP-side; the cancelled document trail is not —
+ *  a tag that doesn't match its named record is treated as forged/invalid and never
+ *  restored (review r11/r12: identity-bound, not shape-matched against history). */
+async function corroborateCarriedIntent(batch: string, intent: CarriedIntent): Promise<boolean> {
+  if (!intent.soItem || !intent.sre) return false
+  const doc = await erpnextGetDoc<{
+    docstatus?: number
+    voucher_type?: string
+    voucher_no?: string
+    voucher_detail_no?: string | null
+    reserved_qty?: number
+    sb_entries?: { batch_no?: string | null }[]
+  }>('Stock Reservation Entry', intent.sre).catch(() => null)
+  if (!doc) return false
+  const batches = new Set(
+    (doc.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
   )
-  return (r.data ?? []).some((s) => Math.abs((Number(s.reserved_qty) || 0) - intent.qty) <= 1e-6)
+  return (
+    doc.docstatus === 2 &&
+    doc.voucher_type === 'Sales Order' &&
+    doc.voucher_no === intent.so &&
+    (doc.voucher_detail_no ?? null) === intent.soItem &&
+    Math.abs((Number(doc.reserved_qty) || 0) - intent.qty) <= 1e-6 &&
+    batches.size === 1 &&
+    batches.has(batch)
+  )
 }
 
 export async function transferInventory(input: {
@@ -1005,8 +1016,8 @@ export async function transferInventory(input: {
   // never contribute intent — review r10). A no-live intent must be CORROBORATED by
   // the cancelled-reservation record — the remark tag alone is editable ERP-side and
   // must never mint a reservation by itself (review r11).
-  let intent: { so: string; soItem: string | null; qty: number } | null = live
-    ? { so: live.so, soItem: live.soItem, qty: live.qty }
+  let intent: CarriedIntent | null = live
+    ? { so: live.so, soItem: live.soItem, qty: live.qty, sre: live.sre }
     : priorDraft
       ? parseCarriedTag(priorDraft.remarks)
       : null
@@ -1095,17 +1106,37 @@ export async function transferInventory(input: {
       const fresh = await erpnextGetDoc<{
         stock_entry_type?: string
         company?: string
-        items?: { item_code?: string; batch_no?: string; qty?: number; s_warehouse?: string; t_warehouse?: string }[]
+        remarks?: string | null
+        items?: {
+          item_code?: string
+          batch_no?: string
+          qty?: number
+          s_warehouse?: string
+          t_warehouse?: string
+          conversion_factor?: number
+        }[]
       }>('Stock Entry', draftName)
       const fr = fresh.items ?? []
+      const freshTag = parseCarriedTag(fresh.remarks)
       if (
         fresh.stock_entry_type !== 'Material Transfer' ||
         fresh.company !== COMPANY ||
+        !(fresh.remarks ?? '').includes(`[op:${opKey}]`) ||
+        // The recovery intent must ride the submitted document unaltered: an edit that
+        // erased or retargeted the carried tag in the release window must refuse (r12).
+        (intent
+          ? !freshTag ||
+            freshTag.so !== intent.so ||
+            (freshTag.soItem ?? '') !== (intent.soItem ?? '') ||
+            freshTag.sre !== intent.sre ||
+            Math.abs(freshTag.qty - intent.qty) > 1e-6
+          : freshTag !== null) ||
         fr.length !== 1 ||
         fr[0].batch_no !== batch ||
         fr[0].item_code !== itemCode ||
         fr[0].s_warehouse !== loc.warehouse ||
         fr[0].t_warehouse !== toWarehouse ||
+        (Number(fr[0].conversion_factor) || 1) !== 1 ||
         Math.abs((Number(fr[0].qty) || 0) - loc.qty) > 1e-6
       ) {
         throw new Error(`Draft ${draftName} changed since validation — refusing to submit it`)
