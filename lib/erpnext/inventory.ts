@@ -718,6 +718,34 @@ function parseCarriedTag(remarks: string | null | undefined): CarriedIntent | nu
   return { so: m[1], soItem: m[2] || null, qty: Number(m[3]) || 0, sre: m[4] }
 }
 
+/** Reconcile-time validation of a SUBMITTED op-stamped entry: the source bin is
+ *  unknowable after the fact, so this checks the invariant subset — shape, identity,
+ *  destination, and absence of side-effecting links (r35). */
+export async function validateCommittedMoveEntry(
+  name: string,
+  expect: { batch: string; itemCode: string; toWarehouse: string }
+): Promise<boolean> {
+  try {
+    const doc = await erpnextGetDoc<{
+      stock_entry_type?: string
+      company?: string
+      items?: { item_code?: string; batch_no?: string; t_warehouse?: string }[]
+    }>('Stock Entry', name)
+    const rows = doc.items ?? []
+    return (
+      !seHasSideEffects(doc as unknown as Record<string, unknown>) &&
+      doc.stock_entry_type === 'Material Transfer' &&
+      doc.company === COMPANY &&
+      rows.length === 1 &&
+      rows[0].batch_no === expect.batch &&
+      rows[0].item_code === expect.itemCode &&
+      rows[0].t_warehouse === expect.toWarehouse
+    )
+  } catch {
+    return false
+  }
+}
+
 /** The op's own Stock Entry — submitted or DRAFT — stamped with `[op:<key>]`. The draft
  *  is created (with the carried tag) BEFORE the reservation is released, so the carry
  *  intent is durable from the first mutating step: every retry window recovers from a
@@ -802,6 +830,7 @@ async function validateMoveDraft(
  *  never sets any of them; a fetched draft carrying one was edited to weaponize the
  *  service account's submit and must be refused (r33). */
 const SE_SIDE_EFFECT_HEADER_FIELDS = [
+  'inspection_required', // links Quality Inspection updates at submit (r35)
   'work_order',
   'pick_list',
   'purchase_order',
@@ -816,6 +845,7 @@ const SE_SIDE_EFFECT_HEADER_FIELDS = [
   'asset_repair',
 ] as const
 const SE_SIDE_EFFECT_ITEM_FIELDS = [
+  'quality_inspection', // linked QI updated at submit (r35)
   'pick_list_item', // updates Pick List Item.transferred_qty on submit (r34)
   'material_request',
   'material_request_item',
@@ -1445,10 +1475,12 @@ export async function transferInventory(input: {
   }
 
   // Step 1 — durable intent before any mutation of the reservation. (A prior stale
-  // draft was discarded above; only a tag-matching draft is reused.)
+  // draft was discarded above; only a tag-matching draft is reused.) UNRESERVED moves
+  // also create a draft here: the single validated submit path below covers them —
+  // submitStockEntry's fetch-and-submit had no edit-window revalidation (r35).
   assertStepBudget('creating the transfer draft')
   let draftName: string | null = priorDraft?.name ?? null
-  if (intent && !draftName) {
+  if (!draftName) {
     draftName = (await erpnextCreate<{ name: string }>('Stock Entry', seDoc)).name
   }
   if (deferredDefuse && draftName) {
@@ -1495,7 +1527,8 @@ export async function transferInventory(input: {
   assertStepBudget('submitting the transfer')
   let stockEntry: string | null
   try {
-    if (draftName) {
+    if (!draftName) throw new Error('unreachable: move draft missing') // narrowing only
+    {
       // Revalidate the EXACT fetched document before submitting it — the window after
       // the release is where an ERP-side edit could retarget the transfer, and the
       // service account must never submit a document it hasn't just verified (r11).
@@ -1552,8 +1585,6 @@ export async function transferInventory(input: {
       }
       const submitted = await erpnextSubmit<{ name?: string }>(fresh)
       stockEntry = submitted.name ?? draftName
-    } else {
-      stockEntry = await submitStockEntry(seDoc)
     }
   } catch (e) {
     // A submit timeout can land AFTER ERPNext committed — verify before compensating,

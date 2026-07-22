@@ -142,5 +142,13 @@ export async function POST(req: NextRequest) {
     const b = result.body as { skipped?: { batch: string; reason: string }[] }
     result.body = { ...result.body, skipped: [...(b.skipped ?? []), ...recoveringSkips] }
   }
+  // A duplicate replay reproduces only the cached core body — the original run's skip
+  // list is not persisted, so pallets it skipped are unknowable here. Flag it: the
+  // client's key derives from queue+destination, so a fresh SCAN (new key) is the
+  // reliable way to move remainders; a lost-response replay must not read as
+  // everything-moved (r35).
+  if (result.status === 200 && (result.body as { duplicate?: boolean }).duplicate) {
+    result.body = { ...result.body, skipsUnknown: true }
+  }
   return NextResponse.json(result.body, { status: result.status })
 }

@@ -7,6 +7,7 @@ import {
   palletBase,
   verifyOrRestoreMovedReservation,
   moveLeaseSo,
+  validateCommittedMoveEntry,
 } from '@/lib/erpnext/inventory'
 import { runInventoryOp } from '@/lib/erpnext/operation'
 import { withLeases, LineLockedError } from '@/lib/erpnext/line-lock'
@@ -191,7 +192,12 @@ export async function POST(req: NextRequest) {
     // entry. All mutating recovery lives in erp(), which runs under the CAS claim.
     reconcile: async () => {
       const se = await reconcileStockEntry(idempotencyKey)
-      return se ? { batch, stockEntry: se } : null
+      if (!se) return null
+      // A tagged-but-mismatched entry must not finalize the move (r35); an invalid
+      // one leaves the op pending for the admin path rather than false success.
+      return (await validateCommittedMoveEntry(se, { batch, itemCode, toWarehouse }))
+        ? { batch, stockEntry: se }
+        : null
     },
   })
 
