@@ -98,7 +98,14 @@ export async function POST(req: NextRequest) {
   // preflight and on RETRIES from the live reservation or the op's stamped draft.
   // A miss is a clean 409 "try again"; a crashed holder self-expires within the TTL.
   if (priorOp && !preflightSo) {
-    preflightSo = await moveLeaseSo(batch, idempotencyKey)
+    try {
+      preflightSo = await moveLeaseSo(batch, idempotencyKey)
+    } catch {
+      return NextResponse.json(
+        { error: 'Could not determine the reservation lock for this retry — try again shortly.' },
+        { status: 503 }
+      )
+    }
   }
   let result: Awaited<ReturnType<typeof runInventoryOp>>
   try {

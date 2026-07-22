@@ -919,14 +919,12 @@ export async function transferPreflight(
  *  retry mid-carry has already released the reservation). Best-effort: null means no
  *  so: lease, and the pallet: lease still serializes the pallet itself. */
 export async function moveLeaseSo(batch: string, opKey: string): Promise<string | null> {
-  try {
-    const live = await liveReservationForMove(batch)
-    if (live) return live.so
-    const se = await findOpStockEntry(opKey)
-    return se ? (parseCarriedTag(se.remarks)?.so ?? null) : null
-  } catch {
-    return null
-  }
+  // FAIL CLOSED (r18): a lookup failure THROWS — proceeding without the so: lease
+  // while later ERP reads succeed would mutate reservation capacity unserialized.
+  const live = await liveReservationForMove(batch)
+  if (live) return live.so
+  const se = await findOpStockEntry(opKey)
+  return se ? (parseCarriedTag(se.remarks)?.so ?? null) : null
 }
 
 /** Independent corroboration that a `[carried:...]` tag describes the reservation this
@@ -983,13 +981,22 @@ async function corroborateCarriedIntent(
           ['creation', '>', doc2.creation],
           ['name', '!=', intent.sre],
         ]),
-        listParam('fields', ['name']),
-        'limit_page_length=1',
+        listParam('fields', ['name', 'docstatus', 'status', 'reserved_qty']),
+        'limit_page_length=0',
       ].join('&')
-      const newer = await erpnextGet<{ data: { name: string }[] }>(
-        `/api/resource/Stock Reservation Entry?${qs}`
+      const newer = await erpnextGet<{
+        data: { name: string; docstatus: number; status: string; reserved_qty: number }[]
+      }>(`/api/resource/Stock Reservation Entry?${qs}`)
+      // Only a REAL later binding supersedes: an active entry, or a cancelled one at
+      // (at least) the stamped whole-pallet qty. A capped-SHORT cancelled entry is
+      // this flow's own aborted restore (reserveBatchesToSO releases on shortfall) —
+      // counting it poisoned the op's own replay into a clean-200 loss (r18).
+      const superseded = (newer.data ?? []).some(
+        (n) =>
+          (n.docstatus === 1 && ACTIVE_SRE_STATUS_MOVE.includes(n.status)) ||
+          (n.docstatus === 2 && (Number(n.reserved_qty) || 0) + 1e-6 >= intent.qty)
       )
-      if ((newer.data ?? []).length > 0) return 'refuted'
+      if (superseded) return 'refuted'
     } catch {
       return 'unknown' // fail closed: cannot prove latest — do not restore now
     }

@@ -1536,6 +1536,7 @@
   "inventoryOps.movedReservationChanged": "now reserved for",
   "inventoryOps.movedReservationWas": "was",
   "inventoryOps.moveOrphanedReservation": "NOTE: an earlier move of this pallet lost its reservation — re-stage it to",
+  "inventoryOps.movedPartialReservation": "WARNING: the pallet is only PARTIALLY reserved to",
   "inventoryOps.moveConfirm": "Move",
   "inventoryOps.noBins": "No matching bins",
   "inventoryOps.palletSuperseded": "This pallet has no active stock - it may have been removed or superseded by a reprint.",
