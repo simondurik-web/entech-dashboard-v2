@@ -151,9 +151,17 @@ export async function POST(req: NextRequest) {
             .eq('idempotency_key', idempotencyKey)
             .eq('status', 'pending')
             .is('error', null)
-          // FAIL CLOSED (r20): if the crash-safety marker cannot be written, do not
-          // start the carry — nothing has been mutated yet, so failing here is clean.
           if (armErr) throw new Error(`Could not arm the reservation checkpoint — try again (${armErr.message})`)
+          // CONFIRMED arming (r21): a zero-row match is NOT an error — read back and
+          // require the marker to actually be present before any mutation.
+          const { data: armed, error: readErr } = await supabaseAdmin
+            .from('inventory_ops_log')
+            .select('error')
+            .eq('idempotency_key', idempotencyKey)
+            .maybeSingle()
+          if (readErr || !String(armed?.error ?? '').startsWith('reservation:')) {
+            throw new Error('Could not confirm the reservation checkpoint — try again')
+          }
         },
       }),
     // Reconcile is strictly READ-ONLY (r9): it may only recognize an already-submitted
@@ -174,16 +182,16 @@ export async function POST(req: NextRequest) {
   // reservation that actually bound despite a bookkeeping throw must not read as lost.
   if (result.status === 200) {
     const body = result.body as Record<string, unknown>
-    // Restores (and arming the restore checkpoint) are allowed when THIS request
-    // advanced the operation — a fresh run, or a resume that isn't a pure 'done'
-    // replay — or when the op row already records an unresolved reservation
-    // ('reservation:' checkpoint). A pure done-replay with a clean row is
-    // verify-ONLY, and its observations must NOT arm the checkpoint: an operator's
-    // deliberate later release would otherwise be resurrected by the next replay
-    // (review r7/r8, both directions).
-    const allowRestore =
-      !priorOp || body.duplicate !== true || String(priorOp.error ?? '').startsWith('reservation:')
-    if (body.reservedTo === undefined) {
+    // Restore authorization derives ONLY from the SERVER-SIDE marker: the row was born
+    // armed (preflight saw a real reservation) or armed by onCarryStart (erp()
+    // confirmed one). A fresh clean op can never restore — so a forged pre-created
+    // tagged draft yields at most a verify nag, never a reservation write (r21). A
+    // pure done-replay of a clean row remains verify-only (r7/r8).
+    const allowRestore = preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:')
+    // EVERY 200 is LIVE-verified — including fresh carries whose erp() just claimed
+    // reservedTo: the verifier gates on the live binding's warehouse/shape, so a
+    // reservation still bound to the source bin can never certify or clear (r21).
+    {
       const follow = await verifyOrRestoreMovedReservation({
         batch,
         itemCode,
@@ -196,16 +204,24 @@ export async function POST(req: NextRequest) {
           // Verified (or restored) — drop any stale lost-reservation warning.
           delete body.warning
           delete body.reservationLostFrom
+        } else {
+          // The live check did NOT certify — an erp()-claimed reservedTo must not
+          // survive into the response or the checkpoint-clear below.
+          delete body.reservedTo
         }
         result.body = { ...body, ...follow }
-      } else if (
-        body.warning === undefined &&
-        (preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:'))
-      ) {
-        // The op is checkpoint-armed yet verification found neither a binding nor a
-        // recoverable stamp — a destroyed/forged tag must not produce a clean 200
-        // while the durable marker says a reservation was being carried (r20).
-        result.body = { ...body, orphanedReservationFrom: true }
+      } else {
+        delete body.reservedTo
+        result.body = body
+        if (
+          body.warning === undefined &&
+          (preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:'))
+        ) {
+          // The op is checkpoint-armed yet verification found neither a binding nor a
+          // recoverable stamp — a destroyed/forged tag must not produce a clean 200
+          // while the durable marker says a reservation was being carried (r20).
+          result.body = { ...body, orphanedReservationFrom: true }
+        }
       }
     }
     // ORPHANED-CHECKPOINT SWEEP (r9, made VERIFY-ONLY in r10): the browser's key is
