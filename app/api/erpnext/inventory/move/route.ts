@@ -66,9 +66,10 @@ export async function POST(req: NextRequest) {
   if (priorOp && priorOp.batch && priorOp.batch !== batch) {
     return NextResponse.json({ error: 'This idempotency key was already used for a different pallet.' }, { status: 409 })
   }
+  let preflightReserved = false
   if (!priorOp) {
     try {
-      await transferPreflight(batch, itemCode, toWarehouse)
+      preflightReserved = (await transferPreflight(batch, itemCode, toWarehouse)).reserved
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 })
     }
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
       // without the refresh a second retry arriving after the first retry's runner
       // claim (which resets status to pending with the ORIGINAL created_at) would
       // immediately "reclaim" the in-flight run and double-execute erp() (review r10).
-      await supabaseAdmin
+      const { error: casErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({
           status: 'failed_pre_erp',
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
         })
         .eq('idempotency_key', idempotencyKey)
         .eq('status', 'pending')
-        .then(undefined, () => undefined)
+      if (casErr) console.error('move: stale-pending reclaim CAS failed:', casErr)
     }
   }
 
@@ -106,7 +107,17 @@ export async function POST(req: NextRequest) {
     key: idempotencyKey,
     action: 'move',
     createdBy: userId,
-    meta: { item_code: itemCode, warehouse: toWarehouse, batch, family: palletBase(batch) },
+    // Reserved-pallet moves are BORN with the 'reservation:' checkpoint (spread into
+    // the insert row via meta): the durable marker exists before any mutating step, so
+    // no crash window can leave a carried reservation untracked (r11). Cleared below
+    // once the carry is verified.
+    meta: {
+      item_code: itemCode,
+      warehouse: toWarehouse,
+      batch,
+      family: palletBase(batch),
+      ...(preflightReserved ? { error: 'reservation: carrying' } : {}),
+    },
     erp: () => transferInventory({ batch, itemCode, toWarehouse, opKey: idempotencyKey }),
     // Reconcile is strictly READ-ONLY (r9): it may only recognize an already-submitted
     // entry. All mutating recovery lives in erp(), which runs under the CAS claim.
@@ -169,7 +180,6 @@ export async function POST(req: NextRequest) {
         .select('idempotency_key')
         .eq('family', palletBase(batch))
         .eq('action', 'move')
-        .eq('batch', batch)
         .like('error', 'reservation:%')
         .neq('idempotency_key', idempotencyKey)
         .limit(1)
@@ -210,7 +220,10 @@ export async function POST(req: NextRequest) {
         .update({ error: 'reservation: transfer_failed' })
         .eq('idempotency_key', idempotencyKey)
       if (markErr) console.error('move: persisting reservation checkpoint failed:', markErr)
-    } else if (priorOp && String(priorOp.error ?? '').startsWith('reservation:') && finalBody.reservedTo !== undefined) {
+    } else if (
+      (preflightReserved || String(priorOp?.error ?? '').startsWith('reservation:')) &&
+      finalBody.reservedTo !== undefined
+    ) {
       const { error: clearErr } = await supabaseAdmin
         .from('inventory_ops_log')
         .update({ error: null })

@@ -840,6 +840,11 @@ export async function verifyOrRestoreMovedReservation(input: {
     if (!allowRestore) {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
     }
+    // The remark tag alone must never mint a reservation — require the cancelled-SRE
+    // corroboration before writing (review r11).
+    if (!(await corroborateCarriedIntent(batch, intent))) {
+      return null
+    }
     await reserveBatchesToSO({
       soName: intent.so,
       items: [
@@ -860,7 +865,11 @@ export async function verifyOrRestoreMovedReservation(input: {
  *  destination bin is valid, pallet has stock and isn't split. Throws on any violation.
  *  Call this in the route BEFORE the op-log row is inserted so a deterministic failure is
  *  a clean 400 — not a post-insert throw that would lock the family in failed_pre_erp. */
-export async function transferPreflight(batch: string, itemCode: string, toWarehouse: string): Promise<void> {
+export async function transferPreflight(
+  batch: string,
+  itemCode: string,
+  toWarehouse: string
+): Promise<{ reserved: boolean }> {
   await assertBatchItem(batch, itemCode)
   await preflight(itemCode, toWarehouse) // destination bin: exists, not a group, enabled, right company
   const loc = await getBatchLocation(batch, itemCode)
@@ -868,8 +877,39 @@ export async function transferPreflight(batch: string, itemCode: string, toWareh
   if (loc.split) throw new Error(`Pallet ${batch} is split across multiple bins; consolidate in ERPNext first`)
   // Reserved pallets ARE movable (the reservation is carried across the move) — but only
   // the shapes reservedMoveGuard accepts; anything else 400s here with a clear message
-  // instead of failing inside the locked op.
-  await reservedMoveGuard(batch, loc.qty, loc.warehouse)
+  // instead of failing inside the locked op. Whether the pallet is reserved is returned
+  // so the route can arm the reservation checkpoint AT OP-ROW BIRTH (r11): the durable
+  // 'reservation:' marker then exists before any mutating step, closing the crash gap
+  // between the runner's terminal write and a post-hoc checkpoint.
+  const guarded = await reservedMoveGuard(batch, loc.qty, loc.warehouse)
+  return { reserved: guarded !== null }
+}
+
+/** Independent corroboration that a `[carried:...]` tag describes a reservation this
+ *  system really released: the matching CANCELLED Stock Reservation Entry must exist
+ *  (same batch, SO, line, qty). Remarks are editable ERP-side; the cancelled document
+ *  trail is not — a tag with no matching record is treated as forged/invalid and never
+ *  restored (review r11). */
+async function corroborateCarriedIntent(
+  batch: string,
+  intent: { so: string; soItem: string | null; qty: number }
+): Promise<boolean> {
+  if (!intent.soItem) return false
+  const qs = [
+    listParam('filters', [
+      ['Serial and Batch Entry', 'batch_no', '=', batch],
+      ['docstatus', '=', 2],
+      ['voucher_type', '=', 'Sales Order'],
+      ['voucher_no', '=', intent.so],
+      ['voucher_detail_no', '=', intent.soItem],
+    ]),
+    listParam('fields', ['name', 'reserved_qty']),
+    'limit_page_length=0',
+  ].join('&')
+  const r = await erpnextGet<{ data: { name: string; reserved_qty: number }[] }>(
+    `/api/resource/Stock Reservation Entry?${qs}`
+  )
+  return (r.data ?? []).some((s) => Math.abs((Number(s.reserved_qty) || 0) - intent.qty) <= 1e-6)
 }
 
 export async function transferInventory(input: {
@@ -942,7 +982,11 @@ export async function transferInventory(input: {
     }
   }
   // Any reused draft must also pass full CONTENT validation — same bar as the
-  // resume path; a stale or edited draft is defused and replaced (review r7).
+  // resume path; a stale or edited draft is defused and replaced (review r7). When the
+  // defused draft carried a CORROBORATED intent and the reservation is already gone,
+  // that loss must surface loudly — a defuse must never convert a known loss into a
+  // clean success (review r11).
+  let lostFrom: string | null = null
   if (priorDraft) {
     const priorTag = parseCarriedTag(priorDraft.remarks)
     const ok =
@@ -950,27 +994,36 @@ export async function transferInventory(input: {
       (await validateMoveDraft(priorDraft.name, { batch, itemCode, toWarehouse, tagQty: priorTag.qty, srcWarehouse: loc.warehouse }))
     if (!ok) {
       await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+      if (!live && priorTag && (await corroborateCarriedIntent(batch, priorTag))) {
+        lostFrom = priorTag.so
+      }
       priorDraft = null
     }
   }
 
   // Intent is derived only AFTER every draft-vetting step above (a defused draft must
-  // never contribute intent — review r10).
+  // never contribute intent — review r10). A no-live intent must be CORROBORATED by
+  // the cancelled-reservation record — the remark tag alone is editable ERP-side and
+  // must never mint a reservation by itself (review r11).
   let intent: { so: string; soItem: string | null; qty: number } | null = live
     ? { so: live.so, soItem: live.soItem, qty: live.qty }
     : priorDraft
       ? parseCarriedTag(priorDraft.remarks)
       : null
+  if (!live && intent && !(await corroborateCarriedIntent(batch, intent))) {
+    if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
+    priorDraft = null
+    intent = null // uncorroborated tag = nothing real was released; move clean
+  }
   // Resume without a live reservation: the pallet's on-hand must still match the
   // stamped qty, or completing the old draft would SPLIT the pallet across bins.
   // Serialized pallets change qty only via reissue (new serial), so this should be
   // unreachable — but on mismatch: defuse, move the full current qty unreserved, and
   // warn LOUDLY (the released reservation cannot be safely re-bound at a drifted qty).
-  let driftLostFrom: string | null = null
   if (!live && intent && Math.abs(loc.qty - intent.qty) > 1e-6) {
     if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
     priorDraft = null
-    driftLostFrom = intent.so
+    lostFrom = intent.so
     intent = null
   }
 
@@ -1036,7 +1089,27 @@ export async function transferInventory(input: {
   let stockEntry: string | null
   try {
     if (draftName) {
-      const fresh = await erpnextGetDoc('Stock Entry', draftName)
+      // Revalidate the EXACT fetched document before submitting it — the window after
+      // the release is where an ERP-side edit could retarget the transfer, and the
+      // service account must never submit a document it hasn't just verified (r11).
+      const fresh = await erpnextGetDoc<{
+        stock_entry_type?: string
+        company?: string
+        items?: { item_code?: string; batch_no?: string; qty?: number; s_warehouse?: string; t_warehouse?: string }[]
+      }>('Stock Entry', draftName)
+      const fr = fresh.items ?? []
+      if (
+        fresh.stock_entry_type !== 'Material Transfer' ||
+        fresh.company !== COMPANY ||
+        fr.length !== 1 ||
+        fr[0].batch_no !== batch ||
+        fr[0].item_code !== itemCode ||
+        fr[0].s_warehouse !== loc.warehouse ||
+        fr[0].t_warehouse !== toWarehouse ||
+        Math.abs((Number(fr[0].qty) || 0) - loc.qty) > 1e-6
+      ) {
+        throw new Error(`Draft ${draftName} changed since validation — refusing to submit it`)
+      }
       const submitted = await erpnextSubmit<{ name?: string }>(fresh)
       stockEntry = submitted.name ?? draftName
     } else {
@@ -1078,8 +1151,8 @@ export async function transferInventory(input: {
       fromWarehouse: loc.warehouse,
       toWarehouse,
       qty: loc.qty,
-      ...(driftLostFrom
-        ? { extra: { warning: 'reservation_transfer_failed', reservationLostFrom: driftLostFrom } }
+      ...(lostFrom
+        ? { extra: { warning: 'reservation_transfer_failed', reservationLostFrom: lostFrom } }
         : {}),
     }
   }
