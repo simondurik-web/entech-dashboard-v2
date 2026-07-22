@@ -314,6 +314,7 @@ table td { font-variant-numeric: tabular-nums; }
 .row-status-completed { box-shadow: inset 3px 0 0 0 #38a169; }
 .row-status-staged { box-shadow: inset 3px 0 0 0 #4299e1; }
 .row-status-shipped { box-shadow: inset 3px 0 0 0 #a0aec0; }
+.row-status-cancelled { box-shadow: inset 3px 0 0 0 #718096; opacity: 0.55; }
 
 /* #21 — Progress bar fill animation */
 @keyframes progress-fill {

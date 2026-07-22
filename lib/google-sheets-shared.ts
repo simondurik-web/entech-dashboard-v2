@@ -4,6 +4,8 @@
  */
 
 export function normalizeStatus(status: string, ifStatus: string): string {
+  // An ERPNext-cancelled SO is cancelled regardless of any stale work-order status
+  if ((ifStatus || '').toLowerCase().includes('cancel')) return 'cancelled'
   const s = (status || ifStatus || '').toLowerCase()
   
   // Canceled/cancelled orders - explicit check

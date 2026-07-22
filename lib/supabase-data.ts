@@ -177,7 +177,7 @@ type PartEnrichment = { category?: string; tire?: string; hub?: string; hubMold?
 // (EB-6PK-…, THRESH-…, OFLEX-…), so this only matches roll-tech.
 const ROLLTECH_PN_RE = /^\d{3,4}\.(\d{3})\./
 
-export async function fetchOrdersFromDB(): Promise<Order[]> {
+export async function fetchOrdersFromDB(opts?: { includeCancelled?: boolean }): Promise<Order[]> {
   const data = await fetchAllRows('dashboard_orders')
   if (!data.length) return []
 
@@ -224,6 +224,7 @@ export async function fetchOrdersFromDB(): Promise<Order[]> {
     })
     .filter((o) => o.line && o.customer)
     .filter((o) => {
+      if (opts?.includeCancelled) return true
       const status = normalizeStatus(o.internalStatus, o.ifStatus)
       return status !== 'cancelled'
     })

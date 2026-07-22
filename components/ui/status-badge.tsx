@@ -8,6 +8,7 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string; anim
   completed: { bg: 'bg-emerald-100 dark:bg-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500', animate: false },
   staged:    { bg: 'bg-blue-100 dark:bg-blue-500/20', text: 'text-blue-700 dark:text-blue-400', dot: 'bg-blue-500', animate: false },
   shipped:   { bg: 'bg-gray-100 dark:bg-gray-500/20', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400', animate: false },
+  cancelled: { bg: 'bg-gray-200 dark:bg-gray-600/30', text: 'text-gray-500 dark:text-gray-500', dot: 'bg-gray-400', animate: false },
 }
 
 export function StatusBadge({ status, label }: { status: string; label: string }) {

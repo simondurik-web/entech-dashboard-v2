@@ -48,13 +48,14 @@ const CATEGORY_I18N: Record<string, string> = {
   snappad: 'category.snappad',
 }
 
-const STATUS_KEYS = ['pending', 'wip', 'completed', 'staged', 'shipped'] as const
+const STATUS_KEYS = ['pending', 'wip', 'completed', 'staged', 'shipped', 'cancelled'] as const
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-500',
   wip: 'bg-teal-500',
   completed: 'bg-emerald-500',
   staged: 'bg-green-500',
   shipped: 'bg-gray-500',
+  cancelled: 'bg-gray-400',
 }
 const STATUS_I18N: Record<string, string> = {
   pending: 'status.pending',
@@ -62,6 +63,7 @@ const STATUS_I18N: Record<string, string> = {
   completed: 'status.completed',
   staged: 'status.readyToShip',
   shipped: 'status.shipped',
+  cancelled: 'status.cancelled',
 }
 
 type CategoryKey = (typeof CATEGORY_KEYS)[number]
@@ -106,7 +108,7 @@ function statusColor(status: string): string {
   // Pending/Need to Make - Yellow
   if (s === 'pending' || s === 'need to make' || s === 'approved') return 'bg-yellow-500/20 text-yellow-600'
   // Cancelled - Red
-  if (s === 'cancelled') return 'bg-red-500/20 text-red-600'
+  if (s === 'cancelled') return 'bg-gray-500/20 text-gray-500'
   return 'bg-muted text-muted-foreground'
 }
 
@@ -122,7 +124,7 @@ function borderColor(order: Order): string {
 
 function getOrderStatus(order: Order): StatusKey | null {
   const status = normalizeStatus(order.internalStatus, order.ifStatus)
-  if (status === 'cancelled') return null // Filter out cancelled
+  if (status === 'cancelled') return 'cancelled'
   if (status === 'shipped' || order.shippedDate) return 'shipped'
   if (status === 'staged') return 'staged'
   if (status === 'completed') return 'completed'
@@ -149,7 +151,7 @@ function filterByCategory(orders: Order[], filter: CategoryKey): Order[] {
 }
 
 function filterByStatus(orders: Order[], activeStatuses: Set<StatusKey>): Order[] {
-  if (activeStatuses.size === 0) return orders
+  if (activeStatuses.size === 0) return orders.filter((o) => getOrderStatus(o) !== 'cancelled')
   return orders.filter((o) => {
     const status = getOrderStatus(o)
     return status && activeStatuses.has(status)
@@ -525,7 +527,7 @@ function OrdersPageContent() {
     // revalidates and overwrites within ~1s. Skipped on explicit Refresh.
     if (!isRefresh) {
       const [cached, cachedInv] = await Promise.all([
-        cacheGetJson<Order[]>('/api/sheets'),
+        cacheGetJson<Order[]>('/api/sheets?includeCancelled=1'),
         cacheGetJson<InventoryItem[]>('/api/inventory'),
       ])
       if (cached) {
@@ -536,7 +538,7 @@ function OrdersPageContent() {
 
     try {
       const [data, inv] = await Promise.all([
-        fetchJsonAndCache<Order[]>('/api/sheets'),
+        fetchJsonAndCache<Order[]>('/api/sheets?includeCancelled=1'),
         fetchJsonAndCache<InventoryItem[]>('/api/inventory').catch(() => null),
       ])
       applyOrders(data, inv)
