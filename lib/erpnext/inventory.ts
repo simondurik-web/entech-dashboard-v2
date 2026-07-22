@@ -616,6 +616,8 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
     )
   }
   const full = await erpnextGetDoc<{
+    docstatus?: number
+    status?: string
     voucher_no?: string
     voucher_detail_no?: string | null
     reserved_qty?: number
@@ -623,6 +625,11 @@ async function liveReservationForMove(batch: string): Promise<MoveReservation | 
     warehouse?: string
     sb_entries?: { batch_no?: string | null }[]
   }>('Stock Reservation Entry', names[0])
+  // The list read and the doc fetch are non-atomic — a cancellation between them must
+  // not be certified as live (r27).
+  if (full.docstatus !== 1 || !ACTIVE_SRE_STATUS_MOVE.includes(String(full.status))) {
+    return null
+  }
   const distinct = new Set(
     (full.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
   )
@@ -735,11 +742,16 @@ async function findOpStockEntry(
  *  or was edited — it must be defused, never completed (review r6/r7). */
 async function validateMoveDraft(
   name: string,
-  expect: { batch: string; itemCode: string; toWarehouse: string; tagQty: number; srcWarehouse: string }
+  expect: { batch: string; itemCode: string; toWarehouse: string; tagQty: number; srcWarehouse: string },
+  // Submitted entries carry an AUTO-POPULATED serial_and_batch_bundle (ERPNext converts
+  // use_serial_batch_fields rows at submit) — the draft-only "no bundle" rule would
+  // refuse every legitimately committed entry and break post-timeout recovery (r27).
+  mode: 'draft' | 'submitted' = 'draft'
 ): Promise<boolean> {
   const draft = await erpnextGetDoc<{
     stock_entry_type?: string
     company?: string
+    set_posting_time?: number
     items?: {
       item_code?: string
       batch_no?: string
@@ -752,14 +764,20 @@ async function validateMoveDraft(
     }[]
   }>('Stock Entry', name)
   const rows = draft.items ?? []
+  const batchSourceOk =
+    mode === 'draft'
+      ? // The batch source must be the FIELD, not a linked bundle — a bundle can name a
+        // different batch while batch_no still reads as expected (review r13).
+        Number(rows[0]?.use_serial_batch_fields) === 1 && !rows[0]?.serial_and_batch_bundle
+      : true
   return (
     draft.stock_entry_type === 'Material Transfer' &&
     draft.company === COMPANY &&
+    // Backdating needs set_posting_time=1 — a draft-writer must not have this endpoint
+    // submit a backdated transaction with service authority (r27).
+    !draft.set_posting_time &&
     rows.length === 1 &&
-    // The batch source must be the FIELD, not a linked bundle — a bundle can name a
-    // different batch while batch_no still reads as expected (review r13).
-    Number(rows[0].use_serial_batch_fields) === 1 &&
-    !rows[0].serial_and_batch_bundle &&
+    batchSourceOk &&
     rows[0].batch_no === expect.batch &&
     rows[0].item_code === expect.itemCode &&
     rows[0].s_warehouse === expect.srcWarehouse &&
@@ -945,7 +963,7 @@ export async function verifyOrRestoreMovedReservation(input: {
     // The remark tag alone must never mint a reservation — require the cancelled-SRE
     // corroboration before writing (review r11). Refuted = forged/never carried (null);
     // unknown = transient — report loudly, restore on a later attempt (r13).
-    const cv = await corroborateCarriedIntent(batch, intent)
+    const cv = await corroborateCarriedIntent(batch, intent, se?.remarks ?? null)
     if (cv === 'refuted') return null
     if (cv === 'unknown') {
       return { warning: 'reservation_transfer_failed', reservationLostFrom: intent.so }
@@ -1012,11 +1030,28 @@ export async function moveLeaseSo(batch: string, opKey: string): Promise<string 
  *  single batch. Remarks are editable ERP-side; the cancelled document trail is not —
  *  a tag that doesn't match its named record is treated as forged/invalid and never
  *  restored (review r11/r12: identity-bound, not shape-matched against history). */
+let cachedServiceUser: string | null = null
+async function serviceUser(): Promise<string> {
+  if (!cachedServiceUser) {
+    const r = await erpnextCallGet<{ message?: string }>('frappe.auth.get_logged_user', {})
+    cachedServiceUser = String(r?.message ?? '')
+    if (!cachedServiceUser) throw new Error('could not resolve the ERP service user')
+  }
+  return cachedServiceUser
+}
+
 async function corroborateCarriedIntent(
   batch: string,
-  intent: CarriedIntent
+  intent: CarriedIntent,
+  /** The op's own stamped document remarks — must contain the [releasing:<sre>] stamp
+   *  written immediately before OUR cancel; without it (or with a foreign canceller)
+   *  the cancelled record proves nothing about WHO cancelled (r27). */
+  opRemarks?: string | null
 ): Promise<'confirmed' | 'refuted' | 'unknown'> {
   if (!intent.soItem || !intent.sre) return 'refuted'
+  if (opRemarks !== undefined && !(opRemarks ?? '').includes(`[releasing:${intent.sre}]`)) {
+    return 'refuted'
+  }
   let doc: {
     docstatus?: number
     voucher_type?: string
@@ -1024,6 +1059,7 @@ async function corroborateCarriedIntent(
     voucher_detail_no?: string | null
     reserved_qty?: number
     creation?: string
+    modified_by?: string
     sb_entries?: { batch_no?: string | null }[]
   }
   try {
@@ -1037,7 +1073,7 @@ async function corroborateCarriedIntent(
   const batches = new Set(
     (doc.sb_entries ?? []).map((e) => String(e.batch_no ?? '').trim()).filter(Boolean)
   )
-  const ok =
+  let ok =
     doc.docstatus === 2 &&
     doc.voucher_type === 'Sales Order' &&
     doc.voucher_no === intent.so &&
@@ -1045,6 +1081,16 @@ async function corroborateCarriedIntent(
     Math.abs((Number(doc.reserved_qty) || 0) - intent.qty) <= 1e-6 &&
     batches.size === 1 &&
     batches.has(batch)
+  if (ok) {
+    // The canceller must be OUR service account — an operator's deliberate ERPNext
+    // cancel during a crash window must never be resurrected (r27).
+    try {
+      const doc3 = doc as { modified_by?: string }
+      ok = (doc3.modified_by ?? '') === (await serviceUser())
+    } catch {
+      return 'unknown'
+    }
+  }
   if (!ok) return 'refuted'
   // SUPERSESSION (r17): the stamp only authorizes a restore while it is the pallet's
   // LATEST reservation event. Any newer reservation (active or since-cancelled) means
@@ -1233,7 +1279,7 @@ export async function transferInventory(input: {
       // corroboration unknown → abort with it ARMED; confirmed → defuse DEFERRED until
       // the fresh replacement draft exists (newest-wins lookup covers the overlap).
       if (!live && priorTag) {
-        const cv = await corroborateCarriedIntent(batch, priorTag)
+        const cv = await corroborateCarriedIntent(batch, priorTag, priorDraft.remarks)
         if (cv === 'unknown') {
           throw new Error(
             `Cannot verify pallet ${batch}'s interrupted reservation carry right now — try again shortly`
@@ -1264,7 +1310,7 @@ export async function transferInventory(input: {
     )
   }
   if (!live && intent) {
-    const cv = await corroborateCarriedIntent(batch, intent)
+    const cv = await corroborateCarriedIntent(batch, intent, priorDraft?.remarks ?? null)
     if (cv === 'refuted') {
       if (priorDraft) await defuseStaleDraft(priorDraft.name, priorDraft.remarks)
       priorDraft = null
@@ -1323,8 +1369,18 @@ export async function transferInventory(input: {
     await defuseStaleDraft(deferredDefuse.name, deferredDefuse.remarks)
   }
 
-  // Step 2 — release (only when a live reservation exists).
+  // Step 2 — release (only when a live reservation exists). Stamp the draft with the
+  // SRE we are ABOUT to release — the cancelled record alone cannot prove WE cancelled
+  // it (an operator cancel during a crash window must not be resurrected; r27).
   assertStepBudget('releasing the reservation')
+  if (live && draftName) {
+    const cur = await erpnextGetDoc<{ remarks?: string | null }>('Stock Entry', draftName)
+    if (!(cur.remarks ?? '').includes(`[releasing:${live.sre}]`)) {
+      await erpnextUpdate('Stock Entry', draftName, {
+        remarks: `${cur.remarks ?? ''} [releasing:${live.sre}]`,
+      })
+    }
+  }
   if (live) {
     let released: boolean
     try {
@@ -1425,13 +1481,11 @@ export async function transferInventory(input: {
     const committedValid =
       committedSe &&
       committedSe.docstatus === 1 &&
-      (await validateMoveDraft(committedSe.name, {
-        batch,
-        itemCode,
-        toWarehouse,
-        tagQty: loc.qty,
-        srcWarehouse: loc.warehouse,
-      }).catch(() => false))
+      (await validateMoveDraft(
+        committedSe.name,
+        { batch, itemCode, toWarehouse, tagQty: loc.qty, srcWarehouse: loc.warehouse },
+        'submitted'
+      ).catch(() => false))
     if (committedSe && committedSe.docstatus === 1 && committedValid) {
       stockEntry = committedSe.name
     } else {
@@ -1442,6 +1496,7 @@ export async function transferInventory(input: {
         if (verifiablyAtSource) {
           // Stock never moved — put the reservation back in the SOURCE bin so the
           // pallet stays locked to its order while the operator retries.
+          assertStepBudget('restoring the source-bin reservation')
           try {
             await reserveBatchesToSO({
               soName: intent.so,
@@ -1476,6 +1531,7 @@ export async function transferInventory(input: {
   }
 
   // Step 4 — re-reserve in the destination bin.
+  assertStepBudget('re-reserving at the destination')
   try {
     await reserveBatchesToSO({
       soName: intent.so,
