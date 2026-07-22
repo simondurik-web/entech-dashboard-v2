@@ -84,12 +84,13 @@ export async function POST(req: NextRequest) {
   const recoveringSkips = lines
     .filter((l) => recovering.has(l.batch))
     .map((l) => ({ batch: l.batch, reason: 'recovering' }))
-  if (movable.length === 0 && recoveringSkips.length > 0) {
-    return NextResponse.json(
-      { ok: true, stockEntry: null, moved: 0, skipped: recoveringSkips, destination },
-      { status: 200 }
-    )
-  }
+  // An all-recovering queue still flows through runInventoryOp (bulkTransfer with an
+  // empty movable set is a durable zero-move) — an early return would leave the
+  // idempotency key unconsumed and let a later same-key retry move stock a prior
+  // success reported as skipped (r30). NOTE: only exact-batch 'move' rows are
+  // excludable here; a crashed stage-reserve (family-null, many pallets) is covered by
+  // its own idempotent re-validation on resume.
+
   let result: Awaited<ReturnType<typeof runInventoryOp>>
   try {
     const bulkStart = Date.now()

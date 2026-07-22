@@ -752,6 +752,7 @@ async function validateMoveDraft(
     stock_entry_type?: string
     company?: string
     set_posting_time?: number
+    apply_putaway_rule?: number
     items?: {
       item_code?: string
       batch_no?: string
@@ -774,8 +775,10 @@ async function validateMoveDraft(
     draft.stock_entry_type === 'Material Transfer' &&
     draft.company === COMPANY &&
     // Backdating needs set_posting_time=1 — a draft-writer must not have this endpoint
-    // submit a backdated transaction with service authority (r27).
+    // submit a backdated transaction with service authority (r27). Putaway rules can
+    // rewrite destination rows during ERPNext validation (r30).
     !draft.set_posting_time &&
+    !draft.apply_putaway_rule &&
     rows.length === 1 &&
     batchSourceOk &&
     rows[0].batch_no === expect.batch &&
@@ -1190,8 +1193,11 @@ export async function transferInventory(input: {
       toWarehouse,
       opKey,
       // NOT unconditional (r22): a fresh clean op that happens to target the current
-      // bin must never gain restore authority a forged draft could exploit.
-      allowRestore: restoreAuthorized === true,
+      // bin must never gain restore authority a forged draft could exploit. An
+      // 'unverified' marker MAY restore here — the corroboration chain (stamp +
+      // canceller identity + supersession) guards it, mirroring the main resume
+      // path; otherwise a committed move under an unverified marker strands (r30).
+      allowRestore: restoreAuthorized === true || unverifiedMarker === true,
     })
     const se = await findOpStockEntry(opKey).catch(() => null)
     return {
@@ -1355,6 +1361,7 @@ export async function transferInventory(input: {
   const seDoc = {
     stock_entry_type: 'Material Transfer',
     company: COMPANY,
+    apply_putaway_rule: 0,
     // The [carried:...] stamp makes the released reservation recoverable from this
     // document itself — a retry restores exactly this intent, never a guess. The
     // [releasing:...] stamp is written at CREATION (r28): for a live carry the draft
@@ -1437,6 +1444,7 @@ export async function transferInventory(input: {
         stock_entry_type?: string
         company?: string
         set_posting_time?: number
+        apply_putaway_rule?: number
         remarks?: string | null
         additional_costs?: unknown[]
         items?: {
@@ -1456,6 +1464,7 @@ export async function transferInventory(input: {
         fresh.stock_entry_type !== 'Material Transfer' ||
         fresh.company !== COMPANY ||
         !!fresh.set_posting_time ||
+        !!fresh.apply_putaway_rule ||
         (fresh.additional_costs?.length ?? 0) > 0 ||
         ((fresh.remarks ?? '').match(/\[op:[^\]]*\]/g) ?? []).length !== 1 ||
         !(fresh.remarks ?? '').includes(`[op:${opKey}]`) ||
@@ -1686,10 +1695,28 @@ export async function bulkTransfer(input: {
   const bulkDraft = await erpnextCreate<{ name: string }>('Stock Entry', {
     stock_entry_type: 'Material Transfer',
     company: COMPANY,
+    apply_putaway_rule: 0,
     remarks: `Dashboard bulk transfer [op:${opKey}] -> ${destination} (${rows.length})`,
     items: rows,
   })
-  const bulkFresh = await erpnextGetDoc('Stock Entry', bulkDraft.name)
+  const bulkFresh = await erpnextGetDoc<{
+    stock_entry_type?: string
+    company?: string
+    set_posting_time?: number
+    apply_putaway_rule?: number
+    additional_costs?: unknown[]
+    items?: unknown[]
+  }>('Stock Entry', bulkDraft.name)
+  if (
+    bulkFresh.stock_entry_type !== 'Material Transfer' ||
+    bulkFresh.company !== COMPANY ||
+    !!bulkFresh.set_posting_time ||
+    !!bulkFresh.apply_putaway_rule ||
+    (bulkFresh.additional_costs?.length ?? 0) > 0 ||
+    (bulkFresh.items?.length ?? 0) !== rows.length
+  ) {
+    throw new Error('Bulk transfer draft changed before submit — refusing')
+  }
   if (deadlineMs && Date.now() > deadlineMs) {
     throw new Error('Bulk transfer ran out of its safety window before submitting — try again')
   }
