@@ -213,3 +213,31 @@ export async function requirePermission(req: NextRequest, permKey: string): Prom
   const access = (rolePerm?.menu_access ?? {}) as Record<string, boolean>
   return access?.[permKey] === true ? user : null
 }
+
+/**
+ * {@link requirePermission}, but ALSO accepts an approved shared-floor device
+ * whose device ROLE grants the permission (admin/super_admin devices bypass,
+ * like users). Floor tablets have no Supabase login yet legitimately use
+ * business pages (e.g. the shipments print page); their per-station printer
+ * ACL still applies downstream via the returned actor id + role.
+ */
+export async function requirePermissionOrDevice(
+  req: NextRequest,
+  permKey: string
+): Promise<AuthedActor | null> {
+  const user = await requirePermission(req, permKey)
+  if (user) return { id: user.id, email: user.email, kind: "user" }
+
+  const actor = await requireUserOrDevice(req)
+  if (!actor || actor.kind !== "device") return null
+  const role = actor.role ?? ""
+  if (role === "blocked") return null
+  if (role === "admin" || role === "super_admin") return actor
+  const { data: rolePerm } = await supabaseAdmin
+    .from("role_permissions")
+    .select("menu_access")
+    .eq("role", role)
+    .maybeSingle()
+  const access = (rolePerm?.menu_access ?? {}) as Record<string, boolean>
+  return access?.[permKey] === true ? actor : null
+}

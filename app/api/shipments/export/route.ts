@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs'
 import React from 'react'
 import { Document, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer'
 import type { Style } from '@react-pdf/types'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { applyShipmentFilters, normalizeShipmentRow, parseShipmentFilters, SHIPMENT_COLUMNS, type ShipmentFilters } from '@/lib/shipments/query'
 import type { ShipmentRow } from '@/lib/shipments/types'
@@ -256,7 +256,7 @@ async function pdfResponse(rows: ShipmentRow[], truncated: boolean, filename: st
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await requirePermission(req, '/shipments'))) {
+  if (!(await requirePermissionOrDevice(req, '/shipments'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

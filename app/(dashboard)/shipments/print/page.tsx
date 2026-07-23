@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   Clock3,
+  ExternalLink,
   Eye,
   FileText,
   LoaderCircle,
@@ -12,6 +13,7 @@ import {
   Printer,
   XCircle,
 } from 'lucide-react'
+import { SPS_PORTAL_URL } from '@/lib/shipments/product-colors'
 import { authHeaders } from '@/lib/session-token'
 import { todayET } from '@/lib/shipments/et-date'
 import type {
@@ -336,16 +338,27 @@ function ShipmentPrintContent() {
             {t('shipments.printSubtitle')}
           </p>
         </div>
-        <label className="text-xs font-medium text-muted-foreground">
-          <span className="mb-1 block">{t('shipments.fileDate')}</span>
-          <input
-            type="date"
-            value={date}
-            max={today}
-            onChange={(event) => setDate(event.target.value)}
-            className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
-          />
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <a
+            href={SPS_PORTAL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+          >
+            <ExternalLink className="size-4" />
+            {t('shipments.spsPortal')}
+          </a>
+          <label className="text-xs font-medium text-muted-foreground">
+            <span className="mb-1 block">{t('shipments.fileDate')}</span>
+            <input
+              type="date"
+              value={date}
+              max={today}
+              onChange={(event) => setDate(event.target.value)}
+              className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+        </div>
       </div>
 
       {loading && (

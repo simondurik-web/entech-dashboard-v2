@@ -1827,5 +1827,9 @@
   "shipments.noFilesForDateHint": "La ejecución nocturna los carga",
   "shipments.printStatus": "Estado de impresión",
   "shipments.printStatusHint": "Se actualiza cada 10 segundos mientras esta página esté visible",
-  "shipments.noPrintJobs": "No hay trabajos de impresión para esta fecha"
+  "shipments.noPrintJobs": "No hay trabajos de impresión para esta fecha",
+  "shipments.spsPortal": "Abrir portal SPS",
+  "shipments.fullRangeExportCaption": "Exportación del rango completo — los filtros de columna no se aplican",
+  "shipments.truncatedWarning": "Mostrando las 10,000 filas más recientes — reduzca el rango de fechas para obtener una cobertura completa.",
+  "shipments.shipmentNoun": "envío"
 }

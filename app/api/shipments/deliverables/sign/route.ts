@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +9,7 @@ const BUCKET = 'shipment-deliverables'
 const DELIVERABLE_PATH = /^\d{4}-\d{2}-\d{2}\/[A-Za-z0-9._-]+\.pdf$/
 
 export async function POST(req: NextRequest) {
-  if (!(await requirePermission(req, '/shipments'))) {
+  if (!(await requirePermissionOrDevice(req, '/shipments'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

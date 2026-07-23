@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { rpcAllRows } from '@/lib/shipments/rpc'
 import { todayET } from '@/lib/shipments/et-date'
 import { summarize } from '@/lib/shipments/rollup'
@@ -15,7 +15,7 @@ function addDays(date: string, days: number): string {
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await requirePermission(req, '/shipments'))) {
+  if (!(await requirePermissionOrDevice(req, '/shipments'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

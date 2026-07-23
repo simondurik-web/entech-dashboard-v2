@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { rpcAllRows } from '@/lib/shipments/rpc'
 import { isRealDate } from '@/lib/shipments/et-date'
 import { bucketize, topPartsWithOther } from '@/lib/shipments/rollup'
@@ -18,7 +18,7 @@ function spanInDays(from: string, to: string): number {
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await requirePermission(req, '/shipments'))) {
+  if (!(await requirePermissionOrDevice(req, '/shipments'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

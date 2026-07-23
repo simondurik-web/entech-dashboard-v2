@@ -16,10 +16,12 @@ import {
   BarChart3,
   Boxes,
   CalendarDays,
+  ExternalLink,
   PackageCheck,
   Printer,
   Truck,
 } from 'lucide-react'
+import { SPS_PORTAL_URL } from '@/lib/shipments/product-colors'
 import { authHeaders } from '@/lib/session-token'
 import { todayET } from '@/lib/shipments/et-date'
 import type {
@@ -152,14 +154,25 @@ function ShipmentsOverviewContent() {
 
   return (
     <div className="p-4 pb-20 md:p-6">
-      <div className="mb-5">
-        <div className="flex items-center gap-2">
-          <PackageCheck className="size-6 text-primary" />
-          <h1 className="text-2xl font-bold">{t('shipments.overviewTitle')}</h1>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <PackageCheck className="size-6 text-primary" />
+            <h1 className="text-2xl font-bold">{t('shipments.overviewTitle')}</h1>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('shipments.overviewSubtitle')}
+          </p>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('shipments.overviewSubtitle')}
-        </p>
+        <a
+          href={SPS_PORTAL_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+        >
+          <ExternalLink className="size-4" />
+          {t('shipments.spsPortal')}
+        </a>
       </div>
 
       {loading && (
@@ -314,7 +327,10 @@ function ShipmentsOverviewContent() {
                         <Bar
                           dataKey="units"
                           name={t('shipments.units')}
-                          fill="hsl(var(--primary))"
+                          // Explicit hex: hsl(var(--primary)) doesn't resolve in
+                          // this theme's token format and painted the bars black
+                          // (Simon's staging screenshot, 2026-07-23).
+                          fill="#3b82f6"
                           radius={[4, 4, 0, 0]}
                         />
                       </BarChart>

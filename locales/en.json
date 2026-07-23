@@ -1827,5 +1827,9 @@
   "shipments.noFilesForDateHint": "The overnight run uploads them",
   "shipments.printStatus": "Print status",
   "shipments.printStatusHint": "Updates every 10 seconds while this page is visible",
-  "shipments.noPrintJobs": "No print jobs for this date"
+  "shipments.noPrintJobs": "No print jobs for this date",
+  "shipments.spsPortal": "Open SPS portal",
+  "shipments.fullRangeExportCaption": "Full-range export — column filters don't apply",
+  "shipments.truncatedWarning": "Showing the newest 10,000 rows — narrow the date range for full coverage.",
+  "shipments.shipmentNoun": "shipment"
 }

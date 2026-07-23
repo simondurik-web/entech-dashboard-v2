@@ -116,10 +116,19 @@ export async function exportToExcel<T extends Record<string, unknown>>(
 }
 
 function escapeCSV(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
+  // Formula-injection guard: a leading = + - @ (or tab/CR remnants) executes
+  // as a formula when the CSV opens in Excel/Sheets. Data here includes
+  // customer/EDI-derived strings, so neutralize with a leading apostrophe
+  // (the spreadsheet convention for "display as text").
+  // Plain numbers (incl. negatives) are not injectable — leave them numeric.
+  let safe = value
+  if (/^[=+\-@\t\r]/.test(safe) && !/^-?\d+(\.\d+)?$/.test(safe)) safe = `'${safe}`
+  // \r included: an unquoted lone CR splits the record and whatever follows
+  // it starts a fresh cell — which would resurrect the formula injection.
+  if (safe.includes(',') || safe.includes('"') || safe.includes('\n') || safe.includes('\r')) {
+    return `"${safe.replace(/"/g, '""')}"`
   }
-  return value
+  return safe
 }
 
 function downloadBlob(blob: Blob, filename: string) {

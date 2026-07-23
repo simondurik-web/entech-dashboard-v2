@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { etRangeToDates } from '@/lib/shipments/et-date'
 import { applyShipmentFilters, normalizeShipmentRow, parseShipmentFilters, SHIPMENT_COLUMNS } from '@/lib/shipments/query'
-import type { ShipmentFacets } from '@/lib/shipments/types'
+import type { ShipmentFilters } from '@/lib/shipments/query'
+import type { ShipmentFacets, ShipmentRow } from '@/lib/shipments/types'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const PAGE_SIZES = new Set([25, 50, 100])
+const ALL_ROWS_CAP = 10_000
+const FETCH_PAGE_SIZE = 1000
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number | null {
   if (value === null) return fallback
@@ -59,8 +62,45 @@ async function fetchFacets(from: string | null, to: string | null): Promise<Ship
   }
 }
 
+async function fetchAllRows(
+  filters: ShipmentFilters
+): Promise<{ rows: ShipmentRow[]; count: number; truncated: boolean }> {
+  const rows: ShipmentRow[] = []
+  let count = 0
+  let offset = 0
+
+  while (offset < ALL_ROWS_CAP) {
+    // Exact count only on the first batch — counting the filtered set ten
+    // times per load is pure waste as history grows.
+    const query = applyShipmentFilters(
+      supabaseAdmin
+        .from('shipment_history')
+        .select(SHIPMENT_COLUMNS, offset === 0 ? { count: 'exact' } : undefined),
+      filters
+    )
+    const upper = Math.min(offset + FETCH_PAGE_SIZE - 1, ALL_ROWS_CAP - 1)
+    const { data, error, count: exactCount } = await query
+      .order('sent_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, upper)
+
+    if (error) throw new Error(`Supabase shipment explorer error: ${error.message}`)
+    count = exactCount ?? count
+    if (!data || data.length === 0) break
+    rows.push(...data.map((row) => normalizeShipmentRow(row as Record<string, unknown>)))
+    if (data.length < upper - offset + 1) break
+    offset = upper + 1
+  }
+
+  return {
+    rows,
+    count,
+    truncated: count > ALL_ROWS_CAP,
+  }
+}
+
 export async function GET(req: NextRequest) {
-  if (!(await requirePermission(req, '/shipments'))) {
+  if (!(await requirePermissionOrDevice(req, '/shipments'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -71,6 +111,17 @@ export async function GET(req: NextRequest) {
 
   if (page === null || requestedPageSize === null || !PAGE_SIZES.has(requestedPageSize) || !filters) {
     return NextResponse.json({ error: 'Invalid query' }, { status: 400 })
+  }
+
+  if (params.get('all') === '1') {
+    try {
+      return NextResponse.json(await fetchAllRows(filters), {
+        headers: { 'Cache-Control': 'no-store' },
+      })
+    } catch (error) {
+      console.error('shipments explorer lookup failed:', error)
+      return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })
+    }
   }
 
   const start = page * requestedPageSize

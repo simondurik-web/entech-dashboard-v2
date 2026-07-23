@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadDashboardProfile, requirePermission } from '@/lib/require-user'
+import { loadDashboardProfile, requirePermissionOrDevice } from '@/lib/require-user'
 import { allowedStationIds } from '@/lib/erpnext/printer-access'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -12,9 +12,9 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'shipments:print')
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { role } = await loadDashboardProfile(user.id)
+  const actor = await requirePermissionOrDevice(req, 'shipments:print')
+  if (!actor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const role = actor.kind === 'device' ? (actor.role ?? '') : (await loadDashboardProfile(actor.id)).role
 
   const { data, error } = await supabaseAdmin
     .from('print_stations')
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     .order('name')
   if (error) return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })
 
-  const allowed = await allowedStationIds(user.id, role)
+  const allowed = await allowedStationIds(actor.id, role)
   const stations = (data ?? [])
     .filter((s) => allowed === 'all' || allowed.has(s.id))
     .map((s) => ({ id: s.id, name: s.name }))

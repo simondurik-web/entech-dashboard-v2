@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadDashboardProfile, requirePermission } from '@/lib/require-user'
+import { loadDashboardProfile, requirePermissionOrDevice } from '@/lib/require-user'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { isRealDate } from '@/lib/shipments/et-date'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -24,11 +24,13 @@ const LETTER_PREFIXES = ['packing-slips-fedex-', 'packing-slips-ltl-', 'run-summ
 const MAX_BYTES = 10 * 1024 * 1024
 
 export async function POST(req: NextRequest) {
-  // requirePermission (not requireMenuAccess) so per-user custom_permissions
-  // grants/denies apply — same semantics the client's canAccessExact shows.
-  const user = await requirePermission(req, 'shipments:print')
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { role } = await loadDashboardProfile(user.id)
+  // requirePermissionOrDevice: per-user custom_permissions grants/denies apply
+  // (matching the client's canAccessExact), and approved floor devices with a
+  // permitted role can print — the shipping-floor tablets are the actual users
+  // of this page. The station ACL below still gates WHERE they can print.
+  const actor = await requirePermissionOrDevice(req, 'shipments:print')
+  if (!actor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const role = actor.kind === 'device' ? (actor.role ?? '') : (await loadDashboardProfile(actor.id)).role
 
   let body: { date?: unknown; path?: unknown; station?: unknown; copies?: unknown }
   try {
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
     if (!st?.letter_printer) {
       return NextResponse.json({ error: 'That station has no paper printer' }, { status: 400 })
     }
-    if (!(await userCanPrintTo(user.id, role, station))) {
+    if (!(await userCanPrintTo(actor.id, role, station))) {
       return NextResponse.json({ error: 'Not allowed to print to this station' }, { status: 403 })
     }
 
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
         zpl: payload,
         item_code: 'SHIPMENT-DOC',
         batch: date,
-        created_by: user.id,
+        created_by: actor.id,
         idempotency_key: `shipdlv-${path}-${stamp}-${i + 1}`, // reprints are intentional
         status: 'pending',
       }))

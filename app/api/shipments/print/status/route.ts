@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { isRealDate } from '@/lib/shipments/et-date'
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
-  if (!(await requirePermission(req, 'shipments:print'))) {
+  if (!(await requirePermissionOrDevice(req, 'shipments:print'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

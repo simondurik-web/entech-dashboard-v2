@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermissionOrDevice } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { isRealDate, todayET } from '@/lib/shipments/et-date'
 import type { DeliverableFile, DeliverableKind } from '@/lib/shipments/types'
@@ -19,7 +19,7 @@ function fileKind(name: string): DeliverableKind {
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await requirePermission(req, '/shipments'))) {
+  if (!(await requirePermissionOrDevice(req, '/shipments'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
