@@ -389,7 +389,7 @@ function ShipmentsExplorerContent() {
               value={from}
               max={to || today}
               onChange={(event) => setFrom(event.target.value)}
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full min-w-0 rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
             />
           </label>
 
@@ -401,7 +401,7 @@ function ShipmentsExplorerContent() {
               min={from}
               max={today}
               onChange={(event) => setTo(event.target.value)}
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
+              className="w-full min-w-0 rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
             />
           </label>
 

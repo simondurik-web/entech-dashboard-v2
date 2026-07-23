@@ -218,8 +218,12 @@ function ShipmentsAnalyticsContent() {
         </p>
       </div>
 
-      <section className="mb-5 rounded-xl border bg-card p-4 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <section className="mb-5 overflow-hidden rounded-xl border bg-card p-4 shadow-sm">
+        {/* flex-col everywhere except wide screens; the date inputs live in a
+            width-capped block because iOS's native date inputs have a wide
+            intrinsic size that overflowed an auto grid column (Simon's iPhone
+            screenshots, 2026-07-23). */}
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-4">
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -269,8 +273,8 @@ function ShipmentsAnalyticsContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs font-medium text-muted-foreground">
+          <div className="grid w-full max-w-md grid-cols-2 gap-3">
+            <label className="min-w-0 text-xs font-medium text-muted-foreground">
               <span className="mb-1 flex items-center gap-1">
                 <CalendarRange className="size-3.5" />
                 {t('shipments.from')}
@@ -283,10 +287,10 @@ function ShipmentsAnalyticsContent() {
                   setActivePreset(null)
                   setRange((current) => ({ ...current, from: event.target.value }))
                 }}
-                className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full min-w-0 rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
               />
             </label>
-            <label className="text-xs font-medium text-muted-foreground">
+            <label className="min-w-0 text-xs font-medium text-muted-foreground">
               <span className="mb-1 flex items-center gap-1">
                 <CalendarRange className="size-3.5" />
                 {t('shipments.to')}
@@ -300,7 +304,7 @@ function ShipmentsAnalyticsContent() {
                   setActivePreset(null)
                   setRange((current) => ({ ...current, to: event.target.value }))
                 }}
-                className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
+                className="w-full min-w-0 rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
               />
             </label>
           </div>

@@ -57,7 +57,7 @@ const PATH_LABELS: Record<string, string> = {
   '/pallet-photos': 'Pallet Photos',
   '/shipping-records': 'Shipping Records',
   '/shipping-overview': 'Shipping Overview',
-  '/shipments': 'Shipments',
+  '/shipments': 'E-commerce',
   '/fp-reference': 'FP Reference',
   '/staged-records': 'Staged Records',
   '/sales-overview': 'Sales Overview',
@@ -86,7 +86,7 @@ const PATH_LABELS: Record<string, string> = {
   'labels:print': '🖨️ Print Labels',
   'labels:settings': '⚙️ Label Settings',
   'ship_loads': '🚚 Ship Loads',
-  'shipments:print': 'Shipments — send to printer',
+  'shipments:print': 'E-commerce — send to printer',
 }
 
 // Optional one-line explanations shown under the permission name (Simon
@@ -101,8 +101,8 @@ const PATH_DESCRIPTIONS: Record<string, string> = {
   'labels:generate': 'Create new pallet labels (receive inventory).',
   'labels:print': 'Send labels to the Zebra printers.',
   'labels:settings': 'Change label templates and printer settings.',
-  '/shipments': 'View shipment overview, analytics, explorer, and print files.',
-  'shipments:print': 'Send letter-size shipment PDFs to an approved printer.',
+  '/shipments': 'View e-commerce shipments: overview, analytics, explorer, and print files.',
+  'shipments:print': 'Send letter-size e-commerce shipment PDFs to an approved printer.',
 }
 
 export default function AdminPermissionsPage() {
