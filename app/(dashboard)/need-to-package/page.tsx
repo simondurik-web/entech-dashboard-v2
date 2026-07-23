@@ -15,7 +15,7 @@ import { useCountUp } from '@/lib/use-count-up'
 import { SpotlightCard } from '@/components/spotlight-card'
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { getEffectivePriority, type PriorityValue } from '@/lib/priority'
-import { computeComponentAvailability, type ComponentAvailabilityMap } from '@/lib/component-availability'
+import { computeComponentAvailability, computeOrderAllocations, allocationKey, isOpenForDemand, type ComponentAvailabilityMap, type OrderAllocationMap } from '@/lib/component-availability'
 import { OrderSpecsGrid } from '@/components/cards/OrderSpecsGrid'
 import { PriorityOverride } from '@/components/PriorityOverride'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
@@ -71,7 +71,7 @@ function isRollTech(cat: string): boolean {
   return cat.toLowerCase().includes('roll')
 }
 
-function getColumns(t: (key: string) => string, compAvail: ComponentAvailabilityMap, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void, printedLines?: Set<string>): ColumnDef<PackageRow>[] {
+function getColumns(t: (key: string) => string, compAvail: ComponentAvailabilityMap, alloc: OrderAllocationMap, onPriorityUpdate?: (line: string, p: PriorityValue) => void, onLabelClick?: (order: PackageOrder) => void, onAssigneeUpdate?: (line: string, name: string) => void, printedLines?: Set<string>): ColumnDef<PackageRow>[] {
   return [
     { key: 'category', label: t('table.category'), sortable: true, filterable: true },
     {
@@ -124,7 +124,8 @@ function getColumns(t: (key: string) => string, compAvail: ComponentAvailability
       filterable: true,
       render: (v, row) => {
         const order = row as unknown as PackageOrder
-        const colorClass = isRollTech(order.category) ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')
+        const partOk = alloc.get(allocationKey(order))?.partOk ?? (order.fusionInventory >= order.orderQty)
+        const colorClass = isRollTech(order.category) ? '' : (partOk ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')
         return (
           <span className="inline-flex items-center gap-1">
             <span className={colorClass}>{String(v)}</span>
@@ -184,9 +185,10 @@ function getColumns(t: (key: string) => string, compAvail: ComponentAvailability
         const tire = String(v || '')
         if (!tire || tire === '-') return <span className="text-muted-foreground">-</span>
         const avail = compAvail.get(tire.toUpperCase())
+        const ok = alloc.get(allocationKey(order))?.tireOk ?? avail?.ok
         return (
           <span className="inline-flex items-center gap-1">
-            <span className={avail?.ok ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
+            <span className={ok ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{tire}</span>
             <InventoryPopover partNumber={tire} partType="tire" needed={avail?.demand} />
           </span>
         )
@@ -203,9 +205,10 @@ function getColumns(t: (key: string) => string, compAvail: ComponentAvailability
         const hub = String(v || '')
         if (!hub || hub === '-') return <span className="text-muted-foreground">-</span>
         const avail = compAvail.get(hub.toUpperCase())
+        const ok = alloc.get(allocationKey(order))?.hubOk ?? avail?.ok
         return (
           <span className="inline-flex items-center gap-1">
-            <span className={avail?.ok ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
+            <span className={ok ? 'text-green-500 font-semibold' : 'text-red-400 font-bold'}>{hub}</span>
             <InventoryPopover partNumber={hub} partType="hub" needed={avail?.demand} />
           </span>
         )
@@ -304,6 +307,7 @@ function NeedToPackagePageContent() {
   const initialView = useViewFromUrl()
   const autoExport = useAutoExport()
   const [orders, setOrders] = useState<PackageOrder[]>([])
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [compAvail, setCompAvail] = useState<ComponentAvailabilityMap>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -383,9 +387,18 @@ function NeedToPackagePageContent() {
     { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
   ], [t])
 
+  // Per-order inventory allocation (priority → due date → line #): drives the
+  // green/red part/tire/hub cells and the Ready-to-Package stats. Lives in a
+  // memo over the orders state so a priority override re-ranks the queue live.
+  const alloc = useMemo(() => computeOrderAllocations(orders as unknown as Order[], inventory), [orders, inventory])
+  const allocOrders = useMemo(() => orders.map(o => ({
+    ...o,
+    canPackage: alloc.get(allocationKey(o))?.stockOk ?? o.canPackage,
+  })), [orders, alloc])
+
   const showLabels = canAccess('/labels')
   const canAssign = canAccess('assign_orders')
-  const columns = useMemo(() => getColumns(t, compAvail, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined, printedLines), [t, compAvail, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate, printedLines])
+  const columns = useMemo(() => getColumns(t, compAvail, alloc, handlePriorityUpdate, showLabels ? handleLabelClick : undefined, canAssign ? handleAssigneeUpdate : undefined, printedLines), [t, compAvail, alloc, handlePriorityUpdate, showLabels, handleLabelClick, canAssign, handleAssigneeUpdate, printedLines])
 
   const getOrderKey = (order: Order): string => `${order.ifNumber || 'no-if'}::${order.line || 'no-line'}`
 
@@ -417,15 +430,16 @@ function NeedToPackagePageContent() {
           onHandMap.set(item.partNumber.toUpperCase(), item.onHand)
         })
 
-        // Tire/Hub colors: total open-order demand vs live stock + minimums
-        // (computed over ALL open orders, not just this page's rows).
+        // Popover aggregate (total open-order demand vs live stock + minimums,
+        // computed over ALL open orders). Cell colors come from the per-order
+        // allocation memo below, which re-runs on priority overrides.
         setCompAvail(computeComponentAvailability(ordersData, inventoryData))
+        setInventory(inventoryData)
 
+        // Same predicate the allocator uses for its demand window, so this
+        // page's rows are by construction the FULL open set being allocated.
         const needToPackage = ordersData
-          .filter((o) => {
-            const status = normalizeStatus(o.internalStatus, o.ifStatus)
-            return (status === 'pending' || status === 'wip') && !o.shippedDate
-          })
+          .filter(isOpenForDemand)
           .map((o): PackageOrder => {
             // AVAILABLE stock (on hand minus committed-to-SO): inventory already
             // reserved to another order can never make this one look ready.
@@ -481,7 +495,7 @@ function NeedToPackagePageContent() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = filterByCategory(orders, filter) as PackageRow[]
+  const filtered = filterByCategory(allocOrders, filter) as PackageRow[]
 
   const table = useDataTable({
     data: filtered,
@@ -618,11 +632,12 @@ function NeedToPackagePageContent() {
                 userName={profile?.full_name || ''}
                 statusOverride={order.canPackage ? `✓ ${t('needToPackage.ready')}` : `✗ ${t('needToPackage.missing')}`}
                 // same availability color the desktop Part # cell uses
-                partClassName={isRollTech ? '' : (order.fusionInventory >= order.orderQty ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')}
+                partClassName={isRollTech ? '' : ((alloc.get(allocationKey(order))?.partOk ?? (order.fusionInventory >= order.orderQty)) ? 'text-green-500 font-semibold' : 'text-red-400 font-bold')}
                 expandedFields={
                   <OrderSpecsGrid
                     order={order}
                     compAvail={compAvail}
+                    alloc={alloc}
                     stock={{ onHand: order.onHandStock, committed: order.committedStock, available: order.availableStock }}
                   />
                 }
@@ -630,7 +645,7 @@ function NeedToPackagePageContent() {
                   <>
                     <div>
                       <span className="text-muted-foreground">{t('needToPackage.stock')}</span>
-                      <p className={`font-semibold ${order.availableStock >= order.orderQty ? 'text-green-600' : 'text-red-500'}`}>
+                      <p className={`font-semibold ${order.canPackage ? 'text-green-600' : 'text-red-500'}`}>
                         {order.availableStock.toLocaleString()}
                       </p>
                     </div>
@@ -643,13 +658,13 @@ function NeedToPackagePageContent() {
                     {isRollTech && order.tire && order.tire !== '-' && (
                       <div>
                         <span className="text-muted-foreground">{t('table.tire')}</span>
-                        <p className={`font-semibold ${compAvail.get(order.tire.toUpperCase())?.ok ? 'text-green-500' : 'text-red-400'}`}>{order.tire}</p>
+                        <p className={`font-semibold ${(alloc.get(allocationKey(order))?.tireOk ?? compAvail.get(order.tire.toUpperCase())?.ok) ? 'text-green-500' : 'text-red-400'}`}>{order.tire}</p>
                       </div>
                     )}
                     {isRollTech && order.hub && order.hub !== '-' && (
                       <div className="col-span-2 min-w-0">
                         <span className="text-muted-foreground">{t('table.hub')}</span>
-                        <p className={`font-semibold truncate ${compAvail.get(order.hub.toUpperCase())?.ok ? 'text-green-500' : 'text-red-400'}`}>{order.hub}</p>
+                        <p className={`font-semibold truncate ${(alloc.get(allocationKey(order))?.hubOk ?? compAvail.get(order.hub.toUpperCase())?.ok) ? 'text-green-500' : 'text-red-400'}`}>{order.hub}</p>
                       </div>
                     )}
                   </>

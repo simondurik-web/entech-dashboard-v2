@@ -13,7 +13,7 @@ import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 import type { Order, InventoryItem } from '@/lib/google-sheets-shared'
 import { normalizeStatus } from '@/lib/google-sheets-shared'
-import { computeComponentAvailability, componentOk, type ComponentAvailabilityMap } from '@/lib/component-availability'
+import { computeComponentAvailability, componentOk, computeOrderAllocations, allocationKey, type ComponentAvailabilityMap, type OrderAllocationMap } from '@/lib/component-availability'
 import { OrderSpecsGrid } from '@/components/cards/OrderSpecsGrid'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
@@ -176,6 +176,7 @@ function OrdersPageContent() {
   // cells stay uncolored instead of painting everything red off an empty map.
   const [compAvail, setCompAvail] = useState<ComponentAvailabilityMap>(new Map())
   const [invByPart, setInvByPart] = useState<Map<string, InventoryItem> | null>(null)
+  const [invItems, setInvItems] = useState<InventoryItem[] | null>(null)
   // Pre-ERPNext order archive (read-only), loaded in the background and merged
   // into the table only while searching (see tableData). Search is controlled at
   // the page level so we can widen the dataset when a query is active.
@@ -251,6 +252,15 @@ function OrdersPageContent() {
 
   const showLabels = canAccess('/labels')
   const canAssign = canAccess('assign_orders')
+
+  // Per-order inventory allocation (priority → due date → line #): open orders
+  // draw from the shared stock pool in fulfillment order, so a fulfillable
+  // order shows green even when total demand for its component exceeds stock.
+  // Memo over orders state so a priority override re-ranks the queue live.
+  const alloc: OrderAllocationMap = useMemo(
+    () => (invItems ? computeOrderAllocations(orders, invItems) : new Map()),
+    [orders, invItems],
+  )
 
   const defaultColumnKeys = useMemo(() => new Set([
     'line', 'ifNumber', 'poNumber', 'effectivePriority', 'dateOfRequest', 'requestedDate',
@@ -387,8 +397,12 @@ function OrdersPageContent() {
         const order = row as unknown as Order
         const cat = order.category.toLowerCase()
         const active = isActiveStatus(order)
+        // Archived rows can share ifNumber::line with a live order — never let
+        // them borrow a live row's allocation verdict.
+        const partOk = (!order.archived ? alloc.get(allocationKey(order))?.partOk : undefined)
+          ?? (order.fusionInventory >= order.orderQty)
         const colorClass = active && (cat.includes('molding') || cat.includes('snap'))
-          ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-black')
+          ? (partOk ? 'text-green-500' : 'text-red-400 font-black')
           : ''
         return (
           <span className="inline-flex items-center gap-1">
@@ -412,10 +426,13 @@ function OrdersPageContent() {
         if (!val || val === '-') return <span className="text-muted-foreground">-</span>
         const active = isActiveStatus(order)
         const avail = compAvail.get(val.toUpperCase())
-        // componentOk falls back to a direct stock-vs-minimum check for rows
-        // outside the demand window (e.g. completed), so they don't false-red.
+        // Open rows use the per-order allocation verdict; rows outside the
+        // demand window (e.g. completed) fall back to componentOk's direct
+        // stock check, so they don't false-red.
+        const ok = (!order.archived ? alloc.get(allocationKey(order))?.tireOk : undefined)
+          ?? componentOk(compAvail, val, order.orderQty, invByPart ?? undefined)
         const colorClass = active && invByPart
-          ? (componentOk(compAvail, val, order.orderQty, invByPart) ? 'text-green-500' : 'text-red-400 font-bold')
+          ? (ok ? 'text-green-500' : 'text-red-400 font-bold')
           : ''
         return (
           <span className="inline-flex items-center gap-1">
@@ -438,8 +455,10 @@ function OrdersPageContent() {
         if (!val || val === '-') return <span className="text-muted-foreground">-</span>
         const active = isActiveStatus(order)
         const avail = compAvail.get(val.toUpperCase())
+        const ok = (!order.archived ? alloc.get(allocationKey(order))?.hubOk : undefined)
+          ?? componentOk(compAvail, val, order.orderQty, invByPart ?? undefined)
         const colorClass = active && invByPart
-          ? (componentOk(compAvail, val, order.orderQty, invByPart) ? 'text-green-500' : 'text-red-400 font-bold')
+          ? (ok ? 'text-green-500' : 'text-red-400 font-bold')
           : ''
         return (
           <span className="inline-flex items-center gap-1">
@@ -506,7 +525,7 @@ function OrdersPageContent() {
     }] as ColumnDef<OrderRow>[] : []),
     // Extra columns — hidden by default, available via Columns picker
     ...getExtraOrderColumns<OrderRow>(defaultColumnKeys),
-  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick, printedLines, compAvail])
+  ], [t, defaultColumnKeys, canAssign, handleAssigneeUpdate, showLabels, handleLabelClick, printedLines, compAvail, alloc, invByPart])
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -520,6 +539,7 @@ function OrdersPageContent() {
       if (inventory) {
         setCompAvail(computeComponentAvailability(data, inventory))
         setInvByPart(new Map(inventory.map(i => [i.partNumber.trim().toUpperCase(), i])))
+        setInvItems(inventory)
       }
     }
 
@@ -881,12 +901,13 @@ function OrdersPageContent() {
                 userName={profile?.full_name || ''}
                 // same availability color the desktop Part # cell uses
                 partClassName={active && (cat.includes('molding') || cat.includes('snap'))
-                  ? (order.fusionInventory >= order.orderQty ? 'text-green-500' : 'text-red-400 font-bold')
+                  ? (((!order.archived ? alloc.get(allocationKey(order))?.partOk : undefined) ?? (order.fusionInventory >= order.orderQty)) ? 'text-green-500' : 'text-red-400 font-bold')
                   : ''}
                 expandedFields={
                   <OrderSpecsGrid
                     order={order}
                     compAvail={compAvail}
+                    alloc={order.archived ? undefined : alloc}
                     stock={inv ? { onHand: inv.onHand, committed: inv.committed, available: inv.inStock } : null}
                   />
                 }

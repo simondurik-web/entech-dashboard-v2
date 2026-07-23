@@ -1,7 +1,7 @@
 'use client'
 
 import type { Order } from '@/lib/google-sheets-shared'
-import type { ComponentAvailabilityMap } from '@/lib/component-availability'
+import { allocationKey, type ComponentAvailabilityMap, type OrderAllocationMap } from '@/lib/component-availability'
 import { InventoryPopover } from '@/components/InventoryPopover'
 import { useI18n } from '@/lib/i18n'
 
@@ -25,21 +25,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function OrderSpecsGrid({ order, compAvail, stock }: {
+export function OrderSpecsGrid({ order, compAvail, alloc, stock }: {
   order: Order
   compAvail: ComponentAvailabilityMap
+  /** Per-order allocation verdicts — when provided, cell colors reflect this
+   *  order's place in the fulfillment queue instead of the aggregate rule. */
+  alloc?: OrderAllocationMap
   stock?: OrderStockInfo | null
 }) {
   const { t } = useI18n()
   const isRollTech = order.category.toLowerCase().includes('roll')
+  const verdicts = alloc?.get(allocationKey(order))
 
   const component = (value: string, type: 'tire' | 'hub') => {
     const v = (value || '').trim()
     if (!isRollTech || !v || v === '-') return <span className="text-muted-foreground">-</span>
     const avail = compAvail.get(v.toUpperCase())
+    const ok = (type === 'tire' ? verdicts?.tireOk : verdicts?.hubOk) ?? avail?.ok
     return (
       <span className="inline-flex items-center gap-1">
-        <span className={avail?.ok ? 'text-green-500' : 'text-red-400'}>{v}</span>
+        <span className={ok ? 'text-green-500' : 'text-red-400'}>{v}</span>
         <InventoryPopover partNumber={v} partType={type} needed={avail?.demand} />
       </span>
     )
@@ -63,7 +68,7 @@ export function OrderSpecsGrid({ order, compAvail, stock }: {
               : '—'}
           </Field>
           <Field label={t('table.fusionInv')}>
-            <span className={stock.available >= order.orderQty ? 'text-green-500' : 'text-red-400'}>
+            <span className={(verdicts?.stockOk ?? (stock.available >= order.orderQty)) ? 'text-green-500' : 'text-red-400'}>
               {stock.available.toLocaleString()}
             </span>
           </Field>
