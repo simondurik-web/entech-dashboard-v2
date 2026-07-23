@@ -1139,15 +1139,39 @@ export default function InventoryOpsPage() {
   // ─── full inventory export (.xlsx, By Bin + By Product tabs) ───
   const [fullReportLoading, setFullReportLoading] = useState(false)
   const [reportDate, setReportDate] = useState('')
+  const [reportTime, setReportTime] = useState('')
+  const [reportTimes, setReportTimes] = useState<string[]>([])
   // ET, not browser-local: the server validates "not in the future" in
   // America/New_York, so a browser in a timezone ahead of ET must not offer
   // a "today" the API will 400. (en-CA formats as YYYY-MM-DD.)
   const reportDateMax = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date())
+
+  useEffect(() => {
+    setReportTime('')
+    setReportTimes([])
+    if (!reportDate || reportDate >= reportDateMax) return
+    const controller = new AbortController()
+    authedFetch(`/api/erpnext/inventory/report?date=${reportDate}&times=1`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error('snapshot times failed')
+        return response.json()
+      })
+      .then((data) => setReportTimes(data.availableTimes ?? []))
+      .catch(() => {
+        if (!controller.signal.aborted) setReportTimes([])
+      })
+    return () => controller.abort()
+  }, [reportDate, reportDateMax, authedFetch])
+
   const downloadFullInventory = async () => {
     if (fullReportLoading) return
     setFullReportLoading(true)
     try {
-      const r = await authedFetch(reportDate ? `/api/erpnext/inventory/report?date=${reportDate}` : '/api/erpnext/inventory/report')
+      const r = await authedFetch(
+        reportDate
+          ? `/api/erpnext/inventory/report?date=${reportDate}${reportTime ? `&time=${reportTime}` : ''}`
+          : '/api/erpnext/inventory/report'
+      )
       if (r.status === 404 && reportDate) {
         showFlash('err', t('inventoryOps.repNoSnapshot'))
         return
@@ -1264,7 +1288,11 @@ export default function InventoryOpsPage() {
 
       const buf = await wb.xlsx.writeBuffer()
       triggerDownload(
-        d.historical ? `inventory-${reportDate}.xlsx` : `inventory-${Date.now()}.xlsx`,
+        d.historical
+          ? reportTime
+            ? `inventory-${reportDate}-${reportTime.replace(':', '')}.xlsx`
+            : `inventory-${reportDate}.xlsx`
+          : `inventory-${Date.now()}.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         new Blob([buf])
       )
@@ -2764,6 +2792,20 @@ export default function InventoryOpsPage() {
               className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
             />
             <span className="text-[10px] text-muted-foreground">{t('inventoryOps.repDateHint')}</span>
+            {reportDate && reportTimes.length > 0 && (
+              <select
+                value={reportTime}
+                onChange={(e) => setReportTime(e.target.value)}
+                aria-label={t('inventoryOps.repTimeLabel')}
+                title={t('inventoryOps.repTimeLabel')}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">{t('inventoryOps.repTimeMidnight')}</option>
+                {reportTimes.map((time) => (
+                  <option key={time} value={time}>{time} ET</option>
+                ))}
+              </select>
+            )}
           </label>
           <button
             onClick={downloadFullInventory}

@@ -1476,6 +1476,8 @@
   "inventoryOps.repTabByBin": "By Bin",
   "inventoryOps.repTabByProduct": "By Product",
   "inventoryOps.repDateHint": "Export as of a past date (blank = now)",
+  "inventoryOps.repTimeMidnight": "Midnight close (default)",
+  "inventoryOps.repTimeLabel": "Snapshot time",
   "inventoryOps.repLegacyWarn": "⚠️ Data before Jul 21, 2026 comes from the old system and is NOT reliable",
   "inventoryOps.repNoBinsNote": "Bin detail not recorded for this date — product totals only",
   "inventoryOps.repNoSnapshot": "No inventory snapshot exists for that date",

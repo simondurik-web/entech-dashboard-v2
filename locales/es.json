@@ -1476,6 +1476,8 @@
   "inventoryOps.repTabByBin": "Por ubicación",
   "inventoryOps.repTabByProduct": "Por pieza",
   "inventoryOps.repDateHint": "Exportar como estaba en una fecha pasada (vacío = ahora)",
+  "inventoryOps.repTimeMidnight": "Cierre de medianoche (predeterminado)",
+  "inventoryOps.repTimeLabel": "Hora del corte",
   "inventoryOps.repLegacyWarn": "⚠️ Los datos anteriores al 21/07/2026 vienen del sistema antiguo y NO son confiables",
   "inventoryOps.repNoBinsNote": "Sin detalle por ubicación para esta fecha — solo totales por producto",
   "inventoryOps.repNoSnapshot": "No existe un registro de inventario para esa fecha",
