@@ -38,6 +38,8 @@ import {
   Disc,
   AlertTriangle,
   FileText,
+  Printer,
+  Search,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { usePermissions } from "@/lib/use-permissions"
@@ -56,6 +58,10 @@ const baseCommandPaletteItems = [
   { label: 'Pallet Photos', href: '/pallet-photos', section: 'Production', icon: <Camera className="size-4" /> },
   { label: 'Shipping Records', href: '/shipping-records', section: 'Production', icon: <Truck className="size-4" /> },
   { label: 'Shipping Overview', href: '/shipping-overview', section: 'Production', icon: <Ship className="size-4" /> },
+  { label: 'nav.shipmentsOverview', href: '/shipments', section: 'nav.shipments', icon: <PackageCheck className="size-4" />, translate: true },
+  { label: 'nav.shipmentsAnalytics', href: '/shipments/analytics', section: 'nav.shipments', icon: <BarChart3 className="size-4" />, translate: true },
+  { label: 'nav.shipmentsExplorer', href: '/shipments/explorer', section: 'nav.shipments', icon: <Search className="size-4" />, translate: true },
+  { label: 'nav.shipmentsPrintFiles', href: '/shipments/print', section: 'nav.shipments', icon: <Printer className="size-4" />, translate: true },
   { label: 'Scheduling', href: '/scheduling', section: 'Production', icon: <CalendarDays className="size-4" /> },
   { label: 'Labels', href: '/labels', section: 'Production', icon: <Tag className="size-4" /> },
   { label: 'Bill of Materials', href: '/bom', section: 'Production', icon: <Layers className="size-4" /> },
@@ -88,7 +94,13 @@ export default function DashboardLayout({
   const [headerHidden, setHeaderHidden] = useState(false)
   const commandPaletteItems = useMemo(
     () => {
-      const base = baseCommandPaletteItems.filter((item) => !item.href || canAccess(item.href))
+      const base = baseCommandPaletteItems
+        .filter((item) => !item.href || canAccess(item.href))
+        .map((item) =>
+          'translate' in item && item.translate
+            ? { ...item, label: t(item.label), section: t(item.section) }
+            : item
+        )
       if (!canSeeQuality) return base
       // Quality entries are gated by the QA role (not canAccess), so they're
       // added here rather than living in baseCommandPaletteItems.
@@ -116,6 +128,8 @@ export default function DashboardLayout({
     const stored = localStorage.getItem("dashboard-zoom")
     if (stored) {
       const val = parseFloat(stored)
+      // Restore persisted UI state after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!isNaN(val)) setZoomLevel(val)
     }
     const handler = (e: Event) => {

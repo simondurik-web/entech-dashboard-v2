@@ -151,8 +151,9 @@ export async function requireReadAccess(req: NextRequest): Promise<AuthedActor |
 }
 
 /** Resolve a user's effective dashboard role + custom_permissions (role from the
- *  dashboard app-role; no enrollment -> 'visitor'). */
-async function loadDashboardProfile(
+ *  dashboard app-role; no enrollment -> 'visitor'). Exported for routes that
+ *  need the ROLE after a requirePermission pass (e.g. printer-station ACLs). */
+export async function loadDashboardProfile(
   userId: string
 ): Promise<{ email: string | null; role: string; custom_permissions: Record<string, boolean> | null }> {
   const [{ data: profile }, { data: appRole }] = await Promise.all([
@@ -194,8 +195,16 @@ export async function requirePermission(req: NextRequest, permKey: string): Prom
   if (!user) return null
   if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
   const p = await loadDashboardProfile(user.id)
+  // Mirror the client's canAccess exactly: blocked is a hard deny before
+  // anything else (a leftover custom grant must not survive a block) ...
+  if (p.role === "blocked") return null
   if (p.role === "admin") return user
-  if (p.custom_permissions?.[permKey]) return user
+  // ... and an explicit per-user override wins in BOTH directions — a stored
+  // `false` must deny even when the role would allow (previously it silently
+  // fell through to the role check).
+  const custom = p.custom_permissions?.[permKey]
+  if (custom === true) return user
+  if (custom === false) return null
   const { data: rolePerm } = await supabaseAdmin
     .from("role_permissions")
     .select("menu_access")

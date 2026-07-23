@@ -69,9 +69,11 @@ export function usePermissions() {
       const stored = readStoredPermissions()
       if (stored && stored.length > 0) {
         cachedPermissions = stored
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPermissions(stored)
       }
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPermissions(cachedPermissions)
     }
     if (!revalidatedThisLoad) {
@@ -119,11 +121,17 @@ export function usePermissions() {
       for (const fallbackPath of PATH_FALLBACKS[path] ?? []) {
         if (rolePerm.menu_access[fallbackPath] === true) return true
       }
-      // Sub-path match: /quotes/new should match /quotes permission
+      // Sub-path match: /quotes/new should match /quotes permission. A per-user
+      // custom override on an ANCESTOR applies to its sub-pages too — a custom
+      // '/shipments' grant must open /shipments/analytics, and a custom denial
+      // must close it, exactly like the role map would.
       const segments = path.split("/").filter(Boolean)
       while (segments.length > 1) {
         segments.pop()
         const parentPath = "/" + segments.join("/")
+        if (profile.custom_permissions && parentPath in profile.custom_permissions) {
+          return profile.custom_permissions[parentPath] === true
+        }
         if (rolePerm.menu_access[parentPath] === true) return true
       }
       return false

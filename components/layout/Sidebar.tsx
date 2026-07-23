@@ -51,6 +51,7 @@ import {
   Building2,
   ExternalLink,
   Printer,
+  Search,
 } from "lucide-react"
 import { LanguageToggle } from "./LanguageToggle"
 import { ZoomControls } from "./ZoomControls"
@@ -85,6 +86,13 @@ const shippingItems: NavItem[] = [
   { tKey: "nav.palletPhotos", href: "/pallet-photos", icon: <Camera className="size-4" /> },
   { tKey: "nav.shippingRecords", href: "/shipping-records", icon: <Truck className="size-4" /> },
   { tKey: "nav.shippingOverview", href: "/shipping-overview", icon: <Ship className="size-4" /> },
+]
+
+const shipmentsItems: NavItem[] = [
+  { tKey: "nav.shipmentsOverview", href: "/shipments", icon: <PackageCheck className="size-4" /> },
+  { tKey: "nav.shipmentsAnalytics", href: "/shipments/analytics", icon: <BarChart3 className="size-4" />, sub: true },
+  { tKey: "nav.shipmentsExplorer", href: "/shipments/explorer", icon: <Search className="size-4" />, sub: true },
+  { tKey: "nav.shipmentsPrintFiles", href: "/shipments/print", icon: <Printer className="size-4" />, sub: true },
 ]
 
 const salesItems: NavItem[] = [
@@ -216,6 +224,8 @@ export function Sidebar({
   useEffect(() => () => stopScrollHold(), [])
 
   useEffect(() => {
+    // Hydration flag and persisted pin state are initialized from browser-only storage.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
     // Restore pin state
     const stored = localStorage.getItem("sidebar-pinned")
@@ -269,6 +279,7 @@ export function Sidebar({
 
   const filteredProduction = productionItems.filter((item) => canAccess(item.href))
   const filteredShipping = shippingItems.filter((item) => canAccess(item.href))
+  const filteredShipments = shipmentsItems.filter((item) => canAccess(item.href))
   const filteredSales = salesItems.filter((item) => canAccess(item.href))
   const filteredTools = toolsItems.filter((item) => canAccess(item.href))
   const showAllData = canAccess("/all-data")
@@ -293,6 +304,7 @@ export function Sidebar({
   const navSections: { key: string; hrefs: string[] }[] = [
     { key: "production", hrefs: productionItems.map((i) => i.href) },
     { key: "shipping", hrefs: shippingItems.map((i) => i.href) },
+    { key: "shipments", hrefs: shipmentsItems.map((i) => i.href) },
     { key: "sales", hrefs: salesItems.map((i) => i.href) },
     { key: "tools", hrefs: toolsItems.map((i) => i.href) },
     { key: "quality", hrefs: qualityNav.map((i) => i.href) },
@@ -523,6 +535,14 @@ export function Sidebar({
               </CollapsibleNavSection>
             )}
 
+            {filteredShipments.length > 0 && (
+              <CollapsibleNavSection label={t('nav.shipments')} expanded={expanded} storageKey="shipments" defaultOpen={true}>
+                <ul className="space-y-0.5 mt-1">
+                  {filteredShipments.map((item) => renderNavItem(item))}
+                </ul>
+              </CollapsibleNavSection>
+            )}
+
             {filteredSales.length > 0 && (
               <CollapsibleNavSection label={t('nav.salesFinance')} expanded={expanded} storageKey="sales" defaultOpen={true}>
                 <ul className="space-y-0.5 mt-1">
@@ -739,6 +759,28 @@ export function Sidebar({
             <CollapsibleNavSection label={t('nav.shipping')} expanded storageKey="shipping">
               <ul className="space-y-0.5">
                 {filteredShipping.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href} onClick={onClose} className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                        item.sub && "ml-4 text-xs",
+                        isActive ? "bg-white/15 font-medium text-white shadow-sm shadow-white/5 border-l-2 border-white/70" : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white border-l-2 border-transparent"
+                      )}>
+                        {item.icon}
+                        <span>{t(item.tKey)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </CollapsibleNavSection>
+          )}
+
+          {filteredShipments.length > 0 && (
+            <CollapsibleNavSection label={t('nav.shipments')} expanded storageKey="shipments">
+              <ul className="space-y-0.5">
+                {filteredShipments.map((item) => {
                   const isActive = pathname === item.href
                   return (
                     <li key={item.href}>

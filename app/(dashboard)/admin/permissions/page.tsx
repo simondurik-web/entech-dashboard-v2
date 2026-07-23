@@ -20,6 +20,7 @@ const ALL_MENU_PATHS = [
   '/orders', '/need-to-make', '/need-to-package', '/staged', '/shipped',
   '/inventory', '/inventory-ops', '/inventory-history', '/drawings', '/pallet-records', '/pallet-photos',
   '/shipping-records', '/shipping-overview', '/fp-reference', '/staged-records',
+  '/shipments',
   '/sales-overview', '/sales-parts', '/sales-customers', '/sales-dates',
   '/customer-reference', '/quotes',
   '/bom', '/material-requirements', '/all-data', '/purchasing',
@@ -39,6 +40,7 @@ const ALL_MENU_PATHS = [
   'labels:print',
   'labels:settings',
   'ship_loads',
+  'shipments:print',
 ]
 
 const PATH_LABELS: Record<string, string> = {
@@ -55,6 +57,7 @@ const PATH_LABELS: Record<string, string> = {
   '/pallet-photos': 'Pallet Photos',
   '/shipping-records': 'Shipping Records',
   '/shipping-overview': 'Shipping Overview',
+  '/shipments': 'Shipments',
   '/fp-reference': 'FP Reference',
   '/staged-records': 'Staged Records',
   '/sales-overview': 'Sales Overview',
@@ -83,6 +86,7 @@ const PATH_LABELS: Record<string, string> = {
   'labels:print': '🖨️ Print Labels',
   'labels:settings': '⚙️ Label Settings',
   'ship_loads': '🚚 Ship Loads',
+  'shipments:print': 'Shipments — send to printer',
 }
 
 // Optional one-line explanations shown under the permission name (Simon
@@ -97,6 +101,8 @@ const PATH_DESCRIPTIONS: Record<string, string> = {
   'labels:generate': 'Create new pallet labels (receive inventory).',
   'labels:print': 'Send labels to the Zebra printers.',
   'labels:settings': 'Change label templates and printer settings.',
+  '/shipments': 'View shipment overview, analytics, explorer, and print files.',
+  'shipments:print': 'Send letter-size shipment PDFs to an approved printer.',
 }
 
 export default function AdminPermissionsPage() {
@@ -136,7 +142,9 @@ export default function AdminPermissionsPage() {
   }, [user])
 
   useEffect(() => {
-    fetchData()
+    // The async refresh owns the loading-state transition for this mounted page.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData()
   }, [fetchData])
 
   const toggleAccess = (role: string, path: string) => {
