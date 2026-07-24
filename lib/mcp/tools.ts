@@ -642,7 +642,9 @@ export const MCP_TOOLS: McpToolDef[] = [
           "on_hand_total, reserved_staged, minimum), production_totals (part list + mold types), " +
           "bom_final_assemblies + bom_final_assembly_components (+ bom_sub_assemblies / " +
           "bom_individual_items), pallet_records, fulfillment_log (ERP shipping events), " +
-          "customer_part_mappings (customer part numbers + packaging).",
+          "customer_part_mappings (customer part numbers + packaging), shipment_history_safe " +
+          "(e-commerce/marketplace shipments — Home Depot/Amazon; ET days via sent_at AT TIME " +
+          "ZONE 'America/New_York'; LTL rows have no tracking by design).",
         sqlGotchas: [
           "MANY dashboard_orders columns are TEXT holding numbers/dates, and blanks are EMPTY " +
             "STRINGS, not NULL. Casting fails on ''. Always use NULLIF(col,'')::numeric (or " +

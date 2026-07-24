@@ -72,6 +72,18 @@ into steel ingots, and molds crumb rubber into products on hydraulic presses. ER
 - Real pallet counts come from pallet records; number_of_packages is only an estimate.
 - The ERP fulfillment log records staged / shipped / BOL-signed events with SO number and user.
 
+## E-commerce shipments (marketplace fulfillment — NOT ERPNext)
+- Table **shipment_history_safe**: one row per PO line item shipped by the marketplace
+  robots (Home Depot via "SPS EDI (Home Depot)", Amazon as "SPS-Amazon", more later —
+  source_system is the channel; treat it as an open list). Columns: run_id, sent_at
+  (timestamptz), po_number, partner, ship_to_name/address/city/state/zip, residential,
+  service, source_system, tracking, part_number, qty.
+- service = 'LTL (set-aside)' rows correctly have NO tracking — that is not missing data.
+- Days are Eastern Time: bucket with (sent_at AT TIME ZONE 'America/New_York')::date.
+- Distinct orders = COUNT(DISTINCT po_number) — a PO can span several part rows; summing
+  per-part counts double-counts.
+- Products: ECOBRD*/EB-* = Eco-Border, CURB-* = Curbs; color tokens RED/BRN|BR/BLK|BL/GRY|GREY.
+
 ## Costs (INTERNAL ONLY)
 - BOM cost breakdown: material (mostly crumb rubber + urethane) + labor + overhead/admin/
   depreciation percentages → total cost. These are manufacturing costs, NEVER customer prices.

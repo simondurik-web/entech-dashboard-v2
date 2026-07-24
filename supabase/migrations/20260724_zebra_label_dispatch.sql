@@ -5,3 +5,7 @@
 -- job to the letter printer).
 ALTER TABLE public.print_jobs ADD COLUMN IF NOT EXISTS target text;
 ALTER TABLE public.print_stations ADD COLUMN IF NOT EXISTS zebra_pdf boolean NOT NULL DEFAULT false;
+
+-- MCP connector (AI) read access to e-commerce shipments — the PII-safe view
+-- only; shipment_history itself (email/phone) stays invisible to the role.
+GRANT SELECT ON public.shipment_history_safe TO mcp_query_reader;
