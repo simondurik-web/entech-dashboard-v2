@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabaseAdmin
     .from('print_jobs')
     .select('id,station_id,status,error,created_at,printed_at')
-    .eq('item_code', 'SHIPMENT-DOC')
+    .in('item_code', ['SHIPMENT-DOC', 'SHIPMENT-LABELS'])
     .eq('batch', date)
     .order('created_at', { ascending: false })
     .limit(20)

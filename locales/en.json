@@ -1809,13 +1809,12 @@
   "shipments.printStatusUnknown": "Status unavailable",
   "shipments.fileOpenFailed": "The file could not be opened",
   "shipments.confirmPrint": "Send to printer:",
-  "shipments.zebraUnsupported": "Direct Zebra dispatch is not supported for this file",
+  "shipments.zebraUnsupported": "This file type can’t be sent to a printer — use View",
   "shipments.printQueued": "Print job queued",
   "shipments.copiesQueued": "copies queued",
   "shipments.printFailed": "The print job could not be queued",
   "shipments.opening": "Opening…",
   "shipments.view": "View",
-  "shipments.labelPrintNote": "4×6 label PDFs print via View for now — direct Zebra dispatch is coming",
   "shipments.printer": "Printer",
   "shipments.copies": "Copies",
   "shipments.decreaseCopies": "Decrease copies",
@@ -1831,5 +1830,6 @@
   "shipments.spsPortal": "Open SPS portal",
   "shipments.fullRangeExportCaption": "Full-range export — column filters don't apply",
   "shipments.truncatedWarning": "Showing the newest 10,000 rows — narrow the date range for full coverage.",
-  "shipments.shipmentNoun": "shipment"
+  "shipments.shipmentNoun": "shipment",
+  "shipments.zebraLabelPrinter": "4×6 label printer"
 }

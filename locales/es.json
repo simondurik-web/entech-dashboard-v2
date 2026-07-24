@@ -1809,13 +1809,12 @@
   "shipments.printStatusUnknown": "Estado no disponible",
   "shipments.fileOpenFailed": "No se pudo abrir el archivo",
   "shipments.confirmPrint": "Enviar a la impresora:",
-  "shipments.zebraUnsupported": "El envío directo a Zebra no es compatible con este archivo",
+  "shipments.zebraUnsupported": "Este tipo de archivo no se puede enviar a la impresora — use Ver",
   "shipments.printQueued": "Trabajo de impresión en cola",
   "shipments.copiesQueued": "copias en cola",
   "shipments.printFailed": "No se pudo poner en cola el trabajo de impresión",
   "shipments.opening": "Abriendo…",
   "shipments.view": "Ver",
-  "shipments.labelPrintNote": "Por ahora, los PDF de etiquetas de 4×6 se imprimen mediante Ver — el envío directo a Zebra estará disponible próximamente",
   "shipments.printer": "Impresora",
   "shipments.copies": "Copias",
   "shipments.decreaseCopies": "Reducir copias",
@@ -1831,5 +1830,6 @@
   "shipments.spsPortal": "Abrir portal SPS",
   "shipments.fullRangeExportCaption": "Exportación del rango completo — los filtros de columna no se aplican",
   "shipments.truncatedWarning": "Mostrando las 10,000 filas más recientes — reduzca el rango de fechas para obtener una cobertura completa.",
-  "shipments.shipmentNoun": "envío"
+  "shipments.shipmentNoun": "envío",
+  "shipments.zebraLabelPrinter": "Impresora de etiquetas 4×6"
 }

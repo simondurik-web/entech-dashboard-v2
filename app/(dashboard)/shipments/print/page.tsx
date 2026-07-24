@@ -32,6 +32,8 @@ interface DeliverablesResponse {
 interface PrintStation {
   id: string
   name: string
+  letter: boolean
+  zebra: boolean
 }
 
 interface PrintJob {
@@ -192,13 +194,21 @@ function ShipmentPrintContent() {
     return () => controller.abort()
   }, [canPrint, t])
 
+  // Preselect per file type when exactly one CAPABLE station exists — letter
+  // files preselect the letter station, label files the Zebra-capable one
+  // (today both are "Shipping", but the pools are independent).
   useEffect(() => {
-    if (stations.length !== 1 || files.length === 0) return
+    if (stations.length === 0 || files.length === 0) return
+    const letterStations = stations.filter((station) => station.letter)
+    const zebraStations = stations.filter((station) => station.zebra)
     setStationByPath((current) => {
       const next = { ...current }
       for (const file of files) {
-        if (LETTER_KINDS.has(file.kind) && !next[file.path]) {
-          next[file.path] = stations[0].id
+        if (next[file.path]) continue
+        if (LETTER_KINDS.has(file.kind) && letterStations.length === 1) {
+          next[file.path] = letterStations[0].id
+        } else if (file.kind === 'labels' && zebraStations.length === 1) {
+          next[file.path] = zebraStations[0].id
         }
       }
       return next
@@ -396,6 +406,12 @@ function ShipmentPrintContent() {
         <div className="grid gap-4 md:grid-cols-2">
           {files.map((file) => {
             const isLetter = LETTER_KINDS.has(file.kind)
+            const isLabels = file.kind === 'labels'
+            // Only stations with the matching physical capability are offered —
+            // the server enforces the same rule, this keeps the picker honest.
+            const eligibleStations = stations.filter((station) =>
+              isLabels ? station.zebra : station.letter
+            )
             const selectedStation = stationByPath[file.path] ?? ''
             const copies = copiesByPath[file.path] ?? 1
 
@@ -423,13 +439,7 @@ function ShipmentPrintContent() {
                   {viewingPath === file.path ? t('shipments.opening') : t('shipments.view')}
                 </button>
 
-                {file.kind === 'labels' && (
-                  <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-                    {t('shipments.labelPrintNote')}
-                  </p>
-                )}
-
-                {isLetter && canPrint && (
+                {(isLetter || isLabels) && canPrint && (
                   <div className="mt-4 space-y-3 border-t pt-4">
                     <label className="block text-xs font-medium text-muted-foreground">
                       <span className="mb-1 block">{t('shipments.printer')}</span>
@@ -444,8 +454,10 @@ function ShipmentPrintContent() {
                         className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground"
                       >
                         <option value="">{t('shipments.choosePrinter')}</option>
-                        {stations.map((station) => (
-                          <option key={station.id} value={station.id}>{station.name}</option>
+                        {eligibleStations.map((station) => (
+                          <option key={station.id} value={station.id}>
+                            {station.name}{isLabels ? ` — ${t('shipments.zebraLabelPrinter')}` : ''}
+                          </option>
                         ))}
                       </select>
                     </label>
@@ -477,7 +489,7 @@ function ShipmentPrintContent() {
                       </div>
                     </div>
 
-                    {stations.length === 0 && (
+                    {eligibleStations.length === 0 && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         {t('shipments.noApprovedPrinters')}
                       </p>

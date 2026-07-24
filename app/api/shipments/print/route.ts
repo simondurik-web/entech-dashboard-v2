@@ -21,6 +21,11 @@ const DELIVERABLE_PATH = /^\d{4}-\d{2}-\d{2}\/[A-Za-z0-9._-]+\.pdf$/
 // lowercased names, so a casing drift in the uploader must not strand a file
 // the UI already offers to print.
 const LETTER_PREFIXES = ['packing-slips-fedex-', 'packing-slips-ltl-', 'run-summary-']
+// 4x6 label PDFs go to a station's DRIVER-based Zebra queue (agent v3 prints
+// them with PageSize=w288h432; stations advertise the capability via
+// print_stations.zebra_pdf — only set after that station's agent is upgraded,
+// because older agents would route the job to the letter printer).
+const ZEBRA_PREFIXES = ['labels-print-']
 const MAX_BYTES = 10 * 1024 * 1024
 
 export async function POST(req: NextRequest) {
@@ -50,18 +55,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
   const basename = path.slice(date.length + 1).toLowerCase()
-  if (!LETTER_PREFIXES.some((prefix) => basename.startsWith(prefix))) {
-    return NextResponse.json({ error: 'zebra_unsupported' }, { status: 422 })
+  const isZebraFile = ZEBRA_PREFIXES.some((prefix) => basename.startsWith(prefix))
+  const isLetterFile = LETTER_PREFIXES.some((prefix) => basename.startsWith(prefix))
+  if (!isZebraFile && !isLetterFile) {
+    return NextResponse.json({ error: 'unsupported_file' }, { status: 422 })
   }
 
   try {
     const { data: st } = await supabaseAdmin
       .from('print_stations')
-      .select('id, letter_printer')
+      .select('id, letter_printer, zebra_pdf')
       .eq('id', station)
       .eq('enabled', true)
       .single()
-    if (!st?.letter_printer) {
+    // Never let a label land on letter paper or a packing slip on the Zebra:
+    // the file type dictates which capability the station must have.
+    if (isZebraFile && !st?.zebra_pdf) {
+      return NextResponse.json({ error: 'That station has no label printer' }, { status: 400 })
+    }
+    if (isLetterFile && !st?.letter_printer) {
       return NextResponse.json({ error: 'That station has no paper printer' }, { status: 400 })
     }
     if (!(await userCanPrintTo(actor.id, role, station))) {
@@ -86,8 +98,11 @@ export async function POST(req: NextRequest) {
       Array.from({ length: copies }, (_, i) => ({
         station_id: station,
         format: 'pdf',
+        // Agent v3 routes target='zebra' pdf jobs to the driver-based Zebra
+        // queue (PageSize=w288h432); letter jobs keep the v2 path unchanged.
+        target: isZebraFile ? 'zebra' : null,
         zpl: payload,
-        item_code: 'SHIPMENT-DOC',
+        item_code: isZebraFile ? 'SHIPMENT-LABELS' : 'SHIPMENT-DOC',
         batch: date,
         created_by: actor.id,
         idempotency_key: `shipdlv-${path}-${stamp}-${i + 1}`, // reprints are intentional
