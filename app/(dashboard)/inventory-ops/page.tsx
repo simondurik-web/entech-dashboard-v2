@@ -1620,7 +1620,31 @@ export default function InventoryOpsPage() {
       const serial = (d.batch as string) ?? batch
       // A qty change reissues the pallet as a new serial; follow it so the exact-pallet
       // view keeps showing the live pallet rather than the now-disabled old code.
-      showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
+      // 2xx is NOT blanket success (reprint parity): the order reservation may have
+      // failed to move to the new serial (pallet silently un-staged — Simon's 34E9,
+      // 2026-07-24), or the new label may not have printed (labelPending) — both
+      // need a loud, long-lived error instead of the green flash.
+      const adjustStaging = d.staging as
+        | { attached?: boolean; warning?: string; reason?: string }
+        | undefined
+      if (adjustStaging?.attached === false) {
+        // 'transfer_failed' = the server KNOWS the reservation didn't move (strong
+        // message); anything else = it couldn't be verified — could be a
+        // never-staged pallet's replay, so the wording is conditional.
+        const detachMsg =
+          adjustStaging.reason === 'transfer_failed'
+            ? t('inventoryOps.adjustDetached').replace('{batch}', serial)
+            : t('inventoryOps.reprintCheckStaging').replace('{batch}', serial)
+        showFlash(
+          'err',
+          detachMsg + (d.labelPending ? ` ${t('inventoryOps.labelPendingAdjust').replace('{batch}', serial)}` : ''),
+          20000
+        )
+      } else if (d.labelPending) {
+        showFlash('err', t('inventoryOps.labelPendingAdjust').replace('{batch}', serial), 20000)
+      } else {
+        showFlash('ok', `${t('inventoryOps.adjusted')} ${batch} -> ${qty}${serial !== batch ? ` (${serial})` : ''}`)
+      }
       setEditBatch(null)
       setMatchedPallet((mp) => (mp === batch ? serial : mp))
       setHistoryOpen((h) => (h === batch ? null : h)) // old serial gone after reissue

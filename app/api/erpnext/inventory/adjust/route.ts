@@ -157,6 +157,12 @@ export async function POST(req: NextRequest) {
   // pallet KNOWN to be staged, instead of quietly printing a bare label that
   // loses the SO/line off the physical pallet (codex round-6).
   const hadReservationRef = { current: false }
+  // Whether this adjust RELEASED a reservation it then failed to re-bind to the
+  // new serial (reprint parity). Read by the label step to tell "transfer
+  // legitimately failed → honest SO-less label" apart from "transfer should have
+  // happened but the live lookup can't see it → don't guess, go labelPending",
+  // and by the post-success staging verification below.
+  const transferFailedRef = { current: false }
   // Whether erp() ran in THIS request — on an erp_committed resume it didn't,
   // hadReservationRef carries no knowledge, and a lookup failure must still
   // fail closed rather than print bare (codex round-8, mirrors reprint).
@@ -173,13 +179,21 @@ export async function POST(req: NextRequest) {
       // stranded the reservation on the drained old serial).
       erpRanRef.current = true
       const reservation = (await reservationsForBatches([batch]).catch(() => ({} as Awaited<ReturnType<typeof reservationsForBatches>>)))[batch]
-      if (reservation) hadReservationRef.current = true
+      if (reservation) {
+        hadReservationRef.current = true
+        // Release BEFORE the reissue — ERPNext refuses to issue reserved stock,
+        // so releasing after reissuePallet deadlocks the op: the reissue 417s on
+        // the still-reserved old batch and the release it needs never runs
+        // (34E9 incident, 2026-07-24; reprint has released first since Abel's
+        // 5TJQ, 2026-07-08). Pin the release to the snapshotted SRE — a
+        // concurrent reassignment between the snapshot and here must not be
+        // cancelled (codex round-9). A throw here lands failed_pre_erp with
+        // nothing committed, which is exactly what that state means.
+        await releaseBatchReservation(batch, reservation.sre)
+      }
       const committed = await reissuePallet({ oldBatch: batch, newBatch, itemCode, targetQty: target, opKey: idempotencyKey })
       if (reservation) {
         try {
-          // Pin the release to the snapshotted SRE — a concurrent reassignment
-          // between the snapshot and here must not be cancelled (codex round-9).
-          await releaseBatchReservation(batch, reservation.sre)
           const loc = await getBatchLocation(newBatch, itemCode)
           if (loc && loc.qty > 0) {
             await reserveBatchesToSO({
@@ -197,8 +211,16 @@ export async function POST(req: NextRequest) {
                 },
               ],
             })
+          } else {
+            // The released reservation was NOT re-bound (no stock visible on the
+            // new serial) — surface the detach instead of silently un-staging
+            // the pallet (mirrors reprint's transferFailed handling).
+            transferFailedRef.current = true
+            console.error(`adjust: no stock on ${newBatch} to re-reserve after reissue of ${batch}`)
+            return { ...committed, extra: { ...committed.extra, warning: 'reservation_transfer_failed' } }
           }
         } catch (e) {
+          transferFailedRef.current = true
           console.error(`adjust: reservation transfer ${batch} -> ${newBatch} failed:`, e)
           return { ...committed, extra: { ...committed.extra, warning: 'reservation_transfer_failed' } }
         }
@@ -230,6 +252,13 @@ export async function POST(req: NextRequest) {
         throw new Error('reservation state unverifiable for the adjusted label — reprint required')
       }
       const fullyReserved = !!printReservation && printReservation.reservedQty + 1e-6 >= target
+      if (hadReservationRef.current && !transferFailedRef.current && !fullyReserved) {
+        // The transfer was made (no failure recorded) yet the live lookup can't
+        // see a full reservation — could be a suppressed read inside the lookup.
+        // Don't guess what the label should say; labelPending's retry re-reads
+        // and decides (reprint parity).
+        throw new Error('reservation transfer to the new label is unverified — retry the adjust')
+      }
       const printLineNo =
         fullyReserved && printReservation.soItem
           ? (await dashboardLinesForSoItems([printReservation.soItem]))[printReservation.soItem]
@@ -271,6 +300,65 @@ export async function POST(req: NextRequest) {
       return existing?.id ?? null
     },
   })
+
+  // Post-success staging verification (reprint parity; codex BLOCK on this fix's
+  // panel round): a release with a failed/never-run re-bind silently un-stages the
+  // pallet, and the refs are exact knowledge ONLY on a first-attempt run — on ANY
+  // retry the previous attempt may have released the reservation and crashed
+  // before rebinding, so this request's erp() legitimately finds no reservation
+  // and the refs read "never staged". Such runs recompute FAIL-CLOSED from live
+  // state; the client renders attached:false as a loud re-stage instruction.
+  if (result.status >= 200 && result.status < 300) {
+    const finalBatch = (result.body?.batch as string | undefined) ?? newBatch
+    if (erpRanRef.current && !isRetry) {
+      if (hadReservationRef.current && transferFailedRef.current) {
+        // Reconcile against live state first: reservation creation can commit and
+        // STILL throw (timeout), in which case the label already printed the SO
+        // correctly and reporting a hard detach would be false; if that reconcile
+        // itself fails, downgrade to 'unverified' rather than claiming a detach
+        // the server can't prove.
+        let outcome: 'attached' | 'transfer_failed' | 'unverified' = 'transfer_failed'
+        try {
+          const live = (await reservationsForBatches([finalBatch]))[finalBatch]
+          if (live && live.reservedQty + 1e-6 >= target) outcome = 'attached'
+        } catch {
+          outcome = 'unverified'
+        }
+        if (outcome !== 'attached') {
+          result.body.staging = {
+            attached: false,
+            reason: outcome,
+            warning:
+              outcome === 'transfer_failed'
+                ? 'The order reservation could not be moved to the new pallet code'
+                : `Could not verify the reservation on ${finalBatch}`,
+          }
+        }
+      }
+    } else {
+      // erp() skipped (erp_committed resume / done duplicate) OR any retry: the
+      // refs carry no reliable knowledge — a crash anywhere between release,
+      // reissue and re-reserve must not come back green. A never-staged pallet's
+      // retry also lands here, hence reason:'unverified' — the client words it
+      // as a conditional check, not a detach claim.
+      try {
+        const live = (await reservationsForBatches([finalBatch]))[finalBatch]
+        if (!(live && live.reservedQty + 1e-6 >= target)) {
+          result.body.staging = {
+            attached: false,
+            reason: 'unverified',
+            warning: `No full reservation is on ${finalBatch}`,
+          }
+        }
+      } catch {
+        result.body.staging = {
+          attached: false,
+          reason: 'unverified',
+          warning: `Could not verify the reservation on ${finalBatch}`,
+        }
+      }
+    }
+  }
 
   return NextResponse.json(result.body, { status: result.status })
 }
