@@ -28,20 +28,34 @@ const LETTER_PREFIXES = ['packing-slips-fedex-', 'packing-slips-ltl-', 'run-summ
 const ZEBRA_PREFIXES = ['labels-print-']
 const MAX_BYTES = 10 * 1024 * 1024
 
+/**
+ * Error responses carry a stable `code` the client maps to a localized string,
+ * plus an English `error` for logs and non-browser callers. Without the code
+ * the page collapsed every failure into one generic "could not be queued",
+ * so a 21.5 MB deliverable hitting the size guard on 2026-07-25 cost a morning
+ * of diagnosis for something this route already knew.
+ */
+function fail(code: string, message: string, status: number, extra?: Record<string, unknown>) {
+  return NextResponse.json(
+    { code, error: message, ...extra },
+    { status, headers: { 'Cache-Control': 'no-store' } }
+  )
+}
+
 export async function POST(req: NextRequest) {
   // requirePermissionOrDevice: per-user custom_permissions grants/denies apply
   // (matching the client's canAccessExact), and approved floor devices with a
   // permitted role can print — the shipping-floor tablets are the actual users
   // of this page. The station ACL below still gates WHERE they can print.
   const actor = await requirePermissionOrDevice(req, 'shipments:print')
-  if (!actor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!actor) return fail('errForbidden', 'Forbidden', 403)
   const role = actor.kind === 'device' ? (actor.role ?? '') : (await loadDashboardProfile(actor.id)).role
 
   let body: { date?: unknown; path?: unknown; station?: unknown; copies?: unknown }
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+    return fail('errInvalidRequest', 'Invalid request', 400)
   }
 
   const date = typeof body.date === 'string' ? body.date : ''
@@ -52,13 +66,13 @@ export async function POST(req: NextRequest) {
   const copies = Math.min(5, Math.max(1, Math.floor(Number(body.copies)) || 1))
 
   if (!isRealDate(date) || !DELIVERABLE_PATH.test(path) || !path.startsWith(`${date}/`) || !station) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+    return fail('errInvalidRequest', 'Invalid request', 400)
   }
   const basename = path.slice(date.length + 1).toLowerCase()
   const isZebraFile = ZEBRA_PREFIXES.some((prefix) => basename.startsWith(prefix))
   const isLetterFile = LETTER_PREFIXES.some((prefix) => basename.startsWith(prefix))
   if (!isZebraFile && !isLetterFile) {
-    return NextResponse.json({ error: 'unsupported_file' }, { status: 422 })
+    return fail('errUnsupportedFile', 'unsupported_file', 422)
   }
 
   try {
@@ -71,25 +85,34 @@ export async function POST(req: NextRequest) {
     // Never let a label land on letter paper or a packing slip on the Zebra:
     // the file type dictates which capability the station must have.
     if (isZebraFile && !st?.zebra_pdf) {
-      return NextResponse.json({ error: 'That station has no label printer' }, { status: 400 })
+      return fail('errNoLabelPrinter', 'That station has no label printer', 400)
     }
     if (isLetterFile && !st?.letter_printer) {
-      return NextResponse.json({ error: 'That station has no paper printer' }, { status: 400 })
+      return fail('errNoPaperPrinter', 'That station has no paper printer', 400)
     }
     if (!(await userCanPrintTo(actor.id, role, station))) {
-      return NextResponse.json({ error: 'Not allowed to print to this station' }, { status: 403 })
+      return fail('errNotAllowed', 'Not allowed to print to this station', 403)
     }
 
     const { data: file, error: downloadError } = await supabaseAdmin.storage.from(BUCKET).download(path)
     if (downloadError || !file) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 })
+      return fail('errFileMissing', 'File not found', 404)
     }
     const bytes = new Uint8Array(await file.arrayBuffer())
+    const sizeMb = Math.round((bytes.length / 1024 / 1024) * 10) / 10
+    const maxMb = Math.round(MAX_BYTES / 1024 / 1024)
     if (bytes.length > MAX_BYTES) {
-      return NextResponse.json({ error: 'File too large for the relay — use View + AirPrint' }, { status: 413 })
+      // State the ACTUAL size and the limit: "too large" alone is what made
+      // this un-diagnosable from the screen.
+      return fail(
+        'errTooLarge',
+        `File too large for the relay (${sizeMb} MB, limit ${maxMb} MB) — use View + AirPrint`,
+        413,
+        { sizeMb, maxMb }
+      )
     }
     if (!(bytes.length > 4 && bytes[0] === 0x25)) {
-      return NextResponse.json({ error: 'File is not a PDF' }, { status: 422 })
+      return fail('errNotPdf', 'File is not a PDF', 422)
     }
 
     const payload = Buffer.from(bytes).toString('base64')
@@ -114,6 +137,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ queued: copies }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('shipment deliverable print failed:', error)
-    return NextResponse.json({ error: 'Print failed. Try again.' }, { status: 502 })
+    return fail('errGeneric', 'Print failed. Try again.', 502)
   }
 }

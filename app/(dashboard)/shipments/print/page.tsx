@@ -313,11 +313,25 @@ function ShipmentPrintContent() {
         }),
       })
       if (!response.ok) {
-        if (response.status === 422) {
-          toast({ title: t('shipments.zebraUnsupported'), type: 'error' })
-          return
+        // The route knows exactly why it refused; show THAT, not a generic
+        // failure. Collapsing every case into one string is what turned a
+        // plain "file is 21.5 MB, limit is 10 MB" into a morning of digging.
+        const body = (await response.json().catch(() => ({}))) as {
+          code?: string
+          error?: string
+          sizeMb?: number
+          maxMb?: number
         }
-        throw new Error(`Request failed: ${response.status}`)
+        const key = body.code ? `shipments.print${body.code[0].toUpperCase()}${body.code.slice(1)}` : ''
+        const localized = key ? t(key) : ''
+        const message =
+          localized && localized !== key
+            ? localized
+                .replace('{sizeMb}', String(body.sizeMb ?? ''))
+                .replace('{maxMb}', String(body.maxMb ?? ''))
+            : body.error || t('shipments.printFailed')
+        toast({ title: message, type: 'error' })
+        return
       }
       const result = (await response.json()) as { queued: number }
       toast({
