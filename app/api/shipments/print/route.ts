@@ -99,7 +99,10 @@ export async function POST(req: NextRequest) {
       return fail('errFileMissing', 'File not found', 404)
     }
     const bytes = new Uint8Array(await file.arrayBuffer())
-    const sizeMb = Math.round((bytes.length / 1024 / 1024) * 10) / 10
+    // Round UP: a 10.04 MB file rounded to nearest would report "10 MB, limit
+    // 10 MB" and read as a contradiction. Ceiling keeps the number strictly
+    // above the limit whenever the file actually is.
+    const sizeMb = Math.ceil((bytes.length / 1024 / 1024) * 10) / 10
     const maxMb = Math.round(MAX_BYTES / 1024 / 1024)
     if (bytes.length > MAX_BYTES) {
       // State the ACTUAL size and the limit: "too large" alone is what made
