@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { PDFDocument, degrees } from 'pdf-lib'
+import { PDFDocument, PDFName, degrees } from 'pdf-lib'
 import { allowedStationIds, userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { loadDashboardProfile, requirePermission, requireUser } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -198,30 +198,22 @@ async function preparePdf(
   bytes: Uint8Array,
   printerKind: PrinterKind,
   quarterTurns: number,
-  fitToPage: boolean,
+  relayable: boolean,
   firstPageOnly = false
 ): Promise<{ bytes: Uint8Array; fitSkipped: boolean }> {
   const source = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })
   const allPages = source.getPages()
-  // A preview only has to show orientation and scale, so it renders one page.
-  // That bounds the work a repeated rotate can trigger to a single page rather
-  // than the whole 100-page allowance, every time.
+  // A preview renders one page, which bounds the work a repeated rotate can
+  // trigger. The DECISION of whether to re-lay at all is NOT made here — it
+  // comes from the caller, computed over the whole document — because deciding
+  // it from page one would let a preview promise a fitted page while the real
+  // job silently declines because page seven carries a signature.
   const pages = firstPageOnly ? allPages.slice(0, 1) : allPages
-
-  // embedPages() rebuilds a page from its content stream only, so annotations
-  // -- form fields, signatures, stamps, review comments -- do NOT survive it.
-  // Losing a signature silently is far worse than a clipped margin, so a
-  // document carrying any annotation is never re-laid; it prints at true size
-  // and the caller tells the operator why.
-  const annots = pages.some((page) => {
-    const list = page.node.Annots()
-    return Boolean(list && list.size() > 0)
-  })
 
   // Rotation-only path. setRotation is page metadata, so it preserves
   // everything, and it is also the honest reading of "fit off": turn it if I
   // asked, but do not resize my document.
-  if (!fitToPage || annots) {
+  if (!relayable) {
     if (quarterTurns || firstPageOnly) {
       pages.forEach((page) => {
         const angle = (((page.getRotation().angle + quarterTurns * 90) % 360) + 360) % 360
@@ -231,9 +223,9 @@ async function preparePdf(
       if (firstPageOnly) {
         for (let index = allPages.length - 1; index >= 1; index -= 1) source.removePage(index)
       }
-      return { bytes: await source.save(), fitSkipped: annots }
+      return { bytes: await source.save(), fitSkipped: true }
     }
-    return { bytes, fitSkipped: annots }
+    return { bytes, fitSkipped: true }
   }
 
   const target = printerKind === 'paper' ? PAPER_PAGE : LABEL_PAGE
@@ -272,8 +264,17 @@ async function preparePdf(
       const displayWidth = pageTurns % 2 === 1 ? rawHeight : rawWidth
       const displayHeight = pageTurns % 2 === 1 ? rawWidth : rawHeight
 
-      const uprightScale = Math.min(availableWidth / displayWidth, availableHeight / displayHeight)
-      const turnedScale = Math.min(availableWidth / displayHeight, availableHeight / displayWidth)
+      // Content that already fits the SHEET prints at true size. Insetting
+      // unconditionally shrank every ordinary letter page by ~6% — a silent
+      // scale error on dimensioned drawings, and the opposite of this
+      // feature's stated aim of preserving 1:1. The inset is only spent on
+      // content that genuinely overhangs.
+      const scaleFor = (width: number, height: number) =>
+        width <= target.width && height <= target.height
+          ? 1
+          : Math.min(availableWidth / width, availableHeight / height)
+      const uprightScale = scaleFor(displayWidth, displayHeight)
+      const turnedScale = scaleFor(displayHeight, displayWidth)
       const autoTurn = turnedScale > uprightScale
 
       const turns = (pageTurns + (autoTurn ? 1 : 0) + quarterTurns) % 4
@@ -282,10 +283,7 @@ async function preparePdf(
       const footprintHeight = swapped ? rawWidth : rawHeight
       // Never scale ABOVE 1: blowing a small page up to fill the sheet is not
       // what "fit" means.
-      const scale = Math.min(
-        1,
-        Math.min(availableWidth / footprintWidth, availableHeight / footprintHeight)
-      )
+      const scale = scaleFor(footprintWidth, footprintHeight)
       const boxWidth = footprintWidth * scale
       const boxHeight = footprintHeight * scale
       const left = (target.width - boxWidth) / 2
@@ -535,6 +533,7 @@ export async function POST(req: NextRequest) {
     // document into a fresh one, which drops the encryption flag — inspecting
     // the output would silently hide a password-protected file we must refuse.
     let pageCount: number
+    let relayable = false
     if (uploadKind === 'pdf') {
       try {
         const document = await PDFDocument.load(bytes, {
@@ -555,6 +554,19 @@ export async function POST(req: NextRequest) {
         if (pageCount < 1) {
           return fail('errPdfEmpty', 'This PDF has no pages to print.', 400)
         }
+        // Decide ONCE, over the whole document, whether the page may be re-laid.
+        // Two things forbid it, both because rebuilding a page from its content
+        // stream drops what is not in that stream:
+        //  - annotations: form fields, signatures, stamps, comments
+        //  - optional content groups: a layer marked hidden or non-printing
+        //    would come back VISIBLE, exposing a concealed revision on a sheet
+        //    at a shared printer.
+        const hasAnnotations = document.getPages().some((page) => {
+          const list = page.node.Annots()
+          return Boolean(list && list.size() > 0)
+        })
+        const hasOptionalContent = document.catalog.has(PDFName.of('OCProperties'))
+        relayable = fitToPage && !hasAnnotations && !hasOptionalContent
         // Uploaded PDFs are passed through at their own size (only images get
         // re-wrapped to the target geometry), so a letter-size document sent to
         // the Zebra would chew through a stack of 4x6 labels before anyone
@@ -594,7 +606,7 @@ export async function POST(req: NextRequest) {
     let fitSkipped = false
     try {
       if (uploadKind === 'pdf') {
-        const prepared = await preparePdf(bytes, kind, quarterTurns, fitToPage, previewOnly)
+        const prepared = await preparePdf(bytes, kind, quarterTurns, relayable, previewOnly)
         pdfBytes = prepared.bytes
         fitSkipped = prepared.fitSkipped
       } else {
