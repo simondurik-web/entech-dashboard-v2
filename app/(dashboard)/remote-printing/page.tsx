@@ -134,7 +134,11 @@ export default function RemotePrintingPage() {
       showFlash('err', t('remotePrinting.errTooLarge'), 20000)
       return
     }
-    if (chosen.type && !ACCEPTED_TYPES.has(chosen.type)) {
+    // Some browsers/OSes report a generic or empty type for a perfectly good
+    // PDF. Only pre-reject a type we positively recognize as wrong; the server
+    // is the real gate and checks magic bytes.
+    const typeIsMeaningful = Boolean(chosen.type) && chosen.type !== 'application/octet-stream'
+    if (typeIsMeaningful && !ACCEPTED_TYPES.has(chosen.type)) {
       clearFile()
       showFlash('err', t('remotePrinting.errUnsupported'), 20000)
       return

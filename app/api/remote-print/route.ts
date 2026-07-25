@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PDFDocument } from 'pdf-lib'
-import { requireMenuAccess } from '@/lib/erpnext/auth'
 import { allowedStationIds, userCanPrintTo } from '@/lib/erpnext/printer-access'
+import { loadDashboardProfile, requirePermission, requireUser } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -10,16 +10,43 @@ export const maxDuration = 60
 
 const MAX_BYTES = 10 * 1024 * 1024
 // One row is inserted per copy, each carrying its own base64 payload, so the
-// INSERT grows with payload × copies. Cap the PRODUCT as well as the file.
-const MAX_TOTAL_BYTES = 16 * 1024 * 1024
+// INSERT grows with payload × copies. Cap the PRODUCT as well as the file, and
+// measure the ENCODED payload — base64 is ~33% larger than the raw PDF.
+const MAX_TOTAL_PAYLOAD_BYTES = 16 * 1024 * 1024
+// Byte caps do not bound physical output: a small 300-page PDF × 20 copies is
+// 6000 sheets. Bound the paper, not just the upload.
+const MAX_TOTAL_PAGES = 200
+// pdf-lib decodes PNG to raw pixels (JPEG is embedded as-is), so a small
+// well-compressed PNG can expand into gigabytes. 25 MP ≈ 100 MB decoded.
+const MAX_IMAGE_PIXELS = 25_000_000
 const PAPER_PAGE = { width: 612, height: 792, margin: 36 }
 const LABEL_PAGE = { width: 288, height: 432, margin: 9 }
+
+class ImageTooLargeError extends Error {}
 
 type PrinterKind = 'paper' | 'label'
 type UploadKind = 'pdf' | 'jpeg' | 'png'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+type Actor = { userId: string; role: string }
+
+/**
+ * `requirePermission` (not `requireMenuAccess`) so a per-user
+ * `custom_permissions` DENIAL is honored server-side exactly as the client's
+ * canAccess honors it — a role grant must not override a user-level `false`.
+ * Authentication and authorization stay separate so an expired token still
+ * gets a 401 and lets authedFetch refresh, instead of a misleading 403.
+ */
+async function authorize(req: NextRequest): Promise<Actor | NextResponse> {
+  const user = await requireUser(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const permitted = await requirePermission(req, '/remote-printing')
+  if (!permitted) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { role } = await loadDashboardProfile(user.id)
+  return { userId: user.id, role }
 }
 
 /**
@@ -69,7 +96,24 @@ function sanitizedFilename(filename: string): string {
   return basename.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) || 'upload'
 }
 
+/**
+ * Width/height from the PNG IHDR chunk, which is always first: 8-byte
+ * signature, 4-byte length, "IHDR", then two big-endian uint32s. Read BEFORE
+ * embedding so a decompression bomb is rejected rather than decoded.
+ */
+function pngDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 24) return null
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  return { width: view.getUint32(16), height: view.getUint32(20) }
+}
+
 async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pdf'>, printerKind: PrinterKind) {
+  if (uploadKind === 'png') {
+    const dimensions = pngDimensions(bytes)
+    if (dimensions && dimensions.width * dimensions.height > MAX_IMAGE_PIXELS) {
+      throw new ImageTooLargeError('PNG exceeds the pixel limit')
+    }
+  }
   const pdf = await PDFDocument.create()
   const image = uploadKind === 'jpeg' ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
   const pageSize = printerKind === 'paper' ? PAPER_PAGE : LABEL_PAGE
@@ -91,8 +135,8 @@ async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pd
 }
 
 export async function GET(req: NextRequest) {
-  const guard = await requireMenuAccess(req, '/remote-printing')
-  if (!guard.ok) return guard.res
+  const actor = await authorize(req)
+  if (actor instanceof NextResponse) return actor
 
   try {
     const { data, error } = await supabaseAdmin
@@ -102,7 +146,7 @@ export async function GET(req: NextRequest) {
       .order('name', { ascending: true })
     if (error) throw new Error(error.message)
 
-    const allowed = await allowedStationIds(guard.userId, guard.role)
+    const allowed = await allowedStationIds(actor.userId, actor.role)
     const printers = (data ?? [])
       .filter((station) => allowed === 'all' || allowed.has(station.id))
       .flatMap((station) => {
@@ -143,8 +187,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireMenuAccess(req, '/remote-printing')
-  if (!guard.ok) return guard.res
+  const actor = await authorize(req)
+  if (actor instanceof NextResponse) return actor
 
   let form: FormData
   try {
@@ -192,7 +236,7 @@ export async function POST(req: NextRequest) {
       return fail('errNoLabelPrinter', 'That station does not support 4x6 label printing.', 400)
     }
 
-    if (!(await userCanPrintTo(guard.userId, guard.role, stationId))) {
+    if (!(await userCanPrintTo(actor.userId, actor.role, stationId))) {
       return fail('errNotAllowed', 'You are not allowed to print to that station.', 403)
     }
 
@@ -217,14 +261,45 @@ export async function POST(req: NextRequest) {
       return fail('errUnsupported', 'Unsupported file. Choose a PDF, JPEG, or PNG file.', 415)
     }
 
-    const pdfBytes =
-      uploadKind === 'pdf' ? bytes : await imageToPdf(bytes, uploadKind, kind)
+    let pdfBytes: Uint8Array
+    try {
+      pdfBytes = uploadKind === 'pdf' ? bytes : await imageToPdf(bytes, uploadKind, kind)
+    } catch (error) {
+      if (error instanceof ImageTooLargeError) {
+        return fail('errImageTooLarge', 'That image has too many pixels to print.', 413)
+      }
+      return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
+    }
+
+    // An uploaded PDF is passed through untouched, so count its pages to bound
+    // the paper. A PDF we cannot parse (encrypted, unusual producer) still
+    // prints fine at the station today — don't reject what already works.
+    let pageCount: number | null = null
+    if (uploadKind === 'pdf') {
+      try {
+        pageCount = (await PDFDocument.load(pdfBytes, { updateMetadata: false })).getPageCount()
+      } catch {
+        pageCount = null
+      }
+    } else {
+      pageCount = 1
+    }
+    if (pageCount !== null && pageCount * copies > MAX_TOTAL_PAGES) {
+      const maxCopies = Math.max(1, Math.floor(MAX_TOTAL_PAGES / pageCount))
+      return fail(
+        'errTooManyPages',
+        `That is ${pageCount * copies} pages. Print at most ${maxCopies} copies of a ${pageCount}-page document.`,
+        413,
+        { pages: pageCount, maxCopies }
+      )
+    }
 
     // Each copy is its own row carrying the full payload; a big file × many
     // copies would otherwise become a single multi-hundred-MB INSERT that the
     // API rejects and the floor agent then has to pull over Tailscale.
-    if (pdfBytes.length * copies > MAX_TOTAL_BYTES) {
-      const maxCopies = Math.max(1, Math.floor(MAX_TOTAL_BYTES / pdfBytes.length))
+    const payload = Buffer.from(pdfBytes).toString('base64')
+    if (payload.length * copies > MAX_TOTAL_PAYLOAD_BYTES) {
+      const maxCopies = Math.max(1, Math.floor(MAX_TOTAL_PAYLOAD_BYTES / payload.length))
       return fail(
         'errTotalTooLarge',
         `This file is too large to print ${copies} times at once. Print at most ${maxCopies} at a time.`,
@@ -233,7 +308,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const payload = Buffer.from(pdfBytes).toString('base64')
     const stamp = Date.now()
     const { error: insertError } = await supabaseAdmin.from('print_jobs').insert(
       Array.from({ length: copies }, (_, index) => ({
@@ -243,8 +317,8 @@ export async function POST(req: NextRequest) {
         item_code: 'REMOTE-PRINT',
         batch: sanitizedFilename(fileField.name),
         target: kind === 'label' ? 'zebra' : null,
-        created_by: guard.userId,
-        idempotency_key: `remote-${guard.userId}-${stamp}-${index + 1}`,
+        created_by: actor.userId,
+        idempotency_key: `remote-${actor.userId}-${stamp}-${index + 1}`, // reprints are intentional
         status: 'pending',
       }))
     )

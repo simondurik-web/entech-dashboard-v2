@@ -1618,6 +1618,8 @@
   "remotePrinting.errNotAllowed": "No tienes permiso para imprimir en esa estación.",
   "remotePrinting.errNoFile": "Elige un archivo para imprimir.",
   "remotePrinting.errTotalTooLarge": "Este archivo es demasiado grande para imprimirlo tantas veces a la vez. Imprime como máximo {max} a la vez.",
+  "remotePrinting.errTooManyPages": "Eso es demasiado papel para un solo trabajo. Imprime como máximo {max} copias de este documento.",
+  "remotePrinting.errImageTooLarge": "Esa imagen es demasiado grande para imprimirla. Redúcela o toma una captura de pantalla.",
   "remotePrinting.loadingPrinters": "Cargando impresoras…",
   "remotePrinting.selectPrinter": "Elige una impresora",
   "login.or": "o",
