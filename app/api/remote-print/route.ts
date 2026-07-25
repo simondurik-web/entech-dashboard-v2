@@ -198,10 +198,15 @@ async function preparePdf(
   bytes: Uint8Array,
   printerKind: PrinterKind,
   quarterTurns: number,
-  fitToPage: boolean
+  fitToPage: boolean,
+  firstPageOnly = false
 ): Promise<{ bytes: Uint8Array; fitSkipped: boolean }> {
   const source = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })
-  const pages = source.getPages()
+  const allPages = source.getPages()
+  // A preview only has to show orientation and scale, so it renders one page.
+  // That bounds the work a repeated rotate can trigger to a single page rather
+  // than the whole 100-page allowance, every time.
+  const pages = firstPageOnly ? allPages.slice(0, 1) : allPages
 
   // embedPages() rebuilds a page from its content stream only, so annotations
   // -- form fields, signatures, stamps, review comments -- do NOT survive it.
@@ -217,11 +222,15 @@ async function preparePdf(
   // everything, and it is also the honest reading of "fit off": turn it if I
   // asked, but do not resize my document.
   if (!fitToPage || annots) {
-    if (quarterTurns) {
+    if (quarterTurns || firstPageOnly) {
       pages.forEach((page) => {
         const angle = (((page.getRotation().angle + quarterTurns * 90) % 360) + 360) % 360
         page.setRotation(degrees(angle))
       })
+      // Drop the rest for a preview so it matches what the fitted path shows.
+      if (firstPageOnly) {
+        for (let index = allPages.length - 1; index >= 1; index -= 1) source.removePage(index)
+      }
       return { bytes: await source.save(), fitSkipped: annots }
     }
     return { bytes, fitSkipped: annots }
@@ -233,11 +242,28 @@ async function preparePdf(
 
   try {
     const out = await PDFDocument.create()
-    const embedded = await out.embedPages(pages)
+    // Embed the CROP box, not the MediaBox. embedPages defaults to the
+    // MediaBox, so content a document deliberately crops away — trimmed
+    // artwork, prior revisions — would reappear on a sheet at a shared
+    // station. The crop box is what the author intends to be visible.
+    const cropBoxes = pages.map((page) => {
+      const box = page.getCropBox()
+      return {
+        left: box.x,
+        bottom: box.y,
+        right: box.x + box.width,
+        top: box.y + box.height,
+      }
+    })
+    const embedded = await out.embedPages(pages, cropBoxes)
 
     embedded.forEach((embeddedPage, index) => {
       const sourcePage = pages[index]
-      const { width: rawWidth, height: rawHeight } = sourcePage.getSize()
+      // Size from the same box that was embedded, or the fit maths would be
+      // computed for a page larger than the one actually drawn.
+      const crop = sourcePage.getCropBox()
+      const rawWidth = crop.width
+      const rawHeight = crop.height
       // getSize() reports the MediaBox and ignores /Rotate, so a page that
       // DISPLAYS portrait can measure landscape. embedPage does not apply
       // /Rotate either, so it is folded into the turns we draw with.
@@ -535,25 +561,6 @@ export async function POST(req: NextRequest) {
         // noticed. EVERY page is checked, not just the first: a document that
         // opens with a 4x6 page and continues at letter size would otherwise
         // pass and waste the roll from page two onward.
-        // Only when NOT fitting: with fit on, every page is re-laid onto the
-        // label so nothing can overhang, and refusing would be wrong.
-        if (kind === 'label' && !fitToPage && pageCount <= MAX_TOTAL_PAGES) {
-          const oversized = document.getPages().findIndex((page) => {
-            const { width, height } = page.getSize()
-            return (
-              Math.min(width, height) > LABEL_PAGE.width * LABEL_FIT_TOLERANCE ||
-              Math.max(width, height) > LABEL_PAGE.height * LABEL_FIT_TOLERANCE
-            )
-          })
-          if (oversized !== -1) {
-            return fail(
-              'errPageTooBigForLabel',
-              `Page ${oversized + 1} is larger than a 4x6 label. Send this to a paper printer instead.`,
-              400,
-              { page: oversized + 1 }
-            )
-          }
-        }
       } catch {
         return fail(
           'errPdfUnreadable',
@@ -587,7 +594,7 @@ export async function POST(req: NextRequest) {
     let fitSkipped = false
     try {
       if (uploadKind === 'pdf') {
-        const prepared = await preparePdf(bytes, kind, quarterTurns, fitToPage)
+        const prepared = await preparePdf(bytes, kind, quarterTurns, fitToPage, previewOnly)
         pdfBytes = prepared.bytes
         fitSkipped = prepared.fitSkipped
       } else {
@@ -601,6 +608,40 @@ export async function POST(req: NextRequest) {
         return fail('errImageUnreadable', 'That image could not be read. Re-save it and try again.', 400)
       }
       return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
+    }
+
+    // Validate the bytes that will ACTUALLY print. Fit being requested does not
+    // mean fit was applied — a document with annotations, or one embedPages
+    // could not rebuild, comes back unfitted — and an unfitted letter page sent
+    // to the Zebra is exactly the wasted label roll this guard exists to stop.
+    if (kind === 'label' && fitSkipped) {
+      try {
+        const printed = await PDFDocument.load(pdfBytes, {
+          updateMetadata: false,
+          ignoreEncryption: true,
+        })
+        const oversized = printed.getPages().findIndex((page) => {
+          const { width, height } = page.getSize()
+          return (
+            Math.min(width, height) > LABEL_PAGE.width * LABEL_FIT_TOLERANCE ||
+            Math.max(width, height) > LABEL_PAGE.height * LABEL_FIT_TOLERANCE
+          )
+        })
+        if (oversized !== -1) {
+          return fail(
+            'errPageTooBigForLabel',
+            `Page ${oversized + 1} is larger than a 4x6 label. Send this to a paper printer instead.`,
+            400,
+            { page: oversized + 1 }
+          )
+        }
+      } catch {
+        return fail(
+          'errPdfUnreadable',
+          'This PDF could not be read. Re-save or re-export it and try again.',
+          400
+        )
+      }
     }
 
     // Preview: hand back the finished page instead of queueing it, so what the
