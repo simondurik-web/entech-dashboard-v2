@@ -1,0 +1,322 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertCircle, Check, FileUp, Loader2, Printer } from 'lucide-react'
+import { authedFetch } from '@/lib/authed-fetch'
+import { useI18n } from '@/lib/i18n'
+
+const MAX_BYTES = 10 * 1024 * 1024
+const ACCEPTED_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png'])
+
+type PrinterOption = {
+  id: string
+  stationId: string
+  name: string
+  kind: 'paper' | 'label'
+}
+
+type Flash = {
+  kind: 'ok' | 'err'
+  message: string
+}
+
+function humanFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export default function RemotePrintingPage() {
+  const { t } = useI18n()
+  const [printers, setPrinters] = useState<PrinterOption[]>([])
+  const [printersLoading, setPrintersLoading] = useState(true)
+  const [selectedPrinterId, setSelectedPrinterId] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [copies, setCopies] = useState('1')
+  const [printing, setPrinting] = useState(false)
+  const [flash, setFlash] = useState<Flash | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const busyRef = useRef(false)
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showFlash = useCallback((kind: Flash['kind'], message: string, durationMs: number) => {
+    setFlash({ kind, message })
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = setTimeout(() => setFlash(null), durationMs)
+  }, [])
+
+  // The API returns a stable `code`; translate it here so Spanish users never
+  // see the English fallback the route ships for non-browser callers.
+  const resolveError = useCallback(
+    (body: unknown): string => {
+      const payload = (body ?? {}) as { code?: unknown; error?: unknown; maxCopies?: unknown }
+      if (typeof payload.code === 'string') {
+        const key = `remotePrinting.${payload.code}`
+        const localized = t(key)
+        if (localized !== key) {
+          return typeof payload.maxCopies === 'number'
+            ? localized.replace('{max}', String(payload.maxCopies))
+            : localized
+        }
+      }
+      return typeof payload.error === 'string' ? payload.error : t('remotePrinting.errGeneric')
+    },
+    [t]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    const loadPrinters = async () => {
+      try {
+        const response = await authedFetch('/api/remote-print')
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(resolveError(body))
+        }
+        const nextPrinters = Array.isArray(body.printers)
+          ? (body.printers as PrinterOption[])
+          : []
+        if (cancelled) return
+        setPrinters(nextPrinters)
+        setSelectedPrinterId(nextPrinters.length === 1 ? nextPrinters[0].id : '')
+      } catch (error) {
+        if (cancelled) return
+        showFlash(
+          'err',
+          error instanceof Error ? error.message : t('remotePrinting.errGeneric'),
+          20000
+        )
+      } finally {
+        if (!cancelled) setPrintersLoading(false)
+      }
+    }
+    loadPrinters()
+    return () => {
+      cancelled = true
+    }
+  }, [showFlash, t, resolveError])
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    }
+  }, [])
+
+  const printerLabel = useCallback(
+    (printer: PrinterOption) =>
+      `${printer.name} — ${t(
+        printer.kind === 'paper' ? 'remotePrinting.kindPaper' : 'remotePrinting.kindLabel'
+      )}`,
+    [t]
+  )
+
+  const clearFile = () => {
+    setFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const chooseFile = (chosen: File | undefined) => {
+    if (!chosen) {
+      clearFile()
+      return
+    }
+    const isHeic =
+      chosen.type === 'image/heic' ||
+      chosen.type === 'image/heif' ||
+      /\.hei[cf]$/i.test(chosen.name)
+    if (isHeic) {
+      clearFile()
+      showFlash('err', t('remotePrinting.errHeic'), 20000)
+      return
+    }
+    if (chosen.size > MAX_BYTES) {
+      clearFile()
+      showFlash('err', t('remotePrinting.errTooLarge'), 20000)
+      return
+    }
+    if (chosen.type && !ACCEPTED_TYPES.has(chosen.type)) {
+      clearFile()
+      showFlash('err', t('remotePrinting.errUnsupported'), 20000)
+      return
+    }
+    setFile(chosen)
+    setFlash(null)
+  }
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!file || !selectedPrinterId || busyRef.current) return
+
+    const selectedPrinter = printers.find((printer) => printer.id === selectedPrinterId)
+    if (!selectedPrinter) return
+
+    const copyCount = Math.min(20, Math.max(1, Math.trunc(Number(copies)) || 1))
+    busyRef.current = true
+    setPrinting(true)
+    setFlash(null)
+
+    try {
+      const form = new FormData()
+      form.set('file', file)
+      form.set('printer', selectedPrinterId)
+      form.set('copies', String(copyCount))
+      const response = await authedFetch('/api/remote-print', {
+        method: 'POST',
+        body: form,
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(resolveError(body))
+      }
+
+      clearFile()
+      showFlash(
+        'ok',
+        t('remotePrinting.success')
+          .replace('{copies}', String(body.queued ?? copyCount))
+          .replace('{printer}', printerLabel(selectedPrinter)),
+        5000
+      )
+    } catch (error) {
+      showFlash(
+        'err',
+        error instanceof Error ? error.message : t('remotePrinting.errGeneric'),
+        20000
+      )
+    } finally {
+      setPrinting(false)
+      busyRef.current = false
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl p-6">
+      <header className="mb-5">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          <Printer className="h-6 w-6" />
+          {t('remotePrinting.title')}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t('remotePrinting.subtitle')}</p>
+      </header>
+
+      {flash && (
+        <div
+          role={flash.kind === 'err' ? 'alert' : 'status'}
+          className={`mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${
+            flash.kind === 'ok'
+              ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300'
+              : 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+          }`}
+        >
+          {flash.kind === 'ok' ? (
+            <Check className="mt-0.5 h-4 w-4 shrink-0" />
+          ) : (
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          )}
+          <span>{flash.message}</span>
+        </div>
+      )}
+
+      {printersLoading ? (
+        <div className="flex min-h-40 items-center justify-center rounded-xl border border-border bg-card p-6">
+          <Loader2
+            className="h-6 w-6 animate-spin text-muted-foreground"
+            aria-label={t('remotePrinting.loadingPrinters')}
+          />
+        </div>
+      ) : printers.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-6 text-center">
+          <Printer className="mx-auto h-8 w-8 text-muted-foreground" />
+          <p className="mt-3 text-sm text-muted-foreground">{t('remotePrinting.noPrinters')}</p>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-5 rounded-xl border border-border bg-card p-4">
+          <div>
+            <label
+              htmlFor="remote-print-file"
+              className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm font-medium hover:bg-accent"
+            >
+              <FileUp className="h-4 w-4" />
+              {t('remotePrinting.chooseFile')}
+            </label>
+            <input
+              ref={fileInputRef}
+              id="remote-print-file"
+              type="file"
+              accept="application/pdf,image/jpeg,image/png"
+              className="sr-only"
+              onChange={(event) => chooseFile(event.target.files?.[0])}
+            />
+            <div className="mt-2 min-w-0 text-sm text-muted-foreground">
+              {file ? (
+                <>
+                  <div className="break-all font-medium text-foreground">{file.name}</div>
+                  <div>{humanFileSize(file.size)}</div>
+                </>
+              ) : (
+                t('remotePrinting.noFileChosen')
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="remote-print-printer" className="mb-1.5 block text-sm font-medium">
+              {t('remotePrinting.printer')}
+            </label>
+            <select
+              id="remote-print-printer"
+              value={selectedPrinterId}
+              onChange={(event) => setSelectedPrinterId(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              required
+            >
+              <option value="" disabled>
+                {t('remotePrinting.selectPrinter')}
+              </option>
+              {printers.map((printer) => (
+                <option key={printer.id} value={printer.id}>
+                  {printerLabel(printer)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="remote-print-copies" className="mb-1.5 block text-sm font-medium">
+              {t('remotePrinting.copies')}
+            </label>
+            <input
+              id="remote-print-copies"
+              type="number"
+              min={1}
+              max={20}
+              step={1}
+              required
+              value={copies}
+              onChange={(event) => setCopies(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={!file || !selectedPrinterId || printing}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {printing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('remotePrinting.printing')}
+              </>
+            ) : (
+              <>
+                <Printer className="h-4 w-4" />
+                {t('remotePrinting.print')}
+              </>
+            )}
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}

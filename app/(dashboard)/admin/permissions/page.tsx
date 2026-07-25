@@ -30,6 +30,7 @@ const ALL_MENU_PATHS = [
   '/phil-assistant',
   '/scheduling',
   '/labels',
+  '/remote-printing',
   // Feature permissions (not page paths)
   'manage_priority',
   'assign_orders',
@@ -82,6 +83,7 @@ const PATH_LABELS: Record<string, string> = {
   '/scheduling': '📅 Scheduling',
   '/scheduling:edit': '📅 Scheduling: Edit',
   '/labels': 'Labels',
+  '/remote-printing': '🖨️ Remote Printing',
   'labels:generate': '🏷️ Generate Labels',
   'labels:print': '🖨️ Print Labels',
   'labels:settings': '⚙️ Label Settings',

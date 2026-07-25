@@ -111,6 +111,7 @@ const toolsItems: NavItem[] = [
   { tKey: "nav.fpReference", href: "/fp-reference", icon: <ClipboardCheck className="size-4" /> },
   { tKey: "nav.customerRef", href: "/customer-reference", icon: <Users className="size-4" /> },
   { tKey: "nav.quotes", href: "/quotes", icon: <DollarSign className="size-4" /> },
+  { tKey: "nav.remotePrinting", href: "/remote-printing", icon: <Printer className="size-4" /> },
 ]
 
 // Quality (EQDR) section. Visibility is gated by the user's Quality role
