@@ -16,6 +16,10 @@ const MAX_TOTAL_PAYLOAD_BYTES = 16 * 1024 * 1024
 // Byte caps do not bound physical output: a small 300-page PDF × 20 copies is
 // 6000 sheets. Bound the paper, not just the upload.
 const MAX_TOTAL_PAGES = 200
+const MAX_COPIES = 20
+// The floor agent drains `pending` in seconds, so a large backlog means
+// something is wrong. Bounds sustained flooding without a rate-limit service.
+const MAX_PENDING_PER_USER = 60
 // pdf-lib decodes PNG to raw pixels (JPEG is embedded as-is), so a small
 // well-compressed PNG can expand into gigabytes. 25 MP ≈ 100 MB decoded.
 const MAX_IMAGE_PIXELS = 25_000_000
@@ -45,7 +49,17 @@ async function authorize(req: NextRequest): Promise<Actor | NextResponse> {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const permitted = await requirePermission(req, '/remote-printing')
   if (!permitted) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { role } = await loadDashboardProfile(user.id)
+  const [{ role }, { data: profile }] = await Promise.all([
+    loadDashboardProfile(user.id),
+    supabaseAdmin.from('user_profiles').select('is_active').eq('id', user.id).maybeSingle(),
+  ])
+  // Deactivating a user only flips this flag: the role, the printer grants and
+  // any already-issued token all survive, and no shared auth helper consults
+  // it. Enforce it here so a deactivated account cannot keep putting paper
+  // through a floor printer from a session nobody revoked.
+  if (profile?.is_active === false) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   return { userId: user.id, role }
 }
 
@@ -200,10 +214,17 @@ export async function POST(req: NextRequest) {
   const copiesField = form.get('copies')
   const copiesNumber =
     typeof copiesField === 'string' && copiesField.trim() !== '' ? Number(copiesField) : Number.NaN
-  if (!Number.isFinite(copiesNumber) || !Number.isInteger(copiesNumber)) {
-    return fail('errCopies', 'Copies must be a whole number between 1 and 20.', 400)
+  // Reject rather than clamp: silently turning 999 into 20 hides a broken
+  // client and breaks the contract the error message states.
+  if (
+    !Number.isFinite(copiesNumber) ||
+    !Number.isInteger(copiesNumber) ||
+    copiesNumber < 1 ||
+    copiesNumber > MAX_COPIES
+  ) {
+    return fail('errCopies', `Copies must be a whole number between 1 and ${MAX_COPIES}.`, 400)
   }
-  const copies = Math.min(20, Math.max(1, copiesNumber))
+  const copies = copiesNumber
 
   const printerField = form.get('printer')
   const printerMatch =
@@ -222,6 +243,12 @@ export async function POST(req: NextRequest) {
       .eq('enabled', true)
       .maybeSingle()
     if (stationError) throw new Error(stationError.message)
+    // ACL first: checking capability before permission would let anyone with
+    // menu access probe which stations exist and what hardware they have by
+    // reading apart the distinct error codes.
+    if (!(await userCanPrintTo(actor.userId, actor.role, stationId))) {
+      return fail('errNotAllowed', 'You are not allowed to print to that station.', 403)
+    }
     if (!station) {
       return fail('errStationUnavailable', 'That printer station is unavailable or disabled.', 400)
     }
@@ -234,10 +261,6 @@ export async function POST(req: NextRequest) {
     }
     if (kind === 'label' && station.zebra_pdf !== true) {
       return fail('errNoLabelPrinter', 'That station does not support 4x6 label printing.', 400)
-    }
-
-    if (!(await userCanPrintTo(actor.userId, actor.role, stationId))) {
-      return fail('errNotAllowed', 'You are not allowed to print to that station.', 403)
     }
 
     const fileField = form.get('file')
@@ -272,20 +295,36 @@ export async function POST(req: NextRequest) {
     }
 
     // An uploaded PDF is passed through untouched, so count its pages to bound
-    // the paper. A PDF we cannot parse (encrypted, unusual producer) still
-    // prints fine at the station today — don't reject what already works.
-    let pageCount: number | null = null
+    // the paper. `ignoreEncryption` keeps password-protected PDFs countable
+    // instead of unreadable; anything that still fails to parse is refused
+    // rather than waved through, since an uncountable PDF would otherwise skip
+    // the page cap entirely.
+    let pageCount: number
     if (uploadKind === 'pdf') {
       try {
-        pageCount = (await PDFDocument.load(pdfBytes, { updateMetadata: false })).getPageCount()
+        pageCount = (
+          await PDFDocument.load(pdfBytes, { updateMetadata: false, ignoreEncryption: true })
+        ).getPageCount()
       } catch {
-        pageCount = null
+        return fail(
+          'errPdfUnreadable',
+          'This PDF could not be read. Re-save or re-export it and try again.',
+          400
+        )
       }
     } else {
       pageCount = 1
     }
-    if (pageCount !== null && pageCount * copies > MAX_TOTAL_PAGES) {
-      const maxCopies = Math.max(1, Math.floor(MAX_TOTAL_PAGES / pageCount))
+    if (pageCount > MAX_TOTAL_PAGES) {
+      return fail(
+        'errDocumentTooLong',
+        `This document is ${pageCount} pages; the limit is ${MAX_TOTAL_PAGES} per job.`,
+        413,
+        { pages: pageCount, max: MAX_TOTAL_PAGES }
+      )
+    }
+    if (pageCount * copies > MAX_TOTAL_PAGES) {
+      const maxCopies = Math.floor(MAX_TOTAL_PAGES / pageCount)
       return fail(
         'errTooManyPages',
         `That is ${pageCount * copies} pages. Print at most ${maxCopies} copies of a ${pageCount}-page document.`,
@@ -305,6 +344,22 @@ export async function POST(req: NextRequest) {
         `This file is too large to print ${copies} times at once. Print at most ${maxCopies} at a time.`,
         413,
         { maxCopies }
+      )
+    }
+
+    // Every cap above is per-request; without this, repeated requests still add
+    // up to unlimited paper. The agent claims pending jobs within seconds, so a
+    // backlog this size means a stuck station or a runaway client either way.
+    const { count: pending } = await supabaseAdmin
+      .from('print_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('created_by', actor.userId)
+      .eq('status', 'pending')
+    if ((pending ?? 0) + copies > MAX_PENDING_PER_USER) {
+      return fail(
+        'errQueueFull',
+        'You already have print jobs waiting. Let them finish before sending more.',
+        429
       )
     }
 
