@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { PDFDocument, PDFName, degrees } from 'pdf-lib'
+import { PDFDocument, degrees } from 'pdf-lib'
 import { allowedStationIds, userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { loadDashboardProfile, requirePermission, requireUser } from '@/lib/require-user'
+import { runPdfWorker } from '@/lib/pdf-worker'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -190,141 +191,6 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } | 
   return null
 }
 
-/**
- * Re-lay every page of an uploaded PDF onto the target sheet, turned and
- * shrunk only as much as it takes to fit.
- *
- * Passing PDFs through untouched is what clipped Simon's landscape drawings on
- * portrait letter (2026-07-25): the printer simply drops whatever hangs off the
- * sheet. Turning a landscape page 90° usually makes it fit at FULL SIZE, which
- * matters here because these are dimensioned engineering drawings — scaling
- * silently invalidates the "SCALE 1:1" printed on them. So rotation is always
- * preferred and shrinking is the fallback, never the first move.
- *
- * `quarterTurns` is the operator's own rotation, applied on top of the
- * automatic choice.
- */
-async function preparePdf(
-  bytes: Uint8Array,
-  printerKind: PrinterKind,
-  quarterTurns: number,
-  relayable: boolean,
-  firstPageOnly = false
-): Promise<{ bytes: Uint8Array; fitSkipped: boolean }> {
-  const source = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })
-  const allPages = source.getPages()
-  // A preview renders one page, which bounds the work a repeated rotate can
-  // trigger. The DECISION of whether to re-lay at all is NOT made here — it
-  // comes from the caller, computed over the whole document — because deciding
-  // it from page one would let a preview promise a fitted page while the real
-  // job silently declines because page seven carries a signature.
-  const pages = firstPageOnly ? allPages.slice(0, 1) : allPages
-
-  // Rotation-only path. setRotation is page metadata, so it preserves
-  // everything, and it is also the honest reading of "fit off": turn it if I
-  // asked, but do not resize my document.
-  if (!relayable) {
-    if (quarterTurns || firstPageOnly) {
-      pages.forEach((page) => {
-        const angle = (((page.getRotation().angle + quarterTurns * 90) % 360) + 360) % 360
-        page.setRotation(degrees(angle))
-      })
-      // Drop the rest for a preview so it matches what the fitted path shows.
-      if (firstPageOnly) {
-        for (let index = allPages.length - 1; index >= 1; index -= 1) source.removePage(index)
-      }
-      return { bytes: await source.save(), fitSkipped: true }
-    }
-    return { bytes, fitSkipped: true }
-  }
-
-  const target = printerKind === 'paper' ? PAPER_PAGE : LABEL_PAGE
-  const availableWidth = target.width - FIT_MARGIN * 2
-  const availableHeight = target.height - FIT_MARGIN * 2
-
-  try {
-    const out = await PDFDocument.create()
-    // Embed the CROP box, not the MediaBox. embedPages defaults to the
-    // MediaBox, so content a document deliberately crops away — trimmed
-    // artwork, prior revisions — would reappear on a sheet at a shared
-    // station. The crop box is what the author intends to be visible.
-    const cropBoxes = pages.map((page) => {
-      const box = page.getCropBox()
-      return {
-        left: box.x,
-        bottom: box.y,
-        right: box.x + box.width,
-        top: box.y + box.height,
-      }
-    })
-    const embedded = await out.embedPages(pages, cropBoxes)
-
-    embedded.forEach((embeddedPage, index) => {
-      const sourcePage = pages[index]
-      // Size from the same box that was embedded, or the fit maths would be
-      // computed for a page larger than the one actually drawn.
-      const crop = sourcePage.getCropBox()
-      const rawWidth = crop.width
-      const rawHeight = crop.height
-      // getSize() reports the MediaBox and ignores /Rotate, so a page that
-      // DISPLAYS portrait can measure landscape. embedPage does not apply
-      // /Rotate either, so it is folded into the turns we draw with.
-      const pageAngle = (((sourcePage.getRotation().angle % 360) + 360) % 360)
-      const pageTurns = Math.round(pageAngle / 90) % 4
-      const displayWidth = pageTurns % 2 === 1 ? rawHeight : rawWidth
-      const displayHeight = pageTurns % 2 === 1 ? rawWidth : rawHeight
-
-      // Content that already fits the SHEET prints at true size. Insetting
-      // unconditionally shrank every ordinary letter page by ~6% — a silent
-      // scale error on dimensioned drawings, and the opposite of this
-      // feature's stated aim of preserving 1:1. The inset is only spent on
-      // content that genuinely overhangs.
-      const scaleFor = (width: number, height: number) =>
-        width <= target.width && height <= target.height
-          ? 1
-          : Math.min(availableWidth / width, availableHeight / height)
-      const uprightScale = scaleFor(displayWidth, displayHeight)
-      const turnedScale = scaleFor(displayHeight, displayWidth)
-      const autoTurn = turnedScale > uprightScale
-
-      const turns = (pageTurns + (autoTurn ? 1 : 0) + quarterTurns) % 4
-      const swapped = turns % 2 === 1
-      const footprintWidth = swapped ? rawHeight : rawWidth
-      const footprintHeight = swapped ? rawWidth : rawHeight
-      // Never scale ABOVE 1: blowing a small page up to fill the sheet is not
-      // what "fit" means.
-      const scale = scaleFor(footprintWidth, footprintHeight)
-      const boxWidth = footprintWidth * scale
-      const boxHeight = footprintHeight * scale
-      const left = (target.width - boxWidth) / 2
-      const bottom = (target.height - boxHeight) / 2
-
-      // drawPage rotates about (x,y), so the anchor corner differs per turn.
-      const anchor =
-        turns === 0
-          ? { x: left, y: bottom }
-          : turns === 1
-            ? { x: left + boxWidth, y: bottom }
-            : turns === 2
-              ? { x: left + boxWidth, y: bottom + boxHeight }
-              : { x: left, y: bottom + boxHeight }
-
-      out.addPage([target.width, target.height]).drawPage(embeddedPage, {
-        ...anchor,
-        xScale: scale,
-        yScale: scale,
-        rotate: degrees(turns * 90),
-      })
-    })
-
-    return { bytes: await out.save(), fitSkipped: false }
-  } catch {
-    // A valid page with no /Contents stream makes embedPages throw. Refusing
-    // the whole document over that would be wrong -- fall back to printing it
-    // as-is rather than not at all.
-    return { bytes, fitSkipped: true }
-  }
-}
 
 async function imageToPdf(
   bytes: Uint8Array,
@@ -554,68 +420,83 @@ export async function POST(req: NextRequest) {
     activeTransforms += 1
     admitted = true
 
-    // Inspect the ORIGINAL upload, BEFORE any fitting. Fitting re-writes the
-    // document into a fresh one, which drops the encryption flag — inspecting
-    // the output would silently hide a password-protected file we must refuse.
-    let pageCount: number
-    let relayable = false
+    // EVERYTHING that parses this upload happens in a separate process with a
+    // hard memory cap — inspection included, because pdf-lib inflates object
+    // streams during `load`, so keeping the inspection here would have left the
+    // bomb vector open while looking protected. See lib/pdf-worker.ts for why a
+    // process and not a worker thread.
+    let pageCount = 1
+    let pdfBytes: Uint8Array = bytes
+    let fitSkipped = false
+
     if (uploadKind === 'pdf') {
-      try {
-        const document = await PDFDocument.load(bytes, {
-          updateMetadata: false,
-          ignoreEncryption: true,
-        })
-        // ignoreEncryption only stops pdf-lib refusing the file; it does NOT
-        // decrypt it. The bytes we would queue stay encrypted, so the station
-        // fails to print while the user is told it worked. Refuse instead.
-        if (document.isEncrypted) {
-          return fail(
-            'errPdfEncrypted',
-            'This PDF is password-protected and cannot be printed. Save an unprotected copy and try again.',
-            400
-          )
+      const target = kind === 'label' ? LABEL_PAGE : PAPER_PAGE
+      const worked = await runPdfWorker(bytes, {
+        targetWidth: target.width,
+        targetHeight: target.height,
+        fitMargin: FIT_MARGIN,
+        labelTolerance: LABEL_FIT_TOLERANCE,
+        isLabel: kind === 'label',
+        quarterTurns,
+        fitToPage,
+        firstPageOnly: previewOnly,
+        maxPages: MAX_TOTAL_PAGES,
+      })
+
+      if (!worked.ok) {
+        if (worked.reason === 'memory' || worked.reason === 'timeout') {
+          // The isolated process hit its ceiling and died alone. Say so plainly
+          // rather than blaming the file for being "unreadable".
+          return fail('errPdfTooComplex', 'This PDF is too complex to prepare for printing.', 413)
         }
-        pageCount = document.getPageCount()
-        if (pageCount < 1) {
-          return fail('errPdfEmpty', 'This PDF has no pages to print.', 400)
+        if (worked.reason === 'unavailable') {
+          console.error('pdf worker unavailable — refusing rather than parsing in-process')
+          return fail('errGeneric', 'We could not prepare this file right now. Please try again.', 502)
         }
-        // Decide ONCE, over the whole document, whether the page may be re-laid.
-        // Two things forbid it, both because rebuilding a page from its content
-        // stream drops what is not in that stream:
-        //  - annotations: form fields, signatures, stamps, comments
-        //  - optional content groups: a layer marked hidden or non-printing
-        //    would come back VISIBLE, exposing a concealed revision on a sheet
-        //    at a shared printer.
-        const hasAnnotations = document.getPages().some((page) => {
-          const list = page.node.Annots()
-          return Boolean(list && list.size() > 0)
-        })
-        const hasOptionalContent = document.catalog.has(PDFName.of('OCProperties'))
-        relayable = fitToPage && !hasAnnotations && !hasOptionalContent
-        // Uploaded PDFs are passed through at their own size (only images get
-        // re-wrapped to the target geometry), so a letter-size document sent to
-        // the Zebra would chew through a stack of 4x6 labels before anyone
-        // noticed. EVERY page is checked, not just the first: a document that
-        // opens with a 4x6 page and continues at letter size would otherwise
-        // pass and waste the roll from page two onward.
-      } catch {
         return fail(
           'errPdfUnreadable',
           'This PDF could not be read. Re-save or re-export it and try again.',
           400
         )
       }
-    } else {
-      pageCount = 1
+
+      const { meta } = worked
+      if (meta.encrypted) {
+        return fail(
+          'errPdfEncrypted',
+          'This PDF is password-protected and cannot be printed. Save an unprotected copy and try again.',
+          400
+        )
+      }
+      if (meta.pageCount < 1) {
+        return fail('errPdfEmpty', 'This PDF has no pages to print.', 400)
+      }
+      pageCount = meta.pageCount
+      fitSkipped = meta.fitSkipped
+      // The worker returns bytes only when it produced new ones; a pure
+      // pass-through keeps the original upload untouched.
+      if (worked.bytes) pdfBytes = worked.bytes
+
+      if (pageCount > MAX_TOTAL_PAGES) {
+        return fail(
+          'errDocumentTooLong',
+          `This document is ${pageCount} pages; the limit is ${MAX_TOTAL_PAGES} per job.`,
+          413,
+          { pages: pageCount, max: MAX_TOTAL_PAGES }
+        )
+      }
+      // Label jobs are size-checked on the SOURCE pages by the worker, which
+      // covers every path that ends up unfitted.
+      if (kind === 'label' && fitSkipped && meta.oversizedLabelPage > 0) {
+        return fail(
+          'errPageTooBigForLabel',
+          `Page ${meta.oversizedLabelPage} is larger than a 4x6 label. Send this to a paper printer instead.`,
+          400,
+          { page: meta.oversizedLabelPage }
+        )
+      }
     }
-    if (pageCount > MAX_TOTAL_PAGES) {
-      return fail(
-        'errDocumentTooLong',
-        `This document is ${pageCount} pages; the limit is ${MAX_TOTAL_PAGES} per job.`,
-        413,
-        { pages: pageCount, max: MAX_TOTAL_PAGES }
-      )
-    }
+
     if (pageCount * copies > MAX_TOTAL_PAGES) {
       const maxCopies = Math.floor(MAX_TOTAL_PAGES / pageCount)
       return fail(
@@ -626,15 +507,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Transform only after the document has passed every guard above.
-    let pdfBytes: Uint8Array
-    let fitSkipped = false
+    // Images are bounded by the pixel cap read from their header before any
+    // decode, so they stay in-process; only PDFs carry the unbounded-inflation
+    // risk that needs the isolated worker.
     try {
-      if (uploadKind === 'pdf') {
-        const prepared = await preparePdf(bytes, kind, quarterTurns, relayable, previewOnly)
-        pdfBytes = prepared.bytes
-        fitSkipped = prepared.fitSkipped
-      } else {
+      if (uploadKind !== 'pdf') {
         pdfBytes = await imageToPdf(bytes, uploadKind, kind, quarterTurns)
       }
     } catch (error) {
@@ -647,6 +524,7 @@ export async function POST(req: NextRequest) {
       return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
     }
 
+    // Images only: PDFs were size-checked on their source pages by the worker.
     // Validate the bytes that will ACTUALLY print, for EVERY label job.
     // Gating this on a flag was wrong twice over: `fitSkipped` means "fitting
     // was attempted and abandoned", so it misses the plain fit=false path, and
@@ -654,7 +532,7 @@ export async function POST(req: NextRequest) {
     // guard exists to stop. Fitted output is already label-sized and passes,
     // so checking unconditionally costs a parse and removes the whole class of
     // reasoning error.
-    if (kind === 'label') {
+    if (kind === 'label' && uploadKind !== 'pdf') {
       try {
         const printed = await PDFDocument.load(pdfBytes, {
           updateMetadata: false,
