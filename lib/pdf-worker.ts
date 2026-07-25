@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { readFileSync } from 'fs'
 import { createRequire } from 'module'
 import path from 'path'
 
@@ -45,6 +46,14 @@ export type PdfWorkerResult =
   | { ok: false; reason: 'timeout' | 'memory' | 'unreadable' | 'unavailable' }
 
 const MEMORY_CAP_MB = 256
+// --max-old-space-size caps the V8 heap only; decoded PDF data lives in
+// Buffer/typed-array memory outside it, so the flag alone is not an RSS
+// ceiling. The parent therefore watches the child's actual resident size and
+// kills it past this. /proc is Linux-only, which is what production runs; on a
+// dev Mac the flag and the deadline still apply, so behaviour degrades to the
+// previous guarantee rather than breaking.
+const RSS_CAP_MB = 512
+const RSS_POLL_MS = 250
 // The prepared PDF is bounded by the upload cap and the page cap; anything far
 // beyond that is a runaway child, not a document.
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024
@@ -231,17 +240,39 @@ export async function runPdfWorker(
     const stderr: Buffer[] = []
     let stdoutBytes = 0
     let settled = false
+    // Declared before `finish` so an early failure cannot hit the temporal dead
+    // zone while trying to clean up.
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let rssWatch: ReturnType<typeof setInterval> | null = null
     const finish = (result: PdfWorkerResult) => {
       if (settled) return
       settled = true
-      clearTimeout(timer)
+      if (timer) clearTimeout(timer)
+      if (rssWatch) clearInterval(rssWatch)
       resolve(result)
     }
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       child.kill('SIGKILL')
       finish({ ok: false, reason: 'timeout' })
     }, TIMEOUT_MS)
+
+    // Enforce a real resident-memory ceiling, which the V8 flag cannot.
+    rssWatch = setInterval(() => {
+      if (!child.pid) return
+      try {
+        // statm: total, resident, ... in pages.
+        const statm = readFileSync(`/proc/${child.pid}/statm`, 'utf8').split(' ')
+        const residentMb = (Number(statm[1]) * 4096) / 1024 / 1024
+        if (Number.isFinite(residentMb) && residentMb > RSS_CAP_MB) {
+          console.error('pdf worker exceeded RSS cap:', Math.round(residentMb), 'MB')
+          child.kill('SIGKILL')
+          finish({ ok: false, reason: 'memory' })
+        }
+      } catch {
+        // Not Linux, or the child already exited — nothing to enforce here.
+      }
+    }, RSS_POLL_MS)
 
     child.stdout.on('data', (c: Buffer) => {
       stdoutBytes += c.length
