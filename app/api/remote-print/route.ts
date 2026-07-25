@@ -610,11 +610,14 @@ export async function POST(req: NextRequest) {
       return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
     }
 
-    // Validate the bytes that will ACTUALLY print. Fit being requested does not
-    // mean fit was applied — a document with annotations, or one embedPages
-    // could not rebuild, comes back unfitted — and an unfitted letter page sent
-    // to the Zebra is exactly the wasted label roll this guard exists to stop.
-    if (kind === 'label' && fitSkipped) {
+    // Validate the bytes that will ACTUALLY print, for EVERY label job.
+    // Gating this on a flag was wrong twice over: `fitSkipped` means "fitting
+    // was attempted and abandoned", so it misses the plain fit=false path, and
+    // any unfitted letter page sent to the Zebra is the wasted label roll this
+    // guard exists to stop. Fitted output is already label-sized and passes,
+    // so checking unconditionally costs a parse and removes the whole class of
+    // reasoning error.
+    if (kind === 'label') {
       try {
         const printed = await PDFDocument.load(pdfBytes, {
           updateMetadata: false,
