@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, degrees } from 'pdf-lib'
 import { allowedStationIds, userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { loadDashboardProfile, requirePermission, requireUser } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -37,6 +37,9 @@ const MAX_IMAGE_PIXELS = 25_000_000
 const REMOTE_PRINT_ITEM_CODE = 'REMOTE-PRINT'
 const PAPER_PAGE = { width: 612, height: 792, margin: 36 }
 const LABEL_PAGE = { width: 288, height: 432, margin: 9 }
+// Inset used when fitting an uploaded PDF: 0.25in, the usual unprintable edge.
+const FIT_MARGIN = 18
+const MAX_QUARTER_TURNS = 3
 // Slack for near-4x6 stock; a letter page is far outside it either way.
 const LABEL_FIT_TOLERANCE = 1.25
 
@@ -177,6 +180,80 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } | 
   return null
 }
 
+/**
+ * Re-lay every page of an uploaded PDF onto the target sheet, turned and
+ * shrunk only as much as it takes to fit.
+ *
+ * Passing PDFs through untouched is what clipped Simon's landscape drawings on
+ * portrait letter (2026-07-25): the printer simply drops whatever hangs off the
+ * sheet. Turning a landscape page 90° usually makes it fit at FULL SIZE, which
+ * matters here because these are dimensioned engineering drawings — scaling
+ * silently invalidates the "SCALE 1:1" printed on them. So rotation is always
+ * preferred and shrinking is the fallback, never the first move.
+ *
+ * `quarterTurns` is the operator's own rotation, applied on top of the
+ * automatic choice.
+ */
+async function fitPdfToPage(
+  bytes: Uint8Array,
+  printerKind: PrinterKind,
+  quarterTurns: number
+): Promise<Uint8Array> {
+  const source = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })
+  const target = printerKind === 'paper' ? PAPER_PAGE : LABEL_PAGE
+  const out = await PDFDocument.create()
+  const embedded = await out.embedPages(source.getPages())
+  // A tighter inset than the one used for images: every point of margin is
+  // shrink that a dimensioned drawing pays for. At 36pt a landscape letter
+  // sheet lands at 88%; at FIT_MARGIN it keeps 94%, while still staying inside
+  // the unprintable edge that real printers reserve.
+  const availableWidth = target.width - FIT_MARGIN * 2
+  const availableHeight = target.height - FIT_MARGIN * 2
+
+  embedded.forEach((page, index) => {
+    const { width: sourceWidth, height: sourceHeight } = source.getPage(index).getSize()
+    // Upright vs turned: whichever needs less shrinking wins. Never scale ABOVE
+    // 1 — blowing a small page up to fill the sheet is not what "fit" means.
+    const uprightScale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight)
+    const turnedScale = Math.min(availableWidth / sourceHeight, availableHeight / sourceWidth)
+    const autoTurn = turnedScale > uprightScale
+    const turns = (((autoTurn ? 1 : 0) + quarterTurns) % 4 + 4) % 4
+    const swapped = turns % 2 === 1
+    const scale = Math.min(
+      1,
+      swapped
+        ? Math.min(availableWidth / sourceHeight, availableHeight / sourceWidth)
+        : Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight)
+    )
+    const drawnWidth = sourceWidth * scale
+    const drawnHeight = sourceHeight * scale
+    // Footprint on the sheet after turning, used to centre it.
+    const boxWidth = swapped ? drawnHeight : drawnWidth
+    const boxHeight = swapped ? drawnWidth : drawnHeight
+    const left = (target.width - boxWidth) / 2
+    const bottom = (target.height - boxHeight) / 2
+
+    // drawPage rotates about (x,y), so the anchor differs per quarter turn.
+    const anchor =
+      turns === 0
+        ? { x: left, y: bottom }
+        : turns === 1
+          ? { x: left + boxWidth, y: bottom }
+          : turns === 2
+            ? { x: left + boxWidth, y: bottom + boxHeight }
+            : { x: left, y: bottom + boxHeight }
+
+    out.addPage([target.width, target.height]).drawPage(page, {
+      ...anchor,
+      xScale: scale,
+      yScale: scale,
+      rotate: degrees(turns * 90),
+    })
+  })
+
+  return out.save()
+}
+
 async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pdf'>, printerKind: PrinterKind) {
   // Unreadable dimensions are refused rather than embedded: a header we cannot
   // parse is exactly the case the pixel cap exists to catch.
@@ -291,6 +368,25 @@ export async function POST(req: NextRequest) {
   }
   const copies = copiesNumber
 
+  // Fit is ON unless explicitly disabled: passing PDFs straight through is what
+  // clipped the drawings, so the safe behaviour is the default and printing at
+  // true size is the deliberate opt-out.
+  const fitToPage = form.get('fit') !== 'false'
+  const rotateField = form.get('rotate')
+  const rotateNumber = typeof rotateField === 'string' && rotateField.trim() !== '' ? Number(rotateField) : 0
+  if (
+    !Number.isFinite(rotateNumber) ||
+    !Number.isInteger(rotateNumber) ||
+    rotateNumber < 0 ||
+    rotateNumber > MAX_QUARTER_TURNS
+  ) {
+    return fail('errRotate', 'Rotation must be 0, 1, 2 or 3 quarter turns.', 400)
+  }
+  const quarterTurns = rotateNumber
+  // Preview returns the finished page instead of queueing it, so what the
+  // operator approves on screen is byte-for-byte what the printer receives.
+  const previewOnly = form.get('preview') === 'true'
+
   const printerField = form.get('printer')
   const printerMatch =
     typeof printerField === 'string' ? /^(.+):(paper|label)$/.exec(printerField.trim()) : null
@@ -349,28 +445,13 @@ export async function POST(req: NextRequest) {
       return fail('errUnsupported', 'Unsupported file. Choose a PDF, JPEG, or PNG file.', 415)
     }
 
-    let pdfBytes: Uint8Array
-    try {
-      pdfBytes = uploadKind === 'pdf' ? bytes : await imageToPdf(bytes, uploadKind, kind)
-    } catch (error) {
-      if (error instanceof ImageTooLargeError) {
-        return fail('errImageTooLarge', 'That image has too many pixels to print.', 413)
-      }
-      if (error instanceof ImageUnreadableError) {
-        return fail('errImageUnreadable', 'That image could not be read. Re-save it and try again.', 400)
-      }
-      return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
-    }
-
-    // An uploaded PDF is passed through untouched, so count its pages to bound
-    // the paper. `ignoreEncryption` keeps password-protected PDFs countable
-    // instead of unreadable; anything that still fails to parse is refused
-    // rather than waved through, since an uncountable PDF would otherwise skip
-    // the page cap entirely.
+    // Inspect the ORIGINAL upload, BEFORE any fitting. Fitting re-writes the
+    // document into a fresh one, which drops the encryption flag — inspecting
+    // the output would silently hide a password-protected file we must refuse.
     let pageCount: number
     if (uploadKind === 'pdf') {
       try {
-        const document = await PDFDocument.load(pdfBytes, {
+        const document = await PDFDocument.load(bytes, {
           updateMetadata: false,
           ignoreEncryption: true,
         })
@@ -394,7 +475,9 @@ export async function POST(req: NextRequest) {
         // noticed. EVERY page is checked, not just the first: a document that
         // opens with a 4x6 page and continues at letter size would otherwise
         // pass and waste the roll from page two onward.
-        if (kind === 'label' && pageCount <= MAX_TOTAL_PAGES) {
+        // Only when NOT fitting: with fit on, every page is re-laid onto the
+        // label so nothing can overhang, and refusing would be wrong.
+        if (kind === 'label' && !fitToPage && pageCount <= MAX_TOTAL_PAGES) {
           const oversized = document.getPages().findIndex((page) => {
             const { width, height } = page.getSize()
             return (
@@ -437,6 +520,37 @@ export async function POST(req: NextRequest) {
         413,
         { pages: pageCount, maxCopies }
       )
+    }
+
+    // Transform only after the document has passed every guard above.
+    let pdfBytes: Uint8Array
+    try {
+      if (uploadKind === 'pdf') {
+        pdfBytes = fitToPage || quarterTurns ? await fitPdfToPage(bytes, kind, quarterTurns) : bytes
+      } else {
+        pdfBytes = await imageToPdf(bytes, uploadKind, kind)
+      }
+    } catch (error) {
+      if (error instanceof ImageTooLargeError) {
+        return fail('errImageTooLarge', 'That image has too many pixels to print.', 413)
+      }
+      if (error instanceof ImageUnreadableError) {
+        return fail('errImageUnreadable', 'That image could not be read. Re-save it and try again.', 400)
+      }
+      return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
+    }
+
+    // Preview: hand back the finished page instead of queueing it, so what the
+    // operator approves on screen is byte-for-byte what the station receives.
+    if (previewOnly) {
+      return new NextResponse(Buffer.from(pdfBytes), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'inline; filename="preview.pdf"',
+          'Cache-Control': 'no-store',
+        },
+      })
     }
 
     // Each copy is its own row carrying the full payload; a big file × many
