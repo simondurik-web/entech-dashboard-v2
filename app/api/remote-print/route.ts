@@ -481,6 +481,11 @@ export async function POST(req: NextRequest) {
   // operator approves on screen is byte-for-byte what the printer receives.
   const previewOnly = form.get('preview') === 'true'
 
+  // Tracks whether this request holds a transform slot, so the finally below
+  // releases exactly once on every exit path — including the preview return
+  // and the 502 catch.
+  let admitted = false
+
   const printerField = form.get('printer')
   const printerMatch =
     typeof printerField === 'string' ? /^(.+):(paper|label)$/.exec(printerField.trim()) : null
@@ -538,6 +543,16 @@ export async function POST(req: NextRequest) {
       }
       return fail('errUnsupported', 'Unsupported file. Choose a PDF, JPEG, or PNG file.', 415)
     }
+
+    // Admission BEFORE the first parse. PDFDocument.load already inflates
+    // object streams, so gating at the transform let unbounded decompression
+    // run unadmitted — the guard has to sit ahead of every touch of untrusted
+    // bytes, not just the expensive-looking one.
+    if (activeTransforms >= MAX_CONCURRENT_TRANSFORMS) {
+      return fail('errBusy', 'The printer service is busy. Try again in a moment.', 429)
+    }
+    activeTransforms += 1
+    admitted = true
 
     // Inspect the ORIGINAL upload, BEFORE any fitting. Fitting re-writes the
     // document into a fresh one, which drops the encryption flag — inspecting
@@ -612,12 +627,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Transform only after the document has passed every guard above.
-    if (activeTransforms >= MAX_CONCURRENT_TRANSFORMS) {
-      return fail('errBusy', 'The printer service is busy. Try again in a moment.', 429)
-    }
     let pdfBytes: Uint8Array
     let fitSkipped = false
-    activeTransforms += 1
     try {
       if (uploadKind === 'pdf') {
         const prepared = await preparePdf(bytes, kind, quarterTurns, relayable, previewOnly)
@@ -634,8 +645,6 @@ export async function POST(req: NextRequest) {
         return fail('errImageUnreadable', 'That image could not be read. Re-save it and try again.', 400)
       }
       return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
-    } finally {
-      activeTransforms -= 1
     }
 
     // Validate the bytes that will ACTUALLY print, for EVERY label job.
@@ -778,5 +787,7 @@ export async function POST(req: NextRequest) {
       'We could not send this file to the printer. Please try again.',
       502
     )
+  } finally {
+    if (admitted) activeTransforms -= 1
   }
 }
