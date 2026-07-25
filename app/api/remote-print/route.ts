@@ -10,6 +10,9 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const MAX_BYTES = 10 * 1024 * 1024
+// The whole multipart envelope, not just the file part: base64/boundary
+// overhead plus the two small text fields, with room to spare.
+const MAX_REQUEST_BYTES = 12 * 1024 * 1024
 // One row is inserted per copy, each carrying its own base64 payload, so the
 // INSERT grows with payload × copies. Cap the PRODUCT as well as the file, and
 // measure the ENCODED payload — base64 is ~33% larger than the raw PDF.
@@ -55,10 +58,18 @@ type Actor = { userId: string; role: string }
  * gets a 401 and lets authedFetch refresh, instead of a misleading 403.
  */
 async function authorize(req: NextRequest): Promise<Actor | NextResponse> {
-  const user = await requireUser(req)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const permitted = await requirePermission(req, '/remote-printing')
-  if (!permitted) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Permission first, and only ask "who is this?" when it fails: that way a
+  // token which expires between the two calls reports 401 (so authedFetch
+  // refreshes and retries) rather than a misleading 403 — and the common path
+  // makes one auth round trip instead of two.
+  const user = await requirePermission(req, '/remote-printing')
+  if (!user) {
+    const authenticated = await requireUser(req)
+    return NextResponse.json(
+      { error: authenticated ? 'Forbidden' : 'Unauthorized' },
+      { status: authenticated ? 403 : 401 }
+    )
+  }
   const [{ role }, { data: profile, error: profileError }] = await Promise.all([
     loadDashboardProfile(user.id),
     supabaseAdmin.from('user_profiles').select('is_active').eq('id', user.id).maybeSingle(),
@@ -110,10 +121,16 @@ function detectUploadKind(bytes: Uint8Array): UploadKind | null {
   return null
 }
 
+const HEIC_BRANDS = new Set([
+  'heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'hevm', 'hevs', 'mif1', 'msf1',
+])
+
 function isHeic(bytes: Uint8Array): boolean {
   if (bytes.length < 12) return false
-  const brand = String.fromCharCode(...bytes.subarray(4, 12))
-  return brand === 'ftypheic' || brand === 'ftypheix' || brand === 'ftypmif1'
+  if (String.fromCharCode(...bytes.subarray(4, 8)) !== 'ftyp') return false
+  // Only affects which message the user gets — an unrecognized brand is still
+  // rejected, just with vaguer wording. Worth covering the common ones.
+  return HEIC_BRANDS.has(String.fromCharCode(...bytes.subarray(8, 12)))
 }
 
 /**
@@ -123,6 +140,9 @@ function isHeic(bytes: Uint8Array): boolean {
  */
 function pngDimensions(bytes: Uint8Array): { width: number; height: number } | null {
   if (bytes.length < 24) return null
+  // Confirm this really is the IHDR chunk before trusting the two uint32s that
+  // follow it, rather than reading whatever sits at those offsets.
+  if (String.fromCharCode(...bytes.subarray(12, 16)) !== 'IHDR') return null
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   return { width: view.getUint32(16), height: view.getUint32(20) }
 }
@@ -234,6 +254,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const actor = await authorize(req)
   if (actor instanceof NextResponse) return actor
+
+  // formData() buffers the WHOLE multipart body, and the size check below only
+  // measures the `file` part — so extra or oversized parts would be held in
+  // memory before anything rejected them. Refuse on the declared length first.
+  const declaredLength = Number(req.headers.get('content-length') ?? Number.NaN)
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+    return fail('errTooLarge', 'This file is too large. Choose a file no larger than 10 MB.', 413)
+  }
 
   let form: FormData
   try {

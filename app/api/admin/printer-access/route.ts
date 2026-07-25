@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const { data: profiles } = await supabaseAdmin
     .from('user_profiles')
-    .select('id, email, full_name, role, is_active')
+    .select('id, email, full_name, role, is_active, custom_permissions')
     .order('email')
   const { data: appRoles } = await supabaseAdmin
     .from('user_app_roles')
@@ -53,9 +53,20 @@ export async function GET(req: NextRequest) {
       // routes resolve role for enforcement — so the matrix's "admin = all" lock
       // can't diverge from who actually bypasses the ACL server-side.
       const role = roleMap.get(u.id) ?? 'visitor'
-      return { id: u.id, email: u.email, name: u.full_name ?? null, role, isAdmin: isPrinterAdminRole(role) }
+      // A per-user override can grant these paths without the role doing so,
+      // and the print routes honor it — so the matrix has to as well, or such a
+      // user can never be given a station.
+      const custom = (u.custom_permissions ?? {}) as Record<string, boolean>
+      const customGrant =
+        custom[INVENTORY_OPS_PATH] === true || custom[REMOTE_PRINTING_PATH] === true
+      const isAdmin = isPrinterAdminRole(role)
+      return {
+        listed: isAdmin || customGrant || invOpsRoles.has(role),
+        user: { id: u.id, email: u.email, name: u.full_name ?? null, role, isAdmin },
+      }
     })
-    .filter((u) => u.isAdmin || invOpsRoles.has(u.role))
+    .filter((candidate) => candidate.listed)
+    .map((candidate) => candidate.user)
 
   const { data: stations } = await supabaseAdmin
     .from('print_stations')
