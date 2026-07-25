@@ -16,11 +16,16 @@ const MAX_BYTES = 10 * 1024 * 1024
 const MAX_TOTAL_PAYLOAD_BYTES = 16 * 1024 * 1024
 // Byte caps do not bound physical output: a small 300-page PDF × 20 copies is
 // 6000 sheets. Bound the paper, not just the upload.
-const MAX_TOTAL_PAGES = 200
+const MAX_TOTAL_PAGES = 100
 const MAX_COPIES = 20
-// The floor agent drains `pending` in seconds, so a large backlog means
-// something is wrong. Bounds sustained flooding without a rate-limit service.
+// The floor agent drains `pending` in seconds, so a large backlog means the
+// station is stuck or a client is looping.
 const MAX_PENDING_PER_USER = 60
+// A backlog check alone resets to zero as fast as the agent prints, so it
+// bounds a burst but not a sustained stream. This rolling window counts jobs
+// regardless of status and is what actually caps output over time.
+const RATE_WINDOW_MS = 60 * 60 * 1000
+const MAX_JOBS_PER_WINDOW = 60
 // pdf-lib decodes PNG to raw pixels (JPEG is embedded as-is), so a small
 // well-compressed PNG can expand into gigabytes. 25 MP ≈ 100 MB decoded.
 const MAX_IMAGE_PIXELS = 25_000_000
@@ -31,6 +36,7 @@ const PAPER_PAGE = { width: 612, height: 792, margin: 36 }
 const LABEL_PAGE = { width: 288, height: 432, margin: 9 }
 
 class ImageTooLargeError extends Error {}
+class ImageUnreadableError extends Error {}
 
 type PrinterKind = 'paper' | 'label'
 type UploadKind = 'pdf' | 'jpeg' | 'png'
@@ -149,8 +155,9 @@ async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pd
   // Unreadable dimensions are refused rather than embedded: a header we cannot
   // parse is exactly the case the pixel cap exists to catch.
   const dimensions = uploadKind === 'png' ? pngDimensions(bytes) : jpegDimensions(bytes)
-  if (!dimensions || dimensions.width * dimensions.height > MAX_IMAGE_PIXELS) {
-    throw new ImageTooLargeError('image dimensions missing or above the pixel limit')
+  if (!dimensions) throw new ImageUnreadableError('image header could not be parsed')
+  if (dimensions.width * dimensions.height > MAX_IMAGE_PIXELS) {
+    throw new ImageTooLargeError('image is above the pixel limit')
   }
   const pdf = await PDFDocument.create()
   const image = uploadKind === 'jpeg' ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
@@ -315,6 +322,9 @@ export async function POST(req: NextRequest) {
       if (error instanceof ImageTooLargeError) {
         return fail('errImageTooLarge', 'That image has too many pixels to print.', 413)
       }
+      if (error instanceof ImageUnreadableError) {
+        return fail('errImageUnreadable', 'That image could not be read. Re-save it and try again.', 400)
+      }
       return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
     }
 
@@ -341,6 +351,9 @@ export async function POST(req: NextRequest) {
           )
         }
         pageCount = document.getPageCount()
+        if (pageCount < 1) {
+          return fail('errPdfEmpty', 'This PDF has no pages to print.', 400)
+        }
       } catch {
         return fail(
           'errPdfUnreadable',
@@ -386,16 +399,36 @@ export async function POST(req: NextRequest) {
     // Every cap above is per-request; without this, repeated requests still add
     // up to unlimited paper. The agent claims pending jobs within seconds, so a
     // backlog this size means a stuck station or a runaway client either way.
-    const { count: pending, error: pendingError } = await supabaseAdmin
-      .from('print_jobs')
-      .select('id', { count: 'exact', head: true })
-      .eq('created_by', actor.userId)
-      .in('status', ['pending', 'printing'])
+    const windowStart = new Date(Date.now() - RATE_WINDOW_MS).toISOString()
+    const [
+      { count: pending, error: pendingError },
+      { count: recent, error: recentError },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from('print_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('created_by', actor.userId)
+        .in('status', ['pending', 'printing']),
+      supabaseAdmin
+        .from('print_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('created_by', actor.userId)
+        .eq('item_code', REMOTE_PRINT_ITEM_CODE)
+        .gte('created_at', windowStart),
+    ])
     if (pendingError) throw new Error(pendingError.message)
+    if (recentError) throw new Error(recentError.message)
     if ((pending ?? 0) + copies > MAX_PENDING_PER_USER) {
       return fail(
         'errQueueFull',
         'You already have print jobs waiting. Let them finish before sending more.',
+        429
+      )
+    }
+    if ((recent ?? 0) + copies > MAX_JOBS_PER_WINDOW) {
+      return fail(
+        'errRateLimited',
+        'You have sent a lot of print jobs recently. Try again in a little while.',
         429
       )
     }

@@ -8,6 +8,7 @@ export const runtime = 'nodejs'
 
 const DASHBOARD_APP_ID = 'dashboard'
 const INVENTORY_OPS_PATH = '/inventory-ops'
+const REMOTE_PRINTING_PATH = '/remote-printing'
 
 // GET — the matrix data: active users (with effective role), all stations, and
 // the current grant rows. Default-DENY: a (user, station) cell is denied unless
@@ -30,13 +31,19 @@ export async function GET(req: NextRequest) {
   // Only list users who can actually use inventory-ops / print labels — mirrors
   // requireInventoryAccess: admins, or a role whose menu_access grants
   // '/inventory-ops'. Keeps the matrix to people in the workflow (no clutter).
+  // Remote Printing is gated by the SAME per-station ACL, so its roles must be
+  // listed too: otherwise granting only '/remote-printing' produces a user who
+  // can open the page, is denied every station, and cannot be granted one from
+  // any admin screen.
   const { data: rolePerms } = await supabaseAdmin
     .from('role_permissions')
     .select('role, menu_access')
   const invOpsRoles = new Set<string>()
   for (const rp of rolePerms ?? []) {
     const menu = (rp.menu_access ?? {}) as Record<string, boolean>
-    if (menu[INVENTORY_OPS_PATH] === true) invOpsRoles.add(rp.role as string)
+    if (menu[INVENTORY_OPS_PATH] === true || menu[REMOTE_PRINTING_PATH] === true) {
+      invOpsRoles.add(rp.role as string)
+    }
   }
 
   const users = (profiles ?? [])
