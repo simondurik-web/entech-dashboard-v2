@@ -149,7 +149,9 @@ const adminItems: NavItem[] = [
 // can grab the shareable customer-facing link without leaving the dashboard.
 // Deliberately NOT role-gated: the catalog is public information (Simon,
 // 2026-06-10).
-const catalogItem: NavItem = { tKey: "nav.catalog", href: "https://rolltech-catalog.vercel.app", icon: <BookOpen className="size-4" />, external: true }
+// Points straight at the VPS host, not the old rolltech-catalog.vercel.app —
+// that URL only 308-redirects here and dies when the Vercel plan is cancelled.
+const catalogItem: NavItem = { tKey: "nav.catalog", href: "https://rolltech.4molding.com", icon: <BookOpen className="size-4" />, external: true }
 
 // ERPNext (erp.4molding.com) — opens in a new tab. Like the catalog, this is a
 // shortcut to an external system; not role-gated here (the ERP enforces its own
