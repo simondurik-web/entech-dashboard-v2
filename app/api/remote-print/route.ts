@@ -37,6 +37,8 @@ const MAX_IMAGE_PIXELS = 25_000_000
 const REMOTE_PRINT_ITEM_CODE = 'REMOTE-PRINT'
 const PAPER_PAGE = { width: 612, height: 792, margin: 36 }
 const LABEL_PAGE = { width: 288, height: 432, margin: 9 }
+// Slack for near-4x6 stock; a letter page is far outside it either way.
+const LABEL_FIT_TOLERANCE = 1.25
 
 class ImageTooLargeError extends Error {}
 class ImageUnreadableError extends Error {}
@@ -79,6 +81,10 @@ async function authorize(req: NextRequest): Promise<Actor | NextResponse> {
   // it. Enforce it here so a deactivated account cannot keep putting paper
   // through a floor printer from a session nobody revoked. Fail CLOSED — a
   // profile we cannot read is not evidence that the account is active.
+  // `!== false` rather than `=== true` deliberately: it is the convention the
+  // rest of the app uses (see admin/printer-access), the column defaults to
+  // true with no NULL rows today, and treating NULL as inactive HERE only
+  // would deny one feature to a user every other page still admits.
   if (profileError || !profile || profile.is_active === false) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -381,6 +387,25 @@ export async function POST(req: NextRequest) {
         pageCount = document.getPageCount()
         if (pageCount < 1) {
           return fail('errPdfEmpty', 'This PDF has no pages to print.', 400)
+        }
+        // Uploaded PDFs are passed through at their own size (only images get
+        // re-wrapped to the target geometry), so a letter-size document sent to
+        // the Zebra would chew through a stack of 4x6 labels before anyone
+        // noticed. Refuse the mismatch instead of printing it.
+        if (kind === 'label') {
+          const { width, height } = document.getPage(0).getSize()
+          const shortSide = Math.min(width, height)
+          const longSide = Math.max(width, height)
+          if (
+            shortSide > LABEL_PAGE.width * LABEL_FIT_TOLERANCE ||
+            longSide > LABEL_PAGE.height * LABEL_FIT_TOLERANCE
+          ) {
+            return fail(
+              'errPageTooBigForLabel',
+              'This page is larger than a 4x6 label. Send it to a paper printer instead.',
+              400
+            )
+          }
         }
       } catch {
         return fail(
