@@ -194,67 +194,110 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } | 
  * `quarterTurns` is the operator's own rotation, applied on top of the
  * automatic choice.
  */
-async function fitPdfToPage(
+async function preparePdf(
   bytes: Uint8Array,
   printerKind: PrinterKind,
-  quarterTurns: number
-): Promise<Uint8Array> {
+  quarterTurns: number,
+  fitToPage: boolean
+): Promise<{ bytes: Uint8Array; fitSkipped: boolean }> {
   const source = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })
+  const pages = source.getPages()
+
+  // embedPages() rebuilds a page from its content stream only, so annotations
+  // -- form fields, signatures, stamps, review comments -- do NOT survive it.
+  // Losing a signature silently is far worse than a clipped margin, so a
+  // document carrying any annotation is never re-laid; it prints at true size
+  // and the caller tells the operator why.
+  const annots = pages.some((page) => {
+    const list = page.node.Annots()
+    return Boolean(list && list.size() > 0)
+  })
+
+  // Rotation-only path. setRotation is page metadata, so it preserves
+  // everything, and it is also the honest reading of "fit off": turn it if I
+  // asked, but do not resize my document.
+  if (!fitToPage || annots) {
+    if (quarterTurns) {
+      pages.forEach((page) => {
+        const angle = (((page.getRotation().angle + quarterTurns * 90) % 360) + 360) % 360
+        page.setRotation(degrees(angle))
+      })
+      return { bytes: await source.save(), fitSkipped: annots }
+    }
+    return { bytes, fitSkipped: annots }
+  }
+
   const target = printerKind === 'paper' ? PAPER_PAGE : LABEL_PAGE
-  const out = await PDFDocument.create()
-  const embedded = await out.embedPages(source.getPages())
-  // A tighter inset than the one used for images: every point of margin is
-  // shrink that a dimensioned drawing pays for. At 36pt a landscape letter
-  // sheet lands at 88%; at FIT_MARGIN it keeps 94%, while still staying inside
-  // the unprintable edge that real printers reserve.
   const availableWidth = target.width - FIT_MARGIN * 2
   const availableHeight = target.height - FIT_MARGIN * 2
 
-  embedded.forEach((page, index) => {
-    const { width: sourceWidth, height: sourceHeight } = source.getPage(index).getSize()
-    // Upright vs turned: whichever needs less shrinking wins. Never scale ABOVE
-    // 1 — blowing a small page up to fill the sheet is not what "fit" means.
-    const uprightScale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight)
-    const turnedScale = Math.min(availableWidth / sourceHeight, availableHeight / sourceWidth)
-    const autoTurn = turnedScale > uprightScale
-    const turns = (((autoTurn ? 1 : 0) + quarterTurns) % 4 + 4) % 4
-    const swapped = turns % 2 === 1
-    const scale = Math.min(
-      1,
-      swapped
-        ? Math.min(availableWidth / sourceHeight, availableHeight / sourceWidth)
-        : Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight)
-    )
-    const drawnWidth = sourceWidth * scale
-    const drawnHeight = sourceHeight * scale
-    // Footprint on the sheet after turning, used to centre it.
-    const boxWidth = swapped ? drawnHeight : drawnWidth
-    const boxHeight = swapped ? drawnWidth : drawnHeight
-    const left = (target.width - boxWidth) / 2
-    const bottom = (target.height - boxHeight) / 2
+  try {
+    const out = await PDFDocument.create()
+    const embedded = await out.embedPages(pages)
 
-    // drawPage rotates about (x,y), so the anchor differs per quarter turn.
-    const anchor =
-      turns === 0
-        ? { x: left, y: bottom }
-        : turns === 1
-          ? { x: left + boxWidth, y: bottom }
-          : turns === 2
-            ? { x: left + boxWidth, y: bottom + boxHeight }
-            : { x: left, y: bottom + boxHeight }
+    embedded.forEach((embeddedPage, index) => {
+      const sourcePage = pages[index]
+      const { width: rawWidth, height: rawHeight } = sourcePage.getSize()
+      // getSize() reports the MediaBox and ignores /Rotate, so a page that
+      // DISPLAYS portrait can measure landscape. embedPage does not apply
+      // /Rotate either, so it is folded into the turns we draw with.
+      const pageAngle = (((sourcePage.getRotation().angle % 360) + 360) % 360)
+      const pageTurns = Math.round(pageAngle / 90) % 4
+      const displayWidth = pageTurns % 2 === 1 ? rawHeight : rawWidth
+      const displayHeight = pageTurns % 2 === 1 ? rawWidth : rawHeight
 
-    out.addPage([target.width, target.height]).drawPage(page, {
-      ...anchor,
-      xScale: scale,
-      yScale: scale,
-      rotate: degrees(turns * 90),
+      const uprightScale = Math.min(availableWidth / displayWidth, availableHeight / displayHeight)
+      const turnedScale = Math.min(availableWidth / displayHeight, availableHeight / displayWidth)
+      const autoTurn = turnedScale > uprightScale
+
+      const turns = (pageTurns + (autoTurn ? 1 : 0) + quarterTurns) % 4
+      const swapped = turns % 2 === 1
+      const footprintWidth = swapped ? rawHeight : rawWidth
+      const footprintHeight = swapped ? rawWidth : rawHeight
+      // Never scale ABOVE 1: blowing a small page up to fill the sheet is not
+      // what "fit" means.
+      const scale = Math.min(
+        1,
+        Math.min(availableWidth / footprintWidth, availableHeight / footprintHeight)
+      )
+      const boxWidth = footprintWidth * scale
+      const boxHeight = footprintHeight * scale
+      const left = (target.width - boxWidth) / 2
+      const bottom = (target.height - boxHeight) / 2
+
+      // drawPage rotates about (x,y), so the anchor corner differs per turn.
+      const anchor =
+        turns === 0
+          ? { x: left, y: bottom }
+          : turns === 1
+            ? { x: left + boxWidth, y: bottom }
+            : turns === 2
+              ? { x: left + boxWidth, y: bottom + boxHeight }
+              : { x: left, y: bottom + boxHeight }
+
+      out.addPage([target.width, target.height]).drawPage(embeddedPage, {
+        ...anchor,
+        xScale: scale,
+        yScale: scale,
+        rotate: degrees(turns * 90),
+      })
     })
-  })
 
-  return out.save()
+    return { bytes: await out.save(), fitSkipped: false }
+  } catch {
+    // A valid page with no /Contents stream makes embedPages throw. Refusing
+    // the whole document over that would be wrong -- fall back to printing it
+    // as-is rather than not at all.
+    return { bytes, fitSkipped: true }
+  }
 }
 
-async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pdf'>, printerKind: PrinterKind) {
+async function imageToPdf(
+  bytes: Uint8Array,
+  uploadKind: Exclude<UploadKind, 'pdf'>,
+  printerKind: PrinterKind,
+  quarterTurns: number
+) {
   // Unreadable dimensions are refused rather than embedded: a header we cannot
   // parse is exactly the case the pixel cap exists to catch.
   const dimensions = uploadKind === 'png' ? pngDimensions(bytes) : jpegDimensions(bytes)
@@ -265,19 +308,36 @@ async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pd
   const pdf = await PDFDocument.create()
   const image = uploadKind === 'jpeg' ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
   const pageSize = printerKind === 'paper' ? PAPER_PAGE : LABEL_PAGE
-  const fitScale = Math.min(
-    (pageSize.width - pageSize.margin * 2) / image.width,
-    (pageSize.height - pageSize.margin * 2) / image.height
+  const availableWidth = pageSize.width - pageSize.margin * 2
+  const availableHeight = pageSize.height - pageSize.margin * 2
+  // Images are always fitted, so the operator's rotation is the only turn to
+  // apply — but it has to drive the fit maths too, or a turned photo would be
+  // scaled for the orientation it no longer has.
+  const turns = ((quarterTurns % 4) + 4) % 4
+  const swapped = turns % 2 === 1
+  const footprintWidth = swapped ? image.height : image.width
+  const footprintHeight = swapped ? image.width : image.height
+  const scale = Math.min(
+    1,
+    Math.min(availableWidth / footprintWidth, availableHeight / footprintHeight)
   )
-  const scale = Math.min(1, fitScale)
-  const width = image.width * scale
-  const height = image.height * scale
-  const page = pdf.addPage([pageSize.width, pageSize.height])
-  page.drawImage(image, {
-    x: (pageSize.width - width) / 2,
-    y: (pageSize.height - height) / 2,
-    width,
-    height,
+  const boxWidth = footprintWidth * scale
+  const boxHeight = footprintHeight * scale
+  const left = (pageSize.width - boxWidth) / 2
+  const bottom = (pageSize.height - boxHeight) / 2
+  const anchor =
+    turns === 0
+      ? { x: left, y: bottom }
+      : turns === 1
+        ? { x: left + boxWidth, y: bottom }
+        : turns === 2
+          ? { x: left + boxWidth, y: bottom + boxHeight }
+          : { x: left, y: bottom + boxHeight }
+  pdf.addPage([pageSize.width, pageSize.height]).drawImage(image, {
+    ...anchor,
+    width: image.width * scale,
+    height: image.height * scale,
+    rotate: degrees(turns * 90),
   })
   return pdf.save()
 }
@@ -524,11 +584,14 @@ export async function POST(req: NextRequest) {
 
     // Transform only after the document has passed every guard above.
     let pdfBytes: Uint8Array
+    let fitSkipped = false
     try {
       if (uploadKind === 'pdf') {
-        pdfBytes = fitToPage || quarterTurns ? await fitPdfToPage(bytes, kind, quarterTurns) : bytes
+        const prepared = await preparePdf(bytes, kind, quarterTurns, fitToPage)
+        pdfBytes = prepared.bytes
+        fitSkipped = prepared.fitSkipped
       } else {
-        pdfBytes = await imageToPdf(bytes, uploadKind, kind)
+        pdfBytes = await imageToPdf(bytes, uploadKind, kind, quarterTurns)
       }
     } catch (error) {
       if (error instanceof ImageTooLargeError) {
@@ -548,6 +611,10 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': 'inline; filename="preview.pdf"',
+          // The body is a PDF, so the "we could not fit this" signal rides in a
+          // header rather than a JSON field. Silent non-fitting would look like
+          // the toggle is broken.
+          'X-Fit-Skipped': fitSkipped ? '1' : '0',
           'Cache-Control': 'no-store',
         },
       })
@@ -629,7 +696,7 @@ export async function POST(req: NextRequest) {
     if (insertError) throw new Error(insertError.message)
 
     return NextResponse.json(
-      { queued: copies },
+      { queued: copies, fitSkipped },
       { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (error) {

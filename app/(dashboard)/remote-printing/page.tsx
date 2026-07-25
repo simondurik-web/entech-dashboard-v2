@@ -40,6 +40,7 @@ export default function RemotePrintingPage() {
   const [fitToPage, setFitToPage] = useState(true)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState(false)
+  const [fitSkipped, setFitSkipped] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const busyRef = useRef(false)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -128,6 +129,9 @@ export default function RemotePrintingPage() {
     }
     let cancelled = false
     let objectUrl: string | null = null
+    // Each rotate click supersedes the last: without aborting, holding the
+    // button queues a pile of full PDF rewrites the server still has to finish.
+    const controller = new AbortController()
     setPreviewing(true)
     const run = async () => {
       try {
@@ -138,17 +142,22 @@ export default function RemotePrintingPage() {
         form.set('preview', 'true')
         form.set('fit', fitToPage ? 'true' : 'false')
         form.set('rotate', String(quarterTurns))
-        const response = await authedFetch('/api/remote-print', { method: 'POST', body: form })
+        const response = await authedFetch('/api/remote-print', {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        })
         if (!response.ok) {
           const body = await response.json().catch(() => ({}))
           throw new Error(resolveError(body))
         }
+        setFitSkipped(response.headers.get('X-Fit-Skipped') === '1')
         const blob = await response.blob()
         if (cancelled) return
         objectUrl = URL.createObjectURL(blob)
         setPreviewUrl(objectUrl)
       } catch (error) {
-        if (cancelled) return
+        if (cancelled || (error instanceof DOMException && error.name === 'AbortError')) return
         setPreviewUrl(null)
         showFlash('err', error instanceof Error ? error.message : t('remotePrinting.errGeneric'), 20000)
       } finally {
@@ -158,6 +167,7 @@ export default function RemotePrintingPage() {
     run()
     return () => {
       cancelled = true
+      controller.abort()
       // Release the blob this run created; a stale one would leak for the life
       // of the tab, and each preview is a whole PDF.
       if (objectUrl) URL.revokeObjectURL(objectUrl)
@@ -171,6 +181,9 @@ export default function RemotePrintingPage() {
       )}`,
     [t]
   )
+
+  // Images are always re-laid onto the sheet, so a "fit" toggle would be a lie.
+  const isPdf = file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name ?? '')
 
   const clearFile = () => {
     setFile(null)
@@ -357,15 +370,17 @@ export default function RemotePrintingPage() {
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium">{t('remotePrinting.preview')}</span>
                 <div className="flex items-center gap-3">
-                  <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={fitToPage}
-                      onChange={(event) => setFitToPage(event.target.checked)}
-                      className="size-4"
-                    />
-                    {t('remotePrinting.fitToPage')}
-                  </label>
+                  {isPdf && (
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={fitToPage}
+                        onChange={(event) => setFitToPage(event.target.checked)}
+                        className="size-4"
+                      />
+                      {t('remotePrinting.fitToPage')}
+                    </label>
+                  )}
                   <button
                     type="button"
                     onClick={() => setQuarterTurns((turns) => (turns + 1) % 4)}
@@ -396,7 +411,9 @@ export default function RemotePrintingPage() {
                 </div>
               )}
               <p className="mt-1.5 text-xs text-muted-foreground">
-                {t('remotePrinting.previewHint')}
+                {fitToPage && fitSkipped
+                  ? t('remotePrinting.fitSkippedHint')
+                  : t('remotePrinting.previewHint')}
               </p>
             </div>
           )}

@@ -1605,6 +1605,7 @@
   "remotePrinting.previewHint": "Esto es exactamente lo que se imprimirá.",
   "remotePrinting.rotate": "Girar",
   "remotePrinting.fitToPage": "Ajustar a la página",
+  "remotePrinting.fitSkippedHint": "Este documento tiene campos de formulario o anotaciones, así que se imprime en su tamaño original para no perderlos.",
   "remotePrinting.errRotate": "La rotación debe ser 0, 1, 2 o 3 cuartos de vuelta.",
   "remotePrinting.print": "Imprimir",
   "remotePrinting.printing": "Imprimiendo…",
