@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { PDFDocument } from 'pdf-lib'
 import { allowedStationIds, userCanPrintTo } from '@/lib/erpnext/printer-access'
@@ -23,6 +24,9 @@ const MAX_PENDING_PER_USER = 60
 // pdf-lib decodes PNG to raw pixels (JPEG is embedded as-is), so a small
 // well-compressed PNG can expand into gigabytes. 25 MP ≈ 100 MB decoded.
 const MAX_IMAGE_PIXELS = 25_000_000
+// Marks these rows so the inventory recent-labels view can leave them out of
+// an operator's jam-recovery list.
+const REMOTE_PRINT_ITEM_CODE = 'REMOTE-PRINT'
 const PAPER_PAGE = { width: 612, height: 792, margin: 36 }
 const LABEL_PAGE = { width: 288, height: 432, margin: 9 }
 
@@ -49,15 +53,16 @@ async function authorize(req: NextRequest): Promise<Actor | NextResponse> {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const permitted = await requirePermission(req, '/remote-printing')
   if (!permitted) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const [{ role }, { data: profile }] = await Promise.all([
+  const [{ role }, { data: profile, error: profileError }] = await Promise.all([
     loadDashboardProfile(user.id),
     supabaseAdmin.from('user_profiles').select('is_active').eq('id', user.id).maybeSingle(),
   ])
   // Deactivating a user only flips this flag: the role, the printer grants and
   // any already-issued token all survive, and no shared auth helper consults
   // it. Enforce it here so a deactivated account cannot keep putting paper
-  // through a floor printer from a session nobody revoked.
-  if (profile?.is_active === false) {
+  // through a floor printer from a session nobody revoked. Fail CLOSED — a
+  // profile we cannot read is not evidence that the account is active.
+  if (profileError || !profile || profile.is_active === false) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   return { userId: user.id, role }
@@ -105,11 +110,6 @@ function isHeic(bytes: Uint8Array): boolean {
   return brand === 'ftypheic' || brand === 'ftypheix' || brand === 'ftypmif1'
 }
 
-function sanitizedFilename(filename: string): string {
-  const basename = filename.split(/[\\/]/).pop() ?? ''
-  return basename.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) || 'upload'
-}
-
 /**
  * Width/height from the PNG IHDR chunk, which is always first: 8-byte
  * signature, 4-byte length, "IHDR", then two big-endian uint32s. Read BEFORE
@@ -121,12 +121,36 @@ function pngDimensions(bytes: Uint8Array): { width: number; height: number } | n
   return { width: view.getUint32(16), height: view.getUint32(20) }
 }
 
-async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pdf'>, printerKind: PrinterKind) {
-  if (uploadKind === 'png') {
-    const dimensions = pngDimensions(bytes)
-    if (dimensions && dimensions.width * dimensions.height > MAX_IMAGE_PIXELS) {
-      throw new ImageTooLargeError('PNG exceeds the pixel limit')
+/**
+ * Width/height from the JPEG Start-Of-Frame segment. The dimensions are not in
+ * the file header, so the marker segments have to be walked. pdf-lib embeds
+ * JPEG without decoding it, so an absurd declared size costs the server
+ * nothing — but it is handed straight to the floor station, where CUPS does
+ * decode it. The limit has to be enforced on our side.
+ */
+function jpegDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let offset = 2 // past SOI
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) return null
+    const marker = bytes[offset + 1]
+    // SOF0..SOF15 carry the frame header; C4/C8/CC are DHT/JPG/DAC, not SOF.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: view.getUint16(offset + 5), width: view.getUint16(offset + 7) }
     }
+    const segmentLength = view.getUint16(offset + 2)
+    if (segmentLength < 2) return null
+    offset += 2 + segmentLength
+  }
+  return null
+}
+
+async function imageToPdf(bytes: Uint8Array, uploadKind: Exclude<UploadKind, 'pdf'>, printerKind: PrinterKind) {
+  // Unreadable dimensions are refused rather than embedded: a header we cannot
+  // parse is exactly the case the pixel cap exists to catch.
+  const dimensions = uploadKind === 'png' ? pngDimensions(bytes) : jpegDimensions(bytes)
+  if (!dimensions || dimensions.width * dimensions.height > MAX_IMAGE_PIXELS) {
+    throw new ImageTooLargeError('image dimensions missing or above the pixel limit')
   }
   const pdf = await PDFDocument.create()
   const image = uploadKind === 'jpeg' ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
@@ -302,9 +326,21 @@ export async function POST(req: NextRequest) {
     let pageCount: number
     if (uploadKind === 'pdf') {
       try {
-        pageCount = (
-          await PDFDocument.load(pdfBytes, { updateMetadata: false, ignoreEncryption: true })
-        ).getPageCount()
+        const document = await PDFDocument.load(pdfBytes, {
+          updateMetadata: false,
+          ignoreEncryption: true,
+        })
+        // ignoreEncryption only stops pdf-lib refusing the file; it does NOT
+        // decrypt it. The bytes we would queue stay encrypted, so the station
+        // fails to print while the user is told it worked. Refuse instead.
+        if (document.isEncrypted) {
+          return fail(
+            'errPdfEncrypted',
+            'This PDF is password-protected and cannot be printed. Save an unprotected copy and try again.',
+            400
+          )
+        }
+        pageCount = document.getPageCount()
       } catch {
         return fail(
           'errPdfUnreadable',
@@ -350,11 +386,12 @@ export async function POST(req: NextRequest) {
     // Every cap above is per-request; without this, repeated requests still add
     // up to unlimited paper. The agent claims pending jobs within seconds, so a
     // backlog this size means a stuck station or a runaway client either way.
-    const { count: pending } = await supabaseAdmin
+    const { count: pending, error: pendingError } = await supabaseAdmin
       .from('print_jobs')
       .select('id', { count: 'exact', head: true })
       .eq('created_by', actor.userId)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'printing'])
+    if (pendingError) throw new Error(pendingError.message)
     if ((pending ?? 0) + copies > MAX_PENDING_PER_USER) {
       return fail(
         'errQueueFull',
@@ -363,17 +400,25 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // print_jobs is shared and read back by the inventory recent-labels view,
+    // so the uploaded FILENAME is deliberately not stored here — a document
+    // someone prints privately must not surface in an operator's label list.
+    // The client already shows the user their own filename.
     const stamp = Date.now()
+    const batchId = randomUUID()
     const { error: insertError } = await supabaseAdmin.from('print_jobs').insert(
       Array.from({ length: copies }, (_, index) => ({
         station_id: stationId,
         format: 'pdf',
         zpl: payload,
-        item_code: 'REMOTE-PRINT',
-        batch: sanitizedFilename(fileField.name),
+        item_code: REMOTE_PRINT_ITEM_CODE,
+        batch: 'Remote print',
         target: kind === 'label' ? 'zebra' : null,
         created_by: actor.userId,
-        idempotency_key: `remote-${actor.userId}-${stamp}-${index + 1}`, // reprints are intentional
+        // Random, not just the timestamp: two jobs in the same millisecond
+        // would otherwise collide on the UNIQUE key and fail the whole insert.
+        // Reprints stay intentional, as in the sibling print routes.
+        idempotency_key: `remote-${batchId}-${stamp}-${index + 1}`,
         status: 'pending',
       }))
     )

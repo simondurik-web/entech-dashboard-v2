@@ -49,14 +49,23 @@ export default function RemotePrintingPage() {
   // see the English fallback the route ships for non-browser callers.
   const resolveError = useCallback(
     (body: unknown): string => {
-      const payload = (body ?? {}) as { code?: unknown; error?: unknown; maxCopies?: unknown }
+      const payload = (body ?? {}) as {
+        code?: unknown
+        error?: unknown
+        maxCopies?: unknown
+        pages?: unknown
+        max?: unknown
+      }
       if (typeof payload.code === 'string') {
         const key = `remotePrinting.${payload.code}`
         const localized = t(key)
         if (localized !== key) {
-          return typeof payload.maxCopies === 'number'
-            ? localized.replace('{max}', String(payload.maxCopies))
-            : localized
+          // {max} is the copy limit on the copies-related errors and the page
+          // limit on the length one, so prefer the explicit `max` when sent.
+          const max = typeof payload.max === 'number' ? payload.max : payload.maxCopies
+          return localized
+            .replace('{max}', typeof max === 'number' ? String(max) : '')
+            .replace('{pages}', typeof payload.pages === 'number' ? String(payload.pages) : '')
         }
       }
       return typeof payload.error === 'string' ? payload.error : t('remotePrinting.errGeneric')

@@ -28,6 +28,10 @@ export async function GET(req: NextRequest) {
     const { data: jobs, error } = await supabaseAdmin
       .from('print_jobs')
       .select('id, batch, item_code, station_id, created_by, created_at, status, claimed_at, printed_at, error, idempotency_key')
+      // Remote Printing writes to the same table but produces documents, not
+      // labels. Without this, one 20-copy job pushes every real label out of
+      // this list — which exists so an operator can find a label that jammed.
+      .neq('item_code', 'REMOTE-PRINT')
       .order('created_at', { ascending: false })
       .limit(limit)
     if (error) throw new Error(error.message)
