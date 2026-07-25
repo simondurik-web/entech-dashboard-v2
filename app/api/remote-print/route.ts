@@ -43,6 +43,16 @@ const MAX_QUARTER_TURNS = 3
 // Slack for near-4x6 stock; a letter page is far outside it either way.
 const LABEL_FIT_TOLERANCE = 1.25
 
+// pdf-lib decompresses content streams with no decoded-size limit, so a small
+// Flate stream can expand enormously. The per-request caps bound ONE document;
+// they do nothing about many at once. This bounds how much of that work can be
+// in flight together, which is what turns "an expensive request" into "an
+// out-of-memory container that takes the dashboard down for everyone".
+// Deliberately in-process: this app runs as a single container, and a shared
+// counter would need infrastructure that does not exist here.
+const MAX_CONCURRENT_TRANSFORMS = 2
+let activeTransforms = 0
+
 class ImageTooLargeError extends Error {}
 class ImageUnreadableError extends Error {}
 
@@ -602,8 +612,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Transform only after the document has passed every guard above.
+    if (activeTransforms >= MAX_CONCURRENT_TRANSFORMS) {
+      return fail('errBusy', 'The printer service is busy. Try again in a moment.', 429)
+    }
     let pdfBytes: Uint8Array
     let fitSkipped = false
+    activeTransforms += 1
     try {
       if (uploadKind === 'pdf') {
         const prepared = await preparePdf(bytes, kind, quarterTurns, relayable, previewOnly)
@@ -620,6 +634,8 @@ export async function POST(req: NextRequest) {
         return fail('errImageUnreadable', 'That image could not be read. Re-save it and try again.', 400)
       }
       return fail('errUnsupported', 'That file could not be read as a printable document.', 415)
+    } finally {
+      activeTransforms -= 1
     }
 
     // Validate the bytes that will ACTUALLY print, for EVERY label job.

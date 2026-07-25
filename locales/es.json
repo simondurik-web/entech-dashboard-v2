@@ -1618,6 +1618,7 @@
   "remotePrinting.errUnsupported": "Elige un archivo PDF, JPEG o PNG.",
   "remotePrinting.errHeic": "Los archivos HEIC no son compatibles. Vuelve a guardar la imagen como JPEG o PNG, o toma una captura de pantalla.",
   "remotePrinting.errGeneric": "No se pudo imprimir de forma remota. Inténtalo de nuevo.",
+  "remotePrinting.errBusy": "El servicio de impresión está ocupado. Inténtalo de nuevo en un momento.",
   "remotePrinting.errPrintersLoad": "No se pudieron cargar las impresoras disponibles. Inténtalo de nuevo.",
   "remotePrinting.errCopies": "Las copias deben ser un número entero entre 1 y 20.",
   "remotePrinting.errPrinterInvalid": "Elige una impresora.",

@@ -1618,6 +1618,7 @@
   "remotePrinting.errUnsupported": "Choose a PDF, JPEG, or PNG file.",
   "remotePrinting.errHeic": "HEIC files aren't supported. Re-save the image as JPEG or PNG, or take a screenshot.",
   "remotePrinting.errGeneric": "Remote printing failed. Please try again.",
+  "remotePrinting.errBusy": "The printer service is busy right now. Try again in a moment.",
   "remotePrinting.errPrintersLoad": "We could not load the available printers. Please try again.",
   "remotePrinting.errCopies": "Copies must be a whole number between 1 and 20.",
   "remotePrinting.errPrinterInvalid": "Choose a printer.",
