@@ -55,6 +55,7 @@ export default function RemotePrintingPage() {
         maxCopies?: unknown
         pages?: unknown
         max?: unknown
+        page?: unknown
       }
       if (typeof payload.code === 'string') {
         const key = `remotePrinting.${payload.code}`
@@ -66,6 +67,7 @@ export default function RemotePrintingPage() {
           return localized
             .replace('{max}', typeof max === 'number' ? String(max) : '')
             .replace('{pages}', typeof payload.pages === 'number' ? String(payload.pages) : '')
+            .replace('{page}', typeof payload.page === 'number' ? String(payload.page) : '')
         }
       }
       return typeof payload.error === 'string' ? payload.error : t('remotePrinting.errGeneric')

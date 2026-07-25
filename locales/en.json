@@ -1627,7 +1627,7 @@
   "remotePrinting.errRateLimited": "You have sent a lot of print jobs recently. Try again in a little while.",
   "remotePrinting.errImageUnreadable": "That image could not be read. Re-save it and try again.",
   "remotePrinting.errPdfEmpty": "This PDF has no pages to print.",
-  "remotePrinting.errPageTooBigForLabel": "This page is larger than a 4x6 label. Send it to a paper printer instead.",
+  "remotePrinting.errPageTooBigForLabel": "Page {page} is larger than a 4x6 label. Send this to a paper printer instead.",
   "remotePrinting.loadingPrinters": "Loading printers…",
   "remotePrinting.selectPrinter": "Select a printer",
   "login.or": "or",

@@ -391,19 +391,23 @@ export async function POST(req: NextRequest) {
         // Uploaded PDFs are passed through at their own size (only images get
         // re-wrapped to the target geometry), so a letter-size document sent to
         // the Zebra would chew through a stack of 4x6 labels before anyone
-        // noticed. Refuse the mismatch instead of printing it.
-        if (kind === 'label') {
-          const { width, height } = document.getPage(0).getSize()
-          const shortSide = Math.min(width, height)
-          const longSide = Math.max(width, height)
-          if (
-            shortSide > LABEL_PAGE.width * LABEL_FIT_TOLERANCE ||
-            longSide > LABEL_PAGE.height * LABEL_FIT_TOLERANCE
-          ) {
+        // noticed. EVERY page is checked, not just the first: a document that
+        // opens with a 4x6 page and continues at letter size would otherwise
+        // pass and waste the roll from page two onward.
+        if (kind === 'label' && pageCount <= MAX_TOTAL_PAGES) {
+          const oversized = document.getPages().findIndex((page) => {
+            const { width, height } = page.getSize()
+            return (
+              Math.min(width, height) > LABEL_PAGE.width * LABEL_FIT_TOLERANCE ||
+              Math.max(width, height) > LABEL_PAGE.height * LABEL_FIT_TOLERANCE
+            )
+          })
+          if (oversized !== -1) {
             return fail(
               'errPageTooBigForLabel',
-              'This page is larger than a 4x6 label. Send it to a paper printer instead.',
-              400
+              `Page ${oversized + 1} is larger than a 4x6 label. Send this to a paper printer instead.`,
+              400,
+              { page: oversized + 1 }
             )
           }
         }
