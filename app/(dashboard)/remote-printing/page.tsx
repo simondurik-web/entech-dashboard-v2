@@ -254,12 +254,17 @@ export default function RemotePrintingPage() {
       }
 
       clearFile()
+      // The server reports whether it actually re-laid the page. A document it
+      // could not re-lay prints at its original size and may therefore be
+      // clipped -- saying only "queued" would hide the one thing the operator
+      // needs to know, which is the failure this whole feature exists to end.
+      const printedUnfitted = body.fitSkipped === true
       showFlash(
-        'ok',
-        t('remotePrinting.success')
+        printedUnfitted ? 'err' : 'ok',
+        t(printedUnfitted ? 'remotePrinting.successUnfitted' : 'remotePrinting.success')
           .replace('{copies}', String(body.queued ?? copyCount))
           .replace('{printer}', printerLabel(selectedPrinter)),
-        5000
+        printedUnfitted ? 20000 : 5000
       )
     } catch (error) {
       showFlash(
@@ -411,9 +416,7 @@ export default function RemotePrintingPage() {
                 </div>
               )}
               <p className="mt-1.5 text-xs text-muted-foreground">
-                {fitToPage && fitSkipped
-                  ? t('remotePrinting.fitSkippedHint')
-                  : t('remotePrinting.previewHint')}
+                {fitSkipped ? t('remotePrinting.fitSkippedHint') : t('remotePrinting.previewHint')}
               </p>
             </div>
           )}
