@@ -45,6 +45,9 @@ export type PdfWorkerResult =
   | { ok: false; reason: 'timeout' | 'memory' | 'unreadable' | 'unavailable' }
 
 const MEMORY_CAP_MB = 256
+// The prepared PDF is bounded by the upload cap and the page cap; anything far
+// beyond that is a runaway child, not a document.
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 const TIMEOUT_MS = 25_000
 
 /**
@@ -73,7 +76,7 @@ process.stdin.on('end', async () => {
       if (!candidate) continue
       try { PDFLib = require(candidate); break } catch (_) { /* try the next */ }
     }
-    if (!PDFLib) { process.stderr.write('PDF_WORKER_NO_PDFLIB'); process.exit(4) }
+    if (!PDFLib) { process.stderr.write('PDF_WORKER_NO_PDFLIB', () => process.exit(4)); return }
     const { PDFDocument, PDFName, degrees } = PDFLib
     const o = JSON.parse(process.argv[2])
     const input = new Uint8Array(Buffer.concat(chunks))
@@ -169,11 +172,15 @@ process.stdin.on('end', async () => {
     const json = Buffer.from(JSON.stringify(meta), 'utf8')
     const header = Buffer.alloc(4)
     header.writeUInt32LE(json.length, 0)
-    process.stdout.write(Buffer.concat([header, json, outBytes ? Buffer.from(outBytes) : Buffer.alloc(0)]))
-    process.exit(0)
+    const payload = Buffer.concat([header, json, outBytes ? Buffer.from(outBytes) : Buffer.alloc(0)])
+    // process.exit() ABORTS a pending stdout write. stdout to a pipe is async,
+    // so exiting straight after write() truncates the payload at the OS pipe
+    // buffer -- about 64 KiB. Every real drawing is larger than that, so this
+    // silently produced corrupt PDFs that the parent accepted as success.
+    // Wait for the flush, and only then exit.
+    process.stdout.write(payload, () => process.exit(0))
   } catch (e) {
-    process.stderr.write('PDF_WORKER_ERROR: ' + String((e && e.message) || e))
-    process.exit(3)
+    process.stderr.write('PDF_WORKER_ERROR: ' + String((e && e.message) || e), () => process.exit(3))
   }
 })
 `
@@ -222,6 +229,7 @@ export async function runPdfWorker(
 
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
+    let stdoutBytes = 0
     let settled = false
     const finish = (result: PdfWorkerResult) => {
       if (settled) return
@@ -235,8 +243,20 @@ export async function runPdfWorker(
       finish({ ok: false, reason: 'timeout' })
     }, TIMEOUT_MS)
 
-    child.stdout.on('data', (c: Buffer) => stdout.push(c))
-    child.stderr.on('data', (c: Buffer) => stderr.push(c))
+    child.stdout.on('data', (c: Buffer) => {
+      stdoutBytes += c.length
+      // Bound the PARENT too: a child streaming without end would move the
+      // memory problem across the process boundary rather than contain it.
+      if (stdoutBytes > MAX_OUTPUT_BYTES) {
+        child.kill('SIGKILL')
+        finish({ ok: false, reason: 'memory' })
+        return
+      }
+      stdout.push(c)
+    })
+    child.stderr.on('data', (c: Buffer) => {
+      if (stderr.length < 20) stderr.push(c)
+    })
     child.on('error', () => finish({ ok: false, reason: 'unavailable' }))
 
     child.on('close', (code, signal) => {
