@@ -1198,6 +1198,46 @@ export default function InventoryOpsPage() {
 
       const palletStr = (x: InventoryRow) => x.pallets.map((p) => `${p.batch} (${p.qty})`).join(', ')
 
+      // By Product is a totals sheet: one line per item code, no bin breakdown.
+      // The same item sitting in six bins collapses to a single facility-wide
+      // total — use the By Bin tab when you need to know where it is.
+      const buildByProductSheet = () => {
+        // The report payload is cast, not validated. Coerce every field: summing
+        // is destructive in a way the old pass-through display was not — a qty
+        // that arrived as a string would concatenate instead of add.
+        const totals = new Map<string, { itemCode: string; itemName: string; uom: string; qty: number }>()
+        for (const x of rows) {
+          const itemCode = String(x.itemCode ?? '')
+          const itemName = String(x.itemName ?? '') || itemCode
+          const uom = String(x.uom ?? '')
+          const qty = Number(x.qty)
+          // A blank item code is not an identity — key those by name so unrelated
+          // uncoded rows don't collapse into one bogus line.
+          const key = itemCode || `name:${itemName}`
+          const running = totals.get(key)
+          if (running) {
+            running.qty += Number.isFinite(qty) ? qty : 0
+            if (!running.uom) running.uom = uom
+          } else {
+            totals.set(key, { itemCode, itemName, uom, qty: Number.isFinite(qty) ? qty : 0 })
+          }
+        }
+        const products = [...totals.values()].sort(
+          (a, b) => a.itemName.localeCompare(b.itemName) || a.itemCode.localeCompare(b.itemCode)
+        )
+        // Historical snapshots carry no UOM — don't ship an empty column.
+        const hasUom = products.some((p) => p.uom)
+        const ws = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
+        ws.columns = [
+          { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
+          { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
+          ...(hasUom ? [{ header: t('inventoryOps.repUom'), key: 'uom', width: 10 }] : []),
+          { header: t('inventoryOps.repTotalQty'), key: 'qty', width: 14 },
+        ]
+        products.forEach((p) => ws.addRow(p))
+        return ws
+      }
+
       if (!d.historical) {
         // Tab 1 — By Bin: pick a bin from the Bin column's filter dropdown.
         const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
@@ -1214,20 +1254,8 @@ export default function InventoryOpsPage() {
           .forEach((x) => byBin.addRow({ ...x, pallets: palletStr(x) }))
         styleHeader(byBin)
 
-        // Tab 2 — By Product: pick a product from the Item filter dropdown.
-        const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
-        byProd.columns = [
-          { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-          { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-          { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
-          { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
-          { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-          { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
-        ]
-        ;[...rows]
-          .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.warehouse.localeCompare(b.warehouse))
-          .forEach((x) => byProd.addRow({ ...x, pallets: palletStr(x) }))
-        styleHeader(byProd)
+        // Tab 2 — By Product: one line per product, total on hand across all bins.
+        styleHeader(buildByProductSheet())
       } else {
         const styleHistoricalHeader = (ws: import('exceljs').Worksheet) => {
           const headerRow = d.legacyData ? 2 : 1
@@ -1259,31 +1287,8 @@ export default function InventoryOpsPage() {
             .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
             .forEach((x) => byBin.addRow(x))
           finishHistoricalSheet(byBin)
-
-          const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
-          byProd.columns = [
-            { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-            { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-            { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
-            { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
-            { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-          ]
-          ;[...rows]
-            .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.warehouse.localeCompare(b.warehouse))
-            .forEach((x) => byProd.addRow(x))
-          finishHistoricalSheet(byProd)
-        } else {
-          const byProd = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
-          byProd.columns = [
-            { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-            { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-            { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-          ]
-          ;[...rows]
-            .sort((a, b) => a.itemName.localeCompare(b.itemName))
-            .forEach((x) => byProd.addRow({ itemCode: x.itemCode, itemName: x.itemName, qty: x.qty }))
-          finishHistoricalSheet(byProd)
         }
+        finishHistoricalSheet(buildByProductSheet())
       }
 
       const buf = await wb.xlsx.writeBuffer()

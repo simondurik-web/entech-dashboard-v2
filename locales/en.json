@@ -1468,6 +1468,7 @@
   "inventoryOps.repBin": "Bin",
   "inventoryOps.repUom": "UOM",
   "inventoryOps.repQty": "Qty",
+  "inventoryOps.repTotalQty": "Total Qty",
   "inventoryOps.repPallets": "Pallets",
   "inventoryOps.repTotalOnHand": "Total on hand",
   "inventoryOps.repGenerated": "Generated",

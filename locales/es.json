@@ -1468,6 +1468,7 @@
   "inventoryOps.repBin": "Ubicación",
   "inventoryOps.repUom": "Unidad",
   "inventoryOps.repQty": "Cantidad",
+  "inventoryOps.repTotalQty": "Cantidad total",
   "inventoryOps.repPallets": "Tarimas",
   "inventoryOps.repTotalOnHand": "Total disponible",
   "inventoryOps.repGenerated": "Generado",
