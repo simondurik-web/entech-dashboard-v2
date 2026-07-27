@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { requireUser } from '@/lib/require-user'
 
 // Server-side access guard for the ERPNext inventory routes.
 //
@@ -17,11 +18,6 @@ type Guard =
   | { ok: true; role: string; userId: string; email: string }
   | { ok: false; res: NextResponse }
 
-function bearer(req: NextRequest): string | null {
-  const h = req.headers.get('authorization') ?? ''
-  // Case-insensitive scheme match (proxies/clients may normalize the header case).
-  return /^bearer /i.test(h) ? h.slice(7).trim() || null : null
-}
 
 export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
   return requireMenuAccess(req, INVENTORY_OPS_PATH)
@@ -31,15 +27,13 @@ export async function requireInventoryAccess(req: NextRequest): Promise<Guard> {
  *  (Ship Order) routes use '/staged' — access to the Ready to Ship page is what
  *  grants the shipping flow (admin + the shipping roles). */
 export async function requireMenuAccess(req: NextRequest, menuPath: string): Promise<Guard> {
-  const token = bearer(req)
-  if (!token) {
-    return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  }
-
-  // Verify the JWT and derive identity from it (not from any client header).
-  const { data: authData, error: authErr } = await supabaseAdmin.auth.getUser(token)
-  const authedUser = authData?.user
-  if (authErr || !authedUser) {
+  // Identity comes from the shared requireUser (2026-07-27). This used to
+  // verify the token itself and read user_profiles without is_active, so a
+  // deactivated user kept write access to ~35 inventory and fulfillment routes
+  // until their token expired. Sharing the one verifier means this guard cannot
+  // drift from the rest of the app again.
+  const authedUser = await requireUser(req)
+  if (!authedUser) {
     return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
   const userId = authedUser.id

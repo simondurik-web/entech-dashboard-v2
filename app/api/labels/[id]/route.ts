@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUserOrDevice } from '@/lib/require-user'
+import { requireDashboardAccess } from '@/lib/require-user'
 
+// Gated 2026-07-27. The collection GET was closed first and this one was
+// missed — a parameterised route, invisible to a URL sweep, returning the whole
+// label record (customer, PO, part, who printed it) to anyone (codex, review
+// panel round 2). Second time a `[id]` route hid from the audit; the probe now
+// carries a sample id for exactly this reason.
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { id } = await params
 
   const { data, error } = await supabaseAdmin
@@ -22,11 +30,14 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
-  const body = await req.json()
-  const actor = await requireUserOrDevice(req)
+  // Auth before parsing the body — see the note on POST /api/labels.
+  // Enrolment, not `labels:print` — see the note on POST /api/labels.
+  const actor = await requireDashboardAccess(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const userId = actor.id
+
+  const { id } = await params
+  const body = await req.json()
 
   const updates: Record<string, unknown> = {}
 

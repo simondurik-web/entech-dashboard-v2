@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUserOrDevice } from '@/lib/require-user'
+import { requireDashboardAccess } from '@/lib/require-user'
 
+// Gated 2026-07-27 — see /api/labels. Label activity names the operator who
+// printed each label.
 export async function GET(req: NextRequest) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { searchParams } = new URL(req.url)
   const page = parseInt(searchParams.get('page') || '1')
   const limit = parseInt(searchParams.get('limit') || '50')
@@ -19,10 +24,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const actor = await requireUserOrDevice(req)
+  // Auth before parsing the body — see the note on POST /api/labels.
+  const actor = await requireDashboardAccess(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const userId = actor.id
+
+  const body = await req.json()
 
   const { data, error } = await supabaseAdmin
     .from('label_activity_log')

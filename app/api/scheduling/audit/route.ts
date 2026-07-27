@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getSchedulingViewer, canViewHistory, forbidden, unauthorized } from '../_utils'
 
+// Gated 2026-07-27: the schedule change history (who moved whom, when) was
+// readable anonymously. canViewHistory (admin/super_admin/manager/group_leader)
+// is deliberately >= the client-side gate on the Audit Log tab, which only
+// renders for admin/super_admin/manager — so nobody who can reach the tab today
+// can be locked out by this. Same predicate /api/scheduling/hours already used.
 export async function GET(req: NextRequest) {
+  const viewer = await getSchedulingViewer(req)
+  if (!viewer) return unauthorized()
+  if (!canViewHistory(viewer)) return forbidden()
   try {
     const url = new URL(req.url)
     const employeeId = url.searchParams.get('employee_id')

@@ -119,7 +119,7 @@ export default function AdminPermissionsPage() {
 
   const fetchData = useCallback(async () => {
     const [permRes, usersRes] = await Promise.all([
-      fetch('/api/admin/permissions'),
+      fetch('/api/admin/permissions', { headers: authHeaders() }),
       user
         ? fetch('/api/admin/users', { headers: authHeaders() })
         : Promise.resolve(null),

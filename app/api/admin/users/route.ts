@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { requireUser } from "@/lib/require-user"
+import { requireAdmin } from "@/lib/require-user"
 
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 const DASHBOARD_APP_ID = "dashboard"
@@ -15,17 +15,13 @@ async function getAppRole(userId: string): Promise<string | null> {
   return data?.role || null
 }
 
+// Delegates to the shared guard so DEACTIVATION is authoritative here too.
+// The local copy read user_profiles without is_active, which meant a
+// deactivated admin holding a live token could still edit users — and
+// reactivate itself through this very route (codex, review panel round 2,
+// 2026-07-27).
 async function isAdmin(req: NextRequest): Promise<boolean> {
-  const userId = (await requireUser(req))?.id
-  if (!userId) return false
-  const { data: profile } = await supabaseAdmin
-    .from("user_profiles")
-    .select("email")
-    .eq("id", userId)
-    .single()
-  if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
-  const appRole = await getAppRole(userId)
-  return appRole === "admin"
+  return (await requireAdmin(req)) !== null
 }
 
 export async function GET(req: NextRequest) {

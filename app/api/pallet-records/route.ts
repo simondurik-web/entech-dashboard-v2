@@ -1,10 +1,26 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchPalletRecords, type PalletRecord } from '@/lib/google-sheets'
 import { resolveRecordPhotos } from '@/lib/photo-resolver'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { buildOrderDisplayLookup, resolveDisplayOrder } from '@/lib/order-display'
+import { requireDashboardAccess } from '@/lib/require-user'
 
-export async function GET() {
+// Gated 2026-07-27. This returned ~1.1 MB of customer names, order/IF numbers,
+// pallet weights and photo URLs to anonymous callers; verified open against
+// production. Enrolled users and approved floor devices only — no external
+// consumer of this endpoint exists (searched every script/cron/plist on the
+// Mac), so the gate cannot break an integration.
+//
+// Deliberately requireDashboardAccess and NOT palletActorFromRequest, unlike
+// /api/pallet-records/pallets and friends: this flat list feeds general
+// dashboard screens (Pallet Photos, Staged, the order detail drawer), not the
+// Pallet Records section, so its audience is dashboard users rather than
+// production-app members. The two gates differ on purpose — raised by grok in
+// the 2026-07-27 review panel, kept as-is with this note.
+export async function GET(req: NextRequest) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     // Fetch records + the live-order display lookup in parallel
     const [sheetRecords, dbResult, orderLookup] = await Promise.all([

@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react"
+import { authHeaders } from "@/lib/session-token"
 import { ChevronDown, ChevronRight, Search, Shield, Trash2, UserPlus, Users, Eye, Wrench, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -60,7 +61,7 @@ export default function QualityUsersPage() {
     if (!canManageQuality) return
     setLoading(true)
     try {
-      const res = await fetch("/api/quality/users", { headers: { "x-user-id": profile?.id || "" } })
+      const res = await fetch("/api/quality/users", { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         setUsers(data.users || [])
@@ -68,7 +69,9 @@ export default function QualityUsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [canManageQuality, profile?.id])
+    // profile?.id is no longer a dependency: the request identifies the caller
+    // by their verified token, not by an id this component passes in.
+  }, [canManageQuality])
 
   useEffect(() => {
     fetchUsers()
@@ -141,7 +144,7 @@ export default function QualityUsersPage() {
     try {
       const res = await fetch(`/api/quality/users?user_id=${encodeURIComponent(confirmDelete.id)}`, {
         method: "DELETE",
-        headers: { "x-user-id": profile?.id || "" },
+        headers: authHeaders(),
       })
       if (res.ok) {
         setConfirmDelete(null)

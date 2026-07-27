@@ -81,7 +81,7 @@ export function PalletEditModal({ pallet, open, onOpenChange, onSaved, userName 
     setShowAudit(false)
     // Fetch audit log
     setLoadingAudit(true)
-    fetch(`/api/pallet-records/${pallet.id}/audit`)
+    fetch(`/api/pallet-records/${pallet.id}/audit`, { headers: authHeaders() })
       .then(r => r.json())
       .then(data => setAuditLog(Array.isArray(data) ? data : []))
       .catch(() => setAuditLog([]))

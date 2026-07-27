@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { authHeaders } from '@/lib/session-token'
 import { Bell, BellOff, BellRing, Clock, Zap, X } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { subscribeToPush, unsubscribeFromPush, isPushSubscribed, isPushSupported } from '@/lib/push-notifications'
@@ -46,14 +47,30 @@ export function NotificationBell() {
   useEffect(() => {
     setSupported(isPushSupported())
     isPushSubscribed().then(setSubscribed)
-    // Load last seen timestamp
-    lastSeenRef.current = localStorage.getItem('notifications-last-seen')
+    // (last-seen is loaded per-user by the effect below, which also runs on mount)
   }, [])
+
+  // Wipe everything when the signed-in user changes.
+  //
+  // Notifications became per-user on 2026-07-27. Before that the bell showed
+  // the same company-wide log to everyone, so stale state was harmless; now it
+  // is one person's private messages. Without this, signing out and back in as
+  // someone else within the same tab leaves the previous user's notifications
+  // on screen — and if the refetch then fails, indefinitely (codex, review
+  // panel round 6). The last-seen marker is per-user for the same reason.
+  useEffect(() => {
+    setNotifications([])
+    setUnreadCount(0)
+    setOpen(false)
+    lastSeenRef.current = user?.id
+      ? localStorage.getItem(`notifications-last-seen:${user.id}`)
+      : null
+  }, [user?.id])
 
   const fetchNotifications = useCallback(async () => {
     try {
       setFetchingNotifs(true)
-      const res = await fetch('/api/notifications/my')
+      const res = await fetch('/api/notifications/my', { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         const notifs: Notification[] = (data.notifications || []).map((n: Record<string, unknown>) => ({
@@ -113,7 +130,9 @@ export function NotificationBell() {
   useEffect(() => {
     if (open && notifications.length > 0) {
       const newest = notifications[0].createdAt
-      localStorage.setItem('notifications-last-seen', newest)
+      // Per-user key, matching the reader above — a shared key would carry one
+      // person's "already seen" marker over to the next person in the same tab.
+      if (user?.id) localStorage.setItem(`notifications-last-seen:${user.id}`, newest)
       lastSeenRef.current = newest
       setUnreadCount(0)
       // Clear app badge
@@ -121,7 +140,7 @@ export function NotificationBell() {
         (navigator as unknown as { clearAppBadge: () => void }).clearAppBadge()
       }
     }
-  }, [open, notifications])
+  }, [open, notifications, user?.id])
 
   if (!supported || !user) return null
 

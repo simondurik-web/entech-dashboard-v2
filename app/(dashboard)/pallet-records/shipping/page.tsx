@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import { userHeaders } from '@/lib/quality/form-utils'
+import { authHeaders } from '@/lib/session-token'
 import { usePalletAccess } from '@/lib/use-pallet-access'
 
 interface Order {
@@ -115,7 +116,9 @@ export default function ShippingPage() {
       },
     })
   }, [profile?.id])
-  const uploadHeaders = useCallback(() => ({ 'x-user-id': profile?.id || '' }), [profile?.id])
+  // Multipart upload: no Content-Type (the browser sets the multipart boundary),
+  // just the verified Bearer token. Was 'x-user-id' — see userHeaders().
+  const uploadHeaders = useCallback(() => authHeaders(), [])
   const [orders, setOrders] = useState<Order[]>([])
   const [recentRecords, setRecentRecords] = useState<ShippingRecord[]>([])
   const [loading, setLoading] = useState(true)

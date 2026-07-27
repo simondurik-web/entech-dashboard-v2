@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { calculatePackages, generateQrData, validateLabelData } from '@/lib/label-utils'
-import { requireUserOrDevice } from '@/lib/require-user'
+import { requireDashboardAccess } from '@/lib/require-user'
 
+// Gated 2026-07-27: returned ~900 KB (1,000 label rows with customer names,
+// PO numbers, part numbers and who printed them) to anonymous callers. The
+// POST/DELETE handlers below were already device-aware; only GET was open.
 export async function GET(req: NextRequest) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status')
   const orderLine = searchParams.get('order_line')
@@ -23,6 +29,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Auth first, body second: an anonymous caller deserves a 401, not a 400
+  // about their JSON, and we should not parse an untrusted body before we know
+  // who is asking (gemini, review panel round 4).
+  //
+  // Enrolment, not the `labels:generate` permission. codex is right that an
+  // enrolled user without that permission can still generate labels through
+  // this endpoint, and that stays open on purpose: the fix requires deciding
+  // how a FLOOR DEVICE is attributed, because labels.generated_by has a foreign
+  // key to auth.users and a device id is not a user id (verified against the
+  // live database 2026-07-27 — the insert is rejected). That is a schema and
+  // policy decision for Simon, not something to settle inside a patch that
+  // exists to close anonymous internet access. Logged as a follow-up.
+  const actor = await requireDashboardAccess(req)
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const userId = actor.id
+
   const body = await req.json()
   const { order_lines, custom_parts_per_package, custom_packaging_type } = body as {
     order_lines: string[]
@@ -33,10 +55,6 @@ export async function POST(req: NextRequest) {
   if (!order_lines?.length) {
     return NextResponse.json({ error: 'order_lines array is required' }, { status: 400 })
   }
-
-  const actor = await requireUserOrDevice(req)
-  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const userId = actor.id
   const results: Array<{ order_line: string; labels?: unknown[]; error?: string }> = []
 
   for (const orderLine of order_lines) {
@@ -223,7 +241,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'order_line query parameter is required' }, { status: 400 })
   }
 
-  const actor = await requireUserOrDevice(req)
+  const actor = await requireDashboardAccess(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const userId = actor.id
 

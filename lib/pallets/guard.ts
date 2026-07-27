@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireUser } from "@/lib/require-user"
 
 const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 const DASHBOARD_APP_ID = "dashboard"
@@ -74,7 +75,23 @@ export async function resolvePalletActor(userId: string | null | undefined): Pro
   }
 }
 
-/** Pull the x-user-id header (the dashboard's app-wide caller-id pattern) and resolve. */
+/**
+ * Resolve the caller from the VERIFIED Supabase Bearer token, then apply the
+ * Pallet Records access model above.
+ *
+ * Hardened 2026-07-27. This used to read `req.headers.get("x-user-id")` — a
+ * value the caller writes themselves — so presenting any known user UUID was
+ * enough to be that user. Verified against production before the fix:
+ * `curl -H 'x-user-id: <uuid>' https://dashboard.4molding.com/api/pallet-records/users`
+ * returned the admin-only user list (200). The rest of the dashboard moved off
+ * this pattern on 2026-06-25; Pallet Records and Quality were missed because
+ * both were ported in from standalone apps.
+ *
+ * Floor devices have no Supabase session and so resolve to DENIED — which is
+ * the behavior they already had (a device id has no user_profiles row), so this
+ * is not a regression for them.
+ */
 export async function palletActorFromRequest(req: Request): Promise<PalletActor> {
-  return resolvePalletActor(req.headers.get("x-user-id"))
+  const user = await requireUser(req)
+  return resolvePalletActor(user?.id)
 }

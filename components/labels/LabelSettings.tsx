@@ -18,7 +18,7 @@ export function LabelSettings() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    fetch('/api/labels/settings')
+    fetch('/api/labels/settings', { headers: authHeaders() })
       .then(r => r.json())
       .then(setSettings)
       .finally(() => setLoading(false))

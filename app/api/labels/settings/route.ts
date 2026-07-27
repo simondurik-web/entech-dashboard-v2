@@ -1,30 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireUser } from '@/lib/require-user'
+import { requireUser, requireDashboardAccess, requireAdmin } from '@/lib/require-user'
 
-const SUPER_ADMIN_EMAIL = 'simondurik@gmail.com'
-
-async function isAdmin(req: NextRequest): Promise<boolean> {
-  const userId = (await requireUser(req))?.id
-  if (!userId) return false
-  const { data: profile } = await supabaseAdmin
-    .from('user_profiles')
-    .select('email')
-    .eq('id', userId)
-    .single()
-  if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
-  // Admin = explicit dashboard app-role, not the legacy user_profiles.role
-  // (which can be stale relative to enrollment / a 'blocked' user).
-  const { data: appRole } = await supabaseAdmin
-    .from('user_app_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .eq('app_id', 'dashboard')
-    .maybeSingle()
-  return appRole?.role === 'admin'
-}
-
-export async function GET() {
+// Gated 2026-07-27. Small payload, but it is label configuration and there is
+// no reason for it to answer anonymous callers. Floor devices print labels, so
+// this is device-aware rather than user-only.
+export async function GET(req: NextRequest) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { data, error } = await supabaseAdmin
     .from('label_settings')
     .select('*')
@@ -41,7 +25,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  if (!(await isAdmin(req))) {
+  if (!(await requireAdmin(req))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

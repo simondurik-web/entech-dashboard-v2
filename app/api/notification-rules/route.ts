@@ -3,7 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { requireAdmin } from '@/lib/require-user'
 
 // GET: Fetch all notification rules
-export async function GET() {
+// Gated 2026-07-27 — was readable anonymously. Admin-only, matching the POST
+// below and the admin page that is its only caller.
+export async function GET(req: NextRequest) {
+  if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
     const { data, error } = await supabaseAdmin
       .from('notification_rules')

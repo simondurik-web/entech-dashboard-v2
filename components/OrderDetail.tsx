@@ -382,7 +382,7 @@ export function OrderDetail({
     const targetLine = normalize(line)
     const requestKey = `${targetIf}|${targetLine}`
     try {
-      const res = await fetch('/api/pallet-records')
+      const res = await fetch('/api/pallet-records', { headers: authHeaders() })
       if (!res.ok) return
       const data = (await res.json()) as PalletRecord[]
       if (orderKeyRef.current !== requestKey) return // panel moved on — drop stale result
@@ -449,11 +449,11 @@ export function OrderDetail({
         setError(null)
         setPallets([])
         const requests: Promise<Response>[] = [
-          fetch('/api/pallet-records'),
+          fetch('/api/pallet-records', { headers: authHeaders() }),
           fetch('/api/drawings'),
           fetch('/api/staged-records'),
         ]
-        if (isShipped) requests.push(fetch('/api/shipping-records'))
+        if (isShipped) requests.push(fetch('/api/shipping-records', { headers: authHeaders() }))
         const responses = await Promise.all(requests)
         const [palletRes, drawingsRes, stagedRes, shippingRes] = responses
         if (!palletRes.ok) throw new Error('Failed to fetch pallet records')
@@ -541,7 +541,7 @@ export function OrderDetail({
     if (!line) return
     setLabelLoading(true)
     try {
-      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(line)}`)
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(line)}`, { headers: authHeaders() })
       const existing = await res.json()
       if (Array.isArray(existing) && existing.length > 0) {
         setLabelPreview(existing[0])

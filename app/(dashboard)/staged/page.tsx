@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { authHeaders } from '@/lib/session-token'
 import Link from 'next/link'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { RefreshCw, Truck } from 'lucide-react'
@@ -285,7 +286,7 @@ function StagedPageContent() {
     try {
       const [res, palletRes] = await Promise.all([
         fetch('/api/sheets'),
-        fetch('/api/pallet-records'),
+        fetch('/api/pallet-records', { headers: authHeaders() }),
       ])
       if (!res.ok) throw new Error('Failed to fetch orders')
       const data: Order[] = await res.json()

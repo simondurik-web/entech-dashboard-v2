@@ -54,7 +54,7 @@ export function AssigneeEditor({ line, currentAssignee, onUpdated }: AssigneeEdi
     }
 
     setLoading(true)
-    fetch('/api/orders/assign')
+    fetch('/api/orders/assign', { headers: authHeaders() })
       .then(r => r.json())
       .then(data => {
         cachedNames = data.names || []

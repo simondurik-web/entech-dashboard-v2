@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getProfileFromHeader, canEditScheduling, forbidden } from '../_utils'
+import { getProfileFromHeader, canEditScheduling, getSchedulingViewer, forbidden, unauthorized } from '../_utils'
 
-export async function GET() {
+// Gated 2026-07-27 — was open to anonymous callers like the rest of the
+// scheduling reads.
+export async function GET(req: NextRequest) {
+  const caller = await getSchedulingViewer(req)
+  if (!caller) return unauthorized()
   try {
     const { data, error } = await supabaseAdmin
       .from('scheduling_machines')

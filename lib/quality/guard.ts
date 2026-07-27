@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { requireUser } from "@/lib/require-user"
 
 const DASHBOARD_APP_ID = "dashboard"
 const QUALITY_APP_ID = "quality"
@@ -90,8 +91,17 @@ export async function resolveQualityActor(
   }
 }
 
-/** Pull the x-user-id header and resolve the actor in one step. */
+/**
+ * Resolve the Quality actor from the VERIFIED Supabase Bearer token.
+ *
+ * Hardened 2026-07-27, same defect as {@link palletActorFromRequest}: this read
+ * `x-user-id` straight off the request, so any caller could name a known user
+ * UUID and inherit that user's Quality role. Verified against production before
+ * the fix — `curl -H 'x-user-id: <uuid>' .../api/quality/products` returned 200
+ * with the full product list. Identity now comes from the token, which the
+ * client cannot forge.
+ */
 export async function qualityActorFromRequest(req: Request): Promise<QualityActor> {
-  const userId = req.headers.get("x-user-id")
-  return resolveQualityActor(userId)
+  const user = await requireUser(req)
+  return resolveQualityActor(user?.id)
 }

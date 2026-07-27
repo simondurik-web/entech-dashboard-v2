@@ -80,7 +80,7 @@ export function GenerateLabelsDialog({ open, onOpenChange, onGenerated, initialL
     // Fetch ALL orders + existing labels + BOM (for standard max parts-per-pallet)
     Promise.all([
       fetch('/api/sheets').then(r => r.json()),
-      fetch('/api/labels').then(r => r.json()),
+      fetch('/api/labels', { headers: authHeaders() }).then(r => r.json()),
       fetch('/api/bom').then(r => r.json()).catch(() => []),
     ])
       .then(([allOrders, existingLabels, bom]) => {

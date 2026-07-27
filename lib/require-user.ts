@@ -25,7 +25,11 @@ export type AuthedActor = { id: string; email: string | null; kind: "user" | "de
  * that already did this correctly); centralized so every protected route shares
  * one implementation.
  */
-export async function requireUser(req: NextRequest): Promise<AuthedUser | null> {
+// Takes a plain `Request` (not NextRequest) because it only ever reads a
+// header — that lets the Pallet Records / Quality guards, which are typed
+// against `Request`, share this one verification path. NextRequest is a
+// Request, so every existing NextRequest call site is unaffected.
+export async function requireUser(req: Request): Promise<AuthedUser | null> {
   const authHeader = req.headers.get("authorization")
   if (!authHeader?.startsWith("Bearer ")) return null
   const token = authHeader.slice(7)
@@ -38,6 +42,32 @@ export async function requireUser(req: NextRequest): Promise<AuthedUser | null> 
     error,
   } = await supabase.auth.getUser(token)
   if (error || !user) return null
+
+  // DEACTIVATION IS ENFORCED HERE, and here only, on purpose.
+  //
+  // Three review rounds on 2026-07-27 each found the same defect at a new site
+  // — scheduling's getProfileFromHeader, admin/users' local isAdmin,
+  // labels/settings' local isAdmin, requirePermission's super-admin
+  // short-circuit, lib/erpnext/auth's own profile read. Every one of them
+  // resolved a role without looking at is_active, so "deactivate user" did
+  // nothing until their token expired. Patching them one at a time was losing
+  // ground: the next hand-rolled guard would have reintroduced it.
+  //
+  // Putting it in the single function that turns a token into an identity
+  // means a caller cannot forget it — there is no path to a user id that
+  // skips this. `=== false` so rows predating the column stay allowed.
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from("user_profiles")
+    .select("is_active")
+    .eq("id", user.id)
+    .maybeSingle()
+  // Fail CLOSED if the lookup itself fails. Swallowing the error would mean a
+  // database blip authenticates the very tokens this check exists to reject
+  // (codex, review panel round 5). A missing ROW is different and stays
+  // allowed — profiles predating this column legitimately have no is_active.
+  if (profileErr) return null
+  if (profile?.is_active === false) return null
+
   return { id: user.id, email: user.email ?? null }
 }
 
@@ -125,7 +155,15 @@ const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
 export async function requireDashboardAccess(req: NextRequest): Promise<AuthedActor | null> {
   const actor = await requireUserOrDevice(req)
   if (!actor) return null
-  if (actor.kind === "device") return actor
+  // Approved devices carry a role too, and it has to clear the same bar a
+  // person's does: 'blocked' and 'visitor' are both out. This used to wave
+  // every approved device through on the strength of approval alone (codex,
+  // review panel 2026-07-27). A device with NO role also fails, which is the
+  // safe direction — it loses access rather than silently gaining it.
+  if (actor.kind === "device") {
+    const role = actor.role ?? ""
+    return role && role !== "blocked" && role !== "visitor" ? actor : null
+  }
   const p = await loadDashboardProfile(actor.id)
   if (p.role === "visitor" || p.role === "blocked") return null
   return { ...actor, role: p.role }
@@ -165,6 +203,9 @@ export async function loadDashboardProfile(
       .eq("app_id", DASHBOARD_APP_ID)
       .maybeSingle(),
   ])
+  // No is_active check here: requireUser already refused a deactivated caller
+  // before any id reaches this function. Keeping a second copy would invite the
+  // two to drift.
   return {
     email: (profile?.email as string | null) ?? null,
     role: (appRole?.role as string | undefined) ?? "visitor",
@@ -177,11 +218,14 @@ export async function loadDashboardProfile(
  * else null. Use for admin-only routes: `if (!(await requireAdmin(req))) 403`.
  * Returns the AuthedUser so the route can attribute the action to the real id.
  */
-export async function requireAdmin(req: NextRequest): Promise<AuthedUser | null> {
+export async function requireAdmin(req: Request): Promise<AuthedUser | null> {
   const user = await requireUser(req)
   if (!user) return null
-  if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
   const p = await loadDashboardProfile(user.id)
+  // is_active is folded into the role above, so a deactivated account resolves
+  // to 'blocked' and is denied here — including the hardcoded super admin.
+  if (p.role === "blocked") return null
+  if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
   return p.role === "admin" ? user : null
 }
 
@@ -193,11 +237,15 @@ export async function requireAdmin(req: NextRequest): Promise<AuthedUser | null>
 export async function requirePermission(req: NextRequest, permKey: string): Promise<AuthedUser | null> {
   const user = await requireUser(req)
   if (!user) return null
-  if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
   const p = await loadDashboardProfile(user.id)
-  // Mirror the client's canAccess exactly: blocked is a hard deny before
-  // anything else (a leftover custom grant must not survive a block) ...
+  // 'blocked' is checked before the super-admin override so this matches
+  // requireAdmin exactly — the override used to short-circuit first, which meant
+  // the two admin paths disagreed about a blocked super admin (grok, review
+  // panel round 3).
   if (p.role === "blocked") return null
+  if (user.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return user
+  // Mirror the client's canAccess exactly (blocked was already denied above,
+  // before the super-admin override) ...
   if (p.role === "admin") return user
   // ... and an explicit per-user override wins in BOTH directions — a stored
   // `false` must deny even when the role would allow (previously it silently

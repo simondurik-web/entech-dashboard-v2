@@ -67,7 +67,7 @@ export default function NotificationsAdminPage() {
     const [usersRes, logsRes, rulesRes] = await Promise.all([
       fetch('/api/admin/users', { headers: authHeaders() }),
       fetch('/api/notifications/log', { headers: authHeaders() }),
-      fetch('/api/notification-rules'),
+      fetch('/api/notification-rules', { headers: authHeaders() }),
     ])
     if (usersRes.ok) {
       const data = await usersRes.json()

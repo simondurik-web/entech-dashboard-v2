@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getProfileFromHeader, canEditScheduling, forbidden, normalizeDateInput } from '../_utils'
+import { getProfileFromHeader, canEditScheduling, getSchedulingViewer, forbidden, unauthorized, normalizeDateInput } from '../_utils'
 
 function getDefaultTimes(shift: number) {
   return shift === 2 ? { start_time: '17:30', end_time: '04:30' } : { start_time: '07:00', end_time: '17:30' }
 }
 
+// Gated 2026-07-27: this returned the entire work schedule (~276 KB, every
+// employee name and shift) to anonymous callers. The POST/DELETE handlers
+// below were already gated; only GET was open.
 export async function GET(req: NextRequest) {
+  const viewer = await getSchedulingViewer(req)
+  if (!viewer) return unauthorized()
   try {
     const url = new URL(req.url)
     const from = url.searchParams.get('from')

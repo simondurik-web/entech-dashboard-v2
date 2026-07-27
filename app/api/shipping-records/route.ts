@@ -1,10 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { fetchShippingRecords, type ShippingRecord } from '@/lib/google-sheets'
 import { resolveRecordPhotos } from '@/lib/photo-resolver'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { buildOrderDisplayLookup, resolveDisplayOrder } from '@/lib/order-display'
+import { requireDashboardAccess } from '@/lib/require-user'
 
-export async function GET() {
+// Gated 2026-07-27 — see the note on /api/pallet-records. This one returned
+// ~460 KB including carriers and shipment photo URLs to anonymous callers.
+export async function GET(req: NextRequest) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     // Fetch records + the live-order display lookup in parallel
     const [sheetRecords, dbResult, orderLookup] = await Promise.all([

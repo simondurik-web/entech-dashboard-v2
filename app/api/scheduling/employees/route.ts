@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getProfileFromHeader, canEditScheduling, canSeePayRate, forbidden } from '../_utils'
+import { getProfileFromHeader, canEditScheduling, canSeePayRate, getSchedulingViewer, forbidden, unauthorized } from '../_utils'
 
+// Gated 2026-07-27: returned all 76 employees — name, employee ID, department
+// and shift — to anonymous callers. (pay_rate was already role-stripped
+// below, so wages were never exposed; the names were.)
 export async function GET(req: NextRequest) {
+  const caller = await getSchedulingViewer(req)
+  if (!caller) return unauthorized()
   try {
     const url = new URL(req.url)
     const department = url.searchParams.get('department')
@@ -19,9 +24,8 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query
     if (error) throw error
 
-    // Strip pay_rate unless admin/manager
-    const profile = await getProfileFromHeader(req)
-    const showPay = profile ? canSeePayRate(profile.role) : false
+    // Strip pay_rate unless admin/manager (caller resolved above)
+    const showPay = canSeePayRate(caller)
 
     const rows = (data || []).map((row: Record<string, unknown>) => {
       if (!showPay) {
@@ -69,7 +73,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'id or employee_id required' }, { status: 400 })
     }
 
-    if (!canSeePayRate(profile.role)) delete updates.pay_rate
+    const showPay = canSeePayRate({ role: profile.role, kind: "user" })
+    if (!showPay) delete updates.pay_rate
 
     const { data, error } = await supabaseAdmin
       .from('scheduling_employees')
@@ -78,6 +83,15 @@ export async function PUT(req: NextRequest) {
       .select()
       .single()
     if (error) throw error
+    // Strip pay_rate from the RESPONSE too, not just from the update. Dropping
+    // it from `updates` stopped a group leader WRITING a wage but the returned
+    // row still carried it — so a no-op PUT against any employee read their pay
+    // rate back (codex, final review round). Same predicate as the GET.
+    if (!showPay && data && 'pay_rate' in data) {
+      const safe = { ...(data as Record<string, unknown>) }
+      delete safe.pay_rate
+      return NextResponse.json(safe)
+    }
     return NextResponse.json(data)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update employee'

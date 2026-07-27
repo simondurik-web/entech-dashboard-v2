@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { canViewHistory, canSeePayRate, forbidden, getProfileFromHeader, normalizeDateInput, unauthorized } from "../_utils"
+import { canViewHistory, canSeePayRate, forbidden, getSchedulingViewer, normalizeDateInput, unauthorized } from "../_utils"
 
 type HourRow = {
   employee_id: string
@@ -26,9 +26,14 @@ function monthKey(input: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const profile = await getProfileFromHeader(req)
-  if (!profile) return unauthorized()
-  if (!canViewHistory(profile.role)) return forbidden()
+  // Resolved through the permission-aware viewer like the other scheduling
+  // reads. It used to take the role-only path, so a manager explicitly denied
+  // /scheduling could still pull every pay rate and total straight from here
+  // (codex, review panel round 5).
+  const viewer = await getSchedulingViewer(req)
+  if (!viewer) return unauthorized()
+  if (!canViewHistory(viewer)) return forbidden()
+  if (!canSeePayRate(viewer)) return forbidden()
 
   try {
     const url = new URL(req.url)
@@ -104,8 +109,10 @@ export async function GET(req: NextRequest) {
 
     const rows = Array.from(byEmployee.values()).sort((a, b) => a.employee_name.localeCompare(b.employee_name))
 
-    // Strip pay data unless admin/manager/super_admin
-    const showPay = canSeePayRate(profile.role)
+    // Strip pay data unless admin/manager/super_admin. The guard at the top
+    // already required canSeePayRate, so this is belt-and-braces on the same
+    // viewer — never a second, differently-resolved identity.
+    const showPay = canSeePayRate(viewer)
     const safeRows = showPay
       ? rows
       : rows.map(({ pay_rate: _, total_pay: __, ...rest }) => ({ ...rest, pay_rate: 0, total_pay: 0 }))

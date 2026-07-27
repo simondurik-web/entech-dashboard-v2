@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { updateAssignedTo } from '@/lib/google-sheets-write'
-import { requirePermission } from '@/lib/require-user'
+import { requirePermission, requireDashboardAccess } from '@/lib/require-user'
 
-export async function GET() {
+// Gated 2026-07-27. Returned the list of assignee first names to anonymous
+// callers. It escaped the first exposure sweep because that sweep skipped any
+// path containing 'assign' (a crude guard against firing write-ish handlers) —
+// which silently excluded this read. Blind spots in the probe are how leaks
+// survive an audit; scripts/api-auth-probe.sh now lists it explicitly.
+export async function GET(req: NextRequest) {
+  if (!(await requireDashboardAccess(req))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   // Return unique assignee names from dashboard_orders
   const { data, error } = await supabaseAdmin
     .from('dashboard_orders')

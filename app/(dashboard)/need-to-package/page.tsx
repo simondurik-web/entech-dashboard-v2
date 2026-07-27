@@ -354,7 +354,7 @@ function NeedToPackagePageContent() {
   const handleLabelGenerated = useCallback(async (label?: LabelData) => {
     if (!label) return
     try {
-      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(label.order_line)}`)
+      const res = await fetch(`/api/labels?order_line=${encodeURIComponent(label.order_line)}`, { headers: authHeaders() })
       const all = await res.json()
       setLabelPreview(label)
       setAllLabelsForOrder(Array.isArray(all) && all.length ? all : [label])
@@ -388,7 +388,7 @@ function NeedToPackagePageContent() {
 
   // Fetch printed label statuses
   useEffect(() => {
-    fetch('/api/labels?status=printed')
+    fetch('/api/labels?status=printed', { headers: authHeaders() })
       .then(res => res.json())
       .then((labels: LabelData[]) => {
         if (Array.isArray(labels)) {

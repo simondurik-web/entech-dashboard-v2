@@ -1,30 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { requireUser } from "@/lib/require-user"
-
-const SUPER_ADMIN_EMAIL = "simondurik@gmail.com"
+import { requireAdmin } from "@/lib/require-user"
 
 const DASHBOARD_APP_ID = "dashboard"
 
-async function isAdmin(req: NextRequest): Promise<boolean> {
-  const userId = (await requireUser(req))?.id
-  if (!userId) return false
-  const { data: profile } = await supabaseAdmin
-    .from("user_profiles")
-    .select("email")
-    .eq("id", userId)
-    .single()
-  if (profile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return true
-  const { data: appRole } = await supabaseAdmin
-    .from("user_app_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("app_id", DASHBOARD_APP_ID)
-    .single()
-  return appRole?.role === "admin"
-}
-
-export async function GET() {
+// Gated 2026-07-27: returned the full role/permission matrix and per-role user
+// counts to anonymous callers — a map of the app's access model. Admin-only,
+// matching the PUT below and the page that is its only caller.
+export async function GET(req: NextRequest) {
+  if (!(await requireAdmin(req))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
   const { data, error } = await supabaseAdmin
     .from("role_permissions")
     .select("*")
@@ -57,7 +43,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  if (!(await isAdmin(req))) {
+  if (!(await requireAdmin(req))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

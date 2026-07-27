@@ -115,7 +115,7 @@ function LabelsPageContent() {
 
   const fetchLabels = useCallback(() => {
     setLoading(true)
-    fetch('/api/labels')
+    fetch('/api/labels', { headers: authHeaders() })
       .then(r => r.json())
       .then((data) => {
         if (Array.isArray(data)) setLabels(data)

@@ -3,16 +3,49 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { authHeaders as buildAuthHeaders } from '@/lib/session-token'
+import { supabase } from '@/lib/supabase'
 
-/** Simple fetch wrapper — read endpoints need no auth, write endpoints send the Bearer token (authHeaders) */
+/** Fetch wrapper for the scheduling API. Sends the verified Bearer token on
+ *  EVERY call, reads included — as of 2026-07-27 the read endpoints are gated
+ *  too. They previously answered anonymous callers, which is how the full
+ *  schedule and the employee roster were readable from the open internet. */
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      ...opts?.headers,
-    },
-  })
+  const run = () =>
+    fetch(path, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        ...opts?.headers,
+        // Auth is applied LAST so it always wins. Several call sites pass
+        // `headers: authHeaders(...)`, a snapshot taken when the component
+        // rendered; if that spread came after this one, the retry below would
+        // resend the very token that just expired and fail identically (codex,
+        // review panel round 3).
+        ...buildAuthHeaders(),
+      },
+    })
+  let res = await run()
+  // Retry once through a token refresh. Gating these reads introduced a new
+  // failure mode: a tab left open past token expiry used to keep working (they
+  // were unauthenticated) and would now go blank until a manual reload (codex,
+  // review panel round 2). Same refresh-then-retry as lib/authed-fetch.ts.
+  if (res.status === 401) {
+    const { data } = await supabase.auth.refreshSession()
+    // Read the new token off the refresh result rather than trusting the module
+    // cache to have been updated by the auth listener in time (grok).
+    const token = data.session?.access_token
+    res = token
+      ? await fetch(path, {
+          ...opts,
+          headers: {
+            'Content-Type': 'application/json',
+            ...opts?.headers,
+            ...buildAuthHeaders(),
+            Authorization: `Bearer ${token}`,
+          },
+        })
+      : await run()
+  }
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }

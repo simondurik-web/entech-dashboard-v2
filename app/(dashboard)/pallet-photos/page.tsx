@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react'
+import { authHeaders } from '@/lib/session-token'
 import { TableSkeleton } from "@/components/ui/skeleton-loader"
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/data-table'
@@ -117,7 +118,7 @@ function PalletRecordsPageContent() {
     if (isRefresh) setRefreshing(true); else setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/pallet-records')
+      const res = await fetch('/api/pallet-records', { headers: authHeaders() })
       if (!res.ok) throw new Error('Failed to fetch pallet records')
       const data: PalletRecord[] = await res.json()
       // Add defensive checks for each record
