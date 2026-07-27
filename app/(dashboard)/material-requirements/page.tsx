@@ -7,15 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { MaterialRequirementsData, MaterialRequirement } from '@/app/api/material-requirements/route'
 import { useI18n } from '@/lib/i18n'
+import { CategoryFilter, filterByCategory, visibleCategoryKeys, type CategoryKey } from '@/components/category-filter'
 
-const CATEGORY_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'roll tech', label: 'Roll Tech' },
-  { key: 'molding', label: 'Molding' },
-  { key: 'snap pad', label: 'Snap Pad' },
-] as const
-
-type CategoryFilter = (typeof CATEGORY_FILTERS)[number]['key']
+/** This page hides the Technoflex chip, so its "All" state is 3 keys, not 4.
+ *  Derived rather than hard-coded so the two can never drift apart. */
+const MR_CATEGORY_KEYS = visibleCategoryKeys(false)
 
 function statusBadge(status: 'ok' | 'low' | 'shortage') {
   switch (status) {
@@ -40,7 +36,9 @@ export default function MaterialRequirementsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
+  // No Technoflex chip here: MaterialRequirement rows are BOM-material aggregates
+  // that roll up across many customers, so there is no per-row customer to match.
+  const [categoryFilter, setCategoryFilter] = useState<CategoryKey[]>(() => [...MR_CATEGORY_KEYS])
   const [expandedMaterial, setExpandedMaterial] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string>('')
   const { t } = useI18n()
@@ -70,10 +68,7 @@ export default function MaterialRequirementsPage() {
 
   const filteredMaterials = useMemo(() => {
     if (!data) return []
-    let materials = data.materials
-    if (categoryFilter !== 'all') {
-      materials = materials.filter(m => m.category.toLowerCase().includes(categoryFilter))
-    }
+    let materials = filterByCategory(data.materials, categoryFilter, MR_CATEGORY_KEYS.length)
     if (search.trim()) {
       const q = search.toLowerCase()
       materials = materials.filter(m => m.name.toLowerCase().includes(q))
@@ -171,21 +166,12 @@ export default function MaterialRequirementsPage() {
       />
 
       {/* Category filter chips */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {CATEGORY_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setCategoryFilter(f.key)}
-            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              categoryFilter === f.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80'
-            }`}
-          >
-            {f.key === 'all' ? t('category.all') : f.key === 'roll tech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        value={categoryFilter}
+        onChange={setCategoryFilter}
+        showTechnoflex={false}
+        className="flex gap-2 mb-4 overflow-x-auto pb-2"
+      />
 
       {/* Loading */}
       {loading && (

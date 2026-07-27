@@ -12,13 +12,7 @@ import { useAutoRefresh } from '@/lib/use-auto-refresh'
 import { useI18n } from '@/lib/i18n'
 import type { StagedRecord } from '@/lib/google-sheets-shared'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
-
-const CATEGORY_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'rolltech', label: 'Roll Tech' },
-  { key: 'molding', label: 'Molding' },
-  { key: 'snappad', label: 'Snap Pad' },
-] as const
+import { CategoryFilter, DEFAULT_CATEGORIES, filterByCategory, type CategoryKey } from '@/components/category-filter'
 
 const DATE_FILTERS = [
   { key: '7', label: 'Last 7 Days' },
@@ -27,7 +21,6 @@ const DATE_FILTERS = [
   { key: 'all', label: 'All Time' },
 ] as const
 
-type CategoryKey = (typeof CATEGORY_FILTERS)[number]['key']
 type DateKey = (typeof DATE_FILTERS)[number]['key']
 
 type StagedRow = StagedRecord & Record<string, unknown>
@@ -74,23 +67,6 @@ function filterByDate(records: StagedRecord[], days: DateKey): StagedRecord[] {
   })
 }
 
-function filterByCategory(records: StagedRecord[], filter: CategoryKey): StagedRecord[] {
-  if (filter === 'all') return records
-  return records.filter((r) => {
-    const cat = r.category.toLowerCase()
-    switch (filter) {
-      case 'rolltech':
-        return cat.includes('roll')
-      case 'molding':
-        return cat.includes('molding')
-      case 'snappad':
-        return cat.includes('snap')
-      default:
-        return true
-    }
-  })
-}
-
 export default function StagedRecordsPage() {
   return <Suspense><StagedRecordsPageContent /></Suspense>
 }
@@ -103,7 +79,7 @@ function StagedRecordsPageContent() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateKey>('30')
-  const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
+  const [categoryFilter, setCategoryFilter] = useState<CategoryKey[]>(() => [...DEFAULT_CATEGORIES])
   const { t } = useI18n()
 
   const fetchData = useCallback(async (isRefresh = false) => {
@@ -189,21 +165,11 @@ function StagedRecordsPageContent() {
       </div>
 
       {/* Category filters */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {CATEGORY_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setCategoryFilter(f.key)}
-            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              categoryFilter === f.key
-                ? 'bg-blue-600 text-white'
-                : 'bg-muted hover:bg-muted/80'
-            }`}
-          >
-            {f.key === 'all' ? t('category.all') : f.key === 'rolltech' ? t('category.rollTech') : f.key === 'molding' ? t('category.molding') : t('category.snappad')}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        value={categoryFilter}
+        onChange={setCategoryFilter}
+        className="flex gap-2 mb-4 overflow-x-auto pb-2"
+      />
 
       {loading && (
         <TableSkeleton rows={8} />

@@ -34,19 +34,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { DataFreshness } from '@/components/ui/data-freshness'
 import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
-
-const CATEGORY_KEYS = ['all', 'rolltech', 'molding', 'snappad'] as const
-const CATEGORY_EMOJIS: Record<string, string> = {
-  rolltech: '🔵',
-  molding: '🟡',
-  snappad: '🟣',
-}
-const CATEGORY_I18N: Record<string, string> = {
-  all: 'category.all',
-  rolltech: 'category.rollTech',
-  molding: 'category.molding',
-  snappad: 'category.snappad',
-}
+import { CategoryFilter, DEFAULT_CATEGORIES, filterByCategory, type CategoryKey } from '@/components/category-filter'
 
 const STATUS_KEYS = ['pending', 'wip', 'completed', 'staged', 'shipped', 'cancelled'] as const
 const STATUS_COLORS: Record<string, string> = {
@@ -66,7 +54,6 @@ const STATUS_I18N: Record<string, string> = {
   cancelled: 'status.cancelled',
 }
 
-type CategoryKey = (typeof CATEGORY_KEYS)[number]
 type StatusKey = (typeof STATUS_KEYS)[number]
 
 type OrderRow = Order & Record<string, unknown>
@@ -133,23 +120,6 @@ function getOrderStatus(order: Order): StatusKey | null {
   return 'pending'
 }
 
-function filterByCategory(orders: Order[], filter: CategoryKey): Order[] {
-  if (filter === 'all') return orders
-  return orders.filter((o) => {
-    const cat = o.category.toLowerCase()
-    switch (filter) {
-      case 'rolltech':
-        return cat.includes('roll')
-      case 'molding':
-        return cat.includes('molding')
-      case 'snappad':
-        return cat.includes('snap')
-      default:
-        return true
-    }
-  })
-}
-
 function filterByStatus(orders: Order[], activeStatuses: Set<StatusKey>): Order[] {
   if (activeStatuses.size === 0) return orders.filter((o) => getOrderStatus(o) !== 'cancelled')
   return orders.filter((o) => {
@@ -192,7 +162,7 @@ function OrdersPageContent() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
+  const [categoryFilter, setCategoryFilter] = useState<CategoryKey[]>(() => [...DEFAULT_CATEGORIES])
   const [activeStatuses, setActiveStatuses] = useState<Set<StatusKey>>(
     new Set(['pending', 'wip', 'completed', 'staged'])
   )
@@ -789,21 +759,11 @@ function OrdersPageContent() {
       </ScrollReveal>
 
       {/* Category filters */}
-      <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-        {CATEGORY_KEYS.map((key) => (
-          <button
-            key={key}
-            onClick={() => setCategoryFilter(key)}
-            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              categoryFilter === key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80'
-            }`}
-          >
-            {CATEGORY_EMOJIS[key] ? `${CATEGORY_EMOJIS[key]} ` : ''}{t(CATEGORY_I18N[key])}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        value={categoryFilter}
+        onChange={setCategoryFilter}
+        className="flex gap-2 mb-3 overflow-x-auto pb-1"
+      />
 
       {/* Status filters (toggleable) */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">

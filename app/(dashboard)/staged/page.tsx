@@ -21,8 +21,8 @@ import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
 import { getEffectivePriority } from '@/lib/priority'
 import { buildPalletEnrichmentByLine, applyPalletEnrichment } from '@/lib/pallet-enrichment'
+import { CategoryFilter, DEFAULT_CATEGORIES, filterByCategory, type CategoryKey } from '@/components/category-filter'
 
-type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 type SchedKey = 'all' | 'today' | 'tomorrow' | 'week' | 'overdue'
 type OrderRow = Order & Record<string, unknown>
 
@@ -57,19 +57,8 @@ function priorityColor(priority: string): string {
   return 'bg-muted text-muted-foreground'
 }
 
-function filterOrders(orders: Order[], filter: FilterKey, search: string): Order[] {
+function filterOrders(orders: Order[], search: string): Order[] {
   let result = orders
-  switch (filter) {
-    case 'rolltech':
-      result = result.filter((o) => o.category.toLowerCase().includes('roll'))
-      break
-    case 'molding':
-      result = result.filter((o) => o.category.toLowerCase().includes('molding'))
-      break
-    case 'snappad':
-      result = result.filter((o) => o.category.toLowerCase().includes('snap'))
-      break
-  }
   if (search.trim()) {
     const q = search.toLowerCase()
     result = result.filter(
@@ -104,7 +93,7 @@ function StagedPageContent() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterKey>('all')
+  const [filter, setFilter] = useState<CategoryKey[]>(() => [...DEFAULT_CATEGORIES])
   const [search, setSearch] = useState('')
   // Shipment-schedule filters (Simon 2026-07-21): quick chips + carrier + range
   const [schedFilter, setSchedFilter] = useState<SchedKey>('all')
@@ -159,13 +148,6 @@ function StagedPageContent() {
     },
     [tlByOrderKey]
   )
-
-  const FILTERS = useMemo(() => [
-    { key: 'all' as const, label: t('category.all') },
-    { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
-    { key: 'molding' as const, label: t('category.molding'), emoji: '🟡' },
-    { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
-  ], [t])
 
   const STAGED_COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
     { key: 'line', label: t('table.line'), sortable: true },
@@ -398,7 +380,7 @@ function StagedPageContent() {
     return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [orders])
 
-  const filtered = (filterOrders(schedFiltered, filter, search) as OrderRow[]).map((row) => ({
+  const filtered = (filterOrders(filterByCategory(schedFiltered, filter), search) as OrderRow[]).map((row) => ({
     ...row,
     truckloadNumber: truckloadFor(row as unknown as Order)?.load_number ?? '',
   }))
@@ -433,21 +415,11 @@ function StagedPageContent() {
       />
 
       {/* Filter chips */}
-      <div className="flex gap-2 mb-2 overflow-x-auto pb-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              filter === f.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80'
-            }`}
-          >
-            {'emoji' in f ? `${f.emoji} ` : ''}{f.label}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        value={filter}
+        onChange={setFilter}
+        className="flex gap-2 mb-2 overflow-x-auto pb-2"
+      />
 
       {/* Shipment-schedule filters: quick date windows + carrier + custom range */}
       <div className="flex flex-wrap items-center gap-2 mb-4">

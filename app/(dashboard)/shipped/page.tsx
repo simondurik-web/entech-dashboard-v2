@@ -19,9 +19,9 @@ import { useAuth } from '@/lib/auth-context'
 import { usePermissions } from '@/lib/use-permissions'
 import { useViewFromUrl, useAutoExport } from '@/lib/use-view-from-url'
 import { getExtraOrderColumns } from '@/lib/extra-order-columns'
+import { CategoryFilter, DEFAULT_CATEGORIES, filterByCategory, type CategoryKey } from '@/components/category-filter'
 
 type DateKey = 'all' | '7' | '30' | '90'
-type CategoryKey = 'all' | 'rolltech' | 'molding' | 'snappad'
 
 type OrderRow = Order & Record<string, unknown>
 
@@ -43,19 +43,6 @@ function filterByDate(orders: Order[], days: DateKey): Order[] {
   })
 }
 
-function filterByCategory(orders: Order[], filter: CategoryKey): Order[] {
-  switch (filter) {
-    case 'rolltech':
-      return orders.filter((o) => o.category.toLowerCase().includes('roll'))
-    case 'molding':
-      return orders.filter((o) => o.category.toLowerCase().includes('molding'))
-    case 'snappad':
-      return orders.filter((o) => o.category.toLowerCase().includes('snap'))
-    default:
-      return orders
-  }
-}
-
 export default function ShippedPage() {
   return <Suspense><ShippedPageContent /></Suspense>
 }
@@ -68,7 +55,7 @@ function ShippedPageContent() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateKey>('30')
-  const [categoryFilter, setCategoryFilter] = useState<CategoryKey>('all')
+  const [categoryFilter, setCategoryFilter] = useState<CategoryKey[]>(() => [...DEFAULT_CATEGORIES])
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
 
   const { t } = useI18n()
@@ -81,13 +68,6 @@ function ShippedPageContent() {
     { key: '7' as const, label: t('ui.last7Days') },
     { key: '30' as const, label: t('ui.last30Days') },
     { key: '90' as const, label: t('ui.last90Days') },
-  ], [t])
-
-  const CATEGORY_FILTERS = useMemo(() => [
-    { key: 'all' as const, label: t('category.all') },
-    { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
-    { key: 'molding' as const, label: t('category.molding'), emoji: '🟡' },
-    { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
   ], [t])
 
   const COLUMNS: ColumnDef<OrderRow>[] = useMemo(() => [
@@ -215,21 +195,11 @@ function ShippedPageContent() {
       </div>
 
       {/* Category filter chips */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {CATEGORY_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setCategoryFilter(f.key)}
-            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              categoryFilter === f.key
-                ? 'bg-green-600 text-white'
-                : 'bg-muted hover:bg-muted/80'
-            }`}
-          >
-            {'emoji' in f ? `${f.emoji} ` : ''}{f.label}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        value={categoryFilter}
+        onChange={setCategoryFilter}
+        className="flex gap-2 mb-4 overflow-x-auto pb-2"
+      />
 
       {/* Loading state */}
       {loading && (

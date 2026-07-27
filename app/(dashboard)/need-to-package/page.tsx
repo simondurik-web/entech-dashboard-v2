@@ -28,8 +28,7 @@ import type { LabelData } from '@/lib/label-utils'
 import { Tag } from 'lucide-react'
 import { AssigneeEditor } from '@/components/AssigneeEditor'
 import { cacheGetJson, fetchJsonAndCache } from '@/lib/data-cache'
-
-type FilterKey = 'all' | 'rolltech' | 'molding' | 'snappad'
+import { CategoryFilter, DEFAULT_CATEGORIES, filterByCategory, type CategoryKey } from '@/components/category-filter'
 
 interface PackageOrder extends Order {
   availableStock: number
@@ -283,19 +282,6 @@ function getColumns(t: (key: string) => string, compAvail: ComponentAvailability
   ]
 }
 
-function filterByCategory(orders: PackageOrder[], filter: FilterKey): PackageOrder[] {
-  switch (filter) {
-    case 'rolltech':
-      return orders.filter((o) => o.category.toLowerCase().includes('roll'))
-    case 'molding':
-      return orders.filter((o) => o.category.toLowerCase().includes('molding'))
-    case 'snappad':
-      return orders.filter((o) => o.category.toLowerCase().includes('snap'))
-    default:
-      return orders
-  }
-}
-
 export default function NeedToPackagePage() {
   return <Suspense><NeedToPackagePageContent /></Suspense>
 }
@@ -311,7 +297,7 @@ function NeedToPackagePageContent() {
   const [compAvail, setCompAvail] = useState<ComponentAvailabilityMap>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterKey>('all')
+  const [filter, setFilter] = useState<CategoryKey[]>(() => [...DEFAULT_CATEGORIES])
   const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null)
   const [labelPreview, setLabelPreview] = useState<LabelData | null>(null)
   const [allLabelsForOrder, setAllLabelsForOrder] = useState<LabelData[]>([])
@@ -379,13 +365,6 @@ function NeedToPackagePageContent() {
       setShowLabelPreview(true)
     }
   }, [])
-
-  const FILTERS = useMemo(() => [
-    { key: 'all' as const, label: t('category.all') },
-    { key: 'rolltech' as const, label: t('category.rollTech'), emoji: '🔵' },
-    { key: 'molding' as const, label: t('category.molding'), emoji: '🟡' },
-    { key: 'snappad' as const, label: t('category.snappad'), emoji: '🟣' },
-  ], [t])
 
   // Per-order inventory allocation (priority → due date → line #): drives the
   // green/red part/tire/hub cells and the Ready-to-Package stats. Lives in a
@@ -542,21 +521,11 @@ function NeedToPackagePageContent() {
       </ScrollReveal>
 
       {/* Category filter chips */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
-              filter === f.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80'
-            }`}
-          >
-            {'emoji' in f ? `${f.emoji} ` : ''}{f.label}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        value={filter}
+        onChange={setFilter}
+        className="flex gap-2 mb-4 overflow-x-auto pb-2"
+      />
 
       {loading && (
         <TableSkeleton rows={8} />
