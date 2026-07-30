@@ -214,11 +214,16 @@ scan-to-ship), so a stale label can't be used.
     that tab is product-level, so that is the right number — and is absent from By Bin,
     which genuinely has nothing to show. Never flattened to `0`. Logged either way.
     Bins present but an empty product snapshot sets `binlessItemsUnavailable`.
-  - **Fails soft but never silently.** A catalog fetch error, an empty catalog, or (dated)
-    a bin snapshot with an empty product snapshot all set `binlessItemsUnavailable`, and the
-    page warns the file is incomplete instead of shipping a quietly-truncated workbook. The
-    warning names no cause — the same flag covers an ERPNext outage and a snapshot gap, and
-    an ops team chasing the wrong one is worse than one told only "rows are missing".
+  - **Fails soft but never silently.** A catalog fetch error, an empty catalog, an empty
+    live Bin result, or (dated) a bin snapshot with an empty product snapshot all set
+    `binlessItemsUnavailable`, and the page warns the file is incomplete instead of shipping
+    a quietly-truncated workbook. The warning names no cause — the same flag covers an
+    ERPNext outage and a snapshot gap, and an ops team chasing the wrong one is worse than
+    one told only "rows are missing".
+  - **No bins at all ⇒ no zero-fill.** An empty Bin result is indistinguishable from a
+    changed filter or a permission regression, and zero-filling on top of it yields a
+    perfectly plausible workbook saying all 1,142 parts are at zero. Confidently wrong is
+    the worst output this feature can produce, so that case flags and ships no zero rows.
   The merge is `lib/inventory-report.ts` (`buildProductTotals`, tested) rather than inline
   in the page: it is the one number the accounting team copies out, and it was sitting in a
   4k-line component where nothing could exercise it.

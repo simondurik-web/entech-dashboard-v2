@@ -319,6 +319,18 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await getFullInventory()
+    // An empty Bin result is not proof the facility is empty — a changed filter, a
+    // permission change or an ERPNext regression looks identical here. Zero-filling on
+    // top of it would produce a fully plausible workbook stating that all 1,142 parts
+    // are at zero, which is the worst possible output of this feature: confidently
+    // wrong. No bins, no zero-fill, and the page says the file is incomplete.
+    if (rows.length === 0) {
+      console.error('inventory report: ERPNext returned no bins at all — exporting without zero-qty parts')
+      return NextResponse.json(
+        { rows, binlessItems: [], binlessItemsUnavailable: true },
+        { headers: { 'Cache-Control': 'no-store' } }
+      )
+    }
     const zero = await zeroStockCatalogItems(new Set(rows.map((row) => row.itemCode)))
     return NextResponse.json(
       { rows, binlessItems: zero.items, binlessItemsUnavailable: zero.unavailable },
