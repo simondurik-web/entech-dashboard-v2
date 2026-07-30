@@ -470,6 +470,35 @@ export async function getFullInventory(): Promise<InventoryRow[]> {
   })
 }
 
+export interface CatalogItem {
+  itemCode: string
+  itemName: string
+  uom: string
+}
+
+/** Every part ERPNext still counts as live catalog: enabled and stock-tracked. Unlike
+ *  `getFullInventory` this is not gated on having stock — it is what the full-inventory
+ *  report zero-fills from, so a part sitting at zero still gets a line. Accounting
+ *  VLOOKUPs the export by part number: a missing row reads as "no such part", not
+ *  "we're out of it". Disabled items stay out — those are retired, not out of stock. */
+export async function listCatalogItems(): Promise<CatalogItem[]> {
+  const qs = [
+    listParam('filters', [
+      ['disabled', '=', 0],
+      ['is_stock_item', '=', 1],
+    ]),
+    listParam('fields', ['item_code', 'item_name', 'stock_uom']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows =
+    (await erpnextGet<{ data: { item_code: string; item_name?: string; stock_uom?: string }[] }>(`/api/resource/Item?${qs}`)).data ?? []
+  return rows.map((r) => ({
+    itemCode: r.item_code,
+    itemName: String(r.item_name ?? '').trim() || r.item_code,
+    uom: r.stock_uom ?? '',
+  }))
+}
+
 export interface AdjustResult extends Committed {
   itemName: string
   uom: string

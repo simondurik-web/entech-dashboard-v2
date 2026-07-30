@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
+import { buildProductTotals } from '@/lib/inventory-report'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
 import { BinCombobox } from '@/components/inventory/BinCombobox'
@@ -1182,7 +1183,9 @@ export default function InventoryOpsPage() {
       if (d.historical && !d.binsAvailable) {
         showFlash('info', t('inventoryOps.repNoBinsNote'), 5000, Boolean(d.legacyData))
       }
+      if (d.zeroItemsUnavailable) showFlash('warn', t('inventoryOps.repNoZeroItems'), 6000, true)
       const rows: InventoryRow[] = d.rows ?? []
+      const zeroItems: { itemCode?: string; itemName?: string; uom?: string }[] = d.zeroItems ?? []
       const { default: ExcelJS } = await import('exceljs')
       const wb = new ExcelJS.Workbook()
       wb.creator = 'Entech Dashboard'
@@ -1202,29 +1205,10 @@ export default function InventoryOpsPage() {
       // The same item sitting in six bins collapses to a single facility-wide
       // total — use the By Bin tab when you need to know where it is.
       const buildByProductSheet = () => {
-        // The report payload is cast, not validated. Coerce every field: summing
-        // is destructive in a way the old pass-through display was not — a qty
-        // that arrived as a string would concatenate instead of add.
-        const totals = new Map<string, { itemCode: string; itemName: string; uom: string; qty: number }>()
-        for (const x of rows) {
-          const itemCode = String(x.itemCode ?? '')
-          const itemName = String(x.itemName ?? '') || itemCode
-          const uom = String(x.uom ?? '')
-          const qty = Number(x.qty)
-          // A blank item code is not an identity — key those by name so unrelated
-          // uncoded rows don't collapse into one bogus line.
-          const key = itemCode || `name:${itemName}`
-          const running = totals.get(key)
-          if (running) {
-            running.qty += Number.isFinite(qty) ? qty : 0
-            if (!running.uom) running.uom = uom
-          } else {
-            totals.set(key, { itemCode, itemName, uom, qty: Number.isFinite(qty) ? qty : 0 })
-          }
-        }
-        const products = [...totals.values()].sort(
-          (a, b) => a.itemName.localeCompare(b.itemName) || a.itemCode.localeCompare(b.itemCode)
-        )
+        // Totalling + zero-fill live in lib/inventory-report.ts (with tests) — this
+        // is the one number the accounting team copies out, so it is not inlined in
+        // a 4k-line component where nothing can exercise it.
+        const products = buildProductTotals(rows, zeroItems)
         // Historical snapshots carry no UOM — don't ship an empty column.
         const hasUom = products.some((p) => p.uom)
         const ws = wb.addWorksheet(t('inventoryOps.repTabByProduct'))

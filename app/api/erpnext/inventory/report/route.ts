@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { getFullInventory } from '@/lib/erpnext/inventory'
+import { getFullInventory, listCatalogItems } from '@/lib/erpnext/inventory'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 
 // GET /api/erpnext/inventory/report
@@ -107,6 +107,44 @@ async function intradaySnapshotTimes(date: string): Promise<string[]> {
   return (data ?? []).map((timestamp: unknown) => String(timestamp))
 }
 
+interface ZeroItem {
+  itemCode: string
+  itemName: string
+  uom: string
+  qty: 0
+}
+
+/** Every live catalog part that has no line in `stockedCodes`, as a zero-qty entry.
+ *  The client folds these into the By Product tab so the export lists every part
+ *  number in ERPNext, in stock or not — accounting VLOOKUPs it, and a part that
+ *  vanishes when it hits zero reads as "no such part" instead of "we're out".
+ *
+ *  Fails soft: the historical path is otherwise pure Supabase and must keep working
+ *  with ERPNext down. The caller reports `zeroItemsUnavailable` so a short file is
+ *  visibly short rather than silently short. */
+async function zeroStockItems(
+  stockedCodes: Set<string>,
+  withUom: boolean
+): Promise<{ items: ZeroItem[]; unavailable: boolean }> {
+  try {
+    const catalog = await listCatalogItems()
+    const items = catalog
+      .filter((item) => !stockedCodes.has(item.itemCode))
+      .map((item) => ({
+        itemCode: item.itemCode,
+        itemName: item.itemName,
+        // Historical snapshots carry no UOM; adding one only for the zero rows would
+        // surface a column that is empty for every part that actually has stock.
+        uom: withUom ? item.uom : '',
+        qty: 0 as const,
+      }))
+    return { items, unavailable: false }
+  } catch (error) {
+    console.error('inventory report: catalog fetch failed, exporting without zero-qty items:', error)
+    return { items: [], unavailable: true }
+  }
+}
+
 async function historicalResponse(
   history: Record<string, unknown>[],
   binsAvailable: boolean,
@@ -139,9 +177,12 @@ async function historicalResponse(
       pallets: [],
     }
   })
+  const zero = await zeroStockItems(new Set(rows.map((row) => row.itemCode)), false)
   return NextResponse.json(
     {
       rows,
+      zeroItems: zero.items,
+      zeroItemsUnavailable: zero.unavailable,
       historical: true,
       binsAvailable,
       legacyData: date < '2026-07-21',
@@ -220,7 +261,11 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await getFullInventory()
-    return NextResponse.json({ rows }, { headers: { 'Cache-Control': 'no-store' } })
+    const zero = await zeroStockItems(new Set(rows.map((row) => row.itemCode)), true)
+    return NextResponse.json(
+      { rows, zeroItems: zero.items, zeroItemsUnavailable: zero.unavailable },
+      { headers: { 'Cache-Control': 'no-store' } }
+    )
   } catch (error) {
     console.error('inventory report failed:', error)
     return NextResponse.json({ error: 'Lookup failed' }, { status: 502 })

@@ -186,6 +186,19 @@ scan-to-ship), so a stale label can't be used.
   Product**, each with a Pallets column; from `GET /report` (`maxDuration=300`, includes
   pallet ids facility-wide, bounded concurrency = thorough but slow on big sites). CSV cells
   pass through a formula-injection guard. All report labels/headers/tab names are EN+ES via `t()`.
+- **Zero-qty parts on By Product (Simon 2026-07-30):** By Bin is built from ERPNext `Bin`
+  rows filtered `actual_qty > 0`, so a part at zero used to vanish from the workbook
+  entirely (492 of 1,142 live parts made the file). Accounting VLOOKUPs the By Product tab
+  by part number onto their own sheets, and a missing row reads as "no such part" instead
+  of "we're out of it". `listCatalogItems()` now returns every enabled `is_stock_item`
+  Item; `/report` diffs that against the stocked codes and ships the remainder as
+  `zeroItems` (qty 0). They land on **By Product only** — a part at zero has no bin, so
+  By Bin would just gain blank-bin noise. Disabled items stay out (retired ≠ out of stock).
+  The merge is `lib/inventory-report.ts` (`buildProductTotals`, tested) rather than inline
+  in the page: it is the one number the accounting team copies out. The catalog fetch fails
+  SOFT — the historical path is otherwise pure Supabase and must survive ERPNext being
+  down — and the route flags `zeroItemsUnavailable` so the page warns that the file is
+  short, rather than shipping a silently-truncated workbook.
 - **Lazy pallet load:** the page seeds pallet ids for locate's top items; beyond that it
   auto-loads only the top `LAZY_PALLET_LIMIT` (24) results (ref-deduped) to bound fan-out.
   After any write the handlers call BOTH `refreshSearch()` (bins/totals) and
