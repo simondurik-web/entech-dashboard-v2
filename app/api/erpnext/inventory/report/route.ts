@@ -119,14 +119,14 @@ interface ZeroItem {
  *  stock or not — accounting VLOOKUPs it, and a part that vanishes when it hits zero
  *  reads as "no such part" instead of "we're out".
  *
- *  LIVE REPORTS ONLY. A dated export is built from that day's snapshot, which already
- *  carries its own zero rows; filling it from today's catalog would date parts back to
- *  before they existed and quietly drop parts that have since been disabled.
+ *  LIVE REPORTS ONLY. A dated export zero-fills from that day's product snapshot
+ *  (see `historicalResponse`) — filling it from today's catalog would date parts back
+ *  to before they existed and quietly drop parts that have since been disabled.
  *
- *  `stockedCodes` must hold every code with a NON-ZERO bin, not just a positive one.
- *  ERPNext allows negative stock, and absence from the positive set is not proof of
- *  zero — reporting a negative on-hand as 0 would be a wrong number, which is worse
- *  than the missing row this whole change exists to fix.
+ *  `stockedCodes` is the positive-bin set from `getFullInventory`; the negative-bin set
+ *  is subtracted here rather than folded in by the caller. ERPNext allows negative stock,
+ *  so absence from the positive set alone is not proof of zero — reporting a negative
+ *  on-hand as 0 would be a wrong number, worse than the missing row this change fixes.
  *
  *  Fails soft, but never silently: on a fetch error OR an empty catalog (never
  *  legitimate — the facility always has parts) the caller reports
@@ -157,10 +157,13 @@ async function historicalResponse(
   history: Record<string, unknown>[],
   binsAvailable: boolean,
   date: string,
+  productHistory: Record<string, unknown>[],
   snapshotTime?: string
 ) {
-  // Valid snapshots include zero-qty rows, so a fully empty result means the
-  // snapshot never ran for that date — say so instead of exporting a blank file.
+  // A valid product-level snapshot includes zero-qty rows, so a fully empty result
+  // means the snapshot never ran for that date — say so instead of exporting a blank
+  // file. (The BIN snapshot stores only non-zero bins; that difference is what
+  // `productHistory` below is for.)
   if (history.length === 0) {
     return NextResponse.json(
       { error: snapshotTime ? 'no snapshot for time' : 'no snapshot for date' },
@@ -185,9 +188,39 @@ async function historicalResponse(
       pallets: [],
     }
   })
+
+  // Zero-fill a dated export from THAT DAY's product snapshot, never from today's
+  // ERPNext catalog: the dated file has to say what existed then, not now. The bin
+  // snapshot the rows come from stores only non-zero bins (1,164 rows / 492 parts for
+  // 2026-07-29), while the product snapshot carries the zeros (1,175 rows, 683 of them
+  // zero) — so without this merge a dated By Product tab drops exactly the parts this
+  // whole change is about. When bin history is missing, `history` IS the product
+  // snapshot and every code is already in `stocked`, so this yields nothing.
+  const stocked = new Set(rows.map((row) => row.itemCode))
+  const zeroItems: { itemCode: string; itemName: string; uom: string; qty: 0 }[] = []
+  let missingWithStock = 0
+  for (const row of productHistory) {
+    const itemCode = String(row.part_number ?? '')
+    if (!itemCode || stocked.has(itemCode)) continue
+    // A part the product snapshot says is non-zero but that has no bin row is an
+    // inconsistency between the two snapshots. Reporting it as 0 would be a wrong
+    // number, so leave it out (as today) and count it rather than paper over it.
+    if (Number(row.quantity ?? 0) !== 0) {
+      missingWithStock++
+      continue
+    }
+    zeroItems.push({ itemCode, itemName: names.get(itemCode) ?? itemCode, uom: '', qty: 0 })
+  }
+  if (missingWithStock > 0) {
+    console.error(
+      `inventory report ${date}${snapshotTime ? ` ${snapshotTime}` : ''}: ${missingWithStock} part(s) have a non-zero product snapshot but no bin row — omitted from the export`
+    )
+  }
+
   return NextResponse.json(
     {
       rows,
+      zeroItems,
       historical: true,
       binsAvailable,
       legacyData: date < '2026-07-21',
@@ -252,17 +285,21 @@ export async function GET(req: NextRequest) {
           snapshotTs
         )
         const binsAvailable = binHistory.length >= 1
-        const history = binsAvailable
-          ? binHistory
-          : await fetchAllRowsAtSnapshot('inventory_history_intraday', ['part_number'], snapshotTs)
-        return await historicalResponse(history, binsAvailable, date, time)
+        // Always read the product snapshot: it is the row set when bin history is
+        // missing, and the source of the zero rows when it isn't.
+        const productHistory = await fetchAllRowsAtSnapshot(
+          'inventory_history_intraday',
+          ['part_number'],
+          snapshotTs
+        )
+        const history = binsAvailable ? binHistory : productHistory
+        return await historicalResponse(history, binsAvailable, date, productHistory, time)
       }
       const binHistory = await fetchAllRows('inventory_bin_history', ['part_number', 'warehouse'], date)
       const binsAvailable = binHistory.length >= 1
-      const history = binsAvailable
-        ? binHistory
-        : await fetchAllRows('inventory_history', ['part_number'], date)
-      return await historicalResponse(history, binsAvailable, date)
+      const productHistory = await fetchAllRows('inventory_history', ['part_number'], date)
+      const history = binsAvailable ? binHistory : productHistory
+      return await historicalResponse(history, binsAvailable, date, productHistory)
     }
 
     const rows = await getFullInventory()

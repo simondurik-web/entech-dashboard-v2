@@ -199,9 +199,16 @@ scan-to-ship), so a stale label can't be used.
     negative stock and absence from the positive-bin set is not proof of zero; exporting a
     part ERPNext believes is at −5 as `0` would be a wrong number, worse than the missing
     row this fixes. Normally that set is empty (0 negative bins as of 2026-07-30).
-  - **Live reports only.** A dated export comes from that day's snapshot, which already
-    carries its own zero rows (727 of 1,219 on 2026-07-30). Filling it from today's catalog
-    would date parts back to before they existed and drop parts since disabled.
+  - **A dated export zero-fills from THAT DAY, not from today's catalog.** The two
+    snapshot tables are not interchangeable and this is the trap: `inventory_bin_history`
+    (preferred whenever it has rows) stores only NON-ZERO bins — 1,164 rows / 492 parts
+    for 2026-07-29, zero zero-rows — while `inventory_history` carries the zeros (1,175
+    rows, 683 of them zero). So a dated export built from bin history drops exactly the
+    parts this change is about. `historicalResponse` merges the missing zeros from the
+    product snapshot for the same date/`snapshot_ts`. Today's ERPNext catalog is NOT used
+    there: it would date parts back to before they existed and drop parts since disabled.
+    A part the product snapshot calls non-zero with no bin row is a snapshot
+    inconsistency — logged and omitted, never exported as `0`.
   - **Fails soft but never silently.** A catalog fetch error *or* an empty catalog sets
     `zeroItemsUnavailable`, and the page warns the file is short instead of shipping a
     quietly-truncated workbook.
