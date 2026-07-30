@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { getFullInventory, listCatalogItems, listNegativeStockCodes } from '@/lib/erpnext/inventory'
+import { getFullInventory, listCatalogItems } from '@/lib/erpnext/inventory'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 
 // GET /api/erpnext/inventory/report
@@ -126,23 +126,23 @@ interface BinlessItem {
  *  (see `historicalResponse`) — filling it from today's catalog would date parts back
  *  to before they existed and quietly drop parts that have since been disabled.
  *
- *  `stockedCodes` is the positive-bin set from `getFullInventory`; the negative-bin set
- *  is subtracted here rather than folded in by the caller. ERPNext allows negative stock,
- *  so absence from the positive set alone is not proof of zero — reporting a negative
- *  on-hand as 0 would be a wrong number, worse than the missing row this change fixes.
+ *  `stockedCodes` comes from `getFullInventory`, which returns every NON-ZERO bin — so
+ *  a part ERPNext believes is at −5 is already in that set and is never zero-filled.
+ *  Reporting a negative on-hand as 0 would be a wrong number, worse than the missing row
+ *  this change fixes.
  *
  *  Fails soft, but never silently: on a fetch error OR an empty catalog (never
  *  legitimate — the facility always has parts) the caller reports
  *  `binlessItemsUnavailable` so a short file is visibly short. */
 async function zeroStockCatalogItems(stockedCodes: Set<string>): Promise<{ items: BinlessItem[]; unavailable: boolean }> {
   try {
-    const [catalog, negativeCodes] = await Promise.all([listCatalogItems(), listNegativeStockCodes()])
+    const catalog = await listCatalogItems()
     if (catalog.length === 0) {
       console.error('inventory report: item catalog came back empty, exporting without zero-qty items')
       return { items: [], unavailable: true }
     }
     const items = catalog
-      .filter((item) => !stockedCodes.has(item.itemCode) && !negativeCodes.has(item.itemCode))
+      .filter((item) => !stockedCodes.has(item.itemCode))
       .map((item) => ({
         itemCode: item.itemCode,
         itemName: item.itemName,

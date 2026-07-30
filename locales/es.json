@@ -1483,7 +1483,7 @@
   "inventoryOps.repLegacyWarn": "⚠️ Los datos anteriores al 21/07/2026 vienen del sistema antiguo y NO son confiables",
   "inventoryOps.repNoBinsNote": "Sin detalle por ubicación para esta fecha — solo totales por producto",
   "inventoryOps.repNoSnapshot": "No existe un registro de inventario para esa fecha",
-  "inventoryOps.repNoZeroItems": "⚠️ Catálogo de artículos no disponible — este archivo solo incluye piezas con existencias; faltan las piezas en cero",
+  "inventoryOps.repNoZeroItems": "⚠️ Este archivo está incompleto — no se pudieron cargar las piezas sin ubicación (las piezas en cero y cualquier pieza ausente de los datos por ubicación)",
   "inventoryOps.scanStarting": "Iniciando cámara...",
   "inventoryOps.scanDenied": "Se bloqueó el acceso a la cámara. Permite el acceso en la configuración de tu navegador e inténtalo de nuevo.",
   "inventoryOps.scanNoCamera": "No se encontró ninguna cámara en este dispositivo.",

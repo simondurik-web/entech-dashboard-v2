@@ -431,10 +431,16 @@ export interface InventoryRow {
 
 /** The full item × bin × qty matrix for the whole facility, each cell enriched with its
  *  pallet ids. Drives the full-inventory spreadsheet export (grouped by bin / product).
- *  Bounded concurrency keeps it stable on a large facility — slower, never a storm. */
+ *  Bounded concurrency keeps it stable on a large facility — slower, never a storm.
+ *
+ *  NON-ZERO bins, not positive ones (2026-07-30). ERPNext permits negative stock, and
+ *  filtering to `> 0` made By Product report an item with a +10 and a -5 bin as 10
+ *  instead of 5, and hid a negative-only item entirely. A bin ERPNext believes is
+ *  negative is a real (if broken) fact about the facility; the export states it rather
+ *  than rounding it away. As of this date there are none. */
 export async function getFullInventory(): Promise<InventoryRow[]> {
   const binQs = [
-    listParam('filters', [['actual_qty', '>', 0]]),
+    listParam('filters', [['actual_qty', '!=', 0]]),
     listParam('fields', ['item_code', 'warehouse', 'actual_qty']),
     'limit_page_length=0',
   ].join('&')
@@ -497,20 +503,6 @@ export async function listCatalogItems(): Promise<CatalogItem[]> {
     itemName: String(r.item_name ?? '').trim() || r.item_code,
     uom: r.stock_uom ?? '',
   }))
-}
-
-/** Item codes sitting on a NEGATIVE bin somewhere. `getFullInventory` only returns
- *  positive bins, so absence from its rows is not proof of zero — ERPNext permits
- *  negative stock. The report subtracts these before zero-filling: a part ERPNext
- *  believes is at -5 must not be exported as 0. Normally empty. */
-export async function listNegativeStockCodes(): Promise<Set<string>> {
-  const qs = [
-    listParam('filters', [['actual_qty', '<', 0]]),
-    listParam('fields', ['item_code']),
-    'limit_page_length=0',
-  ].join('&')
-  const rows = (await erpnextGet<{ data: { item_code: string }[] }>(`/api/resource/Bin?${qs}`)).data ?? []
-  return new Set(rows.map((r) => r.item_code))
 }
 
 export interface AdjustResult extends Committed {

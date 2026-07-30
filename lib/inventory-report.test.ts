@@ -17,7 +17,7 @@ test('the same item in several bins collapses to one facility-wide total', () =>
 test('a zero-stock catalog part still gets a line — this is the whole point', () => {
   // '184' (group Tire) is Simon's example: in ERPNext, no stock, missing from the
   // old export. Accounting VLOOKUPs by part number, so a missing row reads as
-  // "no such part". Passing zeroItems=[] reproduces the pre-fix behaviour and
+  // "no such part". Passing no binlessItems reproduces the pre-fix behaviour and
   // this assertion fails — that is what makes the test worth having.
   const products = buildProductTotals(stocked, [{ itemCode: '184', itemName: '184', uom: 'pcs' }])
   const tire = products.find((p) => p.itemCode === '184')
