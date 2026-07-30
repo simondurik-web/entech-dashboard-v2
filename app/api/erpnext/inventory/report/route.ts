@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireInventoryAccess } from '@/lib/erpnext/auth'
-import { getFullInventory, listCatalogItems } from '@/lib/erpnext/inventory'
+import { getFullInventory, listCatalogItems, listNegativeStockCodes } from '@/lib/erpnext/inventory'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 
 // GET /api/erpnext/inventory/report
@@ -114,28 +114,36 @@ interface ZeroItem {
   qty: 0
 }
 
-/** Every live catalog part that has no line in `stockedCodes`, as a zero-qty entry.
- *  The client folds these into the By Product tab so the export lists every part
- *  number in ERPNext, in stock or not — accounting VLOOKUPs it, and a part that
- *  vanishes when it hits zero reads as "no such part" instead of "we're out".
+/** Every live catalog part with no stock at all, as a zero-qty entry. The client folds
+ *  these into the By Product tab so the export lists every part number in ERPNext, in
+ *  stock or not — accounting VLOOKUPs it, and a part that vanishes when it hits zero
+ *  reads as "no such part" instead of "we're out".
  *
- *  Fails soft: the historical path is otherwise pure Supabase and must keep working
- *  with ERPNext down. The caller reports `zeroItemsUnavailable` so a short file is
- *  visibly short rather than silently short. */
-async function zeroStockItems(
-  stockedCodes: Set<string>,
-  withUom: boolean
-): Promise<{ items: ZeroItem[]; unavailable: boolean }> {
+ *  LIVE REPORTS ONLY. A dated export is built from that day's snapshot, which already
+ *  carries its own zero rows; filling it from today's catalog would date parts back to
+ *  before they existed and quietly drop parts that have since been disabled.
+ *
+ *  `stockedCodes` must hold every code with a NON-ZERO bin, not just a positive one.
+ *  ERPNext allows negative stock, and absence from the positive set is not proof of
+ *  zero — reporting a negative on-hand as 0 would be a wrong number, which is worse
+ *  than the missing row this whole change exists to fix.
+ *
+ *  Fails soft, but never silently: on a fetch error OR an empty catalog (never
+ *  legitimate — the facility always has parts) the caller reports
+ *  `zeroItemsUnavailable` so a short file is visibly short. */
+async function zeroStockItems(stockedCodes: Set<string>): Promise<{ items: ZeroItem[]; unavailable: boolean }> {
   try {
-    const catalog = await listCatalogItems()
+    const [catalog, negativeCodes] = await Promise.all([listCatalogItems(), listNegativeStockCodes()])
+    if (catalog.length === 0) {
+      console.error('inventory report: item catalog came back empty, exporting without zero-qty items')
+      return { items: [], unavailable: true }
+    }
     const items = catalog
-      .filter((item) => !stockedCodes.has(item.itemCode))
+      .filter((item) => !stockedCodes.has(item.itemCode) && !negativeCodes.has(item.itemCode))
       .map((item) => ({
         itemCode: item.itemCode,
         itemName: item.itemName,
-        // Historical snapshots carry no UOM; adding one only for the zero rows would
-        // surface a column that is empty for every part that actually has stock.
-        uom: withUom ? item.uom : '',
+        uom: item.uom,
         qty: 0 as const,
       }))
     return { items, unavailable: false }
@@ -177,12 +185,9 @@ async function historicalResponse(
       pallets: [],
     }
   })
-  const zero = await zeroStockItems(new Set(rows.map((row) => row.itemCode)), false)
   return NextResponse.json(
     {
       rows,
-      zeroItems: zero.items,
-      zeroItemsUnavailable: zero.unavailable,
       historical: true,
       binsAvailable,
       legacyData: date < '2026-07-21',
@@ -261,7 +266,7 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await getFullInventory()
-    const zero = await zeroStockItems(new Set(rows.map((row) => row.itemCode)), true)
+    const zero = await zeroStockItems(new Set(rows.map((row) => row.itemCode)))
     return NextResponse.json(
       { rows, zeroItems: zero.items, zeroItemsUnavailable: zero.unavailable },
       { headers: { 'Cache-Control': 'no-store' } }

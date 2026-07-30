@@ -499,6 +499,20 @@ export async function listCatalogItems(): Promise<CatalogItem[]> {
   }))
 }
 
+/** Item codes sitting on a NEGATIVE bin somewhere. `getFullInventory` only returns
+ *  positive bins, so absence from its rows is not proof of zero — ERPNext permits
+ *  negative stock. The report subtracts these before zero-filling: a part ERPNext
+ *  believes is at -5 must not be exported as 0. Normally empty. */
+export async function listNegativeStockCodes(): Promise<Set<string>> {
+  const qs = [
+    listParam('filters', [['actual_qty', '<', 0]]),
+    listParam('fields', ['item_code']),
+    'limit_page_length=0',
+  ].join('&')
+  const rows = (await erpnextGet<{ data: { item_code: string }[] }>(`/api/resource/Bin?${qs}`)).data ?? []
+  return new Set(rows.map((r) => r.item_code))
+}
+
 export interface AdjustResult extends Committed {
   itemName: string
   uom: string
