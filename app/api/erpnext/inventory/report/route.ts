@@ -200,24 +200,27 @@ async function historicalResponse(
   // whole change is about. When bin history is missing, `history` IS the product
   // snapshot and every code is already in `stocked`, so this yields nothing.
   const stocked = new Set(rows.map((row) => row.itemCode))
-  const binlessItems: BinlessItem[] = []
-  let missingWithStock = 0
+  // Keyed, not appended. The snapshot is one row per part per date today (1,175 rows,
+  // 1,175 distinct codes on 2026-07-29), but if that ever stopped holding, a plain push
+  // would let arrival order decide — and the client keeps the first entry per code, so a
+  // stray 0 arriving ahead of the real quantity would win in silence. SUM duplicates:
+  // this is a total, and two rows for one part are two parts' worth of it.
+  const binless = new Map<string, BinlessItem>()
   for (const row of productHistory) {
     const itemCode = String(row.part_number ?? '')
     if (!itemCode || stocked.has(itemCode)) continue
-    const qty = Number(row.quantity ?? 0)
-    // Usually zero. When it isn't, the two snapshots disagree — the product snapshot has
-    // stock the bin snapshot has no row for (4 parts on 2026-07-29). The product-level
-    // number is the right one for a product-level tab, so carry it through rather than
-    // flattening it to 0 or dropping the part; By Bin genuinely has nothing to show.
-    if (Number.isFinite(qty) && qty !== 0) missingWithStock++
-    binlessItems.push({
-      itemCode,
-      itemName: names.get(itemCode) ?? itemCode,
-      uom: '',
-      qty: Number.isFinite(qty) ? qty : 0,
-    })
+    const raw = Number(row.quantity ?? 0)
+    const qty = Number.isFinite(raw) ? raw : 0
+    const running = binless.get(itemCode)
+    if (running) running.qty += qty
+    else binless.set(itemCode, { itemCode, itemName: names.get(itemCode) ?? itemCode, uom: '', qty })
   }
+  const binlessItems = [...binless.values()]
+  // Usually every one of these is zero. When one isn't, the two snapshots disagree — the
+  // product snapshot has stock the bin snapshot has no row for (4 parts on 2026-07-29).
+  // The product-level number is the right one for a product-level tab, so it is carried
+  // through rather than flattened to 0 or dropped; By Bin genuinely has nothing to show.
+  const missingWithStock = binlessItems.filter((item) => item.qty !== 0).length
   if (missingWithStock > 0) {
     console.warn(
       `inventory report ${date}${snapshotTime ? ` ${snapshotTime}` : ''}: ${missingWithStock} part(s) have stock in the product snapshot but no bin row — exported on By Product with the product-level qty, absent from By Bin`

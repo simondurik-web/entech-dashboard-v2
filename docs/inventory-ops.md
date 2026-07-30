@@ -227,6 +227,15 @@ scan-to-ship), so a stale label can't be used.
   The merge is `lib/inventory-report.ts` (`buildProductTotals`, tested) rather than inline
   in the page: it is the one number the accounting team copies out, and it was sitting in a
   4k-line component where nothing could exercise it.
+  - **ACCEPTED RESIDUAL — partial Bin visibility is undetectable.** The empty-Bin guard
+    catches total loss, not partial. If `dashboard-svc@4molding.com` were ever given
+    ERPNext warehouse User Permissions, Bin would return a *plausible* subset and parts
+    stocked only in hidden warehouses would be zero-filled as `0`. There is no
+    "is this list complete" signal in the REST API, and that user cannot read the User
+    Permission doctype to check itself. It sees 368 warehouses with stock across 251 and
+    has no such restriction today; the rest of the module (locate, bin contents, staging)
+    already assumes full Bin visibility. Re-check this if the service user's roles ever
+    change.
 - **Lazy pallet load:** the page seeds pallet ids for locate's top items; beyond that it
   auto-loads only the top `LAZY_PALLET_LIMIT` (24) results (ref-deduped) to bound fan-out.
   After any write the handlers call BOTH `refreshSearch()` (bins/totals) and
