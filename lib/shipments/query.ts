@@ -5,7 +5,7 @@ import type { ShipmentRow } from './types'
 // diverge from the filtered table the user is looking at.
 
 export const SHIPMENT_COLUMNS =
-  'id,run_id,sent_at,po_number,partner,ship_to_name,ship_to_address,city,state,zip,residential,service,source_system,tracking,part_number,qty'
+  'id,run_id,sent_at,po_number,partner,ship_to_name,ship_to_address,city,state,zip,residential,service,source_system,tracking,part_number,qty,shipping_cost_usd'
 
 export const LTL_SERVICE = 'LTL (set-aside)'
 
@@ -104,6 +104,9 @@ export function applyShipmentFilters<T>(query: T, filters: ShipmentFilters): T {
 
 export function normalizeShipmentRow(row: Record<string, unknown>): ShipmentRow {
   const qty = Number(row.qty)
+  // Postgres numeric columns arrive from supabase-js as strings; NULL must
+  // stay null (cost never captured), never collapse to 0.
+  const cost = row.shipping_cost_usd == null ? null : Number(row.shipping_cost_usd)
   return {
     id: String(row.id),
     run_id: row.run_id == null ? null : String(row.run_id),
@@ -121,5 +124,6 @@ export function normalizeShipmentRow(row: Record<string, unknown>): ShipmentRow 
     tracking: row.tracking == null ? null : String(row.tracking),
     part_number: row.part_number == null ? null : String(row.part_number),
     qty: Number.isFinite(qty) ? qty : 0,
+    shipping_cost_usd: cost !== null && Number.isFinite(cost) ? cost : null,
   }
 }

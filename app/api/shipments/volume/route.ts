@@ -54,8 +54,10 @@ export async function GET(req: NextRequest) {
       units: sum.units + Number(row.units),
       lines: sum.lines + Number(row.lines),
       orders: sum.orders + Number(row.orders),
+      cost: sum.cost + Number(row.cost),
+      pricedOrders: sum.pricedOrders + Number(row.pricedOrders),
     }),
-    { units: 0, lines: 0, orders: 0 }
+    { units: 0, lines: 0, orders: 0, cost: 0, pricedOrders: 0 }
   )
 
   return NextResponse.json(

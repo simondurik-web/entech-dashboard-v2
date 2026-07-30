@@ -9,10 +9,10 @@ import type {
 } from './types'
 
 function emptyTotals(): ShipmentTotals {
-  return { units: 0, lines: 0, orders: 0 }
+  return { units: 0, lines: 0, orders: 0, cost: 0, pricedOrders: 0 }
 }
 
-function numeric(value: number | string | null): number {
+function numeric(value: number | string | null | undefined): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
 }
@@ -20,10 +20,19 @@ function numeric(value: number | string | null): number {
 // When DailyOrdersRow[] is supplied, order counts come exclusively from it (the
 // per-part rollup's orders column double-counts multi-part POs) — so the daily
 // rows must then contribute units/lines only.
+//
+// Cost: shipping_cost_usd lives on exactly ONE shipment_history row per
+// (run_id, po_number), so the rollup's per-group SUM already carries each
+// shipment's cost exactly once — adding the group sums never double-counts.
+// NULL/absent is "no priced shipments here", not zero: it contributes nothing
+// to cost and nothing to pricedOrders, and consumers use pricedOrders to tell
+// a real $0-priced bucket apart from an unpriced one.
 function addTotals(target: ShipmentTotals, row: DailyRollupRow, includeOrders: boolean): void {
   target.units += numeric(row.units)
   target.lines += numeric(row.lines)
   if (includeOrders) target.orders += numeric(row.orders)
+  target.cost += numeric(row.shipping_cost_usd)
+  target.pricedOrders += numeric(row.priced_orders)
 }
 
 function isoDate(date: Date): string {

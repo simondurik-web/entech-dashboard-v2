@@ -1,0 +1,13 @@
+-- Faithful record of a change already applied directly to the shared Supabase
+-- project on 2026-07-30 (this project backs staging AND production; migrations
+-- are not auto-applied). Idempotent so re-running it is a no-op.
+--
+-- INVARIANT: shipping_cost_usd is the cost of the whole SHIPMENT, written on
+-- exactly one shipment_history row per (run_id, po_number) — the lowest
+-- part_number line — and NULL on that shipment's other line rows.
+-- shipment_history is line-level; writing the cost on every line would
+-- silently inflate any total. Consequence: SUM(shipping_cost_usd) over rows in
+-- scope is already correct — never de-duplicate per PO or divide across lines.
+-- NULL means "never captured" (most historical runs) or "not booked"
+-- (LTL set-asides), not free shipping.
+alter table public.shipment_history add column if not exists shipping_cost_usd numeric(10,2);
