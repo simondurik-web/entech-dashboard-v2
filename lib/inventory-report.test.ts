@@ -36,6 +36,30 @@ test('a zero-fill entry never overwrites a part that actually has stock', () => 
   assert.equal(products[0].qty, 3923)
 })
 
+test('a binless part with real stock keeps its quantity instead of being flattened to 0', () => {
+  // Dated exports: 4 parts on 2026-07-29 have stock in the product snapshot but no row
+  // in the bin snapshot. By Product is a product-level tab, so the product-level number
+  // is the right one to show — reporting 300 as 0 would be a wrong number, and dropping
+  // the part is the #N/A this change exists to remove.
+  const products = buildProductTotals(
+    [],
+    [{ itemCode: 'BOX-12X12X12-MD-COM', itemName: 'BOX-12X12X12-MD-COM', uom: '', qty: 300 }]
+  )
+  assert.equal(products[0].qty, 300)
+})
+
+test('a binless qty that arrives as a string or garbage does not poison the sheet', () => {
+  const products = buildProductTotals(
+    [],
+    [
+      { itemCode: 'A', itemName: 'A', uom: '', qty: '16000' },
+      { itemCode: 'B', itemName: 'B', uom: '', qty: 'n/a' },
+      { itemCode: 'C', itemName: 'C', uom: '' },
+    ]
+  )
+  assert.deepEqual(products.map((p) => p.qty), [16000, 0, 0])
+})
+
 test('historical zero-fill carries no UOM, so the empty column stays hidden', () => {
   // Snapshot rows have uom:'' — the sheet drops the UOM column when nothing has one.
   const products = buildProductTotals(

@@ -1183,9 +1183,10 @@ export default function InventoryOpsPage() {
       if (d.historical && !d.binsAvailable) {
         showFlash('info', t('inventoryOps.repNoBinsNote'), 5000, Boolean(d.legacyData))
       }
-      if (d.zeroItemsUnavailable) showFlash('warn', t('inventoryOps.repNoZeroItems'), 6000, true)
+      if (d.binlessItemsUnavailable) showFlash('warn', t('inventoryOps.repNoZeroItems'), 6000, true)
       const rows: InventoryRow[] = d.rows ?? []
-      const zeroItems: { itemCode?: string; itemName?: string; uom?: string }[] = d.zeroItems ?? []
+      const binlessItems: { itemCode?: string; itemName?: string; uom?: string; qty?: number }[] =
+        d.binlessItems ?? []
       const { default: ExcelJS } = await import('exceljs')
       const wb = new ExcelJS.Workbook()
       wb.creator = 'Entech Dashboard'
@@ -1208,7 +1209,7 @@ export default function InventoryOpsPage() {
         // Totalling + zero-fill live in lib/inventory-report.ts (with tests) — this
         // is the one number the accounting team copies out, so it is not inlined in
         // a 4k-line component where nothing can exercise it.
-        const products = buildProductTotals(rows, zeroItems)
+        const products = buildProductTotals(rows, binlessItems)
         // Historical snapshots carry no UOM — don't ship an empty column.
         const hasUom = products.some((p) => p.uom)
         const ws = wb.addWorksheet(t('inventoryOps.repTabByProduct'))

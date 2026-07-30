@@ -7,9 +7,10 @@
 // Zero-fill (Simon 2026-07-30): accounting VLOOKUPs this tab by part number onto
 // their own sheets. A part that disappears from the file the moment it hits zero
 // returns #N/A, which reads as "no such part" rather than "we're out of it". The
-// server sends every enabled stock item in ERPNext that has no bin row as a
-// zero-qty entry; they land here and nowhere else — a part at zero has no bin, so
-// putting it on the By Bin tab would only add blank-bin noise.
+// server sends every part with no bin row as a `binlessItem` carrying its own
+// quantity — 0 for the live catalog case, and for a dated export the product
+// snapshot's number when the bin snapshot has no row for it. They land here and
+// nowhere else: with no bin, the By Bin tab would only gain blank-bin noise.
 
 export interface ProductTotalInput {
   itemCode?: unknown
@@ -18,10 +19,14 @@ export interface ProductTotalInput {
   qty?: unknown
 }
 
-export interface ZeroItemInput {
+/** A part with no bin row. Usually that means zero on hand (the live catalog case), but
+ *  a dated export can also carry a part the product snapshot has stock for while the bin
+ *  snapshot has no row at all — so the quantity travels with it instead of being assumed. */
+export interface BinlessItemInput {
   itemCode?: unknown
   itemName?: unknown
   uom?: unknown
+  qty?: unknown
 }
 
 export interface ProductTotal {
@@ -41,7 +46,7 @@ function totalsKey(itemCode: string, itemName: string): string {
  *  Sorted by name then code, matching the sheet the accounting team already reads. */
 export function buildProductTotals(
   rows: readonly ProductTotalInput[],
-  zeroItems: readonly ZeroItemInput[] = []
+  binlessItems: readonly BinlessItemInput[] = []
 ): ProductTotal[] {
   // The report payload is cast, not validated. Coerce every field: summing is
   // destructive in a way the old pass-through display was not — a qty that arrived
@@ -62,15 +67,21 @@ export function buildProductTotals(
     }
   }
 
-  for (const item of zeroItems) {
+  for (const item of binlessItems) {
     const itemCode = String(item.itemCode ?? '')
     const itemName = String(item.itemName ?? '') || itemCode
     if (!itemCode && !itemName) continue
     const key = totalsKey(itemCode, itemName)
-    // Never overwrite a stocked line. The server excludes anything with a bin row,
-    // but a duplicate arriving here must lose to the real total, not zero it out.
+    // Never overwrite a line built from bins. The server excludes anything with a bin
+    // row, but a duplicate arriving here must lose to the real total, not flatten it.
     if (totals.has(key)) continue
-    totals.set(key, { itemCode, itemName, uom: String(item.uom ?? ''), qty: 0 })
+    const qty = Number(item.qty ?? 0)
+    totals.set(key, {
+      itemCode,
+      itemName,
+      uom: String(item.uom ?? ''),
+      qty: Number.isFinite(qty) ? qty : 0,
+    })
   }
 
   return [...totals.values()].sort(

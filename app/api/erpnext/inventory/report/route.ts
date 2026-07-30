@@ -107,11 +107,14 @@ async function intradaySnapshotTimes(date: string): Promise<string[]> {
   return (data ?? []).map((timestamp: unknown) => String(timestamp))
 }
 
-interface ZeroItem {
+/** A part with no bin row, carrying the quantity we actually believe it has: 0 for a
+ *  live catalog part, and for a dated export whatever that day's product snapshot says
+ *  when the bin snapshot has no row for it. The quantity is never assumed. */
+interface BinlessItem {
   itemCode: string
   itemName: string
   uom: string
-  qty: 0
+  qty: number
 }
 
 /** Every live catalog part with no stock at all, as a zero-qty entry. The client folds
@@ -130,8 +133,8 @@ interface ZeroItem {
  *
  *  Fails soft, but never silently: on a fetch error OR an empty catalog (never
  *  legitimate — the facility always has parts) the caller reports
- *  `zeroItemsUnavailable` so a short file is visibly short. */
-async function zeroStockItems(stockedCodes: Set<string>): Promise<{ items: ZeroItem[]; unavailable: boolean }> {
+ *  `binlessItemsUnavailable` so a short file is visibly short. */
+async function zeroStockCatalogItems(stockedCodes: Set<string>): Promise<{ items: BinlessItem[]; unavailable: boolean }> {
   try {
     const [catalog, negativeCodes] = await Promise.all([listCatalogItems(), listNegativeStockCodes()])
     if (catalog.length === 0) {
@@ -144,7 +147,7 @@ async function zeroStockItems(stockedCodes: Set<string>): Promise<{ items: ZeroI
         itemCode: item.itemCode,
         itemName: item.itemName,
         uom: item.uom,
-        qty: 0 as const,
+        qty: 0,
       }))
     return { items, unavailable: false }
   } catch (error) {
@@ -197,30 +200,43 @@ async function historicalResponse(
   // whole change is about. When bin history is missing, `history` IS the product
   // snapshot and every code is already in `stocked`, so this yields nothing.
   const stocked = new Set(rows.map((row) => row.itemCode))
-  const zeroItems: { itemCode: string; itemName: string; uom: string; qty: 0 }[] = []
+  const binlessItems: BinlessItem[] = []
   let missingWithStock = 0
   for (const row of productHistory) {
     const itemCode = String(row.part_number ?? '')
     if (!itemCode || stocked.has(itemCode)) continue
-    // A part the product snapshot says is non-zero but that has no bin row is an
-    // inconsistency between the two snapshots. Reporting it as 0 would be a wrong
-    // number, so leave it out (as today) and count it rather than paper over it.
-    if (Number(row.quantity ?? 0) !== 0) {
-      missingWithStock++
-      continue
-    }
-    zeroItems.push({ itemCode, itemName: names.get(itemCode) ?? itemCode, uom: '', qty: 0 })
+    const qty = Number(row.quantity ?? 0)
+    // Usually zero. When it isn't, the two snapshots disagree — the product snapshot has
+    // stock the bin snapshot has no row for (4 parts on 2026-07-29). The product-level
+    // number is the right one for a product-level tab, so carry it through rather than
+    // flattening it to 0 or dropping the part; By Bin genuinely has nothing to show.
+    if (Number.isFinite(qty) && qty !== 0) missingWithStock++
+    binlessItems.push({
+      itemCode,
+      itemName: names.get(itemCode) ?? itemCode,
+      uom: '',
+      qty: Number.isFinite(qty) ? qty : 0,
+    })
   }
   if (missingWithStock > 0) {
+    console.warn(
+      `inventory report ${date}${snapshotTime ? ` ${snapshotTime}` : ''}: ${missingWithStock} part(s) have stock in the product snapshot but no bin row — exported on By Product with the product-level qty, absent from By Bin`
+    )
+  }
+  // Bins present but no product snapshot for that date means the zeros can't be
+  // recovered — flag it so the file is visibly short instead of quietly short.
+  const binlessUnavailable = binsAvailable && productHistory.length === 0
+  if (binlessUnavailable) {
     console.error(
-      `inventory report ${date}${snapshotTime ? ` ${snapshotTime}` : ''}: ${missingWithStock} part(s) have a non-zero product snapshot but no bin row — omitted from the export`
+      `inventory report ${date}${snapshotTime ? ` ${snapshotTime}` : ''}: bin snapshot exists but the product snapshot is empty — exporting without zero-qty parts`
     )
   }
 
   return NextResponse.json(
     {
       rows,
-      zeroItems,
+      binlessItems,
+      binlessItemsUnavailable: binlessUnavailable,
       historical: true,
       binsAvailable,
       legacyData: date < '2026-07-21',
@@ -303,9 +319,9 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await getFullInventory()
-    const zero = await zeroStockItems(new Set(rows.map((row) => row.itemCode)))
+    const zero = await zeroStockCatalogItems(new Set(rows.map((row) => row.itemCode)))
     return NextResponse.json(
-      { rows, zeroItems: zero.items, zeroItemsUnavailable: zero.unavailable },
+      { rows, binlessItems: zero.items, binlessItemsUnavailable: zero.unavailable },
       { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (error) {

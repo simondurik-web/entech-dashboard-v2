@@ -208,7 +208,11 @@ scan-to-ship), so a stale label can't be used.
     product snapshot for the same date/`snapshot_ts`. Today's ERPNext catalog is NOT used
     there: it would date parts back to before they existed and drop parts since disabled.
     A part the product snapshot calls non-zero with no bin row is a snapshot
-    inconsistency — logged and omitted, never exported as `0`.
+    inconsistency (4 of them on 2026-07-29: BOX-12X12X12-MD-COM, H82.100.1672 56 MM TH,
+    SP-SJTJ1-1PK, SP-STK-BAND-COM). It goes on By Product with the **product-level qty** —
+    that tab is product-level, so that is the right number — and is absent from By Bin,
+    which genuinely has nothing to show. Never flattened to `0`. Logged either way.
+    Bins present but an empty product snapshot sets `binlessItemsUnavailable`.
   - **Fails soft but never silently.** A catalog fetch error *or* an empty catalog sets
     `zeroItemsUnavailable`, and the page warns the file is short instead of shipping a
     quietly-truncated workbook.
