@@ -4,7 +4,7 @@ import en from '@/locales/en.json'
 import { getLiveInventoryReport } from '@/lib/inventory-report-data'
 import { buildProductTotals } from '@/lib/inventory-report'
 import { buildInventoryWorkbook, type WorkbookLabels } from '@/lib/inventory-workbook'
-import { incompletenessReasons } from '@/lib/inventory-completeness'
+import { incompletenessReasons, type SnapshotFigures } from '@/lib/inventory-completeness'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -34,36 +34,34 @@ const labels: WorkbookLabels = {
  *  Any figure is null when there is nothing to compare against; a missing snapshot must not
  *  block the report, or one broken cron would silently take out another. The caller keeps an
  *  independent baseline of its own (cron/monthly-inventory-report.sh) for that case. */
-async function latestSnapshotFigures(): Promise<{
-  binRows: number | null
-  stockedParts: number | null
-  totalParts: number | null
-}> {
-  const empty = { binRows: null, stockedParts: null, totalParts: null }
+async function latestSnapshotFigures(): Promise<SnapshotFigures> {
   try {
-    const [{ data: binDay }, { data: partDay }] = await Promise.all([
-      supabaseAdmin.from('inventory_bin_history').select('date').order('date', { ascending: false }).limit(1),
-      supabaseAdmin.from('inventory_history').select('date').order('date', { ascending: false }).limit(1),
+    const [binDay, partDay] = await Promise.all([
+      supabaseAdmin.from('inventory_bin_history').select('date').order('date', { ascending: false }).limit(1).throwOnError(),
+      supabaseAdmin.from('inventory_history').select('date').order('date', { ascending: false }).limit(1).throwOnError(),
     ])
     const [binRows, stocked, total] = await Promise.all([
-      binDay?.length
-        ? supabaseAdmin.from('inventory_bin_history').select('part_number', { count: 'exact', head: true }).eq('date', binDay[0].date)
+      binDay.data?.length
+        ? supabaseAdmin.from('inventory_bin_history').select('part_number', { count: 'exact', head: true }).eq('date', binDay.data[0].date).throwOnError()
         : Promise.resolve({ count: null }),
-      partDay?.length
-        ? supabaseAdmin.from('inventory_history').select('part_number', { count: 'exact', head: true }).eq('date', partDay[0].date).neq('quantity', 0)
+      partDay.data?.length
+        ? supabaseAdmin.from('inventory_history').select('part_number', { count: 'exact', head: true }).eq('date', partDay.data[0].date).neq('quantity', 0).throwOnError()
         : Promise.resolve({ count: null }),
-      partDay?.length
-        ? supabaseAdmin.from('inventory_history').select('part_number', { count: 'exact', head: true }).eq('date', partDay[0].date)
+      partDay.data?.length
+        ? supabaseAdmin.from('inventory_history').select('part_number', { count: 'exact', head: true }).eq('date', partDay.data[0].date).throwOnError()
         : Promise.resolve({ count: null }),
     ])
     return {
       binRows: binRows.count ?? null,
       stockedParts: stocked.count ?? null,
       totalParts: total.count ?? null,
+      unavailable: false,
     }
   } catch (error) {
-    console.error('inventory report: snapshot comparison unavailable:', error)
-    return empty
+    // Errored, not absent. The caller turns this into a 503 rather than skipping the check:
+    // an unverified pull must not be reported as a verified one.
+    console.error('inventory report: snapshot comparison query failed:', error)
+    return { binRows: null, stockedParts: null, totalParts: null, unavailable: true }
   }
 }
 

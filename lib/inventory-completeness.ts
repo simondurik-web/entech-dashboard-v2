@@ -4,7 +4,7 @@
 // decision standing between a broken ERPNext read and a spreadsheet an accountant will
 // treat as fact, and it was previously only exercisable by running the whole endpoint.
 //
-// Three separate shortfalls are checked, because they fail independently and each one
+// Three shortfalls are checked separately, because they fail independently and each one
 // hides from the others:
 //
 //   bin rows    — a warehouse disappearing from ERPNext's response takes its rows with it,
@@ -18,16 +18,28 @@
 //                 zero-fill exists to guarantee for accounting's lookups.
 //
 // All three are measured against the nightly snapshot written by
-// com.entech.inventory-snapshot, which is an independent record of the same facility.
+// com.entech.inventory-snapshot, an independent record of the same facility.
 
-/** Below this share of the corresponding snapshot figure, treat the live pull as partial.
+/** Per-metric, because a single floor is forced down to the loosest metric's tolerance and
+ *  then lets material omissions through everywhere else.
  *
- *  Measured 2026-07-31, live against snapshot: 1,150 vs 1,152 bin rows, 493 vs 493 stocked
- *  parts, 1,142 vs 1,219 total parts. The first two track almost exactly; total parts sits
- *  ~6% low because the snapshot retains parts the live catalogue filter drops. The margin
- *  is for that skew plus ordinary stock movement, not for a structural gap — and a false
- *  alarm costs the month's report, so it is deliberately not tighter. */
-export const COMPLETENESS_FLOOR = 0.75
+ *  Measured 2026-07-31, live against snapshot: 1,150 vs 1,152 bin rows (0.2% apart), 493 vs
+ *  493 stocked parts (exact), 1,142 vs 1,219 listed parts (6% apart — the snapshot retains
+ *  parts the live catalogue filter drops). The first two admit a tight floor; only the third
+ *  has real structural skew to absorb, so only the third is loose. */
+export const COMPLETENESS_FLOORS = {
+  binRows: 0.95,
+  stockedParts: 0.95,
+  totalParts: 0.85,
+} as const
+
+export interface SnapshotFigures {
+  binRows: number | null
+  stockedParts: number | null
+  totalParts: number | null
+  /** A query FAILED, as opposed to there being no snapshot to read. See below. */
+  unavailable: boolean
+}
 
 export interface CompletenessInput {
   /** Bin rows returned by ERPNext. */
@@ -38,17 +50,17 @@ export interface CompletenessInput {
   totalParts: number
   /** The catalog zero-fill could not be loaded at all. */
   binlessItemsUnavailable: boolean
-  /** Latest snapshot's figures, or null where there is nothing to compare against. */
-  snapshot: {
-    binRows: number | null
-    stockedParts: number | null
-    totalParts: number | null
-  }
+  snapshot: SnapshotFigures
 }
 
-function shortfall(label: string, actual: number, expected: number | null): string | null {
+function shortfall(
+  label: string,
+  actual: number,
+  expected: number | null,
+  floorShare: number
+): string | null {
   if (expected === null || expected <= 0) return null
-  const floor = Math.floor(expected * COMPLETENESS_FLOOR)
+  const floor = Math.floor(expected * floorShare)
   if (actual >= floor) return null
   return `${label}: ${actual} against ${expected} in the latest snapshot (floor ${floor})`
 }
@@ -59,10 +71,29 @@ export function incompletenessReasons(input: CompletenessInput): string[] {
   if (input.rowCount === 0) reasons.push('ERPNext returned no inventory rows')
   if (input.binlessItemsUnavailable) reasons.push('zero-quantity catalog items are unavailable')
 
+  // A failed snapshot query is not the same as no snapshot. If the comparison simply has
+  // nothing to compare against, shipping is still reasonable — the caller keeps its own
+  // baseline, and one broken cron must not silently take out another. But if the query
+  // ERRORED, the guard did not run and we cannot claim the pull was checked. Saying nothing
+  // in that case is how a fail-closed contract quietly becomes fail-open.
+  if (input.snapshot.unavailable) {
+    reasons.push('could not read the comparison snapshot, so completeness is unverified')
+  }
+
   const shortfalls = [
-    shortfall('bin rows', input.rowCount, input.snapshot.binRows),
-    shortfall('parts with stock', input.stockedCount, input.snapshot.stockedParts),
-    shortfall('parts listed', input.totalParts, input.snapshot.totalParts),
+    shortfall('bin rows', input.rowCount, input.snapshot.binRows, COMPLETENESS_FLOORS.binRows),
+    shortfall(
+      'parts with stock',
+      input.stockedCount,
+      input.snapshot.stockedParts,
+      COMPLETENESS_FLOORS.stockedParts
+    ),
+    shortfall(
+      'parts listed',
+      input.totalParts,
+      input.snapshot.totalParts,
+      COMPLETENESS_FLOORS.totalParts
+    ),
   ].filter((reason): reason is string => reason !== null)
 
   if (shortfalls.length > 0) {

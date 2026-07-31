@@ -10,7 +10,7 @@ const healthy = {
   stockedCount: 493,
   totalParts: 1142,
   binlessItemsUnavailable: false,
-  snapshot: { binRows: 1152, stockedParts: 493, totalParts: 1219 },
+  snapshot: { binRows: 1152, stockedParts: 493, totalParts: 1219, unavailable: false },
 }
 
 const partial = (reasons: string[]) => reasons.some((r) => r.includes('partial inventory'))
@@ -55,7 +55,7 @@ test('a hidden warehouse is caught even when its parts are stocked elsewhere', (
   // do not move at all — only the bin rows do, which is why bin rows are checked separately.
   const reasons = incompletenessReasons({
     ...healthy,
-    rowCount: 500, // rows vanished with the warehouse
+    rowCount: 1000, // rows vanished with the warehouse
     stockedCount: 493, // unchanged
     totalParts: 1142, // unchanged
   })
@@ -66,20 +66,20 @@ test('a hidden warehouse is caught even when its parts are stocked elsewhere', (
 test('a partial catalog is caught even when the bins are perfect', () => {
   // The catalog is a separate call with its own failure mode. A short catalog silently
   // drops zero-quantity parts, breaking exactly the lookups the zero-fill exists for.
-  const reasons = incompletenessReasons({ ...healthy, totalParts: 520 })
+  const reasons = incompletenessReasons({ ...healthy, totalParts: 900 })
   assert.ok(partial(reasons))
   assert.ok(reasons[0].includes('parts listed'))
 })
 
 test('ordinary month-to-month movement does not trip any floor', () => {
   assert.deepEqual(
-    incompletenessReasons({ ...healthy, rowCount: 900, stockedCount: 400, totalParts: 1000 }),
+    incompletenessReasons({ ...healthy, rowCount: 1100, stockedCount: 470, totalParts: 1080 }),
     []
   )
 })
 
 test('exactly at the floor is allowed, one below is not', () => {
-  const floor = Math.floor(493 * 0.75) // 369
+  const floor = Math.floor(493 * 0.95) // 468
   assert.deepEqual(incompletenessReasons({ ...healthy, stockedCount: floor }), [])
   assert.ok(partial(incompletenessReasons({ ...healthy, stockedCount: floor - 1 })))
 })
@@ -92,7 +92,7 @@ test('no snapshot to compare against does not block the report', () => {
       rowCount: 5,
       stockedCount: 5,
       totalParts: 5,
-      snapshot: { binRows: null, stockedParts: null, totalParts: null },
+      snapshot: { binRows: null, stockedParts: null, totalParts: null, unavailable: false },
     }),
     []
   )
@@ -103,7 +103,7 @@ test('an empty snapshot is treated as no snapshot, not as a zero floor', () => {
     incompletenessReasons({
       ...healthy,
       stockedCount: 5,
-      snapshot: { binRows: 0, stockedParts: 0, totalParts: 0 },
+      snapshot: { binRows: 0, stockedParts: 0, totalParts: 0, unavailable: false },
     }),
     []
   )
@@ -131,4 +131,28 @@ test('several distinct faults are all reported, not just the first', () => {
     binlessItemsUnavailable: true,
   })
   assert.equal(reasons.length, 3)
+})
+
+test('a failed snapshot query is refused, not silently skipped', () => {
+  // Codex's case: discarding the error turns "we checked and it is fine" into "we did not
+  // check". An unverified pull must not be reported as a verified one.
+  const reasons = incompletenessReasons({
+    ...healthy,
+    snapshot: { binRows: null, stockedParts: null, totalParts: null, unavailable: true },
+  })
+  assert.ok(reasons.some((r) => r.includes('completeness is unverified')))
+})
+
+test('a tight floor now catches the omission the single loose floor let through', () => {
+  // 1,050 bin rows and 1,000 listed parts passed under one 0.75 floor despite losing 102
+  // bin rows and 142 catalogue entries.
+  const reasons = incompletenessReasons({
+    ...healthy,
+    rowCount: 1050,
+    stockedCount: 493,
+    totalParts: 1000,
+  })
+  assert.ok(partial(reasons))
+  assert.ok(reasons[0].includes('bin rows'))
+  assert.ok(reasons[0].includes('parts listed'))
 })
