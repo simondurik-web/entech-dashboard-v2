@@ -2,8 +2,8 @@ import { timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import en from '@/locales/en.json'
 import { getLiveInventoryReport } from '@/lib/inventory-report-data'
-import { buildProductTotals } from '@/lib/inventory-report'
 import { buildInventoryWorkbook, type WorkbookLabels } from '@/lib/inventory-workbook'
+import { incompletenessReasons } from '@/lib/inventory-completeness'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -23,28 +23,23 @@ const labels: WorkbookLabels = {
   legacyWarning: en['inventoryOps.repLegacyWarn'],
 }
 
-/** Below this share of the last daily snapshot's part count, treat the live pull as partial.
- *
- *  Deliberately loose. The two numbers are not the same measurement: the snapshot keeps
- *  parts the live catalogue filter drops, so the live count sits legitimately below it —
- *  measured 2026-07-31 at 1,142 live against 1,219 in the snapshot, a 6% gap with nothing
- *  wrong. A 0.9 floor would leave ~3 points of headroom and eventually fire on a healthy
- *  month, and a false alarm here means no report at all. 0.75 still catches losing a
- *  quarter of the catalogue, and the failure this guards against — a warehouse permission
- *  change exposing a subset — takes out far more than that. */
-const COMPLETENESS_FLOOR = 0.75
-
-/** How many distinct parts the most recent daily snapshot saw.
+/** How many parts the most recent snapshot saw WITH STOCK ON HAND.
  *
  *  "Non-empty" is not the same as "complete": an ERPNext warehouse-permission change or a
  *  filter regression returns a plausible SUBSET, and no field in the REST response says so.
- *  The snapshot written every night by com.entech.inventory-snapshot is an independent
- *  record of how many parts the facility actually has, so it can answer the question the
- *  live API cannot.
+ *  The snapshot written nightly by com.entech.inventory-snapshot is an independent record
+ *  of the facility, so it can answer what the live API cannot.
+ *
+ *  Counting only NON-ZERO rows is the whole point, and the reason the first version of this
+ *  guard was useless. Total part count is padded back to full by the catalog zero-fill —
+ *  under exactly the failure being guarded against (bins partial, Item list intact) the
+ *  padded number barely moves, so the guard passed while the workbook quietly reported
+ *  hidden stock as zero. Stocked-part count has no such backfill: it falls with the bins.
  *
  *  Returns null when there is nothing to compare against — a missing snapshot must not
- *  block the report, or one broken cron would silently take out another. */
-async function lastSnapshotPartCount(): Promise<number | null> {
+ *  block the report, or one broken cron would silently take out another. The caller's own
+ *  baseline (see cron/monthly-inventory-report.sh) is the independent second check. */
+async function lastSnapshotStockedPartCount(): Promise<number | null> {
   const { data: latest, error: latestError } = await supabaseAdmin
     .from('inventory_history')
     .select('date')
@@ -55,6 +50,7 @@ async function lastSnapshotPartCount(): Promise<number | null> {
     .from('inventory_history')
     .select('part_number', { count: 'exact', head: true })
     .eq('date', latest[0].date)
+    .neq('quantity', 0)
   if (error || !count) return null
   return count
 }
@@ -77,20 +73,15 @@ export async function GET(req: NextRequest) {
     // show a warning banner because a human is looking at the screen; this file is emailed to
     // accounting unattended, so a short workbook would be read as a real inventory count.
     // Refuse, and let the caller retry.
-    const conditions: string[] = []
-    if (report.rows.length === 0) conditions.push('ERPNext returned no inventory rows')
-    if (report.binlessItemsUnavailable) conditions.push('zero-quantity catalog items are unavailable')
-    // A non-empty result is not a complete one. Compare the catalogue we are about to ship
-    // against last night's independent snapshot; a big shortfall means ERPNext handed us a
-    // subset, which would otherwise produce a perfectly normal-looking, materially wrong
-    // spreadsheet in an accountant's inbox.
-    const productCount = buildProductTotals(report.rows, report.binlessItems).length
-    const snapshotCount = await lastSnapshotPartCount()
-    if (snapshotCount !== null && productCount < Math.floor(snapshotCount * COMPLETENESS_FLOOR)) {
-      conditions.push(
-        `only ${productCount} parts, against ${snapshotCount} in the latest daily snapshot — looks like a partial inventory`
-      )
-    }
+    //
+    // stockedCount comes from bin rows alone. `binlessItems` is the zero-fill, and folding
+    // it in is what made the first version of this check blind to the failure it exists for.
+    const conditions = incompletenessReasons({
+      stockedCount: new Set(report.rows.map((row) => row.itemCode)).size,
+      rowCount: report.rows.length,
+      binlessItemsUnavailable: report.binlessItemsUnavailable,
+      snapshotStocked: await lastSnapshotStockedPartCount(),
+    })
 
     if (conditions.length > 0) {
       return NextResponse.json(
