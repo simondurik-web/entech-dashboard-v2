@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useI18n } from '@/lib/i18n'
-import { buildProductTotals } from '@/lib/inventory-report'
+import { buildInventoryWorkbook } from '@/lib/inventory-workbook'
 import { usePermissions } from '@/lib/use-permissions'
 import { useAuth } from '@/lib/auth-context'
 import { BinCombobox } from '@/components/inventory/BinCombobox'
@@ -1187,96 +1187,27 @@ export default function InventoryOpsPage() {
       const rows: InventoryRow[] = d.rows ?? []
       const binlessItems: { itemCode?: string; itemName?: string; uom?: string; qty?: number }[] =
         d.binlessItems ?? []
-      const { default: ExcelJS } = await import('exceljs')
-      const wb = new ExcelJS.Workbook()
-      wb.creator = 'Entech Dashboard'
-      wb.created = new Date()
-
-      const styleHeader = (ws: import('exceljs').Worksheet) => {
-        const h = ws.getRow(1)
-        h.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-        h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2B6CB0' } }
-        ws.views = [{ state: 'frozen', ySplit: 1 }]
-        ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, ws.rowCount), column: ws.columnCount } }
-      }
-
-      const palletStr = (x: InventoryRow) => x.pallets.map((p) => `${p.batch} (${p.qty})`).join(', ')
-
-      // By Product is a totals sheet: one line per item code, no bin breakdown.
-      // The same item sitting in six bins collapses to a single facility-wide
-      // total — use the By Bin tab when you need to know where it is.
-      const buildByProductSheet = () => {
-        // Totalling + zero-fill live in lib/inventory-report.ts (with tests) — this
-        // is the one number the accounting team copies out, so it is not inlined in
-        // a 4k-line component where nothing can exercise it.
-        const products = buildProductTotals(rows, binlessItems)
-        // Historical snapshots carry no UOM — don't ship an empty column.
-        const hasUom = products.some((p) => p.uom)
-        const ws = wb.addWorksheet(t('inventoryOps.repTabByProduct'))
-        ws.columns = [
-          { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-          { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-          ...(hasUom ? [{ header: t('inventoryOps.repUom'), key: 'uom', width: 10 }] : []),
-          { header: t('inventoryOps.repTotalQty'), key: 'qty', width: 14 },
-        ]
-        products.forEach((p) => ws.addRow(p))
-        return ws
-      }
-
-      if (!d.historical) {
-        // Tab 1 — By Bin: pick a bin from the Bin column's filter dropdown.
-        const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
-        byBin.columns = [
-          { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
-          { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-          { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-          { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
-          { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-          { header: t('inventoryOps.repPallets'), key: 'pallets', width: 50 },
-        ]
-        ;[...rows]
-          .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
-          .forEach((x) => byBin.addRow({ ...x, pallets: palletStr(x) }))
-        styleHeader(byBin)
-
-        // Tab 2 — By Product: one line per product, total on hand across all bins.
-        styleHeader(buildByProductSheet())
-      } else {
-        const styleHistoricalHeader = (ws: import('exceljs').Worksheet) => {
-          const headerRow = d.legacyData ? 2 : 1
-          const h = ws.getRow(headerRow)
-          h.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-          h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2B6CB0' } }
-          ws.views = [{ state: 'frozen', ySplit: headerRow }]
-          ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: Math.max(headerRow, ws.rowCount), column: ws.columnCount } }
+      const buf = await buildInventoryWorkbook(
+        {
+          rows,
+          binlessItems,
+          historical: d.historical,
+          binsAvailable: d.binsAvailable,
+          legacyData: d.legacyData,
+        },
+        {
+          tabByBin: t('inventoryOps.repTabByBin'),
+          tabByProduct: t('inventoryOps.repTabByProduct'),
+          bin: t('inventoryOps.repBin'),
+          itemCode: t('inventoryOps.repItemCode'),
+          itemName: t('inventoryOps.repItemName'),
+          uom: t('inventoryOps.repUom'),
+          qty: t('inventoryOps.repQty'),
+          totalQty: t('inventoryOps.repTotalQty'),
+          pallets: t('inventoryOps.repPallets'),
+          legacyWarning: t('inventoryOps.repLegacyWarn'),
         }
-        const finishHistoricalSheet = (ws: import('exceljs').Worksheet) => {
-          if (d.legacyData) {
-            ws.insertRow(1, [t('inventoryOps.repLegacyWarn')])
-            ws.mergeCells(1, 1, 1, ws.columnCount)
-            ws.getRow(1).font = { bold: true, color: { argb: 'FFC53030' } }
-          }
-          styleHistoricalHeader(ws)
-        }
-
-        if (d.binsAvailable) {
-          const byBin = wb.addWorksheet(t('inventoryOps.repTabByBin'))
-          byBin.columns = [
-            { header: t('inventoryOps.repBin'), key: 'warehouse', width: 28 },
-            { header: t('inventoryOps.repItemCode'), key: 'itemCode', width: 20 },
-            { header: t('inventoryOps.repItemName'), key: 'itemName', width: 44 },
-            { header: t('inventoryOps.repUom'), key: 'uom', width: 10 },
-            { header: t('inventoryOps.repQty'), key: 'qty', width: 12 },
-          ]
-          ;[...rows]
-            .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.itemName.localeCompare(b.itemName))
-            .forEach((x) => byBin.addRow(x))
-          finishHistoricalSheet(byBin)
-        }
-        finishHistoricalSheet(buildByProductSheet())
-      }
-
-      const buf = await wb.xlsx.writeBuffer()
+      )
       triggerDownload(
         d.historical
           ? reportTime
