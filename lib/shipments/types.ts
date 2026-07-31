@@ -32,12 +32,13 @@ export interface DailyRollupRow {
   units: NumericValue
   lines: NumericValue
   orders: NumericValue
-  /** SUM(shipping_cost_usd) for the group — optional because the deployed
-   *  shipment_daily_rollup RPC does not emit it yet; absent/NULL means "no
-   *  priced shipments in this group", never zero-cost. */
+  /** SUM(shipping_cost_usd) for the group. Cost sits on exactly one row per
+   *  shipment, so summing across groups never double-counts. Optional/NULL
+   *  means "no priced shipments in this group", never zero-cost. */
   shipping_cost_usd?: NumericValue
-  /** COUNT(shipping_cost_usd) for the group — the number of priced shipments
-   *  (cost lives on one row per shipment). Optional for the same reason. */
+  /** Distinct POs in this group carrying a cost. Only consulted when no
+   *  DailyOrdersRow[] is supplied — the ungrouped pass is authoritative, for
+   *  the same double-count reason as `orders`. */
   priced_orders?: NumericValue
 }
 
@@ -48,6 +49,9 @@ export interface DailyOrdersRow {
   day: string
   source_system: string | null
   orders: NumericValue
+  /** Distinct POs among `orders` that carry a shipping cost — same grain as
+   *  `orders`, so priced can never exceed the total it is reported against. */
+  priced_orders?: NumericValue
 }
 
 export interface ShipmentTotals {

@@ -144,8 +144,9 @@ test('multi-line shipment carries its cost exactly once — no double-count acro
     { day: '2026-07-30', source_system: 'SPS-Amazon', part_number: 'A', service: 'UPS Ground', units: 4, lines: '1', orders: '1', shipping_cost_usd: '74.39', priced_orders: '1' },
     { day: '2026-07-30', source_system: 'SPS-Amazon', part_number: 'B', service: 'UPS Ground', units: 2, lines: '2', orders: '1', shipping_cost_usd: null, priced_orders: '0' },
   ]
+  // Priced counts ride the distinct pass alongside orders, never the part rows.
   const dailyOrders = [
-    { day: '2026-07-30', source_system: 'SPS-Amazon', orders: 1 },
+    { day: '2026-07-30', source_system: 'SPS-Amazon', orders: 1, priced_orders: 1 },
   ]
 
   const [bucket] = bucketize(daily, 'day', dailyOrders)
@@ -159,6 +160,32 @@ test('multi-line shipment carries its cost exactly once — no double-count acro
   assert.equal(summary.today.cost, 74.39)
   assert.equal(summary.today.pricedOrders, 1)
   assert.equal(summary.bySource['SPS-Amazon'].today.cost, 74.39)
+})
+
+test('a PO shipped twice in one day never reports more priced shipments than orders', () => {
+  // Same PO, two runs, both priced: the part-grouped rows carry two priced rows,
+  // but the distinct pass reports one order and one priced order. Counting the
+  // rows instead would render the impossible "2 of 1 priced" — the coverage
+  // numerator must share the denominator's grain. Cost still sums BOTH runs:
+  // the money really was spent twice.
+  const daily: DailyRollupRow[] = [
+    { day: '2026-07-30', source_system: 'SPS EDI (Home Depot)', part_number: 'A', service: 'FedEx Ground', units: 1, lines: '1', orders: '1', shipping_cost_usd: '20.00', priced_orders: '1' },
+    { day: '2026-07-30', source_system: 'SPS EDI (Home Depot)', part_number: 'B', service: 'FedEx Ground', units: 1, lines: '1', orders: '1', shipping_cost_usd: '15.50', priced_orders: '1' },
+  ]
+  const dailyOrders = [
+    { day: '2026-07-30', source_system: 'SPS EDI (Home Depot)', orders: 1, priced_orders: 1 },
+  ]
+
+  const [bucket] = bucketize(daily, 'day', dailyOrders)
+  assert.equal(bucket.orders, 1)
+  assert.equal(bucket.pricedOrders, 1)
+  assert.ok(bucket.pricedOrders <= bucket.orders)
+  assert.equal(bucket.cost, 35.5)
+
+  const summary = summarize(daily, dailyOrders, '2026-07-30')
+  assert.equal(summary.today.pricedOrders, 1)
+  assert.ok(summary.today.pricedOrders <= summary.today.orders)
+  assert.equal(summary.today.cost, 35.5)
 })
 
 test('daily-orders rows replace the part-grouped order counts (multi-part PO dedup)', () => {

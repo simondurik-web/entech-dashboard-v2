@@ -27,12 +27,19 @@ function numeric(value: number | string | null | undefined): number {
 // NULL/absent is "no priced shipments here", not zero: it contributes nothing
 // to cost and nothing to pricedOrders, and consumers use pricedOrders to tell
 // a real $0-priced bucket apart from an unpriced one.
+//
+// pricedOrders tracks `orders` exactly — same source, same grain. Counting
+// priced rows here while orders came from the distinct pass could report more
+// priced shipments than there are orders ("2 of 1 priced") the moment one PO
+// ships twice in a day.
 function addTotals(target: ShipmentTotals, row: DailyRollupRow, includeOrders: boolean): void {
   target.units += numeric(row.units)
   target.lines += numeric(row.lines)
-  if (includeOrders) target.orders += numeric(row.orders)
+  if (includeOrders) {
+    target.orders += numeric(row.orders)
+    target.pricedOrders += numeric(row.priced_orders)
+  }
   target.cost += numeric(row.shipping_cost_usd)
-  target.pricedOrders += numeric(row.priced_orders)
 }
 
 function isoDate(date: Date): string {
@@ -108,10 +115,13 @@ export function bucketize(
   for (const row of dailyOrders ?? []) {
     const current = getBucket(row.day)
     const orders = numeric(row.orders)
+    const pricedOrders = numeric(row.priced_orders)
     current.orders += orders
+    current.pricedOrders += pricedOrders
     const source = row.source_system || 'Unknown'
     const sourceTotals = current.bySource[source] ?? emptyTotals()
     sourceTotals.orders += orders
+    sourceTotals.pricedOrders += pricedOrders
     current.bySource[source] = sourceTotals
   }
 
@@ -204,14 +214,19 @@ export function summarize(
     const isThisWeek = row.day >= weekStart && row.day <= today
     if (!isToday && !isThisWeek) continue
     const orders = numeric(row.orders)
+    const pricedOrders = numeric(row.priced_orders)
     const sourceSummary = sourceSummaryFor(row.source_system || 'Unknown')
     if (isToday) {
       summary.today.orders += orders
+      summary.today.pricedOrders += pricedOrders
       sourceSummary.today.orders += orders
+      sourceSummary.today.pricedOrders += pricedOrders
     }
     if (isThisWeek) {
       summary.thisWeek.orders += orders
+      summary.thisWeek.pricedOrders += pricedOrders
       sourceSummary.thisWeek.orders += orders
+      sourceSummary.thisWeek.pricedOrders += pricedOrders
     }
   }
 
