@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import en from '@/locales/en.json'
 import { getLiveInventoryReport } from '@/lib/inventory-report-data'
+import { buildProductTotals } from '@/lib/inventory-report'
 import { buildInventoryWorkbook, type WorkbookLabels } from '@/lib/inventory-workbook'
 import { incompletenessReasons } from '@/lib/inventory-completeness'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -23,36 +24,47 @@ const labels: WorkbookLabels = {
   legacyWarning: en['inventoryOps.repLegacyWarn'],
 }
 
-/** How many parts the most recent snapshot saw WITH STOCK ON HAND.
+/** The latest snapshot's figures, for comparison against what ERPNext just returned.
  *
- *  "Non-empty" is not the same as "complete": an ERPNext warehouse-permission change or a
- *  filter regression returns a plausible SUBSET, and no field in the REST response says so.
- *  The snapshot written nightly by com.entech.inventory-snapshot is an independent record
- *  of the facility, so it can answer what the live API cannot.
+ *  "Non-empty" is not "complete": a warehouse-permission change or filter regression returns
+ *  a plausible SUBSET, and no field in the REST response says so. The snapshots written
+ *  nightly by com.entech.inventory-snapshot are an independent record of the same facility,
+ *  so they can answer what the live API cannot.
  *
- *  Counting only NON-ZERO rows is the whole point, and the reason the first version of this
- *  guard was useless. Total part count is padded back to full by the catalog zero-fill —
- *  under exactly the failure being guarded against (bins partial, Item list intact) the
- *  padded number barely moves, so the guard passed while the workbook quietly reported
- *  hidden stock as zero. Stocked-part count has no such backfill: it falls with the bins.
- *
- *  Returns null when there is nothing to compare against — a missing snapshot must not
- *  block the report, or one broken cron would silently take out another. The caller's own
- *  baseline (see cron/monthly-inventory-report.sh) is the independent second check. */
-async function lastSnapshotStockedPartCount(): Promise<number | null> {
-  const { data: latest, error: latestError } = await supabaseAdmin
-    .from('inventory_history')
-    .select('date')
-    .order('date', { ascending: false })
-    .limit(1)
-  if (latestError || !latest?.length) return null
-  const { count, error } = await supabaseAdmin
-    .from('inventory_history')
-    .select('part_number', { count: 'exact', head: true })
-    .eq('date', latest[0].date)
-    .neq('quantity', 0)
-  if (error || !count) return null
-  return count
+ *  Any figure is null when there is nothing to compare against; a missing snapshot must not
+ *  block the report, or one broken cron would silently take out another. The caller keeps an
+ *  independent baseline of its own (cron/monthly-inventory-report.sh) for that case. */
+async function latestSnapshotFigures(): Promise<{
+  binRows: number | null
+  stockedParts: number | null
+  totalParts: number | null
+}> {
+  const empty = { binRows: null, stockedParts: null, totalParts: null }
+  try {
+    const [{ data: binDay }, { data: partDay }] = await Promise.all([
+      supabaseAdmin.from('inventory_bin_history').select('date').order('date', { ascending: false }).limit(1),
+      supabaseAdmin.from('inventory_history').select('date').order('date', { ascending: false }).limit(1),
+    ])
+    const [binRows, stocked, total] = await Promise.all([
+      binDay?.length
+        ? supabaseAdmin.from('inventory_bin_history').select('part_number', { count: 'exact', head: true }).eq('date', binDay[0].date)
+        : Promise.resolve({ count: null }),
+      partDay?.length
+        ? supabaseAdmin.from('inventory_history').select('part_number', { count: 'exact', head: true }).eq('date', partDay[0].date).neq('quantity', 0)
+        : Promise.resolve({ count: null }),
+      partDay?.length
+        ? supabaseAdmin.from('inventory_history').select('part_number', { count: 'exact', head: true }).eq('date', partDay[0].date)
+        : Promise.resolve({ count: null }),
+    ])
+    return {
+      binRows: binRows.count ?? null,
+      stockedParts: stocked.count ?? null,
+      totalParts: total.count ?? null,
+    }
+  } catch (error) {
+    console.error('inventory report: snapshot comparison unavailable:', error)
+    return empty
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -77,10 +89,11 @@ export async function GET(req: NextRequest) {
     // stockedCount comes from bin rows alone. `binlessItems` is the zero-fill, and folding
     // it in is what made the first version of this check blind to the failure it exists for.
     const conditions = incompletenessReasons({
-      stockedCount: new Set(report.rows.map((row) => row.itemCode)).size,
       rowCount: report.rows.length,
+      stockedCount: new Set(report.rows.map((row) => row.itemCode)).size,
+      totalParts: buildProductTotals(report.rows, report.binlessItems).length,
       binlessItemsUnavailable: report.binlessItemsUnavailable,
-      snapshotStocked: await lastSnapshotStockedPartCount(),
+      snapshot: await latestSnapshotFigures(),
     })
 
     if (conditions.length > 0) {
