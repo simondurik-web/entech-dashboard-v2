@@ -59,6 +59,19 @@ function destination(row: ShipmentRow): string {
   return [row.city, row.state, row.zip].filter(Boolean).join(' ')
 }
 
+const USD_FORMAT = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+/** NULL cost means "never captured" or "not booked" — it must render as the
+ *  empty placeholder, never as $0.00 (which would read as free shipping). */
+function costDisplay(value: number | null): string {
+  return value === null ? EMPTY_VALUE : USD_FORMAT.format(value)
+}
+
 function isLtl(row: ShipmentRow): boolean {
   return row.service === 'LTL (set-aside)'
 }
@@ -193,11 +206,16 @@ function ShipmentsExplorerContent() {
 
   const trackingDisplay = useCallback((row: ExplorerRow) => {
     if (isLtl(row) || !row.tracking) return <span>{EMPTY_VALUE}</span>
-    const isFedEx = row.service?.toLowerCase().includes('fedex') ?? false
-    if (!isFedEx) return <span className="font-mono text-xs">{row.tracking}</span>
+    const service = row.service?.toLowerCase() ?? ''
+    const trackingUrl = service.includes('fedex')
+      ? `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(row.tracking)}`
+      : service.includes('ups')
+        ? `https://www.ups.com/track?tracknum=${encodeURIComponent(row.tracking)}`
+        : null
+    if (!trackingUrl) return <span className="font-mono text-xs">{row.tracking}</span>
     return (
       <a
-        href={`https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(row.tracking)}`}
+        href={trackingUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="font-mono text-xs text-primary hover:underline"
@@ -281,6 +299,17 @@ function ShipmentsExplorerContent() {
               {t('shipments.ltl')}
             </span>
           )}
+        </span>
+      ),
+    },
+    {
+      key: 'shipping_cost_usd',
+      label: t('shipments.shippingCost'),
+      sortable: true,
+      filterable: false,
+      render: (_value, row) => (
+        <span className="block whitespace-nowrap text-right">
+          {costDisplay(row.shipping_cost_usd)}
         </span>
       ),
     },
@@ -524,6 +553,10 @@ function ShipmentsExplorerContent() {
                 <div>
                   <p className="text-muted-foreground">{t('shipments.service')}</p>
                   <p className="truncate font-medium">{row.service || EMPTY_VALUE}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">{t('shipments.shippingCost')}</p>
+                  <p className="font-medium">{costDisplay(row.shipping_cost_usd)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">{t('shipments.destinationType')}</p>

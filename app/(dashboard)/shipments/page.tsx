@@ -56,6 +56,7 @@ function deliverableKey(kind: DeliverableKind): string {
   const keys: Record<DeliverableKind, string> = {
     'packing-fedex': 'shipments.filePackingFedex',
     'packing-ltl': 'shipments.filePackingLtl',
+    'packing-ups': 'shipments.filePackingUps',
     labels: 'shipments.fileLabels',
     summary: 'shipments.fileRunSummary',
     other: 'shipments.fileOther',

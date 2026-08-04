@@ -19,15 +19,19 @@ interface ShippingDoc {
  * AND natively-scanned DNs, so every shipped order since the ERPNext cutover has
  * its documents downloadable here (Simon 2026-07-06).
  */
-export function ErpShippingDocs({ soName }: { soName: string }) {
+export function ErpShippingDocs({ soName, line }: { soName: string; line?: string }) {
   const { t } = useI18n()
   const [docs, setDocs] = useState<ShippingDoc[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
+  // A dashboard row is ONE SO item line; scoping keeps sibling releases' past
+  // shipping documents off lines they never shipped (TL-0011 bug, 2026-08-03).
+  const lineScope = line && /^\d+$/.test(line) ? `&line=${line}` : ''
+
   useEffect(() => {
     if (!soName) return
     let active = true
-    fetch(`/api/erpnext/fulfillment/shipping-docs?so=${encodeURIComponent(soName)}`, {
+    fetch(`/api/erpnext/fulfillment/shipping-docs?so=${encodeURIComponent(soName)}${lineScope}`, {
       headers: authHeaders(),
       cache: 'no-store',
     })
@@ -41,7 +45,7 @@ export function ErpShippingDocs({ soName }: { soName: string }) {
     return () => {
       active = false
     }
-  }, [soName])
+  }, [soName, lineScope])
 
   // Fetch with auth, then open — PWA/standalone gets the share sheet (AirPrint /
   // Save to Files); desktop gets the new-tab viewer. Mirrors the ship page.

@@ -743,7 +743,7 @@ export function OrderDetail({
             {/* ── Generated shipping documents (BOL + packing slip) streamed from
                 ERPNext per Delivery Note — self-hides when there are none ── */}
             {showPoSection && !!ifNumber && (
-              <ErpShippingDocs key={`erpdocs|${ifNumber}`} soName={(ifNumber || '').split(' ')[0]} />
+              <ErpShippingDocs key={`erpdocs|${ifNumber}|${line ?? ''}`} soName={(ifNumber || '').split(' ')[0]} line={line} />
             )}
 
             {/* ── Pallet Records — desktop table + touch-friendly mobile cards ── */}

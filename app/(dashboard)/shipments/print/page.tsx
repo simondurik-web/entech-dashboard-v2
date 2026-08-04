@@ -19,6 +19,7 @@ import { todayET } from '@/lib/shipments/et-date'
 import type {
   DeliverableFile,
   DeliverableKind,
+  DeliverablePartner,
 } from '@/lib/shipments/types'
 import { useI18n } from '@/lib/i18n'
 import { usePermissions } from '@/lib/use-permissions'
@@ -45,24 +46,60 @@ interface PrintJob {
   printed_at: string | null
 }
 
-const LETTER_KINDS = new Set<DeliverableKind>(['packing-fedex', 'packing-ltl', 'summary'])
+const LETTER_KINDS = new Set<DeliverableKind>([
+  'packing-fedex',
+  'packing-ltl',
+  'packing-ups',
+  'summary',
+])
 const FILE_ORDER: DeliverableKind[] = [
   'packing-fedex',
   'packing-ltl',
+  'packing-ups',
   'labels',
   'summary',
   'other',
 ]
+// Partner-first grouping: each automation's files sit together on screen so
+// the floor never prints one partner's pile from the other's card by mistake.
+const PARTNER_ORDER: DeliverablePartner[] = ['home-depot', 'amazon', 'unknown']
 
 function deliverableKey(kind: DeliverableKind): string {
   const keys: Record<DeliverableKind, string> = {
     'packing-fedex': 'shipments.filePackingFedex',
     'packing-ltl': 'shipments.filePackingLtl',
+    'packing-ups': 'shipments.filePackingUps',
     labels: 'shipments.fileLabels',
     summary: 'shipments.fileRunSummary',
     other: 'shipments.fileOther',
   }
   return keys[kind]
+}
+
+function partnerKey(partner: DeliverablePartner): string {
+  const keys: Record<DeliverablePartner, string> = {
+    'home-depot': 'shipments.partnerHomeDepot',
+    amazon: 'shipments.partnerAmazon',
+    unknown: 'shipments.partnerUnknown',
+  }
+  return keys[partner]
+}
+
+const PARTNER_BADGE_CLASSES: Record<DeliverablePartner, string> = {
+  'home-depot': 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
+  amazon: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  unknown: 'bg-muted text-muted-foreground',
+}
+
+function PartnerBadge({ partner }: { partner: DeliverablePartner }) {
+  const { t } = useI18n()
+  return (
+    <span
+      className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${PARTNER_BADGE_CLASSES[partner]}`}
+    >
+      {t(partnerKey(partner))}
+    </span>
+  )
 }
 
 function statusKey(status: string): string {
@@ -147,7 +184,9 @@ function ShipmentPrintContent() {
       const result = (await response.json()) as DeliverablesResponse
       setFiles(
         [...result.files].sort(
-          (left, right) => FILE_ORDER.indexOf(left.kind) - FILE_ORDER.indexOf(right.kind)
+          (left, right) =>
+            PARTNER_ORDER.indexOf(left.partner) - PARTNER_ORDER.indexOf(right.partner) ||
+            FILE_ORDER.indexOf(left.kind) - FILE_ORDER.indexOf(right.kind)
         )
       )
     } catch (requestError) {
@@ -433,7 +472,10 @@ function ShipmentPrintContent() {
               <article key={file.path} className="rounded-xl border bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="font-semibold">{t(deliverableKey(file.kind))}</h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-semibold">{t(deliverableKey(file.kind))}</h2>
+                      <PartnerBadge partner={file.partner} />
+                    </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">{file.name}</p>
                   </div>
                   <FileText className="size-5 shrink-0 text-primary" />

@@ -2,21 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePermissionOrDevice } from '@/lib/require-user'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { isRealDate, todayET } from '@/lib/shipments/et-date'
-import type { DeliverableFile, DeliverableKind } from '@/lib/shipments/types'
+import { fileKind, filePartner } from '@/lib/shipments/deliverable-classify'
+import type { DeliverableFile } from '@/lib/shipments/types'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const BUCKET = 'shipment-deliverables'
-
-function fileKind(name: string): DeliverableKind {
-  const lower = name.toLowerCase()
-  if (lower.startsWith('packing-slips-fedex-')) return 'packing-fedex'
-  if (lower.startsWith('packing-slips-ltl-')) return 'packing-ltl'
-  if (lower.startsWith('labels-print-')) return 'labels'
-  if (lower.startsWith('run-summary-')) return 'summary'
-  return 'other'
-}
 
 export async function GET(req: NextRequest) {
   if (!(await requirePermissionOrDevice(req, '/shipments'))) {
@@ -47,6 +39,7 @@ export async function GET(req: NextRequest) {
         path: `${date}/${file.name}`,
         size: parsedSize !== null && Number.isFinite(parsedSize) ? parsedSize : null,
         kind: fileKind(file.name),
+        partner: filePartner(file.name),
       }
     })
 

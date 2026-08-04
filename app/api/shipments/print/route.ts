@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadDashboardProfile, requirePermissionOrDevice } from '@/lib/require-user'
 import { userCanPrintTo } from '@/lib/erpnext/printer-access'
 import { isRealDate } from '@/lib/shipments/et-date'
+import {
+  fileKind,
+  SERVER_LETTER_KINDS,
+  SERVER_ZEBRA_KINDS,
+} from '@/lib/shipments/deliverable-classify'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // Relay-print a shipment deliverable PDF to a station's LETTER printer via
@@ -17,15 +22,6 @@ export const maxDuration = 60
 
 const BUCKET = 'shipment-deliverables'
 const DELIVERABLE_PATH = /^\d{4}-\d{2}-\d{2}\/[A-Za-z0-9._-]+\.pdf$/
-// Compared case-insensitively — the deliverables listing classifies kinds on
-// lowercased names, so a casing drift in the uploader must not strand a file
-// the UI already offers to print.
-const LETTER_PREFIXES = ['packing-slips-fedex-', 'packing-slips-ltl-', 'run-summary-']
-// 4x6 label PDFs go to a station's DRIVER-based Zebra queue (agent v3 prints
-// them with PageSize=w288h432; stations advertise the capability via
-// print_stations.zebra_pdf — only set after that station's agent is upgraded,
-// because older agents would route the job to the letter printer).
-const ZEBRA_PREFIXES = ['labels-print-']
 const MAX_BYTES = 10 * 1024 * 1024
 
 /**
@@ -68,9 +64,18 @@ export async function POST(req: NextRequest) {
   if (!isRealDate(date) || !DELIVERABLE_PATH.test(path) || !path.startsWith(`${date}/`) || !station) {
     return fail('errInvalidRequest', 'Invalid request', 400)
   }
+  // Classified through the same fileKind as the deliverables listing (which
+  // lowercases names, so casing drift in the uploader can't strand a file the
+  // UI already offers to print) — a file the UI shows as printable must never
+  // 422 here. 4x6 label PDFs go to a station's DRIVER-based Zebra queue
+  // (agent v3 prints them with PageSize=w288h432; stations advertise the
+  // capability via print_stations.zebra_pdf — only set after that station's
+  // agent is upgraded, because older agents would route the job to the letter
+  // printer).
   const basename = path.slice(date.length + 1).toLowerCase()
-  const isZebraFile = ZEBRA_PREFIXES.some((prefix) => basename.startsWith(prefix))
-  const isLetterFile = LETTER_PREFIXES.some((prefix) => basename.startsWith(prefix))
+  const kind = fileKind(basename)
+  const isZebraFile = SERVER_ZEBRA_KINDS.has(kind)
+  const isLetterFile = SERVER_LETTER_KINDS.has(kind)
   if (!isZebraFile && !isLetterFile) {
     return fail('errUnsupportedFile', 'unsupported_file', 422)
   }

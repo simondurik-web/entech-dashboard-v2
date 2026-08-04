@@ -9,10 +9,10 @@ import type {
 } from './types'
 
 function emptyTotals(): ShipmentTotals {
-  return { units: 0, lines: 0, orders: 0 }
+  return { units: 0, lines: 0, orders: 0, cost: 0, pricedOrders: 0 }
 }
 
-function numeric(value: number | string | null): number {
+function numeric(value: number | string | null | undefined): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
 }
@@ -20,10 +20,26 @@ function numeric(value: number | string | null): number {
 // When DailyOrdersRow[] is supplied, order counts come exclusively from it (the
 // per-part rollup's orders column double-counts multi-part POs) — so the daily
 // rows must then contribute units/lines only.
+//
+// Cost: shipping_cost_usd lives on exactly ONE shipment_history row per
+// (run_id, po_number), so the rollup's per-group SUM already carries each
+// shipment's cost exactly once — adding the group sums never double-counts.
+// NULL/absent is "no priced shipments here", not zero: it contributes nothing
+// to cost and nothing to pricedOrders, and consumers use pricedOrders to tell
+// a real $0-priced bucket apart from an unpriced one.
+//
+// pricedOrders tracks `orders` exactly — same source, same grain. Counting
+// priced rows here while orders came from the distinct pass could report more
+// priced shipments than there are orders ("2 of 1 priced") the moment one PO
+// ships twice in a day.
 function addTotals(target: ShipmentTotals, row: DailyRollupRow, includeOrders: boolean): void {
   target.units += numeric(row.units)
   target.lines += numeric(row.lines)
-  if (includeOrders) target.orders += numeric(row.orders)
+  if (includeOrders) {
+    target.orders += numeric(row.orders)
+    target.pricedOrders += numeric(row.priced_orders)
+  }
+  target.cost += numeric(row.shipping_cost_usd)
 }
 
 function isoDate(date: Date): string {
@@ -99,10 +115,13 @@ export function bucketize(
   for (const row of dailyOrders ?? []) {
     const current = getBucket(row.day)
     const orders = numeric(row.orders)
+    const pricedOrders = numeric(row.priced_orders)
     current.orders += orders
+    current.pricedOrders += pricedOrders
     const source = row.source_system || 'Unknown'
     const sourceTotals = current.bySource[source] ?? emptyTotals()
     sourceTotals.orders += orders
+    sourceTotals.pricedOrders += pricedOrders
     current.bySource[source] = sourceTotals
   }
 
@@ -195,14 +214,19 @@ export function summarize(
     const isThisWeek = row.day >= weekStart && row.day <= today
     if (!isToday && !isThisWeek) continue
     const orders = numeric(row.orders)
+    const pricedOrders = numeric(row.priced_orders)
     const sourceSummary = sourceSummaryFor(row.source_system || 'Unknown')
     if (isToday) {
       summary.today.orders += orders
+      summary.today.pricedOrders += pricedOrders
       sourceSummary.today.orders += orders
+      sourceSummary.today.pricedOrders += pricedOrders
     }
     if (isThisWeek) {
       summary.thisWeek.orders += orders
+      summary.thisWeek.pricedOrders += pricedOrders
       sourceSummary.thisWeek.orders += orders
+      sourceSummary.thisWeek.pricedOrders += pricedOrders
     }
   }
 

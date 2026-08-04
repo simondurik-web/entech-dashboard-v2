@@ -51,6 +51,15 @@ function bucketLabelKey(bucket: VolumeBucketSize): string {
   return `shipments.bucket.${bucket}`
 }
 
+const EMPTY_VALUE = '—'
+
+const USD_FORMAT = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 interface AnalyticsTooltipEntry {
   color?: string
   dataKey?: string | number
@@ -444,13 +453,14 @@ function ShipmentsAnalyticsContent() {
                     <h2 className="font-semibold">{t('shipments.bucketTotals')}</h2>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[560px] text-sm">
+                    <table className="w-full min-w-[640px] text-sm">
                       <thead>
                         <tr className="border-b bg-muted/40 text-left">
                           <th className="px-4 py-3 font-medium">{t('shipments.bucket')}</th>
                           <th className="px-4 py-3 text-right font-medium">{t('shipments.units')}</th>
                           <th className="px-4 py-3 text-right font-medium">{t('shipments.orders')}</th>
                           <th className="px-4 py-3 text-right font-medium">{t('shipments.lines')}</th>
+                          <th className="px-4 py-3 text-right font-medium">{t('shipments.shippingCost')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -460,6 +470,24 @@ function ShipmentsAnalyticsContent() {
                             <td className="px-4 py-3 text-right">{Number(row.units).toLocaleString()}</td>
                             <td className="px-4 py-3 text-right">{Number(row.orders).toLocaleString()}</td>
                             <td className="px-4 py-3 text-right">{Number(row.lines).toLocaleString()}</td>
+                            {/* Costs are sparse (most historical shipments never
+                                captured one), so a bucket's cost is a PARTIAL sum:
+                                show how many shipments it covers, and show the
+                                placeholder — never $0.00 — when none are priced. */}
+                            <td className="px-4 py-3 text-right">
+                              {row.pricedOrders > 0 ? (
+                                <>
+                                  <span className="whitespace-nowrap">{USD_FORMAT.format(row.cost)}</span>
+                                  <span className="ml-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                                    {t('shipments.costCoverage')
+                                      .replace('{priced}', String(row.pricedOrders))
+                                      .replace('{orders}', String(row.orders))}
+                                  </span>
+                                </>
+                              ) : (
+                                EMPTY_VALUE
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

@@ -5,7 +5,7 @@ import { findSignedBolObjects, truckloadSiblingBolDoc } from '@/lib/erpnext/exte
 import { escapeLike } from '@/lib/po-automation/edit'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-// GET /api/erpnext/fulfillment/shipping-docs?so=<SO>
+// GET /api/erpnext/fulfillment/shipping-docs?so=<SO>&line=<dashboard line>
 // Lists the submitted Delivery Notes behind a Sales Order so the dashboard can
 // offer the generated BOL / packing slip downloads (streamed on demand by
 // /api/erpnext/fulfillment/document — regenerated from the ERPNext print
@@ -13,6 +13,15 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 // Covers BOTH fulfillment-wrapper DNs (custom_ship_against_so) and DNs scanned
 // natively in ERPNext (linked only via items.against_sales_order) — that's what
 // makes every shipped order's documents available, past and future.
+//
+// `line` (optional) scopes the list to ONE dashboard line: a dashboard row is a
+// single SO item line (erp_order_line_map: line -> Sales Order Item name, which
+// DN Item.so_detail references). A multi-release SO ships lines on different
+// truckloads — without the scope, every not-yet-shipped line displayed the
+// signed BOLs of its siblings' PAST shipments (Simon, TL-0011, 2026-08-03).
+// DNs whose items carry no so_detail at all (legacy/manual) stay visible on
+// every line — they cannot be attributed, and hiding them would orphan their
+// documents entirely.
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -33,6 +42,10 @@ export async function GET(req: NextRequest) {
   if (!SO_NAME.test(so)) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
+  const lineParam = req.nextUrl.searchParams.get('line')?.trim() ?? ''
+  if (lineParam && !/^\d{1,10}$/.test(lineParam)) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
 
   try {
     const [byField, byItems] = await Promise.all([
@@ -50,10 +63,45 @@ export async function GET(req: NextRequest) {
         ])}&${listParam('fields', ['parent'])}&limit_page_length=0`
       ).catch(() => ({ data: [] })),
     ])
-    const names = [...new Set([
+    let names = [...new Set([
       ...(byField.data ?? []).map((d) => d.name),
       ...(byItems.data ?? []).map((d) => d.parent),
     ])]
+
+    // Line scope: keep DNs attributed to THIS SO item line, plus DNs that carry
+    // no line attribution at all. An unmapped line (pre-ERP row) scopes nothing.
+    if (lineParam && names.length > 0) {
+      const { data: mapRow, error: mapError } = await supabaseAdmin
+        .from('erp_order_line_map')
+        .select('erp_so_item_name')
+        .eq('line', Number(lineParam))
+        .maybeSingle()
+      if (mapError) throw mapError // fail closed: never fall back to the unscoped list on a lookup error
+      const soItemName = mapRow?.erp_so_item_name
+      if (soItemName) {
+        // No .catch fallbacks here: a failed attribution query must 502, not
+        // silently widen the scope back to every sibling DN (the very bug this
+        // parameter exists to fix).
+        const [mine, linked] = await Promise.all([
+          erpnextGet<{ data: { parent: string }[] }>(
+            `/api/resource/Delivery%20Note%20Item?parent=${encodeURIComponent('Delivery Note')}&${listParam('filters', [
+              ['so_detail', '=', soItemName],
+              ['docstatus', '=', 1],
+            ])}&${listParam('fields', ['parent'])}&limit_page_length=0`
+          ),
+          erpnextGet<{ data: { parent: string }[] }>(
+            `/api/resource/Delivery%20Note%20Item?parent=${encodeURIComponent('Delivery Note')}&${listParam('filters', [
+              ['parent', 'in', names],
+              ['docstatus', '=', 1],
+              ['so_detail', 'is', 'set'],
+            ])}&${listParam('fields', ['parent'])}&limit_page_length=0`
+          ),
+        ])
+        const mineSet = new Set((mine.data ?? []).map((d) => d.parent))
+        const attributable = new Set((linked.data ?? []).map((d) => d.parent))
+        names = names.filter((n) => mineSet.has(n) || !attributable.has(n))
+      }
+    }
     if (names.length === 0) {
       return NextResponse.json({ documents: [] }, { headers: { 'Cache-Control': 'no-store' } })
     }
