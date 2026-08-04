@@ -1799,6 +1799,8 @@
   "shipments.fileOther": "Other file",
   "shipments.partnerHomeDepot": "Home Depot",
   "shipments.partnerAmazon": "Amazon",
+  "shipments.partnerShopify": "Shopify",
+  "shipments.filterAll": "All",
   "shipments.partnerUnknown": "Unknown source",
   "shipments.loadError": "Shipment data could not be loaded",
   "shipments.tryAgain": "Try again",

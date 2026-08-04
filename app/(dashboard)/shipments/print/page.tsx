@@ -62,7 +62,7 @@ const FILE_ORDER: DeliverableKind[] = [
 ]
 // Partner-first grouping: each automation's files sit together on screen so
 // the floor never prints one partner's pile from the other's card by mistake.
-const PARTNER_ORDER: DeliverablePartner[] = ['home-depot', 'amazon', 'unknown']
+const PARTNER_ORDER: DeliverablePartner[] = ['home-depot', 'amazon', 'shopify', 'unknown']
 
 function deliverableKey(kind: DeliverableKind): string {
   const keys: Record<DeliverableKind, string> = {
@@ -80,6 +80,7 @@ function partnerKey(partner: DeliverablePartner): string {
   const keys: Record<DeliverablePartner, string> = {
     'home-depot': 'shipments.partnerHomeDepot',
     amazon: 'shipments.partnerAmazon',
+    shopify: 'shipments.partnerShopify',
     unknown: 'shipments.partnerUnknown',
   }
   return keys[partner]
@@ -88,6 +89,7 @@ function partnerKey(partner: DeliverablePartner): string {
 const PARTNER_BADGE_CLASSES: Record<DeliverablePartner, string> = {
   'home-depot': 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
   amazon: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  shopify: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   unknown: 'bg-muted text-muted-foreground',
 }
 
@@ -170,6 +172,9 @@ function ShipmentPrintContent() {
   const [error, setError] = useState(false)
   const [viewingPath, setViewingPath] = useState<string | null>(null)
   const [printingPath, setPrintingPath] = useState<string | null>(null)
+  // Partner filter chips (Simon 2026-08-04): the floor prints one automation's
+  // pile at a time, so let them narrow the cards to a single partner.
+  const [partnerFilter, setPartnerFilter] = useState<DeliverablePartner | 'all'>('all')
 
   const loadDeliverables = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -200,6 +205,9 @@ function ShipmentPrintContent() {
     const controller = new AbortController()
     setStationByPath({})
     setCopiesByPath({})
+    // A partner picked for one date may not exist on another — never leave an
+    // active chip pointing at an empty, disabled filter.
+    setPartnerFilter('all')
     void loadDeliverables(controller.signal)
     return () => controller.abort()
   }, [loadDeliverables])
@@ -456,8 +464,36 @@ function ShipmentPrintContent() {
       )}
 
       {!loading && !error && files.length > 0 && (
+        <>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {(['all', ...PARTNER_ORDER] as const).map((option) => {
+            const count =
+              option === 'all' ? files.length : files.filter((file) => file.partner === option).length
+            // Hide "unknown" entirely unless such files exist; other partners
+            // stay visible but disabled at zero so the row reads consistently.
+            if (option === 'unknown' && count === 0) return null
+            const active = partnerFilter === option
+            return (
+              <button
+                key={option}
+                type="button"
+                disabled={count === 0}
+                onClick={() => setPartnerFilter(option)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  active
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-foreground hover:bg-muted'
+                }`}
+              >
+                {option === 'all' ? t('shipments.filterAll') : t(partnerKey(option))} ({count})
+              </button>
+            )
+          })}
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
-          {files.map((file) => {
+          {files
+            .filter((file) => partnerFilter === 'all' || file.partner === partnerFilter)
+            .map((file) => {
             const isLetter = LETTER_KINDS.has(file.kind)
             const isLabels = file.kind === 'labels'
             // Only stations with the matching physical capability are offered —
@@ -572,6 +608,7 @@ function ShipmentPrintContent() {
             )
           })}
         </div>
+        </>
       )}
 
       {canPrint && (

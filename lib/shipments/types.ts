@@ -102,7 +102,7 @@ export type DeliverableKind =
 /** Which shipping automation produced the file — a separate axis from kind
  *  (kind says what the document is and drives printer choice; partner says
  *  whose orders it covers). */
-export type DeliverablePartner = 'home-depot' | 'amazon' | 'unknown'
+export type DeliverablePartner = 'home-depot' | 'amazon' | 'shopify' | 'unknown'
 
 export interface DeliverableFile {
   name: string

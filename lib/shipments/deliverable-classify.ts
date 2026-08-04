@@ -33,6 +33,9 @@ export function fileKind(name: string): DeliverableKind {
 export function filePartner(name: string): DeliverablePartner {
   const lower = name.toLowerCase()
   if (lower.includes('-amazon-')) return 'amazon'
+  // Shopify B2C morning run uploads labels-print-shopify-<HHMM>.pdf — the token
+  // must win over the labels-print- Home Depot prefix below.
+  if (lower.includes('-shopify-')) return 'shopify'
   if (
     lower.startsWith('packing-slips-fedex-') ||
     lower.startsWith('packing-slips-ltl-') ||
